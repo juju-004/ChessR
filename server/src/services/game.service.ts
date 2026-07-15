@@ -1,17 +1,50 @@
+import { customAlphabet } from 'nanoid';
 import { Game, type IGame } from '../models/Game.js';
 import { ApiError } from '../utils/ApiError.js';
-import { initLiveState } from './gameState.service.js';
+import { initLiveState, type LiveTimeControl } from './gameState.service.js';
+import { scheduleGameTimer } from './clock.service.js';
 
 const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
+// Excludes ambiguous characters (0/O, 1/I/L) so codes are easy to read aloud or type.
+const generateCode = customAlphabet('ABCDEFGHJKMNPQRSTUVWXYZ23456789', 6);
+
+async function uniqueJoinCode(): Promise<string> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = generateCode();
+    const existing = await Game.exists({ joinCode: code });
+    if (!existing) return code;
+  }
+  throw ApiError.internal('Could not generate a unique game code, please retry');
+}
+
+export interface TimeControlInput {
+  baseMinutes: number | null; // null = unlimited
+  incrementSeconds: number;
+}
+
+function toLiveTimeControl(input: TimeControlInput): LiveTimeControl {
+  return {
+    baseMs: input.baseMinutes === null ? null : input.baseMinutes * 60_000,
+    incrementMs: input.incrementSeconds * 1000,
+  };
+}
+
 /** Creates an open game waiting for an opponent (the "create game" flow). */
-export async function createOpenGame(hostUserId: string, isPrivate = false): Promise<IGame> {
+export async function createOpenGame(
+  hostUserId: string,
+  timeControl: TimeControlInput,
+  isPrivate = false,
+): Promise<IGame> {
+  const joinCode = await uniqueJoinCode();
   const game = await Game.create({
+    joinCode,
     white: hostUserId,
     black: null,
     status: 'waiting',
     fen: STARTING_FEN,
     isPrivate,
+    timeControl: { baseSeconds: timeControl.baseMinutes === null ? null : timeControl.baseMinutes * 60, incrementSeconds: timeControl.incrementSeconds },
   });
   return game;
 }
@@ -30,7 +63,13 @@ export async function joinOpenGame(gameId: string, joiningUserId: string): Promi
   game.startedAt = new Date();
   await game.save();
 
-  await initLiveState(game.id, game.white.toString(), game.black.toString(), game.fen);
+  const liveTc = toLiveTimeControl({
+    baseMinutes: game.timeControl.baseSeconds === null ? null : game.timeControl.baseSeconds / 60,
+    incrementSeconds: game.timeControl.incrementSeconds,
+  });
+  await initLiveState(game.id, game.white.toString(), game.black.toString(), liveTc, game.fen);
+  await scheduleGameTimer(game.id);
+
   return game;
 }
 
@@ -38,9 +77,12 @@ export async function joinOpenGame(gameId: string, joiningUserId: string): Promi
 export async function createDirectGame(
   whiteId: string,
   blackId: string,
+  timeControl: TimeControlInput,
   challengeId?: string,
 ): Promise<IGame> {
+  const joinCode = await uniqueJoinCode();
   const game = await Game.create({
+    joinCode,
     white: whiteId,
     black: blackId,
     status: 'active',
@@ -48,9 +90,13 @@ export async function createDirectGame(
     isPrivate: true,
     startedAt: new Date(),
     challengeId,
+    timeControl: { baseSeconds: timeControl.baseMinutes === null ? null : timeControl.baseMinutes * 60, incrementSeconds: timeControl.incrementSeconds },
   });
 
-  await initLiveState(game.id, whiteId, blackId, game.fen);
+  const liveTc = toLiveTimeControl(timeControl);
+  await initLiveState(game.id, whiteId, blackId, liveTc, game.fen);
+  await scheduleGameTimer(game.id);
+
   return game;
 }
 
@@ -64,6 +110,15 @@ export async function listOpenGames(excludeUserId?: string) {
     .limit(50)
     .populate('white', 'username rating')
     .lean();
+}
+
+export async function getGameByCode(code: string) {
+  const game = await Game.findOne({ joinCode: code.toUpperCase() })
+    .populate('white', 'username rating')
+    .populate('black', 'username rating')
+    .lean();
+  if (!game) throw ApiError.notFound('No game found with that code');
+  return game;
 }
 
 /** Appends a single move to the persistent game record. Called after each validated move. */

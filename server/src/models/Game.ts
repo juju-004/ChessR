@@ -24,8 +24,15 @@ export interface IMove {
   timestampMs: number;
 }
 
+export interface ITimeControl {
+  // null baseSeconds means untimed / unlimited.
+  baseSeconds: number | null;
+  incrementSeconds: number;
+}
+
 export interface IGame extends Document {
   _id: Types.ObjectId;
+  joinCode: string;
   white: Types.ObjectId;
   black: Types.ObjectId | null;
   status: GameStatus;
@@ -34,6 +41,7 @@ export interface IGame extends Document {
   fen: string;
   pgn: string;
   moves: IMove[];
+  timeControl: ITimeControl;
   // Optional: link back to a friend challenge, for auditability.
   challengeId?: string;
   isPrivate: boolean;
@@ -55,8 +63,19 @@ const moveSchema = new Schema<IMove>(
   { _id: false },
 );
 
+const timeControlSchema = new Schema<ITimeControl>(
+  {
+    baseSeconds: { type: Number, default: null },
+    incrementSeconds: { type: Number, default: 0 },
+  },
+  { _id: false },
+);
+
 const gameSchema = new Schema<IGame>(
   {
+    // Short, shareable, human-typeable identifier — this is what shows up in the
+    // URL and what a friend types in to join. The Mongo _id stays internal.
+    joinCode: { type: String, required: true, unique: true, index: true },
     white: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     black: { type: Schema.Types.ObjectId, ref: 'User', default: null, index: true },
     status: {
@@ -73,6 +92,10 @@ const gameSchema = new Schema<IGame>(
     },
     pgn: { type: String, default: '' },
     moves: { type: [moveSchema], default: [] },
+    timeControl: {
+      type: timeControlSchema,
+      default: () => ({ baseSeconds: 600, incrementSeconds: 0 }),
+    },
     challengeId: { type: String },
     isPrivate: { type: Boolean, default: false },
     startedAt: { type: Date },

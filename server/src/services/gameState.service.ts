@@ -7,6 +7,11 @@ const LIVE_STATE_TTL_SECONDS = 60 * 60 * 6; // 6h safety net; refreshed on every
 
 const stateKey = (gameId: string) => `game:${gameId}:state`;
 
+export interface LiveTimeControl {
+  baseMs: number | null; // null = unlimited
+  incrementMs: number;
+}
+
 export interface LiveGameState {
   gameId: string;
   whiteId: string;
@@ -16,13 +21,40 @@ export interface LiveGameState {
   result: 'white' | 'black' | 'draw' | null;
   endReason: string | null;
   moveCount: number;
-  lastMoveAtMs: number;
+  timeControl: LiveTimeControl;
+  whiteRemainingMs: number | null;
+  blackRemainingMs: number | null;
+  turnStartedAtMs: number;
+}
+
+export class GameTimeoutError extends Error {
+  constructor(public readonly winner: 'white' | 'black') {
+    super('Time forfeit');
+  }
+}
+
+export function getSideToMove(fen: string): 'white' | 'black' {
+  return new Chess(fen).turn() === 'w' ? 'white' : 'black';
+}
+
+/** Pure clock check — does not mutate anything. Returns the winning side if time has run out. */
+export function computeTimeoutWinner(state: LiveGameState): 'white' | 'black' | null {
+  if (state.status !== 'active' || state.timeControl.baseMs === null) return null;
+
+  const sideToMove = getSideToMove(state.fen);
+  const elapsed = Date.now() - state.turnStartedAtMs;
+  const remaining =
+    (sideToMove === 'white' ? state.whiteRemainingMs! : state.blackRemainingMs!) - elapsed;
+
+  if (remaining > 0) return null;
+  return sideToMove === 'white' ? 'black' : 'white';
 }
 
 export async function initLiveState(
   gameId: string,
   whiteId: string,
   blackId: string,
+  timeControl: LiveTimeControl,
   fen: string = STARTING_FEN,
 ): Promise<LiveGameState> {
   const state: LiveGameState = {
@@ -34,7 +66,10 @@ export async function initLiveState(
     result: null,
     endReason: null,
     moveCount: 0,
-    lastMoveAtMs: Date.now(),
+    timeControl,
+    whiteRemainingMs: timeControl.baseMs,
+    blackRemainingMs: timeControl.baseMs,
+    turnStartedAtMs: Date.now(),
   };
   await redis.set(stateKey(gameId), JSON.stringify(state), 'EX', LIVE_STATE_TTL_SECONDS);
   return state;
@@ -59,11 +94,15 @@ export interface MoveResult {
   result: 'white' | 'black' | 'draw' | null;
   endReason: string | null;
   moveNumber: number;
+  whiteRemainingMs: number | null;
+  blackRemainingMs: number | null;
 }
 
 /**
  * Applies a move server-side. This is the single source of truth for legality —
  * the client's board (chessground) is purely a renderer; it must never be trusted.
+ * Also the single source of truth for the clock: elapsed time is charged against
+ * the mover's remaining time before the move is even validated.
  */
 export async function applyMove(
   gameId: string,
@@ -78,22 +117,33 @@ export async function applyMove(
   const isBlack = state.blackId === userId;
   if (!isWhite && !isBlack) throw ApiError.forbidden('You are not a player in this game');
 
-  const chess = new Chess(state.fen);
-  const sideToMove = chess.turn() === 'w' ? 'white' : 'black';
+  const sideToMove = getSideToMove(state.fen);
   const playerSide = isWhite ? 'white' : 'black';
   if (sideToMove !== playerSide) throw ApiError.forbidden('Not your turn');
 
+  const timeoutWinner = computeTimeoutWinner(state);
+  if (timeoutWinner) throw new GameTimeoutError(timeoutWinner);
+
+  const chess = new Chess(state.fen);
   let moveResult;
   try {
-    moveResult = chess.move({
-      from: move.from,
-      to: move.to,
-      promotion: move.promotion,
-    });
+    moveResult = chess.move({ from: move.from, to: move.to, promotion: move.promotion });
   } catch {
     throw ApiError.badRequest('Illegal move');
   }
   if (!moveResult) throw ApiError.badRequest('Illegal move');
+
+  let whiteRemainingMs = state.whiteRemainingMs;
+  let blackRemainingMs = state.blackRemainingMs;
+  if (state.timeControl.baseMs !== null) {
+    const elapsed = Date.now() - state.turnStartedAtMs;
+    const increment = state.timeControl.incrementMs;
+    if (sideToMove === 'white') {
+      whiteRemainingMs = Math.max(0, (whiteRemainingMs ?? 0) - elapsed) + increment;
+    } else {
+      blackRemainingMs = Math.max(0, (blackRemainingMs ?? 0) - elapsed) + increment;
+    }
+  }
 
   let result: MoveResult['result'] = null;
   let endReason: string | null = null;
@@ -101,7 +151,7 @@ export async function applyMove(
 
   if (isGameOver) {
     if (chess.isCheckmate()) {
-      result = sideToMove; // the side that just moved wins
+      result = sideToMove;
       endReason = 'checkmate';
     } else if (chess.isStalemate()) {
       result = 'draw';
@@ -125,7 +175,9 @@ export async function applyMove(
     result,
     endReason,
     moveCount: state.moveCount + 1,
-    lastMoveAtMs: Date.now(),
+    whiteRemainingMs,
+    blackRemainingMs,
+    turnStartedAtMs: Date.now(),
   };
   await redis.set(stateKey(gameId), JSON.stringify(newState), 'EX', LIVE_STATE_TTL_SECONDS);
 
@@ -139,6 +191,8 @@ export async function applyMove(
     result,
     endReason,
     moveNumber: newState.moveCount,
+    whiteRemainingMs,
+    blackRemainingMs,
   };
 }
 
@@ -152,6 +206,6 @@ export async function endGame(
   if (!state) throw ApiError.notFound('Game is not active');
 
   const newState: LiveGameState = { ...state, status: 'finished', result, endReason };
-  await redis.set(stateKey(gameId), JSON.stringify(newState), 'EX', 300); // short grace TTL
+  await redis.set(stateKey(gameId), JSON.stringify(newState), 'EX', 300);
   return newState;
 }

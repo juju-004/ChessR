@@ -6,17 +6,23 @@ export interface OpenGame {
   createdAt: string;
 }
 
-export function createGame(isPrivate = false) {
-  return apiFetch<{ gameId: string; status: string }>('/games', {
+export interface TimeControlChoice {
+  baseMinutes: number | null; // null = unlimited
+  incrementSeconds: number;
+}
+
+export function createGame(timeControl: TimeControlChoice, isPrivate = false) {
+  return apiFetch<{ gameId: string; joinCode: string; status: string }>('/games', {
     method: 'POST',
-    body: JSON.stringify({ isPrivate }),
+    body: JSON.stringify({ ...timeControl, isPrivate }),
   });
 }
 
 export function joinGame(gameId: string) {
-  return apiFetch<{ gameId: string; status: string; fen: string }>(`/games/${gameId}/join`, {
-    method: 'POST',
-  });
+  return apiFetch<{ gameId: string; joinCode: string; status: string; fen: string }>(
+    `/games/${gameId}/join`,
+    { method: 'POST' },
+  );
 }
 
 export function listOpenGames() {
@@ -25,4 +31,8 @@ export function listOpenGames() {
 
 export function getGame(gameId: string) {
   return apiFetch<{ game: any }>(`/games/${gameId}`);
+}
+
+export function getGameByCode(code: string) {
+  return apiFetch<{ game: any }>(`/games/code/${encodeURIComponent(code)}`);
 }

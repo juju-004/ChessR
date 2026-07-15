@@ -1,6 +1,7 @@
 import { listFriends, listIncomingRequests, respondToFriendRequest, type Friend, type IncomingRequest } from '../api/friends.js';
 import { connectSocket } from '../socket.js';
 import { navigate } from '../router.js';
+import { TIME_CONTROLS } from '../timeControls.js';
 
 export async function renderFriends() {
   const app = document.getElementById('app')!;
@@ -11,6 +12,10 @@ export async function renderFriends() {
     </div>
     <div class="card">
       <h1>Friends</h1>
+      <label>Challenge time control</label>
+      <select id="challenge-tc-select">
+        ${TIME_CONTROLS.map((tc, i) => `<option value="${i}" ${i === 2 ? 'selected' : ''}>${tc.label}</option>`).join('')}
+      </select>
       <div id="friends-list" class="muted">Loading…</div>
     </div>
   `;
@@ -19,7 +24,6 @@ export async function renderFriends() {
 
   const socket = connectSocket();
 
-  // Avoid stacking duplicate listeners if this page is revisited during the session.
   socket.off('friend:request_received');
   socket.off('friend:presence');
   socket.off('challenge:sent');
@@ -97,9 +101,15 @@ async function refreshFriends() {
 
   el.querySelectorAll<HTMLButtonElement>('button[data-challenge]').forEach((btn) =>
     btn.addEventListener('click', () => {
+      const select = document.getElementById('challenge-tc-select') as HTMLSelectElement;
+      const tc = TIME_CONTROLS[Number(select.value)];
       const socket = connectSocket();
-      socket.emit('challenge:send', { toUserId: btn.dataset.challenge });
-      setStatus('Challenge sent — waiting for a response…');
+      socket.emit('challenge:send', {
+        toUserId: btn.dataset.challenge,
+        baseMinutes: tc.baseMinutes,
+        incrementSeconds: tc.incrementSeconds,
+      });
+      setStatus(`Challenge sent (${tc.label}) — waiting for a response…`);
     }),
   );
 }
@@ -130,7 +140,7 @@ export function setupGlobalChallengeListeners() {
     socket.emit('challenge:respond', { challengeId: payload.challengeId, accept });
   });
 
-  socket.on('challenge:accepted', (payload: { gameId: string }) => {
-    navigate(`/game/${payload.gameId}`);
+  socket.on('challenge:accepted', (payload: { joinCode: string }) => {
+    navigate(`/game/${payload.joinCode}`);
   });
 }

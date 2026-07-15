@@ -118,3 +118,17 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   font-family: ui-monospace, monospace;
   font-size: 0.85rem;
 }
+
+/* chessground expects its container to have an explicit size; #board-wrapper
+   (set inline as a responsive square) provides that, and #board.cg-wrap fills it. */
+#board.cg-wrap {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#clock-white, #clock-black {
+  font-weight: 600;
+  transition: background 0.2s ease;
+}
+

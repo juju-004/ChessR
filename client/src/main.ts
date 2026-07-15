@@ -1,3 +1,6 @@
+import '@lichess-org/chessground/assets/chessground.base.css';
+import '@lichess-org/chessground/assets/chessground.brown.css';
+import '@lichess-org/chessground/assets/chessground.cburnett.css';
 import { route, navigate, startRouter } from './router.js';
 import { authState } from './state.js';
 import { tryRestoreSession, logout } from './api/auth.js';
@@ -55,7 +58,7 @@ route('/dashboard', requireAuthGuard(renderDashboard));
 route('/find', requireAuthGuard(renderProfileSearch));
 route('/profile/:username', requireAuthGuard(renderProfile));
 route('/friends', requireAuthGuard(renderFriends));
-route('/game/:gameId', requireAuthGuard(renderGame));
+route('/game/:code', requireAuthGuard(renderGame));
 
 authState.subscribe(() => {
   renderNavbar();

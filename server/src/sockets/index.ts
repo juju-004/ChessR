@@ -5,7 +5,7 @@ import { env } from '../config/env.js';
 import { pubClient, subClient } from '../config/redis.js';
 import { socketAuthMiddleware } from './socketAuth.js';
 import { registerPresenceHandlers } from './presenceSocket.js';
-import { registerGameHandlers } from './gameSocket.js';
+import { registerGameHandlers, registerClockTimeoutHandler } from './gameSocket.js';
 import { registerChallengeHandlers } from './challengeSocket.js';
 import { setIo } from './io.js';
 
@@ -26,6 +26,8 @@ export function initSocketServer(httpServer: HttpServer): Server {
   io.adapter(createAdapter(pubClient, subClient));
 
   io.use(socketAuthMiddleware);
+
+  registerClockTimeoutHandler(io);
 
   io.on('connection', (socket) => {
     registerPresenceHandlers(io, socket);
