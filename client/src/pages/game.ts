@@ -122,6 +122,18 @@ function mountBoard(gameId: string, joinCode: string) {
   ['game:sync', 'game:move', 'game:over', 'game:error', 'game:opponent_connected', 'game:draw_offered']
     .forEach((evt) => socket.off(evt));
 
+  statusEl.textContent = 'Connecting…';
+
+  // If the socket can't reach the server at all (wrong proxy target, server down,
+  // auth rejected), say so — a permanently blank board with no explanation is the
+  // worst outcome here.
+  socket.off('connect_error');
+  socket.on('connect_error', (err: Error) => {
+    if (statusEl.textContent === 'Connecting…') {
+      statusEl.textContent = `Connection failed: ${err.message}`;
+    }
+  });
+
   socket.emit('game:join', { gameId });
 
   socket.on('game:sync', (payload: any) => {
