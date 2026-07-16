@@ -59,10 +59,14 @@ export function ChessBoard({
       groundRef.current?.destroy();
       groundRef.current = null;
     };
-    // Intentionally empty deps — chessground is created once; all subsequent
-    // updates flow through the .set() call in the effect below.
+    // `viewOnly` is deliberately the only reactive dependency here: chessground's
+    // own docs state .set() accepts "all config options, except for viewOnly" —
+    // it's baked in at construction time and silently ignored on every later
+    // .set() call. The board's first render always happens before we know
+    // whether the user is a player (that arrives via game:sync moments later),
+    // so viewOnly starts true and must trigger a full rebuild when it flips.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [viewOnly]);
 
   useEffect(() => {
     groundRef.current?.set({
