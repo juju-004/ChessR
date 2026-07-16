@@ -4,6 +4,7 @@ import { connectMongo, disconnectMongo } from './config/db.js';
 import { disconnectRedis } from './config/redis.js';
 import { createApp } from './app.js';
 import { initSocketServer } from './sockets/index.js';
+import { reconcileActiveGames } from './services/game.service.js';
 
 async function main() {
   await connectMongo();
@@ -12,6 +13,25 @@ async function main() {
   const httpServer = createServer(app);
 
   initSocketServer(httpServer);
+
+  // Recover any games whose in-memory clock timer was wiped out by the process
+  // restarting (very common in dev with hot-reload; also a real concern in
+  // prod after a deploy or crash). Then keep sweeping periodically as a
+  // general safety net.
+  reconcileActiveGames()
+    .then(({ resumed, timedOut, aborted }) => {
+      if (resumed || timedOut || aborted) {
+        console.log(
+          `♟️  Reconciled active games on boot: ${resumed} resumed, ${timedOut} timed out, ${aborted} aborted (no live state).`,
+        );
+      }
+    })
+    .catch((err) => console.error('reconcileActiveGames failed on boot:', err));
+
+  const reconcileInterval = setInterval(() => {
+    reconcileActiveGames().catch((err) => console.error('periodic reconcileActiveGames failed:', err));
+  }, 5 * 60 * 1000);
+  reconcileInterval.unref();
 
   httpServer.listen(env.PORT, () => {
     console.log(`🚀 Server listening on port ${env.PORT} [${env.NODE_ENV}]`);

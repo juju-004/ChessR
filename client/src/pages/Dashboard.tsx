@@ -42,8 +42,6 @@ export function Dashboard() {
     if (code) navigate(`/game/${code}`);
   }
 
-  console.log(activeGames);
-  
   return (
     <div className="mx-auto mt-6 max-w-2xl space-y-4">
       <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
@@ -104,7 +102,7 @@ export function Dashboard() {
             const toMove = turnColor(new Chess(g.fen));
             return (
               <div key={g._id} className="flex items-center justify-between border-b border-neutral-800 py-2 last:border-none">
-                {/* <div className="text-sm text-neutral-200">
+                <div className="text-sm text-neutral-200">
                   <Link to={`/profile/${g.white.username}`} className="hover:underline">
                     {g.white.username}
                   </Link>{' '}
@@ -115,7 +113,7 @@ export function Dashboard() {
                   <span className="ml-2 text-neutral-500">
                     · move {g.moves.length} · {toMove} to move · {formatTimeControl(g.timeControl)}
                   </span>
-                </div> */}
+                </div>
                 <Link
                   to={`/game/${g.joinCode}`}
                   className="rounded-md bg-neutral-700 px-3 py-1.5 text-sm font-semibold text-neutral-100 hover:bg-neutral-600"

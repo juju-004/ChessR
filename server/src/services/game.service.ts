@@ -2,7 +2,7 @@ import { customAlphabet } from 'nanoid';
 import { Game, type IGame } from '../models/Game.js';
 import { User } from '../models/User.js';
 import { ApiError } from '../utils/ApiError.js';
-import { initLiveState, type LiveTimeControl } from './gameState.service.js';
+import { initLiveState, getLiveState, computeTimeoutWinner, deleteLiveState, type LiveTimeControl } from './gameState.service.js';
 import { scheduleGameTimer } from './clock.service.js';
 import { getIo } from '../sockets/io.js';
 
@@ -73,7 +73,7 @@ export async function joinOpenGame(gameId: string, joiningUserId: string): Promi
     baseMinutes: game.timeControl.baseSeconds === null ? null : game.timeControl.baseSeconds / 60,
     incrementSeconds: game.timeControl.incrementSeconds,
   });
-  await initLiveState(game.id, game.white.toString(), game.black.toString(), liveTc, game.fen);
+  await initLiveState(game.id, game.white.toString(), (game.black || "").toString(), liveTc, game.fen);
   await scheduleGameTimer(game.id);
 
   try {
@@ -179,4 +179,48 @@ export async function finalizeGame(
     { _id: gameId },
     { $set: { fen, status, result, endReason, endedAt: new Date() } },
   );
+}
+
+/**
+ * Sweeps every game marked 'active' in Mongo and makes sure it actually has a
+ * live, correctly-scheduled timer behind it. This exists because the per-game
+ * clock timer lives in process memory (see clock.service.ts) — a server
+ * restart wipes every scheduled timeout silently, leaving the game stuck as
+ * "active" forever with nothing left to ever resolve it. Call this once on
+ * boot (to recover from the restart that just happened) and periodically
+ * (as a general safety net against anything else that could leave a timer
+ * un-scheduled).
+ */
+export async function reconcileActiveGames(): Promise<{ resumed: number; timedOut: number; aborted: number }> {
+  const activeGames = await Game.find({ status: 'active' }).lean();
+  let resumed = 0;
+  let timedOut = 0;
+  let aborted = 0;
+
+  for (const g of activeGames) {
+    const gameId = g._id.toString();
+    const liveState = await getLiveState(gameId);
+
+    if (!liveState) {
+      // No live state to resume from (Redis TTL expired, or it was never
+      // properly initialized) — there's nothing safe to do but close it out
+      // rather than leave it stuck as "active" indefinitely.
+      await finalizeGame(gameId, g.fen, 'aborted', null, 'abandoned');
+      aborted++;
+      continue;
+    }
+
+    const timeoutWinner = computeTimeoutWinner(liveState);
+    if (timeoutWinner) {
+      await finalizeGame(gameId, liveState.fen, 'finished', timeoutWinner, 'timeout');
+      await deleteLiveState(gameId);
+      timedOut++;
+      continue;
+    }
+
+    await scheduleGameTimer(gameId);
+    resumed++;
+  }
+
+  return { resumed, timedOut, aborted };
 }

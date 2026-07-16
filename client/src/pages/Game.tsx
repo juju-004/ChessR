@@ -108,6 +108,15 @@ export function Game() {
       setConnStatus((prev) => (prev === 'Connecting…' ? `Connection failed: ${err.message}` : prev));
     }
 
+    // Room membership does not survive a reconnect — a dropped/restarted
+    // connection gets a brand-new server-side socket that isn't in the game
+    // room until we explicitly rejoin. Listening on 'connect' (which fires on
+    // the *first* connection too) means this is the single source of truth
+    // for joining, covering both the initial mount and any later reconnect.
+    function joinRoom() {
+      socket.emit('game:join', { gameId });
+    }
+
     function onSync(payload: any) {
       setRole(payload.role);
       setStatus(payload.status);
@@ -182,6 +191,7 @@ export function Game() {
     }
 
     socket.on('connect_error', onConnectError);
+    socket.on('connect', joinRoom);
     socket.on('game:sync', onSync);
     socket.on('game:move', onMove);
     socket.on('game:over', onOver);
@@ -193,10 +203,13 @@ export function Game() {
     socket.on('game:opponent_reconnected', onOpponentReconnected);
     socket.on('game:draw_offered', onDrawOffered);
 
-    socket.emit('game:join', { gameId });
+    // Covers the common case where the socket is already connected by the
+    // time this effect runs (normal navigation to the page).
+    if (socket.connected) joinRoom();
 
     return () => {
       socket.off('connect_error', onConnectError);
+      socket.off('connect', joinRoom);
       socket.off('game:sync', onSync);
       socket.off('game:move', onMove);
       socket.off('game:over', onOver);
