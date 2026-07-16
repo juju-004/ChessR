@@ -1,11 +1,5 @@
 import { Chess } from 'chess.js';
 
-/**
- * Builds the `movable.dests` map chessground needs to know which squares are
- * draggable. This mirrors the standard lichess pattern: dests only exist for the
- * side whose turn it is, so pieces of the side NOT to move simply can't be picked
- * up — no separate "is it my turn" gate needed on the chessground config itself.
- */
 export function computeDests(chess: Chess): Map<string, string[]> {
   const dests = new Map<string, string[]>();
   const moves = chess.moves({ verbose: true });
@@ -24,4 +18,12 @@ export function needsPromotion(chess: Chess, from: string, to: string): boolean 
 
 export function turnColor(chess: Chess): 'white' | 'black' {
   return chess.turn() === 'w' ? 'white' : 'black';
+}
+
+export function formatClock(ms: number): string {
+  const clamped = Math.max(0, ms);
+  const totalSeconds = Math.floor(clamped / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }

@@ -1,5 +1,6 @@
 import { customAlphabet } from 'nanoid';
 import { Game, type IGame } from '../models/Game.js';
+import { User } from '../models/User.js';
 import { ApiError } from '../utils/ApiError.js';
 import { initLiveState, type LiveTimeControl } from './gameState.service.js';
 import { scheduleGameTimer } from './clock.service.js';
@@ -111,6 +112,22 @@ export async function createDirectGame(
   await scheduleGameTimer(game.id);
 
   return game;
+}
+
+export async function listFriendsActiveGames(userId: string) {
+  const user = await User.findById(userId).select('friends').lean();
+  const friendIds = user?.friends ?? [];
+  if (friendIds.length === 0) return [];
+
+  return Game.find({
+    status: 'active',
+    $or: [{ white: { $in: friendIds } }, { black: { $in: friendIds } }],
+  })
+    .sort({ startedAt: -1 })
+    .limit(50)
+    .populate('white', 'username rating')
+    .populate('black', 'username rating')
+    .lean();
 }
 
 export async function listOpenGames(excludeUserId?: string) {

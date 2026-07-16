@@ -1,0 +1,21 @@
+@import "tailwindcss";
+@import "@lichess-org/chessground/assets/chessground.base.css";
+@import "@lichess-org/chessground/assets/chessground.brown.css";
+@import "@lichess-org/chessground/assets/chessground.cburnett.css";
+
+/* chessground expects its container to have an explicit size and the cg-wrap
+   class; the wrapping element (sized via Tailwind, e.g. aspect-square) provides
+   the box, this fills it. */
+.cg-wrap {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.notify-in {
+  animation: notify-in 0.15s ease-out;
+}
+@keyframes notify-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}

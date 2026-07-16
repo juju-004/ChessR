@@ -1,5 +1,5 @@
 import { apiFetch } from './http.js';
-import { authState, type CurrentUser } from '../state.js';
+import { setAuth, clearAuth, type CurrentUser } from './authStore.js';
 
 interface AuthResponse {
   accessToken: string;
@@ -11,7 +11,7 @@ export async function signup(username: string, email: string, password: string) 
     method: 'POST',
     body: JSON.stringify({ username, email, password }),
   });
-  authState.set(data.accessToken, data.user);
+  setAuth(data.accessToken, data.user);
   return data.user;
 }
 
@@ -20,20 +20,19 @@ export async function signin(email: string, password: string) {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   });
-  authState.set(data.accessToken, data.user);
+  setAuth(data.accessToken, data.user);
   return data.user;
 }
 
 export async function logout() {
   await apiFetch('/auth/logout', { method: 'POST' }).catch(() => {});
-  authState.clear();
+  clearAuth();
 }
 
-/** Attempts to restore a session on page load using the httpOnly refresh cookie. */
 export async function tryRestoreSession(): Promise<boolean> {
   try {
     const data = await apiFetch<AuthResponse>('/auth/refresh', { method: 'POST' });
-    authState.set(data.accessToken, data.user);
+    setAuth(data.accessToken, data.user);
     return true;
   } catch {
     return false;

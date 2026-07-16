@@ -8,6 +8,7 @@ import {
   joinOpenGame,
   listOpenGames,
   getGameByCode,
+  listFriendsActiveGames,
 } from '../services/game.service.js';
 import type { AuthedRequest } from '../middleware/auth.js';
 
@@ -61,6 +62,11 @@ export const getGame = asyncHandler(async (req, res) => {
     .lean();
   if (!game) throw ApiError.notFound('Game not found');
   res.json({ game });
+});
+
+export const getFriendsActiveGames = asyncHandler(async (req: AuthedRequest, res) => {
+  const games = await listFriendsActiveGames(req.user!.id);
+  res.json({ games });
 });
 
 export const getGameByCodeHandler = asyncHandler(async (req, res) => {

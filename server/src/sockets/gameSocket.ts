@@ -9,7 +9,7 @@ import {
   deleteLiveState,
   GameTimeoutError,
 } from '../services/gameState.service.js';
-import { appendMove, finalizeGame } from '../services/game.service.js';
+import { appendMove, finalizeGame, createDirectGame } from '../services/game.service.js';
 import { scheduleGameTimer, clearGameTimer, setTimeoutHandler } from '../services/clock.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
@@ -26,6 +26,11 @@ const gameIdSchema = z.object({ gameId: z.string().refine(mongoose.isValidObject
 const claimSchema = z.object({
   gameId: z.string().refine(mongoose.isValidObjectId),
   claim: z.enum(['win', 'draw']),
+});
+const rematchOfferSchema = z.object({ gameId: z.string().refine(mongoose.isValidObjectId) });
+const rematchRespondSchema = z.object({
+  gameId: z.string().refine(mongoose.isValidObjectId),
+  accept: z.boolean(),
 });
 
 function emitError(socket: Socket, message: string) {
@@ -83,6 +88,12 @@ const pendingDisconnects = new Map<string, PendingDisconnect>();
 function clearPendingDisconnect(gameId: string) {
   pendingDisconnects.delete(gameId);
 }
+
+// --- Rematches ---------------------------------------------------------------
+// Keyed by the *original* game's id. A rematch offer expires if not answered —
+// there's no point letting a stale offer linger once one side has moved on.
+const REMATCH_OFFER_TTL_MS = 30_000;
+const pendingRematches = new Map<string, { fromUserId: string; expiresAt: number }>();
 
 async function userStillInRoom(io: Server, gameId: string, userId: string): Promise<boolean> {
   const sockets = await io.in(gameRoom(gameId)).fetchSockets();
@@ -157,6 +168,8 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         role,
         fen: liveState?.fen ?? game.fen,
         status: liveState?.status ?? game.status,
+        result: liveState?.result ?? game.result,
+        endReason: liveState?.endReason ?? game.endReason,
         white: game.white,
         black: game.black,
         moves: game.moves,
@@ -293,6 +306,79 @@ export function registerGameHandlers(io: Server, socket: Socket) {
 
       const result = claim === 'draw' ? 'draw' : state.whiteId === userId ? 'white' : 'black';
       await endGameAndBroadcast(io, gameId, result, 'abandoned');
+    }),
+  );
+
+  socket.on(
+    'game:rematch_offer',
+    safeHandler(socket, async (raw: unknown) => {
+      const parsed = rematchOfferSchema.safeParse(raw);
+      if (!parsed.success) return emitError(socket, 'Invalid payload');
+      const { gameId } = parsed.data;
+
+      const game = await Game.findById(gameId).lean();
+      if (!game) return emitError(socket, 'Game not found');
+      if (game.status !== 'finished') return emitError(socket, 'Game has not finished yet');
+
+      const isWhite = game.white.toString() === userId;
+      const isBlack = game.black?.toString() === userId;
+      if (!isWhite && !isBlack) return emitError(socket, 'You were not a player in this game');
+
+      const opponentId = isWhite ? game.black?.toString() : game.white.toString();
+      if (!opponentId) return emitError(socket, 'No opponent to rematch');
+
+      pendingRematches.set(gameId, { fromUserId: userId, expiresAt: Date.now() + REMATCH_OFFER_TTL_MS });
+
+      io.to(`user:${opponentId}`).emit('game:rematch_offered', { gameId, from: userId });
+      setTimeout(() => {
+        const pending = pendingRematches.get(gameId);
+        if (pending && pending.fromUserId === userId) pendingRematches.delete(gameId);
+      }, REMATCH_OFFER_TTL_MS);
+    }),
+  );
+
+  socket.on(
+    'game:rematch_respond',
+    safeHandler(socket, async (raw: unknown) => {
+      const parsed = rematchRespondSchema.safeParse(raw);
+      if (!parsed.success) return emitError(socket, 'Invalid payload');
+      const { gameId, accept } = parsed.data;
+
+      const pending = pendingRematches.get(gameId);
+      if (!pending) return emitError(socket, 'That rematch offer has expired');
+
+      const game = await Game.findById(gameId).lean();
+      if (!game) return emitError(socket, 'Original game not found');
+
+      const isWhite = game.white.toString() === userId;
+      const isBlack = game.black?.toString() === userId;
+      if (!isWhite && !isBlack) return emitError(socket, 'You were not a player in this game');
+      if (pending.fromUserId === userId) return emitError(socket, "You can't respond to your own offer");
+
+      pendingRematches.delete(gameId);
+
+      if (!accept) {
+        io.to(`user:${pending.fromUserId}`).emit('game:rematch_declined', { gameId });
+        return;
+      }
+
+      // Swap colors for the rematch — standard etiquette, and it means the same
+      // player isn't stuck playing white (or black) twice in a row.
+      const newWhite = isWhite ? game.black!.toString() : game.white.toString();
+      const newBlack = isWhite ? game.white.toString() : game.black!.toString();
+
+      const newGame = await createDirectGame(
+        newWhite,
+        newBlack,
+        {
+          baseMinutes: game.timeControl.baseSeconds === null ? null : game.timeControl.baseSeconds / 60,
+          incrementSeconds: game.timeControl.incrementSeconds,
+        },
+      );
+
+      const payload = { gameId: newGame.id, joinCode: newGame.joinCode };
+      io.to(`user:${game.white.toString()}`).emit('game:rematch_accepted', payload);
+      io.to(`user:${game.black!.toString()}`).emit('game:rematch_accepted', payload);
     }),
   );
 

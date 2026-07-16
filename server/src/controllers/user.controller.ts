@@ -11,8 +11,6 @@ const searchSchema = z.object({
 
 export const searchUsers = asyncHandler(async (req, res) => {
   const { q } = searchSchema.parse(req.query);
-
-  // Prefix match on the normalized username — uses the usernameLower index.
   const regex = new RegExp('^' + q.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
   const users = await User.find({ usernameLower: regex })
@@ -31,11 +29,7 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
 
   if (!user) throw ApiError.notFound('User not found');
 
-  const [gamesPlayed, wins] = await Promise.all([
-    Game.countDocuments({
-      status: 'finished',
-      $or: [{ white: user._id }, { black: user._id }],
-    }),
+  const [wins, losses, draws] = await Promise.all([
     Game.countDocuments({
       status: 'finished',
       $or: [
@@ -43,11 +37,21 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
         { black: user._id, result: 'black' },
       ],
     }),
+    Game.countDocuments({
+      status: 'finished',
+      $or: [
+        { white: user._id, result: 'black' },
+        { black: user._id, result: 'white' },
+      ],
+    }),
+    Game.countDocuments({
+      status: 'finished',
+      result: 'draw',
+      $or: [{ white: user._id }, { black: user._id }],
+    }),
   ]);
 
-  const isFriend = req.user
-    ? user.friends.some((f) => f.toString() === req.user!.id)
-    : false;
+  const isFriend = req.user ? user.friends.some((f) => f.toString() === req.user!.id) : false;
   const isSelf = req.user?.id === user._id.toString();
 
   res.json({
@@ -56,8 +60,58 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
     rating: user.rating,
     avatarUrl: user.avatarUrl,
     memberSince: user.createdAt,
-    stats: { gamesPlayed, wins },
+    stats: { wins, losses, draws, gamesPlayed: wins + losses + draws },
     isFriend,
     isSelf,
   });
+});
+
+const gamesQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(20),
+});
+
+export const getUserGames = asyncHandler(async (req, res) => {
+  const { username } = req.params;
+  const { page, limit } = gamesQuerySchema.parse(req.query);
+
+  const user = await User.findOne({ usernameLower: username.toLowerCase() }).select('_id').lean();
+  if (!user) throw ApiError.notFound('User not found');
+
+  const filter = {
+    status: 'finished' as const,
+    $or: [{ white: user._id }, { black: user._id }],
+  };
+
+  const [games, total] = await Promise.all([
+    Game.find(filter)
+      .sort({ endedAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .populate('white', 'username rating')
+      .populate('black', 'username rating')
+      .select('joinCode white black result endReason timeControl moves startedAt endedAt')
+      .lean(),
+    Game.countDocuments(filter),
+  ]);
+
+  const items = games.map((g) => {
+    const isWhite = g.white._id.toString() === user._id.toString();
+    const myResult: 'win' | 'loss' | 'draw' =
+      g.result === 'draw' ? 'draw' : g.result === (isWhite ? 'white' : 'black') ? 'win' : 'loss';
+    return {
+      gameId: g._id,
+      joinCode: g.joinCode,
+      opponent: isWhite ? g.black : g.white,
+      color: isWhite ? 'white' : 'black',
+      result: myResult,
+      endReason: g.endReason,
+      timeControl: g.timeControl,
+      moveCount: g.moves.length,
+      startedAt: g.startedAt,
+      endedAt: g.endedAt,
+    };
+  });
+
+  res.json({ games: items, page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) });
 });

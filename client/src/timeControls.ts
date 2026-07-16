@@ -1,6 +1,6 @@
 export interface TimeControlOption {
   label: string;
-  baseMinutes: number | null; // null = unlimited
+  baseMinutes: number | null;
   incrementSeconds: number;
 }
 
@@ -13,3 +13,8 @@ export const TIME_CONTROLS: TimeControlOption[] = [
   { label: 'Classical · 30+0', baseMinutes: 30, incrementSeconds: 0 },
   { label: 'Unlimited', baseMinutes: null, incrementSeconds: 0 },
 ];
+
+export function formatTimeControl(tc: { baseSeconds: number | null; incrementSeconds: number }): string {
+  if (tc.baseSeconds === null) return 'Unlimited';
+  return `${Math.round(tc.baseSeconds / 60)}+${tc.incrementSeconds}`;
+}
