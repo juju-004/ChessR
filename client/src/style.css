@@ -102,7 +102,34 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 .dot.online { background: var(--ok); }
 
-.fen-box {
+#global-alert {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 320px;
+}
+
+.notify-card {
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 0.9rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  animation: notify-in 0.15s ease-out;
+}
+
+@keyframes notify-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.notify-card p { margin: 0 0 0.6rem; font-size: 0.9rem; }
+.notify-card .actions { display: flex; gap: 0.5rem; 
+
   font-family: ui-monospace, monospace;
   font-size: 0.8rem;
   background: #12141a;

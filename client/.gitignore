@@ -26,6 +26,7 @@ out/
 .env.production.local
 *.pem
 *.key
+.vite
 
 # ==========================================
 # Logs and Debugging

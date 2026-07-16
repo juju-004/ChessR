@@ -4,7 +4,13 @@ import { authState } from './state.js';
 let socket: Socket | null = null;
 
 export function connectSocket(): Socket {
-  if (socket?.connected) return socket;
+  // Return the existing socket whether or not it has *finished* connecting yet —
+  // socket.io-client queues emits and reconnects automatically. Recreating the
+  // socket here on every call (the previous bug) meant that any two calls made
+  // before the first handshake completed produced two live sockets, and event
+  // listeners attached via the second call would land on a different object than
+  // the one other pages later got back — so some listeners silently never fired.
+  if (socket) return socket;
 
   socket = io('/', {
     auth: { token: authState.accessToken },

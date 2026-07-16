@@ -2,6 +2,7 @@ import { listFriends, listIncomingRequests, respondToFriendRequest, type Friend,
 import { connectSocket } from '../socket.js';
 import { navigate } from '../router.js';
 import { TIME_CONTROLS } from '../timeControls.js';
+import { showActionBanner, showToast } from '../notify.js';
 
 export async function renderFriends() {
   const app = document.getElementById('app')!;
@@ -134,13 +135,50 @@ export function setupGlobalChallengeListeners() {
 
   socket.off('challenge:received');
   socket.off('challenge:accepted');
+  socket.off('challenge:declined');
+  socket.off('challenge:cancelled');
 
-  socket.on('challenge:received', (payload: { challengeId: string; from: { username: string } }) => {
-    const accept = confirm(`${payload.from.username} challenged you to a game. Accept?`);
-    socket.emit('challenge:respond', { challengeId: payload.challengeId, accept });
-  });
+  socket.on(
+    'challenge:received',
+    (payload: {
+      challengeId: string;
+      from: { username: string };
+      timeControl: { baseMinutes: number | null; incrementSeconds: number };
+    }) => {
+      const tc =
+        payload.timeControl.baseMinutes === null
+          ? 'Unlimited'
+          : `${payload.timeControl.baseMinutes}+${payload.timeControl.incrementSeconds}`;
+
+      const banner = showActionBanner(
+        `${payload.from.username} challenged you to a game (${tc}).`,
+        [
+          {
+            label: 'Accept',
+            onClick: () => socket.emit('challenge:respond', { challengeId: payload.challengeId, accept: true }),
+          },
+          {
+            label: 'Decline',
+            variant: 'secondary',
+            onClick: () => socket.emit('challenge:respond', { challengeId: payload.challengeId, accept: false }),
+          },
+        ],
+      );
+      // Challenges expire server-side after 60s — pull the banner down with it
+      // rather than leaving a stale Accept button that will just error out.
+      setTimeout(() => banner.remove(), 60_000);
+    },
+  );
 
   socket.on('challenge:accepted', (payload: { joinCode: string }) => {
     navigate(`/game/${payload.joinCode}`);
+  });
+
+  socket.on('challenge:declined', () => {
+    showToast('Your challenge was declined.');
+  });
+
+  socket.on('challenge:cancelled', () => {
+    showToast('That challenge was cancelled.');
   });
 }

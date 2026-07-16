@@ -23,14 +23,15 @@ const moveSchema = z.object({
   promotion: z.enum(['q', 'r', 'b', 'n']).optional(),
 });
 const gameIdSchema = z.object({ gameId: z.string().refine(mongoose.isValidObjectId) });
+const claimSchema = z.object({
+  gameId: z.string().refine(mongoose.isValidObjectId),
+  claim: z.enum(['win', 'draw']),
+});
 
 function emitError(socket: Socket, message: string) {
   socket.emit('game:error', { message });
 }
 
-// Wrap every handler so an unexpected failure surfaces to the client instead of
-// vanishing as a silent unhandled promise rejection (this is what made the friend
-// challenge flow look "broken" before Redis was actually reachable).
 function safeHandler<T>(socket: Socket, fn: (payload: T) => Promise<void>) {
   return (payload: T) => {
     fn(payload).catch((err) => {
@@ -40,16 +41,87 @@ function safeHandler<T>(socket: Socket, fn: (payload: T) => Promise<void>) {
   };
 }
 
-/** Called once at server startup — wires the clock service's timeout callback to
- *  the same finalize+broadcast logic used everywhere else a game ends. */
+async function endGameAndBroadcast(
+  io: Server,
+  gameId: string,
+  result: 'white' | 'black' | 'draw',
+  endReason: string,
+) {
+  clearGameTimer(gameId);
+  clearPendingDisconnect(gameId);
+  const finalState = await endGame(gameId, result, endReason);
+  // Broadcast immediately — persistence to Mongo doesn't need to gate the UI update.
+  io.to(gameRoom(gameId)).emit('game:over', { gameId, result, reason: endReason });
+  finalizeGame(gameId, finalState.fen, 'finished', result, endReason).catch((err) =>
+    console.error('finalizeGame failed:', err),
+  );
+  deleteLiveState(gameId).catch((err) => console.error('deleteLiveState failed:', err));
+}
+
 export function registerClockTimeoutHandler(io: Server) {
   setTimeoutHandler(async (gameId, winner) => {
-    clearGameTimer(gameId);
-    const finalState = await endGame(gameId, winner, 'timeout');
-    await finalizeGame(gameId, finalState.fen, 'finished', winner, 'timeout');
-    await deleteLiveState(gameId);
-    io.to(gameRoom(gameId)).emit('game:over', { gameId, result: winner, reason: 'timeout' });
+    await endGameAndBroadcast(io, gameId, winner, 'timeout');
   });
+}
+
+// --- Disconnect / reconnect grace period -----------------------------------
+//
+// If a player's socket drops mid-game, we don't want to end the game instantly
+// (page refreshes and flaky wifi happen). Instead: wait a short debounce period
+// to rule out a quick refresh, then start a longer grace period during which the
+// disconnected player can still come back. Only after the grace period expires
+// can the opponent actively claim a win or draw — nothing resolves automatically.
+const DISCONNECT_DEBOUNCE_MS = 3000;
+const DISCONNECT_GRACE_MS = 60_000;
+
+interface PendingDisconnect {
+  disconnectedUserId: string;
+  expiresAt: number;
+}
+const pendingDisconnects = new Map<string, PendingDisconnect>();
+
+function clearPendingDisconnect(gameId: string) {
+  pendingDisconnects.delete(gameId);
+}
+
+async function userStillInRoom(io: Server, gameId: string, userId: string): Promise<boolean> {
+  const sockets = await io.in(gameRoom(gameId)).fetchSockets();
+  return sockets.some((s) => (s.data as AuthedSocketData).userId === userId);
+}
+
+async function handlePotentialDisconnect(io: Server, gameId: string, userId: string) {
+  const state = await getLiveState(gameId);
+  if (!state || state.status !== 'active') return;
+  const isPlayer = state.whiteId === userId || state.blackId === userId;
+  if (!isPlayer) return; // spectators leaving is a non-event
+
+  setTimeout(async () => {
+    try {
+      const stillThere = await userStillInRoom(io, gameId, userId);
+      if (stillThere) return; // reconnected within the debounce window
+
+      const freshState = await getLiveState(gameId);
+      if (!freshState || freshState.status !== 'active') return;
+
+      const expiresAt = Date.now() + DISCONNECT_GRACE_MS;
+      pendingDisconnects.set(gameId, { disconnectedUserId: userId, expiresAt });
+      io.to(gameRoom(gameId)).emit('game:opponent_disconnected', {
+        userId,
+        graceMs: DISCONNECT_GRACE_MS,
+      });
+
+      setTimeout(async () => {
+        // Only fire if nothing has changed this in the meantime (reconnect, resign, etc.)
+        const pending = pendingDisconnects.get(gameId);
+        if (!pending || pending.disconnectedUserId !== userId) return;
+        const stillGone = !(await userStillInRoom(io, gameId, userId));
+        if (!stillGone) return;
+        io.to(gameRoom(gameId)).emit('game:claim_available', { userId });
+      }, DISCONNECT_GRACE_MS);
+    } catch (err) {
+      console.error('disconnect-grace handling failed:', err);
+    }
+  }, DISCONNECT_DEBOUNCE_MS);
 }
 
 export function registerGameHandlers(io: Server, socket: Socket) {
@@ -71,6 +143,13 @@ export function registerGameHandlers(io: Server, socket: Socket) {
 
       await socket.join(gameRoom(gameId));
 
+      // Reconnecting clears any pending "opponent disconnected" state for this game.
+      const pending = pendingDisconnects.get(gameId);
+      if (pending && pending.disconnectedUserId === userId) {
+        clearPendingDisconnect(gameId);
+        io.to(gameRoom(gameId)).emit('game:opponent_reconnected', { userId });
+      }
+
       const liveState = await getLiveState(gameId);
       socket.emit('game:sync', {
         gameId,
@@ -82,8 +161,10 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         black: game.black,
         moves: game.moves,
         timeControl: game.timeControl,
-        whiteRemainingMs: liveState?.whiteRemainingMs ?? (game.timeControl.baseSeconds ? game.timeControl.baseSeconds * 1000 : null),
-        blackRemainingMs: liveState?.blackRemainingMs ?? (game.timeControl.baseSeconds ? game.timeControl.baseSeconds * 1000 : null),
+        whiteRemainingMs:
+          liveState?.whiteRemainingMs ?? (game.timeControl.baseSeconds ? game.timeControl.baseSeconds * 1000 : null),
+        blackRemainingMs:
+          liveState?.blackRemainingMs ?? (game.timeControl.baseSeconds ? game.timeControl.baseSeconds * 1000 : null),
         turnStartedAtMs: liveState?.turnStartedAtMs ?? Date.now(),
       });
 
@@ -103,15 +184,8 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       try {
         const result = await applyMove(gameId, userId, { from, to, promotion });
 
-        await appendMove(gameId, {
-          san: result.san,
-          from: result.from,
-          to: result.to,
-          promotion: result.promotion,
-          fenAfter: result.fenAfter,
-          moveNumber: result.moveNumber,
-        });
-
+        // Broadcast first — Mongo persistence is for history/reconnect sync, it
+        // doesn't need to gate how fast the opponent sees the move land.
         io.to(gameRoom(gameId)).emit('game:move', {
           gameId,
           san: result.san,
@@ -125,29 +199,23 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           turnStartedAtMs: Date.now(),
         });
 
+        appendMove(gameId, {
+          san: result.san,
+          from: result.from,
+          to: result.to,
+          promotion: result.promotion,
+          fenAfter: result.fenAfter,
+          moveNumber: result.moveNumber,
+        }).catch((err) => console.error('appendMove failed:', err));
+
         if (result.isGameOver) {
-          clearGameTimer(gameId);
-          await finalizeGame(gameId, result.fenAfter, 'finished', result.result, result.endReason);
-          await deleteLiveState(gameId);
-          io.to(gameRoom(gameId)).emit('game:over', {
-            gameId,
-            result: result.result,
-            reason: result.endReason,
-          });
+          await endGameAndBroadcast(io, gameId, result.result!, result.endReason!);
         } else {
-          await scheduleGameTimer(gameId);
+          scheduleGameTimer(gameId).catch((err) => console.error('scheduleGameTimer failed:', err));
         }
       } catch (err) {
         if (err instanceof GameTimeoutError) {
-          clearGameTimer(gameId);
-          const finalState = await endGame(gameId, err.winner, 'timeout');
-          await finalizeGame(gameId, finalState.fen, 'finished', err.winner, 'timeout');
-          await deleteLiveState(gameId);
-          io.to(gameRoom(gameId)).emit('game:over', {
-            gameId,
-            result: err.winner,
-            reason: 'timeout',
-          });
+          await endGameAndBroadcast(io, gameId, err.winner, 'timeout');
           return;
         }
         emitError(socket, err instanceof Error ? err.message : 'Move rejected');
@@ -168,12 +236,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       const winner = state.whiteId === userId ? 'black' : state.blackId === userId ? 'white' : null;
       if (!winner) return emitError(socket, 'You are not a player in this game');
 
-      clearGameTimer(gameId);
-      const finalState = await endGame(gameId, winner, 'resignation');
-      await finalizeGame(gameId, finalState.fen, 'finished', winner, 'resignation');
-      await deleteLiveState(gameId);
-
-      io.to(gameRoom(gameId)).emit('game:over', { gameId, result: winner, reason: 'resignation' });
+      await endGameAndBroadcast(io, gameId, winner, 'resignation');
     }),
   );
 
@@ -202,12 +265,44 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       const state = await getLiveState(gameId);
       if (!state) return emitError(socket, 'Game is not active');
 
-      clearGameTimer(gameId);
-      const finalState = await endGame(gameId, 'draw', 'draw_agreement');
-      await finalizeGame(gameId, finalState.fen, 'finished', 'draw', 'draw_agreement');
-      await deleteLiveState(gameId);
-
-      io.to(gameRoom(gameId)).emit('game:over', { gameId, result: 'draw', reason: 'draw_agreement' });
+      await endGameAndBroadcast(io, gameId, 'draw', 'draw_agreement');
     }),
   );
+
+  // Claiming a win/draw after the opponent has been gone longer than the grace period.
+  socket.on(
+    'game:claim_disconnect',
+    safeHandler(socket, async (raw: unknown) => {
+      const parsed = claimSchema.safeParse(raw);
+      if (!parsed.success) return emitError(socket, 'Invalid payload');
+      const { gameId, claim } = parsed.data;
+
+      const pending = pendingDisconnects.get(gameId);
+      if (!pending) return emitError(socket, 'There is no disconnect to claim right now');
+      if (Date.now() < pending.expiresAt) {
+        return emitError(socket, 'The grace period has not finished yet');
+      }
+
+      const state = await getLiveState(gameId);
+      if (!state) return emitError(socket, 'Game is not active');
+
+      const isOpponent =
+        (state.whiteId === userId && state.blackId === pending.disconnectedUserId) ||
+        (state.blackId === userId && state.whiteId === pending.disconnectedUserId);
+      if (!isOpponent) return emitError(socket, 'You are not eligible to claim this game');
+
+      const result = claim === 'draw' ? 'draw' : state.whiteId === userId ? 'white' : 'black';
+      await endGameAndBroadcast(io, gameId, result, 'abandoned');
+    }),
+  );
+
+  socket.on('disconnecting', () => {
+    const rooms = Array.from(socket.rooms).filter((r) => r.startsWith('game:'));
+    for (const room of rooms) {
+      const gameId = room.slice('game:'.length);
+      handlePotentialDisconnect(io, gameId, userId).catch((err) =>
+        console.error('handlePotentialDisconnect failed:', err),
+      );
+    }
+  });
 }

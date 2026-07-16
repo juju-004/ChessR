@@ -3,10 +3,10 @@ import { Game, type IGame } from '../models/Game.js';
 import { ApiError } from '../utils/ApiError.js';
 import { initLiveState, type LiveTimeControl } from './gameState.service.js';
 import { scheduleGameTimer } from './clock.service.js';
+import { getIo } from '../sockets/io.js';
 
 const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
-// Excludes ambiguous characters (0/O, 1/I/L) so codes are easy to read aloud or type.
 const generateCode = customAlphabet('ABCDEFGHJKMNPQRSTUVWXYZ23456789', 6);
 
 async function uniqueJoinCode(): Promise<string> {
@@ -19,7 +19,7 @@ async function uniqueJoinCode(): Promise<string> {
 }
 
 export interface TimeControlInput {
-  baseMinutes: number | null; // null = unlimited
+  baseMinutes: number | null;
   incrementSeconds: number;
 }
 
@@ -30,7 +30,6 @@ function toLiveTimeControl(input: TimeControlInput): LiveTimeControl {
   };
 }
 
-/** Creates an open game waiting for an opponent (the "create game" flow). */
 export async function createOpenGame(
   hostUserId: string,
   timeControl: TimeControlInput,
@@ -44,12 +43,18 @@ export async function createOpenGame(
     status: 'waiting',
     fen: STARTING_FEN,
     isPrivate,
-    timeControl: { baseSeconds: timeControl.baseMinutes === null ? null : timeControl.baseMinutes * 60, incrementSeconds: timeControl.incrementSeconds },
+    timeControl: {
+      baseSeconds: timeControl.baseMinutes === null ? null : timeControl.baseMinutes * 60,
+      incrementSeconds: timeControl.incrementSeconds,
+    },
   });
   return game;
 }
 
-/** Joins an open game (the "join game" flow) and starts it immediately. */
+/** Joins an open game and starts it immediately. Also notifies anyone already
+ *  sitting in the game's socket room (i.e. the creator, waiting) that the game
+ *  is live now — without this, the creator's board stays stuck in "waiting"
+ *  view-only mode until they manually reload. */
 export async function joinOpenGame(gameId: string, joiningUserId: string): Promise<IGame> {
   const game = await Game.findById(gameId);
   if (!game) throw ApiError.notFound('Game not found');
@@ -70,10 +75,15 @@ export async function joinOpenGame(gameId: string, joiningUserId: string): Promi
   await initLiveState(game.id, game.white.toString(), game.black.toString(), liveTc, game.fen);
   await scheduleGameTimer(game.id);
 
+  try {
+    getIo().to(`game:${game.id}`).emit('game:state_changed');
+  } catch {
+    // Socket.IO not initialized (e.g. in a script/test context) — safe to ignore.
+  }
+
   return game;
 }
 
-/** Directly creates + starts a game between two known players (used by accepted friend challenges). */
 export async function createDirectGame(
   whiteId: string,
   blackId: string,
@@ -90,7 +100,10 @@ export async function createDirectGame(
     isPrivate: true,
     startedAt: new Date(),
     challengeId,
-    timeControl: { baseSeconds: timeControl.baseMinutes === null ? null : timeControl.baseMinutes * 60, incrementSeconds: timeControl.incrementSeconds },
+    timeControl: {
+      baseSeconds: timeControl.baseMinutes === null ? null : timeControl.baseMinutes * 60,
+      incrementSeconds: timeControl.incrementSeconds,
+    },
   });
 
   const liveTc = toLiveTimeControl(timeControl);
@@ -121,7 +134,6 @@ export async function getGameByCode(code: string) {
   return game;
 }
 
-/** Appends a single move to the persistent game record. Called after each validated move. */
 export async function appendMove(
   gameId: string,
   move: {
@@ -139,7 +151,6 @@ export async function appendMove(
   );
 }
 
-/** Persists the finished/aborted result from the Redis live state back into MongoDB. */
 export async function finalizeGame(
   gameId: string,
   fen: string,

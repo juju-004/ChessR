@@ -5,6 +5,7 @@ import { authState } from '../state.js';
 import { getGameByCode, joinGame } from '../api/games.js';
 import { ApiRequestError } from '../api/http.js';
 import { computeDests, needsPromotion, turnColor } from '../chessUtils.js';
+import { showActionBanner } from '../notify.js';
 
 // Derive chessground's Config type from its own constructor rather than guessing
 // a deep import path for the type — keeps this resilient to minor version bumps.
@@ -22,6 +23,7 @@ interface GameCtx {
   blackRemainingMs: number | null;
   turnStartedAtMs: number;
   status: 'waiting' | 'active' | 'finished';
+  disconnectCountdownInterval: number | null;
 }
 
 let ctx: GameCtx | null = null;
@@ -38,6 +40,11 @@ export async function renderGame(params: { code: string }) {
       </div>
       <p class="muted" id="join-prompt" style="display:none;"></p>
       <button id="join-as-opponent-btn" style="display:none;">Join this game</button>
+      <div id="disconnect-banner" class="card" style="display:none; background:#2a1f1f; border-color:#5c3030;">
+        <p id="disconnect-message" style="margin:0 0 0.5rem;"></p>
+        <button class="danger" id="claim-win-btn" style="display:none;">Claim victory</button>
+        <button class="secondary" id="claim-draw-btn" style="display:none;">Claim draw</button>
+      </div>
       <div id="clocks" style="display:flex; gap: 1rem; margin: 0.75rem 0;">
         <div class="fen-box" id="clock-black" style="flex:1; text-align:center;">--:--</div>
         <div class="fen-box" id="clock-white" style="flex:1; text-align:center;">--:--</div>
@@ -115,12 +122,23 @@ function mountBoard(gameId: string, joinCode: string) {
     blackRemainingMs: null,
     turnStartedAtMs: Date.now(),
     status: 'active',
+    disconnectCountdownInterval: null,
   };
 
   const socket = connectSocket();
 
-  ['game:sync', 'game:move', 'game:over', 'game:error', 'game:opponent_connected', 'game:draw_offered']
-    .forEach((evt) => socket.off(evt));
+  [
+    'game:sync',
+    'game:move',
+    'game:over',
+    'game:error',
+    'game:opponent_connected',
+    'game:draw_offered',
+    'game:state_changed',
+    'game:opponent_disconnected',
+    'game:opponent_reconnected',
+    'game:claim_available',
+  ].forEach((evt) => socket.off(evt));
 
   statusEl.textContent = 'Connecting…';
 
@@ -177,6 +195,8 @@ function mountBoard(gameId: string, joinCode: string) {
     statusEl.textContent = `Game over — ${describeResult(payload.result)} (${payload.reason.replace('_', ' ')})`;
     controlsEl.style.display = 'none';
     stopClockTicker();
+    document.getElementById('disconnect-banner')!.style.display = 'none';
+    stopDisconnectCountdown();
     ctx.ground?.set({ movable: { color: undefined, dests: new Map() } });
   });
 
@@ -190,9 +210,74 @@ function mountBoard(gameId: string, joinCode: string) {
     if (ctx?.status === 'active') statusEl.textContent = 'Opponent connected';
   });
 
+  // The creator's socket sits in the room from the moment they create the game —
+  // this is what tells their already-open board "the opponent just joined, you're
+  // live now" without needing a manual reload.
+  socket.on('game:state_changed', () => {
+    socket.emit('game:join', { gameId });
+  });
+
+  const banner = document.getElementById('disconnect-banner')!;
+  const messageEl = document.getElementById('disconnect-message')!;
+  const claimWinBtn = document.getElementById('claim-win-btn') as HTMLButtonElement;
+  const claimDrawBtn = document.getElementById('claim-draw-btn') as HTMLButtonElement;
+
+  socket.on('game:opponent_disconnected', (payload: { userId: string; graceMs: number }) => {
+    if (!ctx) return;
+    const expiresAt = Date.now() + payload.graceMs;
+    banner.style.display = 'block';
+    claimWinBtn.style.display = 'none';
+    claimDrawBtn.style.display = 'none';
+
+    stopDisconnectCountdown();
+    ctx.disconnectCountdownInterval = window.setInterval(() => {
+      const remaining = Math.max(0, expiresAt - Date.now());
+      messageEl.textContent =
+        remaining > 0
+          ? `Opponent disconnected. You can claim the game in ${Math.ceil(remaining / 1000)}s if they don't return.`
+          : 'Opponent has not reconnected — you can claim this game now.';
+      if (remaining <= 0) {
+        claimWinBtn.style.display = 'inline-block';
+        claimDrawBtn.style.display = 'inline-block';
+        stopDisconnectCountdown();
+      }
+    }, 500);
+  });
+
+  socket.on('game:claim_available', () => {
+    claimWinBtn.style.display = 'inline-block';
+    claimDrawBtn.style.display = 'inline-block';
+    messageEl.textContent = 'Opponent has not reconnected — you can claim this game now.';
+  });
+
+  socket.on('game:opponent_reconnected', () => {
+    stopDisconnectCountdown();
+    banner.style.display = 'none';
+  });
+
+  claimWinBtn.addEventListener('click', () => {
+    socket.emit('game:claim_disconnect', { gameId, claim: 'win' });
+  });
+  claimDrawBtn.addEventListener('click', () => {
+    socket.emit('game:claim_disconnect', { gameId, claim: 'draw' });
+  });
+
+  function stopDisconnectCountdown() {
+    if (ctx?.disconnectCountdownInterval !== null && ctx?.disconnectCountdownInterval !== undefined) {
+      window.clearInterval(ctx.disconnectCountdownInterval);
+      if (ctx) ctx.disconnectCountdownInterval = null;
+    }
+  }
+
   socket.on('game:draw_offered', () => {
-    const accept = confirm('Your opponent offered a draw. Accept?');
-    socket.emit('game:respond_draw', { gameId, accept });
+    showActionBanner('Your opponent offered a draw.', [
+      { label: 'Accept', onClick: () => socket.emit('game:respond_draw', { gameId, accept: true }) },
+      {
+        label: 'Decline',
+        variant: 'secondary',
+        onClick: () => socket.emit('game:respond_draw', { gameId, accept: false }),
+      },
+    ]);
   });
 
   document.getElementById('offer-draw-btn')!.addEventListener('click', () => {
