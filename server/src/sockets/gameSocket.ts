@@ -14,6 +14,7 @@ import { scheduleGameTimer, clearGameTimer, setTimeoutHandler } from '../service
 import type { AuthedSocketData } from './socketAuth.js';
 
 const gameRoom = (gameId: string) => `game:${gameId}`;
+const spectatorRoom = (gameId: string) => `game:${gameId}:spectators`;
 
 const joinSchema = z.object({ gameId: z.string().refine(mongoose.isValidObjectId) });
 const moveSchema = z.object({
@@ -33,6 +34,10 @@ const rematchRespondSchema = z.object({
   accept: z.boolean(),
 });
 const abortSchema = z.object({ gameId: z.string().refine(mongoose.isValidObjectId) });
+const chatSchema = z.object({
+  gameId: z.string().refine(mongoose.isValidObjectId),
+  message: z.string().trim().min(1).max(300),
+});
 
 function emitError(socket: Socket, message: string) {
   socket.emit('game:error', { message });
@@ -154,6 +159,12 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       const role: 'white' | 'black' | 'spectator' = isWhite ? 'white' : isBlack ? 'black' : 'spectator';
 
       await socket.join(gameRoom(gameId));
+      if (role === 'spectator') {
+        // Kept separate from the main game room so spectator chat traffic
+        // never reaches the players — they don't get a chat UI at all, and
+        // this means they never even receive the events for one.
+        await socket.join(spectatorRoom(gameId));
+      }
 
       // Reconnecting clears any pending "opponent disconnected" state for this game.
       const pending = pendingDisconnects.get(gameId);
@@ -409,6 +420,29 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       await deleteLiveState(gameId);
 
       io.to(gameRoom(gameId)).emit('game:over', { gameId, result: null, reason: 'aborted_no_moves' });
+    }),
+  );
+
+  // Deliberately spectator-only, and never persisted anywhere (no Mongo, no
+  // Redis) — purely a live relay through Socket.IO. Refresh the page and the
+  // history is gone, by design.
+  socket.on(
+    'spectator_chat:send',
+    safeHandler(socket, async (raw: unknown) => {
+      const parsed = chatSchema.safeParse(raw);
+      if (!parsed.success) return emitError(socket, 'Invalid chat payload');
+      const { gameId, message } = parsed.data;
+
+      if (!socket.rooms.has(spectatorRoom(gameId))) {
+        return emitError(socket, 'Only spectators can use this chat');
+      }
+
+      const { username } = socket.data as AuthedSocketData;
+      io.to(spectatorRoom(gameId)).emit('spectator_chat:message', {
+        username,
+        message,
+        at: Date.now(),
+      });
     }),
   );
 

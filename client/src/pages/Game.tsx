@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { Chess } from 'chess.js';
 import { getGameByCode, joinGame } from '../api/games.js';
@@ -9,7 +9,8 @@ import { useNotify } from '../contexts/NotificationContext.js';
 import { ChessBoard } from '../components/ChessBoard.js';
 import { PromotionPicker } from '../components/PromotionPicker.js';
 import { ClockDisplay } from '../components/ClockDisplay.js';
-import { computeDests, needsPromotion, computePremoveDests, findCheckSquare } from '../chessUtils.js';
+import { computeDests, needsPromotion, isInCheck } from '../chessUtils.js';
+import { playMoveSound, playCaptureSound, playCheckSound, playGameStartSound, playGameOverSound } from '../sounds.js';
 
 interface GameMeta {
   _id: string;
@@ -52,6 +53,8 @@ export function Game() {
   const [promoPending, setPromoPending] = useState<{ orig: string; dest: string } | null>(null);
   const [disconnectBanner, setDisconnectBanner] = useState<{ message: string; claimable: boolean } | null>(null);
   const [rematchState, setRematchState] = useState<'idle' | 'offered'>('idle');
+  const [chatMessages, setChatMessages] = useState<{ username: string; message: string; at: number }[]>([]);
+  const [chatInput, setChatInput] = useState('');
 
   const chess = useMemo(() => new Chess(fen), [fen]);
 
@@ -137,12 +140,18 @@ export function Game() {
       setBlackRemainingMs(payload.blackRemainingMs);
       setTurnStartedAtMs(payload.turnStartedAtMs);
       setMoves((prev) => [...prev, { moveNumber: payload.moveNumber, san: payload.san, from: payload.from, to: payload.to }]);
+
+      const san: string = payload.san ?? '';
+      if (san.includes('+') || san.includes('#')) playCheckSound();
+      else if (san.includes('x')) playCaptureSound();
+      else playMoveSound();
     }
 
     function onOver(payload: { result: string | null; reason: string }) {
       setStatus('finished');
       setGameOver(payload);
       setDisconnectBanner(null);
+      playGameOverSound();
     }
 
     function onError(payload: { message: string }) {
@@ -151,6 +160,7 @@ export function Game() {
 
     function onOpponentConnected() {
       setConnStatus((s) => (s === 'Your game' || s === 'active' ? 'Opponent connected' : s));
+      playGameStartSound();
     }
 
     function onStateChanged() {
@@ -190,6 +200,10 @@ export function Game() {
       ]);
     }
 
+    function onChatMessage(payload: { username: string; message: string; at: number }) {
+      setChatMessages((prev) => [...prev.slice(-199), payload]);
+    }
+
     socket.on('connect_error', onConnectError);
     socket.on('connect', joinRoom);
     socket.on('game:sync', onSync);
@@ -202,6 +216,7 @@ export function Game() {
     socket.on('game:claim_available', onClaimAvailable);
     socket.on('game:opponent_reconnected', onOpponentReconnected);
     socket.on('game:draw_offered', onDrawOffered);
+    socket.on('spectator_chat:message', onChatMessage);
 
     // Covers the common case where the socket is already connected by the
     // time this effect runs (normal navigation to the page).
@@ -220,6 +235,7 @@ export function Game() {
       socket.off('game:claim_available', onClaimAvailable);
       socket.off('game:opponent_reconnected', onOpponentReconnected);
       socket.off('game:draw_offered', onDrawOffered);
+      socket.off('spectator_chat:message', onChatMessage);
     };
   }, [mode, socket, gameMeta, notify]);
 
@@ -274,6 +290,13 @@ export function Game() {
     notify('Rematch offer sent — waiting for your opponent…', [], 5000);
   }
 
+  function handleSendChat(e: FormEvent) {
+    e.preventDefault();
+    if (!socket || !gameMeta || !chatInput.trim()) return;
+    socket.emit('spectator_chat:send', { gameId: gameMeta._id, message: chatInput.trim() });
+    setChatInput('');
+  }
+
   if (loadError) {
     return <div className="mx-auto mt-6 max-w-2xl rounded-lg border border-red-900 bg-red-950/40 p-5 text-red-400">{loadError}</div>;
   }
@@ -299,8 +322,7 @@ export function Game() {
   const isPlayer = role !== 'spectator';
   const myColor: 'white' | 'black' | undefined = role === 'white' || role === 'black' ? role : undefined;
   const dests = computeDests(chess);
-  const premoveDests = myColor ? computePremoveDests(chess, myColor) : new Map<string, string[]>();
-  const checkSquare = findCheckSquare(chess);
+  const inCheck = isInCheck(chess);
 
   return (
     <div className="mx-auto mt-6 max-w-2xl space-y-4">
@@ -348,8 +370,7 @@ export function Game() {
             turnColor={chess.turn() === 'w' ? 'white' : 'black'}
             movableColor={myColor}
             dests={dests}
-            premoveDests={premoveDests}
-            checkSquare={checkSquare}
+            inCheck={inCheck}
             lastMove={lastMove}
             onUserMove={handleUserMove}
           />
@@ -397,6 +418,37 @@ export function Game() {
           ))}
         </div>
       </div>
+
+      {role === 'spectator' && (
+        <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
+          <h2 className="mb-2 text-lg font-semibold text-neutral-100">Spectator chat</h2>
+          <p className="mb-2 text-xs text-neutral-500">
+            Only visible to spectators, not the players. Not saved — refreshing clears it.
+          </p>
+          <div className="mb-2 max-h-48 space-y-1 overflow-y-auto rounded-md bg-neutral-950 p-2 text-sm">
+            {chatMessages.length === 0 && <p className="text-neutral-500">No messages yet.</p>}
+            {chatMessages.map((m, i) => (
+              <p key={i}>
+                <span className="font-semibold text-blue-400">{m.username}:</span>{' '}
+                <span className="text-neutral-200">{m.message}</span>
+              </p>
+            ))}
+          </div>
+          <form onSubmit={handleSendChat} className="flex gap-2">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              maxLength={300}
+              placeholder="Say something…"
+              className="flex-1 rounded-md border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-sm text-neutral-100"
+            />
+            <button type="submit" className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-500">
+              Send
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
