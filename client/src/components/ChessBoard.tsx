@@ -11,6 +11,12 @@ export interface ChessBoardProps {
   turnColor: 'white' | 'black';
   movableColor?: 'white' | 'black';
   dests: Map<string, string[]>;
+  /** Premove destinations for the player's own color, computed speculatively
+   *  (see chessUtils.computePremoveDests). Pass an empty map to disable premoves
+   *  (e.g. for spectators). */
+  premoveDests?: Map<string, string[]>;
+  /** Square of the king currently in check, or undefined if nobody is. */
+  checkSquare?: string;
   /** [from, to] of the most recent move, or undefined if none yet. Passing this
    *  through as a controlled prop on every update is what makes the last-move
    *  highlight track the actual game state instead of getting stuck on whichever
@@ -26,6 +32,8 @@ export function ChessBoard({
   turnColor,
   movableColor,
   dests,
+  premoveDests,
+  checkSquare,
   lastMove,
   onUserMove,
 }: ChessBoardProps) {
@@ -44,6 +52,7 @@ export function ChessBoard({
       orientation,
       viewOnly,
       turnColor,
+      check: checkSquare as any,
       movable: {
         free: false,
         color: movableColor,
@@ -51,6 +60,11 @@ export function ChessBoard({
         events: {
           after: (orig: string, dest: string) => onUserMoveRef.current(orig, dest),
         },
+      },
+      premovable: {
+        enabled: !!movableColor,
+        showDests: true,
+        dests: premoveDests as any,
       },
       lastMove,
     };
@@ -75,9 +89,11 @@ export function ChessBoard({
       viewOnly,
       turnColor,
       lastMove,
+      check: checkSquare as any,
       movable: { color: movableColor, dests: dests as any },
+      premovable: { enabled: !!movableColor, dests: premoveDests as any },
     });
-  }, [fen, orientation, viewOnly, turnColor, movableColor, dests, lastMove]);
+  }, [fen, orientation, viewOnly, turnColor, movableColor, dests, premoveDests, checkSquare, lastMove]);
 
   return <div ref={containerRef} className="cg-wrap" />;
 }

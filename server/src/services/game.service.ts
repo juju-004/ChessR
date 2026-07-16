@@ -73,7 +73,7 @@ export async function joinOpenGame(gameId: string, joiningUserId: string): Promi
     baseMinutes: game.timeControl.baseSeconds === null ? null : game.timeControl.baseSeconds / 60,
     incrementSeconds: game.timeControl.incrementSeconds,
   });
-  await initLiveState(game.id, game.white.toString(), (game.black || "").toString(), liveTc, game.fen);
+  await initLiveState(game.id, game.white.toString(), game.black.toString(), liveTc, game.fen);
   await scheduleGameTimer(game.id);
 
   try {

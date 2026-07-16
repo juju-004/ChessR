@@ -8,6 +8,8 @@ interface ClockDisplayProps {
   blackRemainingMs: number | null;
   turnStartedAtMs: number;
   isActive: boolean;
+  whiteUsername?: string;
+  blackUsername?: string;
 }
 
 export function ClockDisplay({
@@ -16,6 +18,8 @@ export function ClockDisplay({
   blackRemainingMs,
   turnStartedAtMs,
   isActive,
+  whiteUsername,
+  blackUsername,
 }: ClockDisplayProps) {
   const [, forceTick] = useState(0);
 
@@ -25,14 +29,17 @@ export function ClockDisplay({
     return () => window.clearInterval(interval);
   }, [isActive, whiteRemainingMs, blackRemainingMs]);
 
+  const whiteLabel = whiteUsername ? `White · ${whiteUsername}` : 'White';
+  const blackLabel = blackUsername ? `Black · ${blackUsername}` : 'Black';
+
   if (whiteRemainingMs === null || blackRemainingMs === null) {
     return (
       <div className="mb-3 flex gap-3">
         <div className="flex-1 rounded-md bg-neutral-900 px-3 py-2 text-center font-mono text-sm text-neutral-400">
-          Black · ∞
+          {blackLabel} · ∞
         </div>
         <div className="flex-1 rounded-md bg-neutral-900 px-3 py-2 text-center font-mono text-sm text-neutral-400">
-          White · ∞
+          {whiteLabel} · ∞
         </div>
       </div>
     );
@@ -50,14 +57,14 @@ export function ClockDisplay({
           isActive && sideToMove === 'black' ? 'bg-blue-900 text-blue-100' : 'bg-neutral-900 text-neutral-300'
         }`}
       >
-        Black · {formatClock(liveBlack)}
+        {blackLabel} · {formatClock(liveBlack)}
       </div>
       <div
         className={`flex-1 rounded-md px-3 py-2 text-center font-mono text-sm font-semibold ${
           isActive && sideToMove === 'white' ? 'bg-blue-900 text-blue-100' : 'bg-neutral-900 text-neutral-300'
         }`}
       >
-        White · {formatClock(liveWhite)}
+        {whiteLabel} · {formatClock(liveWhite)}
       </div>
     </div>
   );

@@ -9,7 +9,7 @@ import { useNotify } from '../contexts/NotificationContext.js';
 import { ChessBoard } from '../components/ChessBoard.js';
 import { PromotionPicker } from '../components/PromotionPicker.js';
 import { ClockDisplay } from '../components/ClockDisplay.js';
-import { computeDests, needsPromotion } from '../chessUtils.js';
+import { computeDests, needsPromotion, computePremoveDests, findCheckSquare } from '../chessUtils.js';
 
 interface GameMeta {
   _id: string;
@@ -46,7 +46,7 @@ export function Game() {
   const [whiteRemainingMs, setWhiteRemainingMs] = useState<number | null>(null);
   const [blackRemainingMs, setBlackRemainingMs] = useState<number | null>(null);
   const [turnStartedAtMs, setTurnStartedAtMs] = useState(Date.now());
-  const [gameOver, setGameOver] = useState<{ result: string; reason: string } | null>(null);
+  const [gameOver, setGameOver] = useState<{ result: string | null; reason: string } | null>(null);
   const [connStatus, setConnStatus] = useState('Connecting…');
   const [moveError, setMoveError] = useState('');
   const [promoPending, setPromoPending] = useState<{ orig: string; dest: string } | null>(null);
@@ -139,7 +139,7 @@ export function Game() {
       setMoves((prev) => [...prev, { moveNumber: payload.moveNumber, san: payload.san, from: payload.from, to: payload.to }]);
     }
 
-    function onOver(payload: { result: string; reason: string }) {
+    function onOver(payload: { result: string | null; reason: string }) {
       setStatus('finished');
       setGameOver(payload);
       setDisconnectBanner(null);
@@ -250,6 +250,13 @@ export function Game() {
     }
   }
 
+  function handleAbort() {
+    if (!socket || !gameMeta) return;
+    if (confirm('Abort this game? No result will be recorded for either player.')) {
+      socket.emit('game:abort', { gameId: gameMeta._id });
+    }
+  }
+
   function handleOfferDraw() {
     if (!socket || !gameMeta) return;
     socket.emit('game:offer_draw', { gameId: gameMeta._id });
@@ -292,6 +299,8 @@ export function Game() {
   const isPlayer = role !== 'spectator';
   const myColor: 'white' | 'black' | undefined = role === 'white' || role === 'black' ? role : undefined;
   const dests = computeDests(chess);
+  const premoveDests = myColor ? computePremoveDests(chess, myColor) : new Map<string, string[]>();
+  const checkSquare = findCheckSquare(chess);
 
   return (
     <div className="mx-auto mt-6 max-w-2xl space-y-4">
@@ -327,6 +336,8 @@ export function Game() {
           blackRemainingMs={blackRemainingMs}
           turnStartedAtMs={turnStartedAtMs}
           isActive={status === 'active'}
+          whiteUsername={gameMeta?.white?.username}
+          blackUsername={gameMeta?.black?.username}
         />
 
         <div className="relative mx-auto aspect-square w-full max-w-[480px]">
@@ -337,6 +348,8 @@ export function Game() {
             turnColor={chess.turn() === 'w' ? 'white' : 'black'}
             movableColor={myColor}
             dests={dests}
+            premoveDests={premoveDests}
+            checkSquare={checkSquare}
             lastMove={lastMove}
             onUserMove={handleUserMove}
           />
@@ -347,6 +360,11 @@ export function Game() {
 
         {isPlayer && status === 'active' && (
           <div className="mt-3 flex gap-2">
+            {moves.length === 0 && (
+              <button onClick={handleAbort} className="rounded-md bg-neutral-700 px-4 py-2 text-sm font-semibold text-neutral-100 hover:bg-neutral-600">
+                Abort game
+              </button>
+            )}
             <button onClick={handleOfferDraw} className="rounded-md bg-neutral-700 px-4 py-2 text-sm font-semibold text-neutral-100 hover:bg-neutral-600">
               Offer draw
             </button>
@@ -356,7 +374,7 @@ export function Game() {
           </div>
         )}
 
-        {isPlayer && status === 'finished' && (
+        {isPlayer && status === 'finished' && gameOver?.reason !== 'aborted_no_moves' && (
           <div className="mt-3">
             <button
               onClick={handleRematch}
@@ -383,8 +401,9 @@ export function Game() {
   );
 }
 
-function describeResult(result: string): string {
+function describeResult(result: string | null): string {
   if (result === 'white') return 'White wins';
   if (result === 'black') return 'Black wins';
-  return 'Draw';
+  if (result === 'draw') return 'Draw';
+  return 'Game aborted';
 }

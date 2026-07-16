@@ -32,6 +32,7 @@ const rematchRespondSchema = z.object({
   gameId: z.string().refine(mongoose.isValidObjectId),
   accept: z.boolean(),
 });
+const abortSchema = z.object({ gameId: z.string().refine(mongoose.isValidObjectId) });
 
 function emitError(socket: Socket, message: string) {
   socket.emit('game:error', { message });
@@ -379,6 +380,35 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       const payload = { gameId: newGame.id, joinCode: newGame.joinCode };
       io.to(`user:${game.white.toString()}`).emit('game:rematch_accepted', payload);
       io.to(`user:${game.black!.toString()}`).emit('game:rematch_accepted', payload);
+    }),
+  );
+
+  // Lets either player back out cleanly before the game has really started —
+  // deliberately separate from resign: no winner is recorded, and it never
+  // shows up in either player's W/L/D stats or game history (those only count
+  // status: 'finished' games).
+  socket.on(
+    'game:abort',
+    safeHandler(socket, async (raw: unknown) => {
+      const parsed = abortSchema.safeParse(raw);
+      if (!parsed.success) return emitError(socket, 'Invalid payload');
+      const { gameId } = parsed.data;
+
+      const state = await getLiveState(gameId);
+      if (!state) return emitError(socket, 'Game is not active');
+      if (state.whiteId !== userId && state.blackId !== userId) {
+        return emitError(socket, 'You are not a player in this game');
+      }
+      if (state.moveCount > 0) {
+        return emitError(socket, 'This game can no longer be aborted — a move has already been played');
+      }
+
+      clearGameTimer(gameId);
+      clearPendingDisconnect(gameId);
+      await finalizeGame(gameId, state.fen, 'aborted', null, 'aborted_no_moves');
+      await deleteLiveState(gameId);
+
+      io.to(gameRoom(gameId)).emit('game:over', { gameId, result: null, reason: 'aborted_no_moves' });
     }),
   );
 
