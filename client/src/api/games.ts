@@ -5,6 +5,8 @@ export interface TimeControlChoice {
   incrementSeconds: number;
 }
 
+export type GameVariant = 'standard' | 'chess960';
+
 export interface ActiveFriendGame {
   _id: string;
   joinCode: string;
@@ -16,10 +18,10 @@ export interface ActiveFriendGame {
   startedAt: string;
 }
 
-export function createGame(timeControl: TimeControlChoice, isPrivate = false) {
-  return apiFetch<{ gameId: string; joinCode: string; status: string }>('/games', {
+export function createGame(timeControl: TimeControlChoice, variant: GameVariant = 'standard', isPrivate = false) {
+  return apiFetch<{ gameId: string; joinCode: string; variant: GameVariant; status: string }>('/games', {
     method: 'POST',
-    body: JSON.stringify({ ...timeControl, isPrivate }),
+    body: JSON.stringify({ ...timeControl, variant, isPrivate }),
   });
 }
 

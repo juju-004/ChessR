@@ -177,6 +177,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       socket.emit('game:sync', {
         gameId,
         joinCode: game.joinCode,
+        variant: game.variant,
         role,
         fen: liveState?.fen ?? game.fen,
         status: liveState?.status ?? game.status,
@@ -386,6 +387,8 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           baseMinutes: game.timeControl.baseSeconds === null ? null : game.timeControl.baseSeconds / 60,
           incrementSeconds: game.timeControl.incrementSeconds,
         },
+        undefined,
+        game.variant,
       );
 
       const payload = { gameId: newGame.id, joinCode: newGame.joinCode };

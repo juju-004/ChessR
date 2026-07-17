@@ -9,12 +9,13 @@ import { useNotify } from '../contexts/NotificationContext.js';
 import { ChessBoard } from '../components/ChessBoard.js';
 import { PromotionPicker } from '../components/PromotionPicker.js';
 import { ClockDisplay } from '../components/ClockDisplay.js';
-import { computeDests, needsPromotion, isInCheck } from '../chessUtils.js';
+import { computeDests, needsPromotion, isInCheck, computePremoveDests } from '../chessUtils.js';
 import { playMoveSound, playCaptureSound, playCheckSound, playGameStartSound, playGameOverSound } from '../sounds.js';
 
 interface GameMeta {
   _id: string;
   joinCode: string;
+  variant: 'standard' | 'chess960';
   white: { _id: string; username: string } | null;
   black: { _id: string; username: string } | null;
   status: 'waiting' | 'active' | 'finished';
@@ -310,6 +311,11 @@ export function Game() {
       <div className="mx-auto mt-6 max-w-2xl rounded-lg border border-neutral-800 bg-neutral-900 p-5">
         <h1 className="mb-2 text-xl font-bold text-neutral-100">
           Game <span className="font-normal text-neutral-500">· {code}</span>
+          {gameMeta.variant === 'chess960' && (
+            <span className="ml-2 rounded bg-purple-900 px-2 py-0.5 text-xs font-semibold text-purple-200">
+              Chess960
+            </span>
+          )}
         </h1>
         <p className="mb-3 text-sm text-neutral-400">{gameMeta.white?.username} is waiting for an opponent.</p>
         <button onClick={handleJoin} className="rounded-md bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500">
@@ -323,6 +329,7 @@ export function Game() {
   const myColor: 'white' | 'black' | undefined = role === 'white' || role === 'black' ? role : undefined;
   const dests = computeDests(chess);
   const inCheck = isInCheck(chess);
+  const premoveDests = myColor ? computePremoveDests(chess, myColor) : new Map<string, string[]>();
 
   return (
     <div className="mx-auto mt-6 max-w-2xl space-y-4">
@@ -330,6 +337,11 @@ export function Game() {
         <div className="mb-2 flex items-center justify-between">
           <h1 className="text-xl font-bold text-neutral-100">
             Game <span className="font-normal text-neutral-500">· {code}</span>
+            {gameMeta?.variant === 'chess960' && (
+              <span className="ml-2 rounded bg-purple-900 px-2 py-0.5 text-xs font-semibold text-purple-200">
+                Chess960
+              </span>
+            )}
           </h1>
           <span className="text-sm text-neutral-400">
             {gameOver ? `Game over — ${describeResult(gameOver.result)} (${gameOver.reason.replace(/_/g, ' ')})` : connStatus}
@@ -370,6 +382,7 @@ export function Game() {
             turnColor={chess.turn() === 'w' ? 'white' : 'black'}
             movableColor={myColor}
             dests={dests}
+            premoveDests={premoveDests}
             inCheck={inCheck}
             lastMove={lastMove}
             onUserMove={handleUserMove}

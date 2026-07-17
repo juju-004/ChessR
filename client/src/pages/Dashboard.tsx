@@ -11,6 +11,7 @@ export function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [tcIndex, setTcIndex] = useState(2);
+  const [variant, setVariant] = useState<'standard' | 'chess960'>('standard');
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [error, setError] = useState('');
   const [activeGames, setActiveGames] = useState<ActiveFriendGame[] | null>(null);
@@ -30,7 +31,10 @@ export function Dashboard() {
     const tc = TIME_CONTROLS[tcIndex];
     setError('');
     try {
-      const { joinCode } = await createGame({ baseMinutes: tc.baseMinutes, incrementSeconds: tc.incrementSeconds });
+      const { joinCode } = await createGame(
+        { baseMinutes: tc.baseMinutes, incrementSeconds: tc.incrementSeconds },
+        variant,
+      );
       navigate(`/game/${joinCode}`);
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : 'Could not create game');
@@ -60,6 +64,23 @@ export function Dashboard() {
             </option>
           ))}
         </select>
+
+        <label className="mb-1 block text-sm text-neutral-400">Variant</label>
+        <select
+          value={variant}
+          onChange={(e) => setVariant(e.target.value as 'standard' | 'chess960')}
+          className="mb-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100"
+        >
+          <option value="standard">Standard</option>
+          <option value="chess960">Chess960 (Fischer Random)</option>
+        </select>
+        {variant === 'chess960' && (
+          <p className="mb-3 text-xs text-amber-400">
+            Note: castling isn't available in Chess960 games yet — a limitation in the underlying chess
+            library, not a bug.
+          </p>
+        )}
+        {variant === 'standard' && <div className="mb-3" />}
 
         <button
           onClick={handleCreate}

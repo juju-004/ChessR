@@ -11,10 +11,13 @@ export interface ChessBoardProps {
   turnColor: 'white' | 'black';
   movableColor?: 'white' | 'black';
   dests: Map<string, string[]>;
+  /** Premove destinations, keyed by origin square — maps to chessground's
+   *  `premovable.customDests` (confirmed via source: same Map<Key,Key[]> shape
+   *  as movable.dests, despite some docs/forks describing a flat array). */
+  premoveDests?: Map<string, string[]>;
   /** Whether the side to move (turnColor) is currently in check. Chessground
    *  resolves this to an actual king square internally using its own piece
-   *  data — it does NOT accept a square string here (that was an old-version
-   *  API; the current type is `Color | boolean`). */
+   *  data — it does NOT accept a square string here. */
   inCheck?: boolean;
   /** [from, to] of the most recent move, or undefined if none yet. Passing this
    *  through as a controlled prop on every update is what makes the last-move
@@ -31,15 +34,13 @@ export function ChessBoard({
   turnColor,
   movableColor,
   dests,
+  premoveDests,
   inCheck,
   lastMove,
   onUserMove,
 }: ChessBoardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const groundRef = useRef<CgApi | null>(null);
-  // Keep the latest callback in a ref so the `after` handler set up once at
-  // mount always calls the current version, without needing to recreate the
-  // whole chessground instance whenever the parent re-renders.
   const onUserMoveRef = useRef(onUserMove);
   onUserMoveRef.current = onUserMove;
 
@@ -60,13 +61,9 @@ export function ChessBoard({
         },
       },
       premovable: {
-        // Chessground computes premove destinations itself from built-in
-        // piece-movement patterns (knight jumps, sliding pieces, etc.) — no
-        // `dests` input needed or expected in the shape we'd naturally reach
-        // for (its `dests` field is a flat array for whichever piece is
-        // currently being dragged, not a per-square map like movable.dests).
         enabled: !!movableColor,
         showDests: true,
+        customDests: premoveDests as any,
       },
       lastMove,
     };
@@ -93,9 +90,9 @@ export function ChessBoard({
       lastMove,
       check: inCheck,
       movable: { color: movableColor, dests: dests as any },
-      premovable: { enabled: !!movableColor },
+      premovable: { enabled: !!movableColor, customDests: premoveDests as any },
     });
-  }, [fen, orientation, viewOnly, turnColor, movableColor, dests, inCheck, lastMove]);
+  }, [fen, orientation, viewOnly, turnColor, movableColor, dests, premoveDests, inCheck, lastMove]);
 
   return <div ref={containerRef} className="cg-wrap" />;
 }

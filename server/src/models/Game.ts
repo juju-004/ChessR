@@ -33,6 +33,7 @@ export interface ITimeControl {
 export interface IGame extends Document {
   _id: Types.ObjectId;
   joinCode: string;
+  variant: 'standard' | 'chess960';
   white: Types.ObjectId;
   black: Types.ObjectId | null;
   status: GameStatus;
@@ -76,6 +77,7 @@ const gameSchema = new Schema<IGame>(
     // Short, shareable, human-typeable identifier — this is what shows up in the
     // URL and what a friend types in to join. The Mongo _id stays internal.
     joinCode: { type: String, required: true, unique: true, index: true },
+    variant: { type: String, enum: ['standard', 'chess960'], default: 'standard' },
     white: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     black: { type: Schema.Types.ObjectId, ref: 'User', default: null, index: true },
     status: {

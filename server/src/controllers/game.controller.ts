@@ -14,6 +14,7 @@ import type { AuthedRequest } from '../middleware/auth.js';
 
 const createSchema = z.object({
   isPrivate: z.boolean().optional().default(false),
+  variant: z.enum(['standard', 'chess960']).optional().default('standard'),
   // null/omitted baseMinutes = unlimited time.
   baseMinutes: z.number().min(1).max(180).nullable().optional().default(10),
   incrementSeconds: z.number().min(0).max(60).optional().default(0),
@@ -22,15 +23,17 @@ const idParamSchema = z.object({ id: z.string().refine(mongoose.isValidObjectId)
 const codeParamSchema = z.object({ code: z.string().min(4).max(10) });
 
 export const createGame = asyncHandler(async (req: AuthedRequest, res) => {
-  const { isPrivate, baseMinutes, incrementSeconds } = createSchema.parse(req.body ?? {});
+  const { isPrivate, variant, baseMinutes, incrementSeconds } = createSchema.parse(req.body ?? {});
   const game = await createOpenGame(
     req.user!.id,
     { baseMinutes: baseMinutes ?? null, incrementSeconds },
+    variant,
     isPrivate,
   );
   res.status(201).json({
     gameId: game.id,
     joinCode: game.joinCode,
+    variant: game.variant,
     status: game.status,
     isPrivate: game.isPrivate,
   });

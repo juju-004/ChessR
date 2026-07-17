@@ -5,6 +5,7 @@ import { ApiError } from '../utils/ApiError.js';
 import { initLiveState, getLiveState, computeTimeoutWinner, deleteLiveState, type LiveTimeControl } from './gameState.service.js';
 import { scheduleGameTimer } from './clock.service.js';
 import { getIo } from '../sockets/io.js';
+import { generateChess960Fen } from './chess960.service.js';
 
 const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
@@ -34,15 +35,17 @@ function toLiveTimeControl(input: TimeControlInput): LiveTimeControl {
 export async function createOpenGame(
   hostUserId: string,
   timeControl: TimeControlInput,
+  variant: 'standard' | 'chess960' = 'standard',
   isPrivate = false,
 ): Promise<IGame> {
   const joinCode = await uniqueJoinCode();
   const game = await Game.create({
     joinCode,
+    variant,
     white: hostUserId,
     black: null,
     status: 'waiting',
-    fen: STARTING_FEN,
+    fen: variant === 'chess960' ? generateChess960Fen() : STARTING_FEN,
     isPrivate,
     timeControl: {
       baseSeconds: timeControl.baseMinutes === null ? null : timeControl.baseMinutes * 60,
@@ -90,14 +93,17 @@ export async function createDirectGame(
   blackId: string,
   timeControl: TimeControlInput,
   challengeId?: string,
+  variant: 'standard' | 'chess960' = 'standard',
 ): Promise<IGame> {
   const joinCode = await uniqueJoinCode();
+  const startingFen = variant === 'chess960' ? generateChess960Fen() : STARTING_FEN;
   const game = await Game.create({
     joinCode,
+    variant,
     white: whiteId,
     black: blackId,
     status: 'active',
-    fen: STARTING_FEN,
+    fen: startingFen,
     isPrivate: true,
     startedAt: new Date(),
     challengeId,

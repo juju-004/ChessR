@@ -15,6 +15,7 @@ const sendSchema = z.object({
   toUserId: z.string().refine(mongoose.isValidObjectId),
   baseMinutes: z.number().min(1).max(180).nullable().optional().default(10),
   incrementSeconds: z.number().min(0).max(60).optional().default(0),
+  variant: z.enum(['standard', 'chess960']).optional().default('standard'),
 });
 const respondSchema = z.object({ challengeId: z.string(), accept: z.boolean() });
 
@@ -45,7 +46,7 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
     safeHandler(socket, async (raw) => {
       const parsed = sendSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid challenge payload');
-      const { toUserId, baseMinutes, incrementSeconds } = parsed.data;
+      const { toUserId, baseMinutes, incrementSeconds, variant } = parsed.data;
 
       if (toUserId === userId) return emitError(socket, "You can't challenge yourself");
 
@@ -59,7 +60,7 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
       const challengeId = nanoid();
       await redis.set(
         challengeKey(challengeId),
-        JSON.stringify({ fromId: userId, toId: toUserId, baseMinutes, incrementSeconds }),
+        JSON.stringify({ fromId: userId, toId: toUserId, baseMinutes, incrementSeconds, variant }),
         'EX',
         CHALLENGE_TTL_SECONDS,
       );
@@ -68,6 +69,7 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
         challengeId,
         from: { id: userId, username },
         timeControl: { baseMinutes, incrementSeconds },
+        variant,
         expiresInSeconds: CHALLENGE_TTL_SECONDS,
       });
 
@@ -85,11 +87,12 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
       const stored = await redis.get(challengeKey(challengeId));
       if (!stored) return emitError(socket, 'This challenge has expired');
 
-      const { fromId, toId, baseMinutes, incrementSeconds } = JSON.parse(stored) as {
+      const { fromId, toId, baseMinutes, incrementSeconds, variant } = JSON.parse(stored) as {
         fromId: string;
         toId: string;
         baseMinutes: number | null;
         incrementSeconds: number;
+        variant: 'standard' | 'chess960';
       };
       if (toId !== userId) return emitError(socket, 'This challenge is not addressed to you');
 
@@ -106,6 +109,7 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
         blackId,
         { baseMinutes, incrementSeconds },
         challengeId,
+        variant,
       );
 
       const payload = {

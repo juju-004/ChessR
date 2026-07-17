@@ -15,6 +15,7 @@ export function Friends() {
   const [requests, setRequests] = useState<IncomingRequest[]>([]);
   const [friends, setFriends] = useState<Friend[]>([]);
   const [tcIndex, setTcIndex] = useState(2);
+  const [variant, setVariant] = useState<'standard' | 'chess960'>('standard');
   const [status, setStatus] = useState<{ message: string; isError: boolean } | null>(null);
 
   const refreshRequests = useCallback(() => {
@@ -77,8 +78,9 @@ export function Friends() {
       toUserId: friendId,
       baseMinutes: tc.baseMinutes,
       incrementSeconds: tc.incrementSeconds,
+      variant,
     });
-    setStatus({ message: `Challenge sent (${tc.label}) — waiting for a response…`, isError: false });
+    setStatus({ message: `Challenge sent (${tc.label}${variant === 'chess960' ? ', Chess960' : ''}) — waiting for a response…`, isError: false });
   }
 
   return (
@@ -126,6 +128,16 @@ export function Friends() {
               {tc.label}
             </option>
           ))}
+        </select>
+
+        <label className="mb-1 block text-sm text-neutral-400">Challenge variant</label>
+        <select
+          value={variant}
+          onChange={(e) => setVariant(e.target.value as 'standard' | 'chess960')}
+          className="mb-3 w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100"
+        >
+          <option value="standard">Standard</option>
+          <option value="chess960">Chess960 (Fischer Random)</option>
         </select>
 
         {friends.length === 0 && <p className="text-sm text-neutral-400">No friends yet. Find players and add some!</p>}
