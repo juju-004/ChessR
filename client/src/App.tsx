@@ -1,9 +1,10 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext.js';
 import { SocketProvider } from './contexts/SocketContext.js';
 import { NotificationProvider } from './contexts/NotificationContext.js';
 import { GlobalListeners } from './components/GlobalListeners.js';
+import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { Navbar } from './components/Navbar.js';
 import { ProtectedRoute } from './components/ProtectedRoute.js';
 import { tryRestoreSession } from './api/auth.js';
@@ -15,10 +16,25 @@ import { Profile } from './pages/Profile.js';
 import { Friends } from './pages/Friends.js';
 import { Game } from './pages/Game.js';
 import { GameReplay } from './pages/GameReplay.js';
+import { NotFound } from './pages/NotFound.js';
 
 function RootRedirect() {
   const { isAuthed } = useAuth();
   return <Navigate to={isAuthed ? '/dashboard' : '/signin'} replace />;
+}
+
+// Rematching (or navigating directly between two different game codes) keeps
+// the same route element mounted — without a key tied to the code, stale
+// local state (rematch offer status, chat log, disconnect banners, etc.) from
+// the previous game would leak into the new one instead of resetting.
+function GameRoute() {
+  const { code } = useParams<{ code: string }>();
+  return <Game key={code} />;
+}
+
+function GameReplayRoute() {
+  const { code } = useParams<{ code: string }>();
+  return <GameReplay key={code} />;
 }
 
 function AppShell() {
@@ -78,7 +94,7 @@ function AppShell() {
             path="/game/:code"
             element={
               <ProtectedRoute>
-                <Game />
+                <GameRoute />
               </ProtectedRoute>
             }
           />
@@ -86,10 +102,11 @@ function AppShell() {
             path="/replay/:code"
             element={
               <ProtectedRoute>
-                <GameReplay />
+                <GameReplayRoute />
               </ProtectedRoute>
             }
           />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
     </BrowserRouter>
@@ -98,12 +115,14 @@ function AppShell() {
 
 export function App() {
   return (
-    <AuthProvider>
-      <SocketProvider>
-        <NotificationProvider>
-          <AppShell />
-        </NotificationProvider>
-      </SocketProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <SocketProvider>
+          <NotificationProvider>
+            <AppShell />
+          </NotificationProvider>
+        </SocketProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

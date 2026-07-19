@@ -34,6 +34,7 @@ export interface IGame extends Document {
   _id: Types.ObjectId;
   joinCode: string;
   variant: 'standard' | 'chess960';
+  initialFen: string;
   white: Types.ObjectId;
   black: Types.ObjectId | null;
   status: GameStatus;
@@ -78,6 +79,11 @@ const gameSchema = new Schema<IGame>(
     // URL and what a friend types in to join. The Mongo _id stays internal.
     joinCode: { type: String, required: true, unique: true, index: true },
     variant: { type: String, enum: ['standard', 'chess960'], default: 'standard' },
+    initialFen: {
+      type: String,
+      required: true,
+      default: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+    },
     white: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     black: { type: Schema.Types.ObjectId, ref: 'User', default: null, index: true },
     status: {

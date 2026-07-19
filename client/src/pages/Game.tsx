@@ -9,16 +9,18 @@ import { useNotify } from '../contexts/NotificationContext.js';
 import { ChessBoard } from '../components/ChessBoard.js';
 import { PromotionPicker } from '../components/PromotionPicker.js';
 import { ClockDisplay } from '../components/ClockDisplay.js';
-import { computeDests, needsPromotion, isInCheck, computePremoveDests } from '../chessUtils.js';
+import { GameOverModal } from '../components/GameOverModal.js';
+import { computeDests, needsPromotion, isInCheck, computePremoveDests, addChess960CastlingDests } from '../chessUtils.js';
 import { playMoveSound, playCaptureSound, playCheckSound, playGameStartSound, playGameOverSound } from '../sounds.js';
 
 interface GameMeta {
   _id: string;
   joinCode: string;
   variant: 'standard' | 'chess960';
+  initialFen: string;
   white: { _id: string; username: string } | null;
   black: { _id: string; username: string } | null;
-  status: 'waiting' | 'active' | 'finished';
+  status: 'waiting' | 'active' | 'finished' | 'aborted';
 }
 
 interface MoveLogEntry {
@@ -41,7 +43,7 @@ export function Game() {
   const [loadError, setLoadError] = useState('');
 
   const [role, setRole] = useState<Role>('spectator');
-  const [status, setStatus] = useState<'waiting' | 'active' | 'finished'>('active');
+  const [status, setStatus] = useState<'waiting' | 'active' | 'finished' | 'aborted'>('active');
   const [fen, setFen] = useState('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
   const [lastMove, setLastMove] = useState<[string, string] | undefined>();
   const [moves, setMoves] = useState<MoveLogEntry[]>([]);
@@ -49,11 +51,14 @@ export function Game() {
   const [blackRemainingMs, setBlackRemainingMs] = useState<number | null>(null);
   const [turnStartedAtMs, setTurnStartedAtMs] = useState(Date.now());
   const [gameOver, setGameOver] = useState<{ result: string | null; reason: string } | null>(null);
+  const [whiteConnected, setWhiteConnected] = useState(false);
+  const [blackConnected, setBlackConnected] = useState(false);
   const [connStatus, setConnStatus] = useState('Connecting…');
   const [moveError, setMoveError] = useState('');
   const [promoPending, setPromoPending] = useState<{ orig: string; dest: string } | null>(null);
   const [disconnectBanner, setDisconnectBanner] = useState<{ message: string; claimable: boolean } | null>(null);
   const [rematchState, setRematchState] = useState<'idle' | 'offered'>('idle');
+  const [gameOverModalDismissed, setGameOverModalDismissed] = useState(false);
   const [chatMessages, setChatMessages] = useState<{ username: string; message: string; at: number }[]>([]);
   const [chatInput, setChatInput] = useState('');
 
@@ -130,7 +135,11 @@ export function Game() {
       setWhiteRemainingMs(payload.whiteRemainingMs);
       setBlackRemainingMs(payload.blackRemainingMs);
       setTurnStartedAtMs(payload.turnStartedAtMs);
-      setGameOver(payload.status === 'finished' && payload.result ? { result: payload.result, reason: payload.endReason } : null);
+      setWhiteConnected(!!payload.whiteConnected);
+      setBlackConnected(!!payload.blackConnected);
+      const gameIsOver = payload.status === 'finished' || payload.status === 'aborted';
+      setGameOver(gameIsOver ? { result: payload.result ?? null, reason: payload.endReason } : null);
+      if (gameIsOver) setGameOverModalDismissed(false);
       setConnStatus(payload.role === 'spectator' ? 'Spectating' : payload.status === 'active' ? 'Your game' : payload.status);
     }
 
@@ -149,8 +158,9 @@ export function Game() {
     }
 
     function onOver(payload: { result: string | null; reason: string }) {
-      setStatus('finished');
+      setStatus(payload.reason === 'aborted_no_moves' ? 'aborted' : 'finished');
       setGameOver(payload);
+      setGameOverModalDismissed(false);
       setDisconnectBanner(null);
       playGameOverSound();
     }
@@ -159,8 +169,14 @@ export function Game() {
       setMoveError(payload.message);
     }
 
-    function onOpponentConnected() {
+    function markConnection(userId: string, connected: boolean) {
+      if (gameMeta?.white?._id === userId) setWhiteConnected(connected);
+      if (gameMeta?.black?._id === userId) setBlackConnected(connected);
+    }
+
+    function onOpponentConnected(payload: { userId: string }) {
       setConnStatus((s) => (s === 'Your game' || s === 'active' ? 'Opponent connected' : s));
+      markConnection(payload.userId, true);
       playGameStartSound();
     }
 
@@ -168,7 +184,8 @@ export function Game() {
       socket.emit('game:join', { gameId });
     }
 
-    function onOpponentDisconnected(payload: { graceMs: number }) {
+    function onOpponentDisconnected(payload: { userId: string; graceMs: number }) {
+      markConnection(payload.userId, false);
       const expiresAt = Date.now() + payload.graceMs;
       let intervalId: number | undefined;
       const tick = () => {
@@ -190,7 +207,8 @@ export function Game() {
       setDisconnectBanner({ message: 'Opponent has not reconnected — you can claim this game now.', claimable: true });
     }
 
-    function onOpponentReconnected() {
+    function onOpponentReconnected(payload: { userId: string }) {
+      markConnection(payload.userId, true);
       setDisconnectBanner(null);
     }
 
@@ -327,7 +345,10 @@ export function Game() {
 
   const isPlayer = role !== 'spectator';
   const myColor: 'white' | 'black' | undefined = role === 'white' || role === 'black' ? role : undefined;
-  const dests = computeDests(chess);
+  let dests = computeDests(chess);
+  if (gameMeta?.variant === 'chess960') {
+    dests = addChess960CastlingDests(dests, chess, gameMeta.initialFen);
+  }
   const inCheck = isInCheck(chess);
   const premoveDests = myColor ? computePremoveDests(chess, myColor) : new Map<string, string[]>();
 
@@ -372,6 +393,8 @@ export function Game() {
           isActive={status === 'active'}
           whiteUsername={gameMeta?.white?.username}
           blackUsername={gameMeta?.black?.username}
+          whiteConnected={whiteConnected}
+          blackConnected={blackConnected}
         />
 
         <div className="relative mx-auto aspect-square w-full max-w-[480px]">
@@ -394,31 +417,23 @@ export function Game() {
 
         {isPlayer && status === 'active' && (
           <div className="mt-3 flex gap-2">
-            {moves.length === 0 && (
+            {moves.length === 0 ? (
               <button onClick={handleAbort} className="rounded-md bg-neutral-700 px-4 py-2 text-sm font-semibold text-neutral-100 hover:bg-neutral-600">
                 Abort game
               </button>
+            ) : (
+              <>
+                <button onClick={handleOfferDraw} className="rounded-md bg-neutral-700 px-4 py-2 text-sm font-semibold text-neutral-100 hover:bg-neutral-600">
+                  Offer draw
+                </button>
+                <button onClick={handleResign} className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500">
+                  Resign
+                </button>
+              </>
             )}
-            <button onClick={handleOfferDraw} className="rounded-md bg-neutral-700 px-4 py-2 text-sm font-semibold text-neutral-100 hover:bg-neutral-600">
-              Offer draw
-            </button>
-            <button onClick={handleResign} className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500">
-              Resign
-            </button>
           </div>
         )}
 
-        {isPlayer && status === 'finished' && gameOver?.reason !== 'aborted_no_moves' && (
-          <div className="mt-3">
-            <button
-              onClick={handleRematch}
-              disabled={rematchState === 'offered'}
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-40"
-            >
-              {rematchState === 'offered' ? 'Rematch offer sent…' : 'Rematch'}
-            </button>
-          </div>
-        )}
       </div>
 
       <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
@@ -461,6 +476,19 @@ export function Game() {
             </button>
           </form>
         </div>
+      )}
+
+      {gameOver && !gameOverModalDismissed && (
+        <GameOverModal
+          result={gameOver.result}
+          reason={gameOver.reason}
+          myColor={myColor}
+          isPlayer={isPlayer}
+          canRematch={isPlayer && gameOver.reason !== 'aborted_no_moves'}
+          rematchState={rematchState}
+          onRematch={handleRematch}
+          onClose={() => setGameOverModalDismissed(true)}
+        />
       )}
     </div>
   );

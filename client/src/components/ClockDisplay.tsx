@@ -10,6 +10,8 @@ interface ClockDisplayProps {
   isActive: boolean;
   whiteUsername?: string;
   blackUsername?: string;
+  whiteConnected?: boolean;
+  blackConnected?: boolean;
 }
 
 export function ClockDisplay({
@@ -20,6 +22,8 @@ export function ClockDisplay({
   isActive,
   whiteUsername,
   blackUsername,
+  whiteConnected,
+  blackConnected,
 }: ClockDisplayProps) {
   const [, forceTick] = useState(0);
 
@@ -29,6 +33,13 @@ export function ClockDisplay({
     return () => window.clearInterval(interval);
   }, [isActive, whiteRemainingMs, blackRemainingMs]);
 
+  const dot = (connected?: boolean) => (
+    <span
+      className={`mr-1.5 inline-block h-2 w-2 rounded-full ${connected ? 'bg-green-500' : 'bg-neutral-600'}`}
+      title={connected ? 'Connected' : 'Not connected'}
+    />
+  );
+
   const whiteLabel = whiteUsername ? `White · ${whiteUsername}` : 'White';
   const blackLabel = blackUsername ? `Black · ${blackUsername}` : 'Black';
 
@@ -36,9 +47,11 @@ export function ClockDisplay({
     return (
       <div className="mb-3 flex gap-3">
         <div className="flex-1 rounded-md bg-neutral-900 px-3 py-2 text-center font-mono text-sm text-neutral-400">
+          {dot(blackConnected)}
           {blackLabel} · ∞
         </div>
         <div className="flex-1 rounded-md bg-neutral-900 px-3 py-2 text-center font-mono text-sm text-neutral-400">
+          {dot(whiteConnected)}
           {whiteLabel} · ∞
         </div>
       </div>
@@ -57,6 +70,7 @@ export function ClockDisplay({
           isActive && sideToMove === 'black' ? 'bg-blue-900 text-blue-100' : 'bg-neutral-900 text-neutral-300'
         }`}
       >
+        {dot(blackConnected)}
         {blackLabel} · {formatClock(liveBlack)}
       </div>
       <div
@@ -64,6 +78,7 @@ export function ClockDisplay({
           isActive && sideToMove === 'white' ? 'bg-blue-900 text-blue-100' : 'bg-neutral-900 text-neutral-300'
         }`}
       >
+        {dot(whiteConnected)}
         {whiteLabel} · {formatClock(liveWhite)}
       </div>
     </div>

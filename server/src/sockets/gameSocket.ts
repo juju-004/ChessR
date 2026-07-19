@@ -174,10 +174,20 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       }
 
       const liveState = await getLiveState(gameId);
+
+      // Snapshot of who's actually connected right now — combined with the
+      // opponent_connected/disconnected/reconnected events for live updates,
+      // this is what drives the connection dot next to each player's name.
+      const roomSockets = await io.in(gameRoom(gameId)).fetchSockets();
+      const connectedUserIds = new Set(roomSockets.map((s) => (s.data as AuthedSocketData).userId));
+      const whiteConnected = connectedUserIds.has(game.white.toString());
+      const blackConnected = game.black ? connectedUserIds.has(game.black.toString()) : false;
+
       socket.emit('game:sync', {
         gameId,
         joinCode: game.joinCode,
         variant: game.variant,
+        initialFen: game.initialFen,
         role,
         fen: liveState?.fen ?? game.fen,
         status: liveState?.status ?? game.status,
@@ -185,6 +195,8 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         endReason: liveState?.endReason ?? game.endReason,
         white: game.white,
         black: game.black,
+        whiteConnected,
+        blackConnected,
         moves: game.moves,
         timeControl: game.timeControl,
         whiteRemainingMs:

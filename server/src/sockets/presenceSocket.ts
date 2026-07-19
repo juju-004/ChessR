@@ -6,14 +6,16 @@ import type { AuthedSocketData } from './socketAuth.js';
 export function registerPresenceHandlers(io: Server, socket: Socket) {
   const { userId } = socket.data as AuthedSocketData;
 
-  // Fire-and-forget setup; failures here shouldn't block the connection.
+  // Fire-and-forget setup; failures here shouldn't block the connection, but
+  // they shouldn't vanish silently either (an unhandled rejection here once
+  // made a Redis hiccup look like "presence is just broken" with no trace).
   void (async () => {
     await registerSocket(userId, socket.id);
     // A personal room lets other parts of the app (friend requests, challenges)
     // reach every tab/device a user has open without tracking raw socket ids.
     await socket.join(`user:${userId}`);
     await notifyFriends(io, userId, 'friend:presence', { userId, online: true });
-  })();
+  })().catch((err) => console.error('presence registration failed:', err));
 
   socket.on('disconnect', () => {
     void (async () => {
@@ -21,7 +23,7 @@ export function registerPresenceHandlers(io: Server, socket: Socket) {
       if (wasLast) {
         await notifyFriends(io, userId, 'friend:presence', { userId, online: false });
       }
-    })();
+    })().catch((err) => console.error('presence teardown failed:', err));
   });
 }
 

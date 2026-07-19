@@ -1,6 +1,14 @@
 import { Chess } from 'chess.js';
 import { redis } from '../config/redis.js';
 import { ApiError } from '../utils/ApiError.js';
+import {
+  getStartingFiles,
+  detectCastlingAttempt,
+  attemptCastle,
+  updateCastlingRights,
+  initialCastlingRights,
+  type CastlingRightsState,
+} from './chess960Castling.js';
 
 const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const LIVE_STATE_TTL_SECONDS = 60 * 60 * 6; // 6h safety net; refreshed on every move
@@ -16,6 +24,8 @@ export interface LiveGameState {
   gameId: string;
   whiteId: string;
   blackId: string;
+  variant: 'standard' | 'chess960';
+  initialFen: string;
   fen: string;
   status: 'active' | 'finished';
   result: 'white' | 'black' | 'draw' | null;
@@ -25,6 +35,7 @@ export interface LiveGameState {
   whiteRemainingMs: number | null;
   blackRemainingMs: number | null;
   turnStartedAtMs: number;
+  castlingRights: CastlingRightsState;
 }
 
 export class GameTimeoutError extends Error {
@@ -56,11 +67,14 @@ export async function initLiveState(
   blackId: string,
   timeControl: LiveTimeControl,
   fen: string = STARTING_FEN,
+  variant: 'standard' | 'chess960' = 'standard',
 ): Promise<LiveGameState> {
   const state: LiveGameState = {
     gameId,
     whiteId,
     blackId,
+    variant,
+    initialFen: fen,
     fen,
     status: 'active',
     result: null,
@@ -70,6 +84,7 @@ export async function initLiveState(
     whiteRemainingMs: timeControl.baseMs,
     blackRemainingMs: timeControl.baseMs,
     turnStartedAtMs: Date.now(),
+    castlingRights: initialCastlingRights(),
   };
   await redis.set(stateKey(gameId), JSON.stringify(state), 'EX', LIVE_STATE_TTL_SECONDS);
   return state;
@@ -96,6 +111,83 @@ export interface MoveResult {
   moveNumber: number;
   whiteRemainingMs: number | null;
   blackRemainingMs: number | null;
+}
+
+/** Shared tail-end for both the normal-move and castling paths: clock
+ *  accounting, game-over detection, persistence, and result construction. */
+async function finalizeMove(
+  gameId: string,
+  state: LiveGameState,
+  chess: Chess,
+  moverSide: 'white' | 'black',
+  san: string,
+  from: string,
+  to: string,
+  promotion: string | undefined,
+  updatedRights: CastlingRightsState,
+): Promise<MoveResult> {
+  let whiteRemainingMs = state.whiteRemainingMs;
+  let blackRemainingMs = state.blackRemainingMs;
+  if (state.timeControl.baseMs !== null) {
+    const elapsed = Date.now() - state.turnStartedAtMs;
+    const increment = state.timeControl.incrementMs;
+    if (moverSide === 'white') {
+      whiteRemainingMs = Math.max(0, (whiteRemainingMs ?? 0) - elapsed) + increment;
+    } else {
+      blackRemainingMs = Math.max(0, (blackRemainingMs ?? 0) - elapsed) + increment;
+    }
+  }
+
+  let result: MoveResult['result'] = null;
+  let endReason: string | null = null;
+  const isGameOver = chess.isGameOver();
+
+  if (isGameOver) {
+    if (chess.isCheckmate()) {
+      result = moverSide;
+      endReason = 'checkmate';
+    } else if (chess.isStalemate()) {
+      result = 'draw';
+      endReason = 'stalemate';
+    } else if (chess.isThreefoldRepetition()) {
+      result = 'draw';
+      endReason = 'threefold_repetition';
+    } else if (chess.isInsufficientMaterial()) {
+      result = 'draw';
+      endReason = 'insufficient_material';
+    } else if (chess.isDraw()) {
+      result = 'draw';
+      endReason = 'fifty_move_rule';
+    }
+  }
+
+  const newState: LiveGameState = {
+    ...state,
+    fen: chess.fen(),
+    status: isGameOver ? 'finished' : 'active',
+    result,
+    endReason,
+    moveCount: state.moveCount + 1,
+    whiteRemainingMs,
+    blackRemainingMs,
+    turnStartedAtMs: Date.now(),
+    castlingRights: updatedRights,
+  };
+  await redis.set(stateKey(gameId), JSON.stringify(newState), 'EX', LIVE_STATE_TTL_SECONDS);
+
+  return {
+    san,
+    from,
+    to,
+    promotion,
+    fenAfter: chess.fen(),
+    isGameOver,
+    result,
+    endReason,
+    moveNumber: newState.moveCount,
+    whiteRemainingMs,
+    blackRemainingMs,
+  };
 }
 
 /**
@@ -125,6 +217,41 @@ export async function applyMove(
   if (timeoutWinner) throw new GameTimeoutError(timeoutWinner);
 
   const chess = new Chess(state.fen);
+  const rights = state.castlingRights ?? initialCastlingRights();
+
+  // Chess960 castling: chess.js has no native support for this, so it's
+  // detected and handled entirely by our own logic before ever reaching
+  // chess.js's normal move validation.
+  if (state.variant === 'chess960') {
+    const files = getStartingFiles(state.initialFen);
+    const castleSide = detectCastlingAttempt(chess, move.from, move.to, playerSide, files);
+    if (castleSide) {
+      const castle = attemptCastle(chess, playerSide, castleSide, files, rights);
+      if (!castle.success) throw ApiError.badRequest(castle.reason ?? 'Illegal move');
+
+      const freshChess = new Chess(castle.resultFen!);
+      const updatedRights = updateCastlingRights(
+        updateCastlingRights(rights, playerSide, 'k', castle.kingFrom!, files),
+        playerSide,
+        'r',
+        castle.rookFrom!,
+        files,
+      );
+
+      return finalizeMove(
+        gameId,
+        state,
+        freshChess,
+        playerSide,
+        castleSide === 'kingside' ? 'O-O' : 'O-O-O',
+        castle.kingFrom!,
+        castle.kingTo!,
+        undefined,
+        updatedRights,
+      );
+    }
+  }
+
   let moveResult;
   try {
     moveResult = chess.move({ from: move.from, to: move.to, promotion: move.promotion });
@@ -133,67 +260,23 @@ export async function applyMove(
   }
   if (!moveResult) throw ApiError.badRequest('Illegal move');
 
-  let whiteRemainingMs = state.whiteRemainingMs;
-  let blackRemainingMs = state.blackRemainingMs;
-  if (state.timeControl.baseMs !== null) {
-    const elapsed = Date.now() - state.turnStartedAtMs;
-    const increment = state.timeControl.incrementMs;
-    if (sideToMove === 'white') {
-      whiteRemainingMs = Math.max(0, (whiteRemainingMs ?? 0) - elapsed) + increment;
-    } else {
-      blackRemainingMs = Math.max(0, (blackRemainingMs ?? 0) - elapsed) + increment;
-    }
+  let updatedRights = rights;
+  if (state.variant === 'chess960') {
+    const files = getStartingFiles(state.initialFen);
+    updatedRights = updateCastlingRights(rights, playerSide, moveResult.piece, moveResult.from, files);
   }
 
-  let result: MoveResult['result'] = null;
-  let endReason: string | null = null;
-  const isGameOver = chess.isGameOver();
-
-  if (isGameOver) {
-    if (chess.isCheckmate()) {
-      result = sideToMove;
-      endReason = 'checkmate';
-    } else if (chess.isStalemate()) {
-      result = 'draw';
-      endReason = 'stalemate';
-    } else if (chess.isThreefoldRepetition()) {
-      result = 'draw';
-      endReason = 'threefold_repetition';
-    } else if (chess.isInsufficientMaterial()) {
-      result = 'draw';
-      endReason = 'insufficient_material';
-    } else if (chess.isDraw()) {
-      result = 'draw';
-      endReason = 'fifty_move_rule';
-    }
-  }
-
-  const newState: LiveGameState = {
-    ...state,
-    fen: chess.fen(),
-    status: isGameOver ? 'finished' : 'active',
-    result,
-    endReason,
-    moveCount: state.moveCount + 1,
-    whiteRemainingMs,
-    blackRemainingMs,
-    turnStartedAtMs: Date.now(),
-  };
-  await redis.set(stateKey(gameId), JSON.stringify(newState), 'EX', LIVE_STATE_TTL_SECONDS);
-
-  return {
-    san: moveResult.san,
-    from: moveResult.from,
-    to: moveResult.to,
-    promotion: moveResult.promotion,
-    fenAfter: chess.fen(),
-    isGameOver,
-    result,
-    endReason,
-    moveNumber: newState.moveCount,
-    whiteRemainingMs,
-    blackRemainingMs,
-  };
+  return finalizeMove(
+    gameId,
+    state,
+    chess,
+    playerSide,
+    moveResult.san,
+    moveResult.from,
+    moveResult.to,
+    moveResult.promotion,
+    updatedRights,
+  );
 }
 
 /** Ends a game early (resignation, timeout, abandonment) without a chess.js move. */

@@ -39,13 +39,15 @@ export async function createOpenGame(
   isPrivate = false,
 ): Promise<IGame> {
   const joinCode = await uniqueJoinCode();
+  const startingFen = variant === 'chess960' ? generateChess960Fen() : STARTING_FEN;
   const game = await Game.create({
     joinCode,
     variant,
     white: hostUserId,
     black: null,
     status: 'waiting',
-    fen: variant === 'chess960' ? generateChess960Fen() : STARTING_FEN,
+    fen: startingFen,
+    initialFen: startingFen,
     isPrivate,
     timeControl: {
       baseSeconds: timeControl.baseMinutes === null ? null : timeControl.baseMinutes * 60,
@@ -76,7 +78,14 @@ export async function joinOpenGame(gameId: string, joiningUserId: string): Promi
     baseMinutes: game.timeControl.baseSeconds === null ? null : game.timeControl.baseSeconds / 60,
     incrementSeconds: game.timeControl.incrementSeconds,
   });
-  await initLiveState(game.id, game.white.toString(), game.black.toString(), liveTc, game.fen);
+  await initLiveState(
+    game.id,
+    game.white.toString(),
+    game.black.toString(),
+    liveTc,
+    game.initialFen,
+    game.variant,
+  );
   await scheduleGameTimer(game.id);
 
   try {
@@ -104,6 +113,7 @@ export async function createDirectGame(
     black: blackId,
     status: 'active',
     fen: startingFen,
+    initialFen: startingFen,
     isPrivate: true,
     startedAt: new Date(),
     challengeId,
@@ -114,7 +124,7 @@ export async function createDirectGame(
   });
 
   const liveTc = toLiveTimeControl(timeControl);
-  await initLiveState(game.id, whiteId, blackId, liveTc, game.fen);
+  await initLiveState(game.id, whiteId, blackId, liveTc, game.initialFen, game.variant);
   await scheduleGameTimer(game.id);
 
   return game;

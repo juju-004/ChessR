@@ -53,11 +53,12 @@ export function playMoveSound() {
   playTones([{ freq: 520, startOffset: 0, duration: 0.09, type: 'triangle' }]);
 }
 
-/** A slightly harder, lower double-tone for a capture. */
+/** A sharp "click-thud" impact — a brief high click immediately followed by a
+ *  low thump, evoking a piece actually being knocked off the board. */
 export function playCaptureSound() {
   playTones([
-    { freq: 300, startOffset: 0, duration: 0.09, type: 'square', gain: 0.14 },
-    { freq: 220, startOffset: 0.05, duration: 0.12, type: 'square', gain: 0.14 },
+    { freq: 1400, startOffset: 0, duration: 0.035, type: 'triangle', gain: 0.16 },
+    { freq: 140, startOffset: 0.015, duration: 0.14, type: 'square', gain: 0.2 },
   ]);
 }
 
