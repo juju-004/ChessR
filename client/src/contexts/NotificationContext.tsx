@@ -1,4 +1,10 @@
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useState,
+  type ReactNode,
+} from "react";
 
 /**
  * In-app notification banners — deliberately NOT window.confirm()/alert().
@@ -11,7 +17,7 @@ import { createContext, useCallback, useContext, useState, type ReactNode } from
 export interface NotifyAction {
   label: string;
   onClick: () => void;
-  variant?: 'primary' | 'secondary' | 'danger';
+  variant?: "primary" | "secondary" | "danger";
 }
 
 interface NotifyItem {
@@ -21,16 +27,24 @@ interface NotifyItem {
 }
 
 interface NotificationContextValue {
-  notify: (message: string, actions?: NotifyAction[], autoDismissMs?: number) => string;
+  notify: (
+    message: string,
+    actions?: NotifyAction[],
+    autoDismissMs?: number,
+  ) => string;
   dismiss: (id: string) => void;
 }
 
-const NotificationContext = createContext<NotificationContextValue | null>(null);
+const NotificationContext = createContext<NotificationContextValue | null>(
+  null,
+);
 
-function variantClasses(variant?: NotifyAction['variant']): string {
-  const base = 'px-3 py-1.5 rounded-md text-sm font-semibold transition';
-  if (variant === 'secondary') return `${base} bg-neutral-700 hover:bg-neutral-600 text-neutral-100`;
-  if (variant === 'danger') return `${base} bg-red-600 hover:bg-red-500 text-white`;
+function variantClasses(variant?: NotifyAction["variant"]): string {
+  const base = "px-3 py-1.5 rounded-md text-sm font-semibold transition";
+  if (variant === "secondary")
+    return `${base} bg-neutral-700 hover:bg-neutral-600 text-neutral-100`;
+  if (variant === "danger")
+    return `${base} bg-red-600 hover:bg-red-500 text-white`;
   return `${base} bg-blue-600 hover:bg-blue-500 text-white`;
 }
 
@@ -54,7 +68,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   return (
     <NotificationContext.Provider value={{ notify, dismiss }}>
       {children}
-      <div className="fixed top-4 right-4 z-[1000] flex w-80 max-w-[90vw] flex-col gap-2">
+      <div className="fixed top-4 right-4 z-1000 flex w-80 max-w-[90vw] flex-col gap-2">
         {items.map((item) => (
           <div
             key={item.id}
@@ -86,6 +100,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
 export function useNotify(): NotificationContextValue {
   const ctx = useContext(NotificationContext);
-  if (!ctx) throw new Error('useNotify must be used within NotificationProvider');
+  if (!ctx)
+    throw new Error("useNotify must be used within NotificationProvider");
   return ctx;
 }
