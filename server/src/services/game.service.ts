@@ -207,6 +207,51 @@ export async function finalizeGame(
  * (as a general safety net against anything else that could leave a timer
  * un-scheduled).
  */
+export interface RatingChange {
+  whiteRating: number;
+  blackRating: number;
+  whiteDelta: number;
+  blackDelta: number;
+}
+
+const K_FACTOR = 32;
+
+/** Standard Elo update. Only called for games that actually concluded with a
+ *  real result (checkmate, resignation, timeout, draw, or claimed win/draw) —
+ *  never for aborted games, which have no winner or loser to rate. */
+export async function updateRatings(
+  whiteId: string,
+  blackId: string,
+  result: 'white' | 'black' | 'draw',
+): Promise<RatingChange | null> {
+  const [white, black] = await Promise.all([
+    User.findById(whiteId).select('rating'),
+    User.findById(blackId).select('rating'),
+  ]);
+  if (!white || !black) return null;
+
+  const scoreWhite = result === 'white' ? 1 : result === 'draw' ? 0.5 : 0;
+  const scoreBlack = 1 - scoreWhite;
+
+  const expectedWhite = 1 / (1 + Math.pow(10, (black.rating - white.rating) / 400));
+  const expectedBlack = 1 - expectedWhite;
+
+  const whiteRating = Math.round(white.rating + K_FACTOR * (scoreWhite - expectedWhite));
+  const blackRating = Math.round(black.rating + K_FACTOR * (scoreBlack - expectedBlack));
+
+  await Promise.all([
+    User.updateOne({ _id: whiteId }, { $set: { rating: whiteRating } }),
+    User.updateOne({ _id: blackId }, { $set: { rating: blackRating } }),
+  ]);
+
+  return {
+    whiteRating,
+    blackRating,
+    whiteDelta: whiteRating - white.rating,
+    blackDelta: blackRating - black.rating,
+  };
+}
+
 export async function reconcileActiveGames(): Promise<{ resumed: number; timedOut: number; aborted: number }> {
   const activeGames = await Game.find({ status: 'active' }).lean();
   let resumed = 0;
@@ -230,6 +275,9 @@ export async function reconcileActiveGames(): Promise<{ resumed: number; timedOu
     if (timeoutWinner) {
       await finalizeGame(gameId, liveState.fen, 'finished', timeoutWinner, 'timeout');
       await deleteLiveState(gameId);
+      await updateRatings(liveState.whiteId, liveState.blackId, timeoutWinner).catch((err) =>
+        console.error('updateRatings failed during reconciliation:', err),
+      );
       timedOut++;
       continue;
     }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { Chess } from 'chess.js';
 import { getGameByCode, joinGame } from '../api/games.js';
@@ -11,6 +11,7 @@ import { PromotionPicker } from '../components/PromotionPicker.js';
 import { ClockDisplay } from '../components/ClockDisplay.js';
 import { GameOverModal } from '../components/GameOverModal.js';
 import { computeDests, needsPromotion, isInCheck, computePremoveDests, addChess960CastlingDests } from '../chessUtils.js';
+import { updateCachedRating } from '../api/authStore.js';
 import { playMoveSound, playCaptureSound, playCheckSound, playGameStartSound, playGameOverSound } from '../sounds.js';
 
 interface GameMeta {
@@ -43,6 +44,7 @@ export function Game() {
   const [loadError, setLoadError] = useState('');
 
   const [role, setRole] = useState<Role>('spectator');
+  const roleRef = useRef<Role>('spectator');
   const [status, setStatus] = useState<'waiting' | 'active' | 'finished' | 'aborted'>('active');
   const [fen, setFen] = useState('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
   const [lastMove, setLastMove] = useState<[string, string] | undefined>();
@@ -50,7 +52,16 @@ export function Game() {
   const [whiteRemainingMs, setWhiteRemainingMs] = useState<number | null>(null);
   const [blackRemainingMs, setBlackRemainingMs] = useState<number | null>(null);
   const [turnStartedAtMs, setTurnStartedAtMs] = useState(Date.now());
-  const [gameOver, setGameOver] = useState<{ result: string | null; reason: string } | null>(null);
+  const [gameOver, setGameOver] = useState<{
+    result: string | null;
+    reason: string;
+    ratingChange?: {
+      whiteRating: number;
+      blackRating: number;
+      whiteDelta: number;
+      blackDelta: number;
+    } | null;
+  } | null>(null);
   const [whiteConnected, setWhiteConnected] = useState(false);
   const [blackConnected, setBlackConnected] = useState(false);
   const [connStatus, setConnStatus] = useState('Connecting…');
@@ -108,6 +119,19 @@ export function Game() {
     const gameId = gameMeta._id;
     setConnStatus('Connecting…');
 
+    // Hoisted so it can be cleared from onOpponentReconnected, onOver, and the
+    // effect cleanup — not just left to self-terminate. Previously this lived
+    // only inside onOpponentDisconnected's closure, which meant reconnecting
+    // cleared the *displayed* banner via state but left the interval running,
+    // and it would just set the banner right back on its next 500ms tick.
+    let disconnectCountdownInterval: number | undefined;
+    function clearDisconnectCountdown() {
+      if (disconnectCountdownInterval !== undefined) {
+        window.clearInterval(disconnectCountdownInterval);
+        disconnectCountdownInterval = undefined;
+      }
+    }
+
     function deriveLastMove(moveList: MoveLogEntry[]): [string, string] | undefined {
       const last = moveList[moveList.length - 1];
       return last ? [last.from, last.to] : undefined;
@@ -128,6 +152,7 @@ export function Game() {
 
     function onSync(payload: any) {
       setRole(payload.role);
+      roleRef.current = payload.role;
       setStatus(payload.status);
       setFen(payload.fen);
       setMoves(payload.moves ?? []);
@@ -157,12 +182,24 @@ export function Game() {
       else playMoveSound();
     }
 
-    function onOver(payload: { result: string | null; reason: string }) {
+    function onOver(payload: {
+      result: string | null;
+      reason: string;
+      ratingChange?: { whiteRating: number; blackRating: number; whiteDelta: number; blackDelta: number } | null;
+    }) {
       setStatus(payload.reason === 'aborted_no_moves' ? 'aborted' : 'finished');
       setGameOver(payload);
       setGameOverModalDismissed(false);
+      clearDisconnectCountdown();
       setDisconnectBanner(null);
       playGameOverSound();
+
+      if (payload.ratingChange && user) {
+        const isWhite = gameMeta?.white?._id === user.id;
+        const isBlack = gameMeta?.black?._id === user.id;
+        if (isWhite) updateCachedRating(payload.ratingChange.whiteRating);
+        else if (isBlack) updateCachedRating(payload.ratingChange.blackRating);
+      }
     }
 
     function onError(payload: { message: string }) {
@@ -186,8 +223,10 @@ export function Game() {
 
     function onOpponentDisconnected(payload: { userId: string; graceMs: number }) {
       markConnection(payload.userId, false);
+      if (roleRef.current === 'spectator') return; // claiming isn't a spectator's call to make
+
+      clearDisconnectCountdown(); // defensive — shouldn't already be one running, but don't stack if so
       const expiresAt = Date.now() + payload.graceMs;
-      let intervalId: number | undefined;
       const tick = () => {
         const remaining = Math.max(0, expiresAt - Date.now());
         setDisconnectBanner({
@@ -197,22 +236,26 @@ export function Game() {
               : 'Opponent has not reconnected — you can claim this game now.',
           claimable: remaining <= 0,
         });
-        if (remaining <= 0 && intervalId !== undefined) window.clearInterval(intervalId);
+        if (remaining <= 0) clearDisconnectCountdown();
       };
       tick();
-      intervalId = window.setInterval(tick, 500);
+      disconnectCountdownInterval = window.setInterval(tick, 500);
     }
 
     function onClaimAvailable() {
+      if (roleRef.current === 'spectator') return;
+      clearDisconnectCountdown();
       setDisconnectBanner({ message: 'Opponent has not reconnected — you can claim this game now.', claimable: true });
     }
 
     function onOpponentReconnected(payload: { userId: string }) {
       markConnection(payload.userId, true);
+      clearDisconnectCountdown();
       setDisconnectBanner(null);
     }
 
     function onDrawOffered() {
+      if (roleRef.current === 'spectator') return; // not theirs to accept/decline
       notify('Your opponent offered a draw.', [
         { label: 'Accept', onClick: () => socket.emit('game:respond_draw', { gameId, accept: true }) },
         { label: 'Decline', variant: 'secondary', onClick: () => socket.emit('game:respond_draw', { gameId, accept: false }) },
@@ -242,6 +285,7 @@ export function Game() {
     if (socket.connected) joinRoom();
 
     return () => {
+      clearDisconnectCountdown();
       socket.off('connect_error', onConnectError);
       socket.off('connect', joinRoom);
       socket.off('game:sync', onSync);
@@ -486,6 +530,7 @@ export function Game() {
           isPlayer={isPlayer}
           canRematch={isPlayer && gameOver.reason !== 'aborted_no_moves'}
           rematchState={rematchState}
+          ratingChange={gameOver.ratingChange}
           onRematch={handleRematch}
           onClose={() => setGameOverModalDismissed(true)}
         />

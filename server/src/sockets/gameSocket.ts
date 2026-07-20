@@ -9,7 +9,7 @@ import {
   deleteLiveState,
   GameTimeoutError,
 } from '../services/gameState.service.js';
-import { appendMove, finalizeGame, createDirectGame } from '../services/game.service.js';
+import { appendMove, finalizeGame, createDirectGame, updateRatings } from '../services/game.service.js';
 import { scheduleGameTimer, clearGameTimer, setTimeoutHandler } from '../services/clock.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
@@ -61,8 +61,22 @@ async function endGameAndBroadcast(
   clearGameTimer(gameId);
   clearPendingDisconnect(gameId);
   const finalState = await endGame(gameId, result, endReason);
-  // Broadcast immediately — persistence to Mongo doesn't need to gate the UI update.
-  io.to(gameRoom(gameId)).emit('game:over', { gameId, result, reason: endReason });
+
+  // Rating changes are quick to compute and only happen once per finished
+  // game (not on the hot move-broadcast path), so it's worth awaiting them
+  // to include directly in the game:over payload rather than making clients
+  // re-fetch their profile to see an updated number.
+  const ratingChange = await updateRatings(finalState.whiteId, finalState.blackId, result).catch((err) => {
+    console.error('updateRatings failed:', err);
+    return null;
+  });
+
+  io.to(gameRoom(gameId)).emit('game:over', {
+    gameId,
+    result,
+    reason: endReason,
+    ratingChange,
+  });
   finalizeGame(gameId, finalState.fen, 'finished', result, endReason).catch((err) =>
     console.error('finalizeGame failed:', err),
   );
@@ -100,6 +114,21 @@ function clearPendingDisconnect(gameId: string) {
 // there's no point letting a stale offer linger once one side has moved on.
 const REMATCH_OFFER_TTL_MS = 30_000;
 const pendingRematches = new Map<string, { fromUserId: string; expiresAt: number }>();
+
+// --- Move rate limiting -------------------------------------------------------
+// Cheap defense against a scripted client flooding moves. The threshold is
+// deliberately low — even the fastest legitimate bullet/premove play rarely
+// produces two distinct move submissions under ~60ms apart, since each one
+// requires a real network round trip.
+const MIN_MS_BETWEEN_MOVES = 60;
+const lastMoveAtBySocket = new Map<string, number>();
+
+function isMoveRateLimited(socketId: string): boolean {
+  const now = Date.now();
+  const last = lastMoveAtBySocket.get(socketId);
+  lastMoveAtBySocket.set(socketId, now);
+  return last !== undefined && now - last < MIN_MS_BETWEEN_MOVES;
+}
 
 async function userStillInRoom(io: Server, gameId: string, userId: string): Promise<boolean> {
   const sockets = await io.in(gameRoom(gameId)).fetchSockets();
@@ -183,6 +212,15 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       const whiteConnected = connectedUserIds.has(game.white.toString());
       const blackConnected = game.black ? connectedUserIds.has(game.black.toString()) : false;
 
+      // Cheap self-healing measure: (re)scheduling on every join/reconnect
+      // means the timer recovers on its own the moment anyone next touches
+      // the game, rather than only being set at creation and after moves —
+      // which left a window where a lost timer (process restart, etc.) would
+      // sit silently until someone tried to move.
+      if (liveState?.status === 'active') {
+        scheduleGameTimer(gameId).catch((err) => console.error('scheduleGameTimer on join failed:', err));
+      }
+
       socket.emit('game:sync', {
         gameId,
         joinCode: game.joinCode,
@@ -217,6 +255,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
     safeHandler(socket, async (raw: unknown) => {
       const parsed = moveSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid move payload');
+      if (isMoveRateLimited(socket.id)) return emitError(socket, 'Please slow down');
       const { gameId, from, to, promotion } = parsed.data;
 
       try {
@@ -462,6 +501,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
   );
 
   socket.on('disconnecting', () => {
+    lastMoveAtBySocket.delete(socket.id);
     const rooms = Array.from(socket.rooms).filter((r) => r.startsWith('game:'));
     for (const room of rooms) {
       const gameId = room.slice('game:'.length);

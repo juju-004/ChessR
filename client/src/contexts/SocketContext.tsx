@@ -20,7 +20,10 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     }
     if (socketRef.current) return; // already connected for this session
 
-    const s = io('/', {
+    // Same story as API_BASE in api/http.ts: '/' only reaches the backend
+    // locally because of the Vite dev proxy. In production there's no proxy,
+    // so this needs the real backend URL — set VITE_SOCKET_URL.
+    const s = io(import.meta.env.VITE_SOCKET_URL ?? '/', {
       auth: { token: accessToken },
       withCredentials: true,
       transports: ['websocket', 'polling'],

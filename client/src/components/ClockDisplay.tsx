@@ -29,7 +29,10 @@ export function ClockDisplay({
 
   useEffect(() => {
     if (!isActive || whiteRemainingMs === null || blackRemainingMs === null) return;
-    const interval = window.setInterval(() => forceTick((n) => n + 1), 250);
+    // 100ms keeps the tenths-of-a-second display (shown under 10s remaining,
+    // lichess-style) looking smooth without being wastefully frequent the
+    // rest of the time.
+    const interval = window.setInterval(() => forceTick((n) => n + 1), 100);
     return () => window.clearInterval(interval);
   }, [isActive, whiteRemainingMs, blackRemainingMs]);
 
@@ -71,7 +74,7 @@ export function ClockDisplay({
         }`}
       >
         {dot(blackConnected)}
-        {blackLabel} · {formatClock(liveBlack)}
+        {blackLabel} · {formatClock(liveBlack, true)}
       </div>
       <div
         className={`flex-1 rounded-md px-3 py-2 text-center font-mono text-sm font-semibold ${
@@ -79,7 +82,7 @@ export function ClockDisplay({
         }`}
       >
         {dot(whiteConnected)}
-        {whiteLabel} · {formatClock(liveWhite)}
+        {whiteLabel} · {formatClock(liveWhite, true)}
       </div>
     </div>
   );

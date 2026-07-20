@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { Chessground } from '@lichess-org/chessground';
 
 type CgApi = ReturnType<typeof Chessground>;
@@ -44,7 +44,7 @@ export function ChessBoard({
   const onUserMoveRef = useRef(onUserMove);
   onUserMoveRef.current = onUserMove;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!containerRef.current) return;
     const config: CgConfig = {
       fen,
@@ -81,7 +81,7 @@ export function ChessBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewOnly]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     groundRef.current?.set({
       fen,
       orientation,

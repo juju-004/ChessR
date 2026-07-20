@@ -5,6 +5,7 @@ interface GameOverModalProps {
   isPlayer: boolean;
   canRematch: boolean;
   rematchState: 'idle' | 'offered';
+  ratingChange?: { whiteRating: number; blackRating: number; whiteDelta: number; blackDelta: number } | null;
   onRematch: () => void;
   onClose: () => void;
 }
@@ -27,12 +28,20 @@ export function GameOverModal({
   isPlayer,
   canRematch,
   rematchState,
+  ratingChange,
   onRematch,
   onClose,
 }: GameOverModalProps) {
   const title = titleFor(result, myColor, isPlayer);
   const isWin = isPlayer && myColor && result === myColor;
   const isLoss = isPlayer && myColor && result !== null && result !== 'draw' && result !== myColor;
+
+  const myDelta =
+    isPlayer && myColor && ratingChange
+      ? myColor === 'white'
+        ? { rating: ratingChange.whiteRating, delta: ratingChange.whiteDelta }
+        : { rating: ratingChange.blackRating, delta: ratingChange.blackDelta }
+      : null;
 
   return (
     <div
@@ -59,6 +68,17 @@ export function GameOverModal({
           {title}
         </h2>
         <p className="mb-5 text-sm text-neutral-400">{reasonText(reason)}</p>
+
+        {myDelta && (
+          <p className="mb-5 text-sm">
+            <span className="text-neutral-400">New rating: </span>
+            <span className="font-semibold text-neutral-100">{myDelta.rating}</span>{' '}
+            <span className={myDelta.delta >= 0 ? 'text-green-400' : 'text-red-400'}>
+              ({myDelta.delta >= 0 ? '+' : ''}
+              {myDelta.delta})
+            </span>
+          </p>
+        )}
 
         <div className="flex flex-col gap-2">
           {canRematch && (

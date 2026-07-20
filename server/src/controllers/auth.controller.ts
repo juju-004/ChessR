@@ -32,10 +32,17 @@ const signinSchema = z.object({
 });
 
 function setRefreshCookie(res: Response, token: string) {
+  // Local dev: frontend and backend look same-origin (Vite proxies /api), so
+  // 'lax' + non-secure works over plain http://localhost. In production,
+  // frontend (Vercel) and backend (Railway) are genuinely different origins —
+  // browsers will not send a 'lax' cookie on that cross-site request at all,
+  // which is exactly what silently breaks session restore after a real deploy.
+  // 'none' requires secure:true (HTTPS), which both platforms provide by default.
+  const crossOrigin = isProd;
   res.cookie(REFRESH_COOKIE, token, {
     httpOnly: true,
-    secure: env.COOKIE_SECURE || isProd,
-    sameSite: 'lax',
+    secure: env.COOKIE_SECURE || crossOrigin,
+    sameSite: crossOrigin ? 'none' : 'lax',
     path: '/api/auth',
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   });

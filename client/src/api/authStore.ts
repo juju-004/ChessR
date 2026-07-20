@@ -26,6 +26,15 @@ export function clearAuth(): void {
   listeners.forEach((l) => l());
 }
 
+/** Patches just the rating on the cached user — used after a game ends so the
+ *  navbar/dashboard reflect the new rating immediately instead of showing a
+ *  stale number until the next sign-in or token refresh. */
+export function updateCachedRating(newRating: number): void {
+  if (!snapshot.user) return;
+  snapshot = { ...snapshot, user: { ...snapshot.user, rating: newRating } };
+  listeners.forEach((l) => l());
+}
+
 export function subscribeAuth(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);

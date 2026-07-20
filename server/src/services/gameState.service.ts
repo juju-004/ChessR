@@ -36,6 +36,21 @@ export interface LiveGameState {
   blackRemainingMs: number | null;
   turnStartedAtMs: number;
   castlingRights: CastlingRightsState;
+  /** Repetition-relevant position keys (piece placement + turn + castling
+   *  rights + en-passant target — the four FEN fields FIDE rules actually
+   *  compare for "same position"), one per position reached including the
+   *  start. Needed because chess.js's own threefold-repetition tracker relies
+   *  on move history accumulated through a persistent instance — since we
+   *  reload a fresh Chess instance from FEN on every move (deliberately, to
+   *  keep move application stateless/idempotent), it never has any history to
+   *  check against and would never detect a repetition on its own. */
+  positionHistory: string[];
+}
+
+/** The four FEN fields that define "the same position" for repetition
+ *  purposes — explicitly excludes halfmove clock and fullmove number. */
+function repetitionKey(fen: string): string {
+  return fen.split(' ').slice(0, 4).join(' ');
 }
 
 export class GameTimeoutError extends Error {
@@ -85,6 +100,7 @@ export async function initLiveState(
     blackRemainingMs: timeControl.baseMs,
     turnStartedAtMs: Date.now(),
     castlingRights: initialCastlingRights(),
+    positionHistory: [repetitionKey(fen)],
   };
   await redis.set(stateKey(gameId), JSON.stringify(state), 'EX', LIVE_STATE_TTL_SECONDS);
   return state;
@@ -138,9 +154,17 @@ async function finalizeMove(
     }
   }
 
+  const newFen = chess.fen();
+  const newKey = repetitionKey(newFen);
+  const newPositionHistory = [...state.positionHistory, newKey];
+  const isThreefoldRepetition = newPositionHistory.filter((k) => k === newKey).length >= 3;
+
   let result: MoveResult['result'] = null;
   let endReason: string | null = null;
-  const isGameOver = chess.isGameOver();
+  // chess.js's own isGameOver() internally checks threefold repetition too,
+  // but via the same broken (history-less) mechanism — so it can say "false"
+  // even when our reliable check says otherwise. OR them together.
+  const isGameOver = chess.isGameOver() || isThreefoldRepetition;
 
   if (isGameOver) {
     if (chess.isCheckmate()) {
@@ -149,7 +173,7 @@ async function finalizeMove(
     } else if (chess.isStalemate()) {
       result = 'draw';
       endReason = 'stalemate';
-    } else if (chess.isThreefoldRepetition()) {
+    } else if (isThreefoldRepetition) {
       result = 'draw';
       endReason = 'threefold_repetition';
     } else if (chess.isInsufficientMaterial()) {
@@ -163,7 +187,7 @@ async function finalizeMove(
 
   const newState: LiveGameState = {
     ...state,
-    fen: chess.fen(),
+    fen: newFen,
     status: isGameOver ? 'finished' : 'active',
     result,
     endReason,
@@ -172,6 +196,7 @@ async function finalizeMove(
     blackRemainingMs,
     turnStartedAtMs: Date.now(),
     castlingRights: updatedRights,
+    positionHistory: newPositionHistory,
   };
   await redis.set(stateKey(gameId), JSON.stringify(newState), 'EX', LIVE_STATE_TTL_SECONDS);
 
@@ -180,7 +205,7 @@ async function finalizeMove(
     from,
     to,
     promotion,
-    fenAfter: chess.fen(),
+    fenAfter: newFen,
     isGameOver,
     result,
     endReason,

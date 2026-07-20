@@ -20,8 +20,11 @@ export function turnColor(chess: Chess): 'white' | 'black' {
   return chess.turn() === 'w' ? 'white' : 'black';
 }
 
-export function formatClock(ms: number): string {
+export function formatClock(ms: number, precise = false): string {
   const clamped = Math.max(0, ms);
+  if (precise && clamped < 10_000) {
+    return (clamped / 1000).toFixed(1);
+  }
   const totalSeconds = Math.floor(clamped / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
@@ -80,6 +83,7 @@ export function addChess960CastlingDests(
 
   const king = chess.get(kingSquare as any);
   if (!king || king.type !== 'k' || king.color !== color) return dests; // king already moved off its start square
+  if (chess.inCheck()) return dests; // can't castle out of check — don't offer it as a hint
 
   const extra: string[] = [];
   for (const rookFile of [files.queensideRookFile, files.kingsideRookFile]) {
