@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from 'react';
 import { Chessground } from '@lichess-org/chessground';
+import { Key } from '@lichess-org/chessground/types';
 
 type CgApi = ReturnType<typeof Chessground>;
 type CgConfig = NonNullable<Parameters<typeof Chessground>[1]>;
@@ -65,7 +66,7 @@ export function ChessBoard({
         showDests: true,
         customDests: premoveDests as any,
       },
-      lastMove,
+      lastMove: lastMove as Key[] | undefined,
     };
     groundRef.current = Chessground(containerRef.current, config);
     return () => {
@@ -87,7 +88,7 @@ export function ChessBoard({
       orientation,
       viewOnly,
       turnColor,
-      lastMove,
+      lastMove: lastMove as Key[] | undefined,
       check: inCheck,
       movable: { color: movableColor, dests: dests as any },
       premovable: { enabled: !!movableColor, customDests: premoveDests as any },
