@@ -17,6 +17,9 @@ import { Friends } from './pages/Friends.js';
 import { Game } from './pages/Game.js';
 import { GameReplay } from './pages/GameReplay.js';
 import { NotFound } from './pages/NotFound.js';
+import { BuyTokens } from './pages/BuyTokens.js';
+import { Transactions } from './pages/Transactions.js';
+import { Withdraw } from './pages/Withdraw.js';
 
 function RootRedirect() {
   const { isAuthed } = useAuth();
@@ -103,6 +106,30 @@ function AppShell() {
             element={
               <ProtectedRoute>
                 <GameReplayRoute />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/wallet/buy"
+            element={
+              <ProtectedRoute>
+                <BuyTokens />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/wallet/transactions"
+            element={
+              <ProtectedRoute>
+                <Transactions />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/wallet/withdraw"
+            element={
+              <ProtectedRoute>
+                <Withdraw />
               </ProtectedRoute>
             }
           />

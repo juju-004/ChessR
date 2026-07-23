@@ -1,5 +1,6 @@
 import { apiFetch } from './http.js';
 import { setAuth, clearAuth, type CurrentUser } from './authStore.js';
+import { clearCachedBalance } from './walletStore.js';
 
 interface AuthResponse {
   accessToken: string;
@@ -27,6 +28,7 @@ export async function signin(email: string, password: string) {
 export async function logout() {
   await apiFetch('/auth/logout', { method: 'POST' }).catch(() => {});
   clearAuth();
+  clearCachedBalance();
 }
 
 export async function tryRestoreSession(): Promise<boolean> {

@@ -79,7 +79,7 @@ export const signup = asyncHandler(async (req, res) => {
 
   res.status(201).json({
     accessToken,
-    user: { id: user.id, username: user.username, rating: user.rating },
+    user: { id: user.id, username: user.username, email: user.email, rating: user.rating },
   });
 });
 
@@ -103,7 +103,7 @@ export const signin = asyncHandler(async (req, res) => {
 
   res.json({
     accessToken,
-    user: { id: user.id, username: user.username, rating: user.rating },
+    user: { id: user.id, username: user.username, email: user.email, rating: user.rating },
   });
 });
 
@@ -133,7 +133,7 @@ export const refresh = asyncHandler(async (req, res) => {
 
   res.json({
     accessToken,
-    user: { id: user.id, username: user.username, rating: user.rating },
+    user: { id: user.id, username: user.username, email: user.email, rating: user.rating },
   });
 });
 

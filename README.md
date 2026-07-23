@@ -29,7 +29,7 @@ it the socket silently falls back to failing, not to polling.
   the FEN held in Redis (`server/src/services/gameState.service.ts`). The client's
   board is a renderer, not a source of truth.
 - **Redis holds live game state**, MongoDB holds the permanent record. Moves
-  broadcast to the room *immediately* after the Redis write; Mongo persistence
+  broadcast to the room _immediately_ after the Redis write; Mongo persistence
   and cleanup happen in the background rather than blocking the broadcast.
 - **Clocks are server-enforced**, including a scheduled per-game timer so a
   timeout fires even if the opponent never moves again to trigger it. A
@@ -46,7 +46,7 @@ it the socket silently falls back to failing, not to polling.
   flat 32; worth revisiting (e.g. higher K for new/provisional players) once
   there's real usage data.
 - **Chess960 (Fischer Random)** is fully supported, including castling — which
-  chess.js itself does *not* support (confirmed via their own GitHub issues,
+  chess.js itself does _not_ support (confirmed via their own GitHub issues,
   open since 2016). Castling for 960 games is hand-implemented in
   `server/src/services/chess960Castling.ts` directly against chess.js's board
   primitives (`.get`/`.put`/`.remove`/`.isAttacked`/`.inCheck`), independently
@@ -109,18 +109,23 @@ your website. Worth deciding on deliberately before this goes further.
 
 ## Deploying (Vercel + Railway)
 
+Okay we were working on a multiplayer web app and the stack is vite react, chessground, express, redis, socket.io and mongodb. We just finished everything about the actual gameplay and we are on something called the r tokens which is like the ingame currency. We were using paystack (in test mode) but claudes responses are too slow so im giving you a try at it. There was a bug with the payment. it creates the transaction and the paystack modal pops up but it doesnt gives the success/decline feedback back to the app. It just remians in "processing"
+
 **Backend → Railway:**
+
 1. New Railway project, deploy from this repo, set the root directory to `server/`.
 2. Add these environment variables (same names as `server/.env.example`): `MONGO_URI`, `REDIS_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_ACCESS_TTL`, `JWT_REFRESH_TTL`. Set `NODE_ENV=production`. Set `CLIENT_ORIGIN` to your Vercel URL once you have it (e.g. `https://your-app.vercel.app`, no trailing slash — CORS matching is exact).
 3. Don't set `PORT` — Railway injects it automatically and the server already reads `process.env.PORT`.
 4. Railway serves over HTTPS by default, which is required for the cross-origin cookie setup below to work.
 
 **Frontend → Vercel:**
+
 1. New Vercel project, root directory `client/`. Build command `npm run build`, output directory `dist`.
 2. Add environment variables `VITE_API_BASE_URL` and `VITE_SOCKET_URL`, both pointing at your Railway backend URL (see `client/.env.example`). Vite bakes these in at build time, so redeploy after changing them.
 3. `client/vercel.json` is already set up to rewrite all paths to `index.html` — without it, a hard refresh on `/game/CODE` would 404, since `BrowserRouter` needs the server to hand back `index.html` for every route and let React Router take over client-side.
 
 **Why this isn't just an env-var swap:** two things were previously hardcoded assuming frontend and backend share an origin (true locally, only because Vite's dev proxy fakes it):
+
 - The refresh-token cookie was `sameSite: 'lax'`, which browsers silently refuse to send on genuinely cross-site requests. It's now `sameSite: 'none'` + `secure: true` automatically whenever `NODE_ENV=production`.
 - The client's API calls and socket connection assumed same-origin (`/api`, `/`). Both now read from `VITE_API_BASE_URL` / `VITE_SOCKET_URL`, falling back to same-origin for local dev.
 
@@ -129,7 +134,7 @@ your website. Worth deciding on deliberately before this goes further.
 - The per-game clock timer, rematch offers, pending disconnects, and the move
   rate limiter all live in a single process's memory (`Map`s in
   `clock.service.ts` / `gameSocket.ts`). Fine for one server instance — the
-  reconciliation sweep specifically exists to paper over *restarts* of that
+  reconciliation sweep specifically exists to paper over _restarts_ of that
   one instance. If you run multiple instances behind a load balancer, these
   need to move to a durable/shared store (Redis sorted-set sweep, BullMQ
   delayed jobs, etc.) so they work correctly regardless of which instance

@@ -10,6 +10,8 @@ import authRoutes from './routes/auth.routes.js';
 import userRoutes from './routes/user.routes.js';
 import friendRoutes from './routes/friend.routes.js';
 import gameRoutes from './routes/game.routes.js';
+import walletRoutes from './routes/wallet.routes.js';
+import { handleWebhook } from './controllers/wallet.controller.js';
 
 export function createApp() {
   const app = express();
@@ -23,6 +25,21 @@ export function createApp() {
       credentials: true,
     }),
   );
+
+  // The Paystack webhook MUST be registered before express.json() and needs
+  // the raw, unparsed body — signature verification is an HMAC over the exact
+  // bytes Paystack sent, which express.json() would otherwise have already
+  // consumed and reserialized (silently breaking every signature check).
+  app.post(
+    '/api/wallet/webhook',
+    express.raw({ type: 'application/json' }),
+    (req, _res, next) => {
+      (req as any).rawBody = req.body; // Buffer, thanks to express.raw()
+      next();
+    },
+    handleWebhook,
+  );
+
   app.use(express.json({ limit: '100kb' }));
   app.use(cookieParser());
   app.use(morgan(isProd ? 'combined' : 'dev'));
@@ -43,6 +60,7 @@ export function createApp() {
   app.use('/api/users', userRoutes);
   app.use('/api/friends', friendRoutes);
   app.use('/api/games', gameRoutes);
+  app.use('/api/wallet', walletRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

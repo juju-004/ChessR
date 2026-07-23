@@ -6,6 +6,7 @@ import { ApiRequestError } from '../api/http.js';
 import { useAuth } from '../contexts/AuthContext.js';
 import { TIME_CONTROLS, formatTimeControl } from '../timeControls.js';
 import { turnColor } from '../chessUtils.js';
+import { useTokenBalance } from '../hooks/useTokenBalance.js';
 
 export function Dashboard() {
   const { user } = useAuth();
@@ -16,6 +17,7 @@ export function Dashboard() {
   const [error, setError] = useState('');
   const [activeGames, setActiveGames] = useState<ActiveFriendGame[] | null>(null);
   const [gamesError, setGamesError] = useState('');
+  const { balance } = useTokenBalance();
 
   useEffect(() => {
     let cancelled = false;
@@ -48,6 +50,33 @@ export function Dashboard() {
 
   return (
     <div className="mx-auto mt-6 max-w-2xl space-y-4">
+      <div className="flex items-center justify-between rounded-lg border border-amber-900/50 bg-amber-950/20 p-5">
+        <div>
+          <p className="text-sm text-amber-400">R Token Balance</p>
+          <p className="text-2xl font-bold text-neutral-100">{balance ?? '…'}</p>
+        </div>
+        <div className="flex gap-2">
+          <Link
+            to="/wallet/buy"
+            className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500"
+          >
+            Buy
+          </Link>
+          <Link
+            to="/wallet/withdraw"
+            className="rounded-md bg-neutral-700 px-3 py-2 text-sm font-semibold text-neutral-100 hover:bg-neutral-600"
+          >
+            Withdraw
+          </Link>
+          <Link
+            to="/wallet/transactions"
+            className="rounded-md bg-neutral-700 px-3 py-2 text-sm font-semibold text-neutral-100 hover:bg-neutral-600"
+          >
+            History
+          </Link>
+        </div>
+      </div>
+
       <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
         <h1 className="text-xl font-bold text-neutral-100">Welcome, {user?.username}</h1>
         <p className="mb-3 text-sm text-neutral-400">Rating: {user?.rating}</p>
