@@ -3,13 +3,11 @@ import { apiFetch } from './http.js';
 export interface UserSearchResult {
   _id: string;
   username: string;
-  rating: number;
 }
 
 export interface UserProfile {
   id: string;
   username: string;
-  rating: number;
   memberSince: string;
   stats: { wins: number; losses: number; draws: number; gamesPlayed: number };
   isFriend: boolean;
@@ -19,7 +17,7 @@ export interface UserProfile {
 export interface UserGameHistoryItem {
   gameId: string;
   joinCode: string;
-  opponent: { _id: string; username: string; rating: number } | null;
+  opponent: { _id: string; username: string } | null;
   color: 'white' | 'black';
   result: 'win' | 'loss' | 'draw';
   endReason: string | null;

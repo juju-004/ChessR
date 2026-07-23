@@ -8,6 +8,18 @@ const statusColors: Record<Transaction['status'], string> = {
   failed: 'text-red-400',
 };
 
+const typeLabels: Record<Transaction['type'], string> = {
+  purchase: 'Purchase',
+  withdrawal: 'Withdrawal',
+  wager_stake: 'Wager staked',
+  wager_payout: 'Wager won',
+  wager_refund: 'Wager refunded',
+};
+
+function isMoneyMovement(type: Transaction['type']): boolean {
+  return type === 'purchase' || type === 'withdrawal';
+}
+
 export function Transactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [page, setPage] = useState(1);
@@ -47,10 +59,13 @@ export function Transactions() {
           <div key={t._id} className="flex items-center justify-between border-b border-neutral-800 py-2 text-sm last:border-none">
             <div>
               <p className="text-neutral-200">
-                {t.type === 'purchase' ? 'Purchase' : 'Withdrawal'} · {t.tokens} tokens
+                {typeLabels[t.type]} · {t.tokens} tokens
               </p>
               <p className="text-xs text-neutral-500">
-                ₦{(t.amountKobo / 100).toLocaleString()} · {new Date(t.createdAt).toLocaleString()}
+                {isMoneyMovement(t.type)
+                  ? `₦${(t.amountKobo / 100).toLocaleString()} · `
+                  : ''}
+                {new Date(t.createdAt).toLocaleString()}
               </p>
               {t.status === 'failed' && t.failureReason && (
                 <p className="text-xs text-red-400">{t.failureReason}</p>

@@ -20,6 +20,7 @@ export function GlobalListeners() {
       challengeId: string;
       from: { username: string };
       timeControl: { baseMinutes: number | null; incrementSeconds: number };
+      wagerTokens?: number;
     }) {
       if (!socket) return;
 
@@ -27,8 +28,9 @@ export function GlobalListeners() {
         payload.timeControl.baseMinutes === null
           ? "Unlimited"
           : `${payload.timeControl.baseMinutes}+${payload.timeControl.incrementSeconds}`;
+      const wagerNote = payload.wagerTokens ? `, ${payload.wagerTokens} R wager` : "";
       notify(
-        `${payload.from.username} challenged you to a game (${tc}).`,
+        `${payload.from.username} challenged you to a game (${tc}${wagerNote}).`,
         [
           {
             label: "Accept",
@@ -62,6 +64,10 @@ export function GlobalListeners() {
 
     function onChallengeCancelled() {
       notify("That challenge was cancelled.", [], 4000);
+    }
+
+    function onChallengeError(payload: { message: string }) {
+      notify(payload.message, [], 6000);
     }
 
     function onRematchOffered(payload: { gameId: string }) {
@@ -103,6 +109,7 @@ export function GlobalListeners() {
     socket.on("challenge:accepted", onChallengeAccepted);
     socket.on("challenge:declined", onChallengeDeclined);
     socket.on("challenge:cancelled", onChallengeCancelled);
+    socket.on("challenge:error", onChallengeError);
     socket.on("game:rematch_offered", onRematchOffered);
     socket.on("game:rematch_accepted", onRematchAccepted);
     socket.on("game:rematch_declined", onRematchDeclined);
@@ -112,6 +119,7 @@ export function GlobalListeners() {
       socket.off("challenge:accepted", onChallengeAccepted);
       socket.off("challenge:declined", onChallengeDeclined);
       socket.off("challenge:cancelled", onChallengeCancelled);
+      socket.off("challenge:error", onChallengeError);
       socket.off("game:rematch_offered", onRematchOffered);
       socket.off("game:rematch_accepted", onRematchAccepted);
       socket.off("game:rematch_declined", onRematchDeclined);

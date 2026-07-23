@@ -6,7 +6,6 @@ export interface IUser extends Document {
   usernameLower: string;
   email: string;
   passwordHash: string;
-  rating: number;
   tokenBalance: number;
   friends: Types.ObjectId[];
   avatarUrl?: string;
@@ -30,7 +29,6 @@ const userSchema = new Schema<IUser>(
       index: true,
     },
     passwordHash: { type: String, required: true, select: false },
-    rating: { type: Number, default: 1200 },
     tokenBalance: { type: Number, default: 0, min: 0 },
     friends: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     avatarUrl: { type: String },

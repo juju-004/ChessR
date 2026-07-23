@@ -191,6 +191,64 @@ export async function resolveWithdrawalFromWebhook(
   await User.updateOne({ _id: transaction.user }, { $inc: { tokenBalance: transaction.tokens } });
 }
 
+// --- Wager escrow ---------------------------------------------------------------
+// Chess games are staked with R tokens instead of a rating system: each player
+// puts up the same number of tokens, and the winner takes the combined pot.
+// These helpers move tokens between a player's balance and a game's implicit
+// escrow (the game document itself, via wagerTokens) and leave an auditable
+// Transaction trail — same atomic-conditional-update pattern as withdrawals,
+// so two concurrent calls can never take a balance negative.
+
+/** Debits a player's stake for a game they're joining/accepting/rematching.
+ *  Throws if their balance can't cover it — callers should surface this as a
+ *  clear "insufficient balance" error rather than silently failing to seat
+ *  the player. */
+export async function debitWagerStake(userId: string, gameId: string, tokens: number): Promise<void> {
+  if (tokens <= 0) return;
+
+  const debited = await User.findOneAndUpdate(
+    { _id: userId, tokenBalance: { $gte: tokens } },
+    { $inc: { tokenBalance: -tokens } },
+    { new: true },
+  );
+  if (!debited) throw ApiError.badRequest('Insufficient R token balance for this wager');
+
+  await Transaction.create({
+    user: userId,
+    type: 'wager_stake',
+    status: 'success',
+    tokens,
+    amountKobo: 0,
+    reference: `WGR-STK-${gameId}-${userId}`,
+    game: gameId,
+  });
+}
+
+/** Refunds a stake that was already debited (game aborted/cancelled before a
+ *  winner could be decided, or a draw where each side just gets their own
+ *  stake back). Reference is deterministic per game+user+kind so a retry
+ *  after a crash can't double-credit. */
+export async function creditWagerReturn(
+  userId: string,
+  gameId: string,
+  tokens: number,
+  kind: 'wager_refund' | 'wager_payout',
+): Promise<void> {
+  if (tokens <= 0) return;
+
+  await User.updateOne({ _id: userId }, { $inc: { tokenBalance: tokens } });
+
+  await Transaction.create({
+    user: userId,
+    type: kind,
+    status: 'success',
+    tokens,
+    amountKobo: 0,
+    reference: `WGR-${kind === 'wager_payout' ? 'WIN' : 'RFD'}-${gameId}-${userId}`,
+    game: gameId,
+  });
+}
+
 export async function listTransactions(userId: string, page: number, limit: number) {
   const filter = { user: userId };
   const [transactions, total] = await Promise.all([

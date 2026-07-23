@@ -9,7 +9,13 @@ import {
   deleteLiveState,
   GameTimeoutError,
 } from '../services/gameState.service.js';
-import { appendMove, finalizeGame, createDirectGame, updateRatings } from '../services/game.service.js';
+import {
+  appendMove,
+  finalizeGame,
+  createDirectGame,
+  settleWager,
+  refundWagerBothSides,
+} from '../services/game.service.js';
 import { scheduleGameTimer, clearGameTimer, setTimeoutHandler } from '../services/clock.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
@@ -62,12 +68,18 @@ async function endGameAndBroadcast(
   clearPendingDisconnect(gameId);
   const finalState = await endGame(gameId, result, endReason);
 
-  // Rating changes are quick to compute and only happen once per finished
-  // game (not on the hot move-broadcast path), so it's worth awaiting them
-  // to include directly in the game:over payload rather than making clients
-  // re-fetch their profile to see an updated number.
-  const ratingChange = await updateRatings(finalState.whiteId, finalState.blackId, result).catch((err) => {
-    console.error('updateRatings failed:', err);
+  // Wager settlement is quick and only happens once per finished game (not on
+  // the hot move-broadcast path), so it's worth awaiting it to include
+  // directly in the game:over payload rather than making clients re-fetch
+  // their wallet balance to see the payout land.
+  const wagerSettlement = await settleWager(
+    gameId,
+    finalState.whiteId,
+    finalState.blackId,
+    finalState.wagerTokens,
+    result,
+  ).catch((err) => {
+    console.error('settleWager failed:', err);
     return null;
   });
 
@@ -75,7 +87,7 @@ async function endGameAndBroadcast(
     gameId,
     result,
     reason: endReason,
-    ratingChange,
+    wagerSettlement,
   });
   finalizeGame(gameId, finalState.fen, 'finished', result, endReason).catch((err) =>
     console.error('finalizeGame failed:', err),
@@ -237,6 +249,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         blackConnected,
         moves: game.moves,
         timeControl: game.timeControl,
+        wagerTokens: game.wagerTokens,
         whiteRemainingMs:
           liveState?.whiteRemainingMs ?? (game.timeControl.baseSeconds ? game.timeControl.baseSeconds * 1000 : null),
         blackRemainingMs:
@@ -431,18 +444,29 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       const newWhite = isWhite ? game.black!.toString() : game.white.toString();
       const newBlack = isWhite ? game.white.toString() : game.black!.toString();
 
-      const newGame = await createDirectGame(
-        newWhite,
-        newBlack,
-        {
-          baseMinutes: game.timeControl.baseSeconds === null ? null : game.timeControl.baseSeconds / 60,
-          incrementSeconds: game.timeControl.incrementSeconds,
-        },
-        undefined,
-        game.variant,
-      );
+      let newGame;
+      try {
+        newGame = await createDirectGame(
+          newWhite,
+          newBlack,
+          {
+            baseMinutes: game.timeControl.baseSeconds === null ? null : game.timeControl.baseSeconds / 60,
+            incrementSeconds: game.timeControl.incrementSeconds,
+          },
+          undefined,
+          game.variant,
+          game.wagerTokens,
+        );
+      } catch (err) {
+        // Same wager as the original game — if either side can no longer
+        // cover it, no tokens move and both players just hear why.
+        const message = err instanceof Error ? err.message : 'Could not start the rematch';
+        emitError(socket, message);
+        io.to(`user:${pending.fromUserId}`).emit('game:error', { message });
+        return;
+      }
 
-      const payload = { gameId: newGame.id, joinCode: newGame.joinCode };
+      const payload = { gameId: newGame.id, joinCode: newGame.joinCode, wagerTokens: newGame.wagerTokens };
       io.to(`user:${game.white.toString()}`).emit('game:rematch_accepted', payload);
       io.to(`user:${game.black!.toString()}`).emit('game:rematch_accepted', payload);
     }),
@@ -471,6 +495,9 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       clearGameTimer(gameId);
       clearPendingDisconnect(gameId);
       await finalizeGame(gameId, state.fen, 'aborted', null, 'aborted_no_moves');
+      await refundWagerBothSides(gameId, state.whiteId, state.blackId, state.wagerTokens).catch((err) =>
+        console.error('refundWagerBothSides failed:', err),
+      );
       await deleteLiveState(gameId);
 
       io.to(gameRoom(gameId)).emit('game:over', { gameId, result: null, reason: 'aborted_no_moves' });

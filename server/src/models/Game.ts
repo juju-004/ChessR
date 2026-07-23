@@ -12,6 +12,7 @@ export type GameEndReason =
   | 'threefold_repetition'
   | 'fifty_move_rule'
   | 'abandoned'
+  | 'cancelled'
   | null;
 
 export interface IMove {
@@ -47,6 +48,14 @@ export interface IGame extends Document {
   // Optional: link back to a friend challenge, for auditability.
   challengeId?: string;
   isPrivate: boolean;
+  // Per-player R token stake. Total pot awarded to the winner is wagerTokens * 2.
+  // 0 means a free (unwagered) game.
+  wagerTokens: number;
+  // Flips to true exactly once, the moment the wager for this game has been
+  // paid out or refunded — guards against double-crediting tokens if the
+  // settlement path is ever triggered twice for the same game (e.g. a
+  // reconciliation sweep racing the live socket flow after a restart).
+  wagerSettled: boolean;
   createdAt: Date;
   startedAt?: Date;
   endedAt?: Date;
@@ -106,6 +115,8 @@ const gameSchema = new Schema<IGame>(
     },
     challengeId: { type: String },
     isPrivate: { type: Boolean, default: false },
+    wagerTokens: { type: Number, default: 0, min: 0 },
+    wagerSettled: { type: Boolean, default: false },
     startedAt: { type: Date },
     endedAt: { type: Date },
   },

@@ -10,19 +10,38 @@ export type GameVariant = 'standard' | 'chess960';
 export interface ActiveFriendGame {
   _id: string;
   joinCode: string;
-  white: { _id: string; username: string; rating: number };
-  black: { _id: string; username: string; rating: number };
+  white: { _id: string; username: string };
+  black: { _id: string; username: string };
   timeControl: { baseSeconds: number | null; incrementSeconds: number };
+  wagerTokens: number;
   moves: unknown[];
   fen: string;
   startedAt: string;
 }
 
-export function createGame(timeControl: TimeControlChoice, variant: GameVariant = 'standard', isPrivate = false) {
-  return apiFetch<{ gameId: string; joinCode: string; variant: GameVariant; status: string }>('/games', {
-    method: 'POST',
-    body: JSON.stringify({ ...timeControl, variant, isPrivate }),
-  });
+export interface OpenGame {
+  _id: string;
+  joinCode: string;
+  white: { _id: string; username: string };
+  timeControl: { baseSeconds: number | null; incrementSeconds: number };
+  wagerTokens: number;
+  variant: GameVariant;
+  createdAt: string;
+}
+
+export function createGame(
+  timeControl: TimeControlChoice,
+  variant: GameVariant = 'standard',
+  isPrivate = false,
+  wagerTokens = 0,
+) {
+  return apiFetch<{ gameId: string; joinCode: string; variant: GameVariant; status: string; wagerTokens: number }>(
+    '/games',
+    {
+      method: 'POST',
+      body: JSON.stringify({ ...timeControl, variant, isPrivate, wagerTokens }),
+    },
+  );
 }
 
 export function joinGame(gameId: string) {
@@ -30,6 +49,14 @@ export function joinGame(gameId: string) {
     `/games/${gameId}/join`,
     { method: 'POST' },
   );
+}
+
+export function cancelGame(gameId: string) {
+  return apiFetch<void>(`/games/${gameId}`, { method: 'DELETE' });
+}
+
+export function listOpenGames() {
+  return apiFetch<{ games: OpenGame[] }>('/games/open');
 }
 
 export function getGame(gameId: string) {

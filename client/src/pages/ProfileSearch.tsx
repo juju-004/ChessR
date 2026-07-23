@@ -38,9 +38,7 @@ export function ProfileSearch() {
         )}
         {results.map((u) => (
           <div key={u._id} className="flex items-center justify-between border-b border-neutral-800 py-2 last:border-none">
-            <span className="text-sm text-neutral-200">
-              {u.username} <span className="text-neutral-500">({u.rating})</span>
-            </span>
+            <span className="text-sm text-neutral-200">{u.username}</span>
             <Link
               to={`/profile/${u.username}`}
               className="rounded-md bg-neutral-700 px-3 py-1.5 text-sm font-semibold text-neutral-100 hover:bg-neutral-600"

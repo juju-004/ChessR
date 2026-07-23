@@ -3,13 +3,12 @@ import { apiFetch } from './http.js';
 export interface Friend {
   id: string;
   username: string;
-  rating: number;
   online: boolean;
 }
 
 export interface IncomingRequest {
   _id: string;
-  from: { _id: string; username: string; rating: number };
+  from: { _id: string; username: string };
 }
 
 export function listFriends() {

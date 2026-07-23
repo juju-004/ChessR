@@ -24,7 +24,7 @@ import {
   computePremoveDests,
   addChess960CastlingDests,
 } from "../chessUtils.js";
-import { updateCachedRating } from "../api/authStore.js";
+import { refreshBalance } from "../api/walletStore.js";
 import {
   playMoveSound,
   playCaptureSound,
@@ -41,6 +41,7 @@ interface GameMeta {
   white: { _id: string; username: string } | null;
   black: { _id: string; username: string } | null;
   status: "waiting" | "active" | "finished" | "aborted";
+  wagerTokens?: number;
 }
 
 interface MoveLogEntry {
@@ -80,11 +81,10 @@ export function Game() {
   const [gameOver, setGameOver] = useState<{
     result: string | null;
     reason: string;
-    ratingChange?: {
-      whiteRating: number;
-      blackRating: number;
-      whiteDelta: number;
-      blackDelta: number;
+    wagerSettlement?: {
+      wagerTokens: number;
+      potTokens: number;
+      winnerId: string | null;
     } | null;
   } | null>(null);
   const [whiteConnected, setWhiteConnected] = useState(false);
@@ -247,11 +247,10 @@ export function Game() {
     function onOver(payload: {
       result: string | null;
       reason: string;
-      ratingChange?: {
-        whiteRating: number;
-        blackRating: number;
-        whiteDelta: number;
-        blackDelta: number;
+      wagerSettlement?: {
+        wagerTokens: number;
+        potTokens: number;
+        winnerId: string | null;
       } | null;
     }) {
       setStatus(payload.reason === "aborted_no_moves" ? "aborted" : "finished");
@@ -261,11 +260,11 @@ export function Game() {
       setDisconnectBanner(null);
       playGameOverSound();
 
-      if (payload.ratingChange && user) {
-        const isWhite = gameMeta?.white?._id === user.id;
-        const isBlack = gameMeta?.black?._id === user.id;
-        if (isWhite) updateCachedRating(payload.ratingChange.whiteRating);
-        else if (isBlack) updateCachedRating(payload.ratingChange.blackRating);
+      // A wager payout/refund (or the stake being locked away in the first
+      // place) changes the R token balance — refresh the shared store so the
+      // navbar badge and dashboard update without needing a reload.
+      if (payload.wagerSettlement && payload.wagerSettlement.wagerTokens > 0) {
+        refreshBalance().catch(() => {});
       }
     }
 
@@ -490,6 +489,13 @@ export function Game() {
         <p className="mb-3 text-sm text-neutral-400">
           {gameMeta.white?.username} is waiting for an opponent.
         </p>
+        {!!gameMeta.wagerTokens && (
+          <p className="mb-3 rounded-md border border-amber-900/50 bg-amber-950/20 p-3 text-sm text-amber-300">
+            This is a wagered game — joining will stake <strong>{gameMeta.wagerTokens} R tokens</strong> from
+            your balance. The winner takes the full {gameMeta.wagerTokens * 2}.
+          </p>
+        )}
+        {loadError && <p className="mb-3 text-sm text-red-400">{loadError}</p>}
         <button
           onClick={handleJoin}
           className="rounded-md bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500"
@@ -521,6 +527,11 @@ export function Game() {
             {gameMeta?.variant === "chess960" && (
               <span className="ml-2 rounded bg-purple-900 px-2 py-0.5 text-xs font-semibold text-purple-200">
                 Chess960
+              </span>
+            )}
+            {!!gameMeta?.wagerTokens && (
+              <span className="ml-2 rounded bg-amber-900/40 px-2 py-0.5 text-xs font-semibold text-amber-300">
+                {gameMeta.wagerTokens} R wager
               </span>
             )}
           </h1>
@@ -674,7 +685,8 @@ export function Game() {
           isPlayer={isPlayer}
           canRematch={isPlayer && gameOver.reason !== "aborted_no_moves"}
           rematchState={rematchState}
-          ratingChange={gameOver.ratingChange}
+          wagerSettlement={gameOver.wagerSettlement}
+          myUserId={user?.id}
           onRematch={handleRematch}
           onClose={() => setGameOverModalDismissed(true)}
         />

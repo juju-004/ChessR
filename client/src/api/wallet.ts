@@ -20,7 +20,7 @@ export interface Bank {
 
 export interface Transaction {
   _id: string;
-  type: 'purchase' | 'withdrawal';
+  type: 'purchase' | 'withdrawal' | 'wager_stake' | 'wager_payout' | 'wager_refund';
   status: 'pending' | 'success' | 'failed';
   tokens: number;
   amountKobo: number;

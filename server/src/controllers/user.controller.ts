@@ -14,7 +14,7 @@ export const searchUsers = asyncHandler(async (req, res) => {
   const regex = new RegExp('^' + q.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
   const users = await User.find({ usernameLower: regex })
-    .select('username rating avatarUrl')
+    .select('username avatarUrl')
     .limit(20)
     .lean();
 
@@ -24,7 +24,7 @@ export const searchUsers = asyncHandler(async (req, res) => {
 export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
   const { username } = req.params;
   const user = await User.findOne({ usernameLower: username.toLowerCase() })
-    .select('username rating avatarUrl friends createdAt')
+    .select('username avatarUrl friends createdAt')
     .lean();
 
   if (!user) throw ApiError.notFound('User not found');
@@ -57,7 +57,6 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
   res.json({
     id: user._id,
     username: user.username,
-    rating: user.rating,
     avatarUrl: user.avatarUrl,
     memberSince: user.createdAt,
     stats: { wins, losses, draws, gamesPlayed: wins + losses + draws },
@@ -88,8 +87,8 @@ export const getUserGames = asyncHandler(async (req, res) => {
       .sort({ endedAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
-      .populate('white', 'username rating')
-      .populate('black', 'username rating')
+      .populate('white', 'username')
+      .populate('black', 'username')
       .select('joinCode white black result endReason timeControl moves startedAt endedAt')
       .lean(),
     Game.countDocuments(filter),

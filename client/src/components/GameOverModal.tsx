@@ -5,7 +5,8 @@ interface GameOverModalProps {
   isPlayer: boolean;
   canRematch: boolean;
   rematchState: 'idle' | 'offered';
-  ratingChange?: { whiteRating: number; blackRating: number; whiteDelta: number; blackDelta: number } | null;
+  wagerSettlement?: { wagerTokens: number; potTokens: number; winnerId: string | null } | null;
+  myUserId?: string;
   onRematch: () => void;
   onClose: () => void;
 }
@@ -28,7 +29,8 @@ export function GameOverModal({
   isPlayer,
   canRematch,
   rematchState,
-  ratingChange,
+  wagerSettlement,
+  myUserId,
   onRematch,
   onClose,
 }: GameOverModalProps) {
@@ -36,12 +38,16 @@ export function GameOverModal({
   const isWin = isPlayer && myColor && result === myColor;
   const isLoss = isPlayer && myColor && result !== null && result !== 'draw' && result !== myColor;
 
-  const myDelta =
-    isPlayer && myColor && ratingChange
-      ? myColor === 'white'
-        ? { rating: ratingChange.whiteRating, delta: ratingChange.whiteDelta }
-        : { rating: ratingChange.blackRating, delta: ratingChange.blackDelta }
-      : null;
+  const wagerText = (() => {
+    if (!isPlayer || !wagerSettlement || wagerSettlement.wagerTokens <= 0) return null;
+    if (wagerSettlement.winnerId === null) {
+      return `Draw — your ${wagerSettlement.wagerTokens} R token stake was refunded.`;
+    }
+    if (wagerSettlement.winnerId === myUserId) {
+      return `You won ${wagerSettlement.potTokens} R tokens!`;
+    }
+    return `You lost your ${wagerSettlement.wagerTokens} R token stake.`;
+  })();
 
   return (
     <div
@@ -69,14 +75,17 @@ export function GameOverModal({
         </h2>
         <p className="mb-5 text-sm text-neutral-400">{reasonText(reason)}</p>
 
-        {myDelta && (
-          <p className="mb-5 text-sm">
-            <span className="text-neutral-400">New rating: </span>
-            <span className="font-semibold text-neutral-100">{myDelta.rating}</span>{' '}
-            <span className={myDelta.delta >= 0 ? 'text-green-400' : 'text-red-400'}>
-              ({myDelta.delta >= 0 ? '+' : ''}
-              {myDelta.delta})
-            </span>
+        {wagerText && (
+          <p
+            className={`mb-5 text-sm font-semibold ${
+              wagerSettlement?.winnerId === null
+                ? 'text-neutral-300'
+                : wagerSettlement?.winnerId === myUserId
+                  ? 'text-amber-400'
+                  : 'text-red-400'
+            }`}
+          >
+            {wagerText}
           </p>
         )}
 

@@ -12,6 +12,7 @@ import {
 import { scheduleGameTimer } from "./clock.service.js";
 import { getIo } from "../sockets/io.js";
 import { generateChess960Fen } from "./chess960.service.js";
+import { debitWagerStake, creditWagerReturn } from "./wallet.service.js";
 
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -45,10 +46,16 @@ export async function createOpenGame(
   timeControl: TimeControlInput,
   variant: "standard" | "chess960" = "standard",
   isPrivate = false,
+  wagerTokens = 0,
 ): Promise<IGame> {
   const joinCode = await uniqueJoinCode();
   const startingFen =
     variant === "chess960" ? generateChess960Fen() : STARTING_FEN;
+
+  // Host's stake is locked up front, the moment the table is opened — not at
+  // join time — so a wagered game can never be sitting open with a stake the
+  // host doesn't actually have. It's refunded via cancelOpenGame if nobody
+  // joins.
   const game = await Game.create({
     joinCode,
     variant,
@@ -58,13 +65,44 @@ export async function createOpenGame(
     fen: startingFen,
     initialFen: startingFen,
     isPrivate,
+    wagerTokens,
     timeControl: {
       baseSeconds:
         timeControl.baseMinutes === null ? null : timeControl.baseMinutes * 60,
       incrementSeconds: timeControl.incrementSeconds,
     },
   });
+
+  if (wagerTokens > 0) {
+    try {
+      await debitWagerStake(hostUserId, game.id, wagerTokens);
+    } catch (err) {
+      await Game.deleteOne({ _id: game.id });
+      throw err;
+    }
+  }
+
   return game;
+}
+
+/** Lets the host back out of a game nobody has joined yet, refunding their
+ *  stake. Once someone has joined the game is 'active' and this no longer
+ *  applies — game:abort (only available with zero moves played) is the
+ *  equivalent for that stage. */
+export async function cancelOpenGame(gameId: string, hostUserId: string): Promise<void> {
+  const game = await Game.findById(gameId);
+  if (!game) throw ApiError.notFound("Game not found");
+  if (game.white.toString() !== hostUserId) throw ApiError.forbidden("Not your game");
+  if (game.status !== "waiting") throw ApiError.conflict("Game can no longer be cancelled");
+
+  game.status = "aborted";
+  game.endReason = "cancelled";
+  game.endedAt = new Date();
+  await game.save();
+
+  if (game.wagerTokens > 0) {
+    await creditWagerReturn(hostUserId, game.id, game.wagerTokens, "wager_refund");
+  }
 }
 
 /** Joins an open game and starts it immediately. Also notifies anyone already
@@ -81,6 +119,13 @@ export async function joinOpenGame(
     throw ApiError.conflict("Game is not open to join");
   if (game.white.toString() === joiningUserId) {
     throw ApiError.badRequest("You can't join your own game");
+  }
+
+  // Match the host's stake before anything else changes — if the joiner
+  // can't cover it, the game stays exactly as it was (still waiting, host's
+  // stake untouched) rather than half-starting.
+  if (game.wagerTokens > 0) {
+    await debitWagerStake(joiningUserId, game.id, game.wagerTokens);
   }
 
   game.black = joiningUserId as any;
@@ -102,6 +147,7 @@ export async function joinOpenGame(
     liveTc,
     game.initialFen,
     game.variant,
+    game.wagerTokens,
   );
   await scheduleGameTimer(game.id);
 
@@ -120,6 +166,7 @@ export async function createDirectGame(
   timeControl: TimeControlInput,
   challengeId?: string,
   variant: "standard" | "chess960" = "standard",
+  wagerTokens = 0,
 ): Promise<IGame> {
   const joinCode = await uniqueJoinCode();
   const startingFen =
@@ -135,12 +182,33 @@ export async function createDirectGame(
     isPrivate: true,
     startedAt: new Date(),
     challengeId,
+    wagerTokens,
     timeControl: {
       baseSeconds:
         timeControl.baseMinutes === null ? null : timeControl.baseMinutes * 60,
       incrementSeconds: timeControl.incrementSeconds,
     },
   });
+
+  // Both sides stake at the moment the game is actually created (i.e. right
+  // after a challenge is accepted, or a rematch confirmed) — not earlier,
+  // since a pending challenge/rematch offer can simply expire or be declined.
+  if (wagerTokens > 0) {
+    try {
+      await debitWagerStake(whiteId, game.id, wagerTokens);
+      try {
+        await debitWagerStake(blackId, game.id, wagerTokens);
+      } catch (err) {
+        // Black couldn't cover it — put White's stake back rather than
+        // leaving them charged for a game that's about to be torn down.
+        await creditWagerReturn(whiteId, game.id, wagerTokens, "wager_refund");
+        throw err;
+      }
+    } catch (err) {
+      await Game.deleteOne({ _id: game.id });
+      throw err;
+    }
+  }
 
   const liveTc = toLiveTimeControl(timeControl);
   await initLiveState(
@@ -150,6 +218,7 @@ export async function createDirectGame(
     liveTc,
     game.initialFen,
     game.variant,
+    wagerTokens,
   );
   await scheduleGameTimer(game.id);
 
@@ -167,8 +236,8 @@ export async function listFriendsActiveGames(userId: string) {
   })
     .sort({ startedAt: -1 })
     .limit(50)
-    .populate("white", "username rating")
-    .populate("black", "username rating")
+    .populate("white", "username")
+    .populate("black", "username")
     .lean();
 }
 
@@ -180,14 +249,14 @@ export async function listOpenGames(excludeUserId?: string) {
   })
     .sort({ createdAt: -1 })
     .limit(50)
-    .populate("white", "username rating")
+    .populate("white", "username")
     .lean();
 }
 
 export async function getGameByCode(code: string) {
   const game = await Game.findOne({ joinCode: code.toUpperCase() })
-    .populate("white", "username rating")
-    .populate("black", "username rating")
+    .populate("white", "username")
+    .populate("black", "username")
     .lean();
   if (!game) throw ApiError.notFound("No game found with that code");
   return game;
@@ -236,54 +305,70 @@ export async function finalizeGame(
  * (as a general safety net against anything else that could leave a timer
  * un-scheduled).
  */
-export interface RatingChange {
-  whiteRating: number;
-  blackRating: number;
-  whiteDelta: number;
-  blackDelta: number;
+export interface WagerSettlement {
+  wagerTokens: number;
+  potTokens: number;
+  winnerId: string | null; // null for a draw (both refunded) or an unwagered game
 }
 
-const K_FACTOR = 32;
-
-/** Standard Elo update. Only called for games that actually concluded with a
- *  real result (checkmate, resignation, timeout, draw, or claimed win/draw) —
- *  never for aborted games, which have no winner or loser to rate. */
-export async function updateRatings(
+/**
+ * Pays out (or refunds) a game's R token wager exactly once. Guarded by an
+ * atomic flip of wagerSettled — if two callers race (e.g. the live socket
+ * flow and a reconciliation sweep after a restart both try to settle the same
+ * game), only the first one to flip the flag actually moves any tokens.
+ * A no-op (returns null) for unwagered games, since there's nothing to settle.
+ */
+export async function settleWager(
+  gameId: string,
   whiteId: string,
   blackId: string,
+  wagerTokens: number,
   result: "white" | "black" | "draw",
-): Promise<RatingChange | null> {
-  const [white, black] = await Promise.all([
-    User.findById(whiteId).select("rating"),
-    User.findById(blackId).select("rating"),
-  ]);
-  if (!white || !black) return null;
+): Promise<WagerSettlement | null> {
+  if (wagerTokens <= 0) return null;
 
-  const scoreWhite = result === "white" ? 1 : result === "draw" ? 0.5 : 0;
-  const scoreBlack = 1 - scoreWhite;
-
-  const expectedWhite =
-    1 / (1 + Math.pow(10, (black.rating - white.rating) / 400));
-  const expectedBlack = 1 - expectedWhite;
-
-  const whiteRating = Math.round(
-    white.rating + K_FACTOR * (scoreWhite - expectedWhite),
+  const claimed = await Game.findOneAndUpdate(
+    { _id: gameId, wagerSettled: false },
+    { $set: { wagerSettled: true } },
   );
-  const blackRating = Math.round(
-    black.rating + K_FACTOR * (scoreBlack - expectedBlack),
+  if (!claimed) return null; // already settled by someone else, or game not found
+
+  const potTokens = wagerTokens * 2;
+
+  if (result === "draw") {
+    await Promise.all([
+      creditWagerReturn(whiteId, gameId, wagerTokens, "wager_refund"),
+      creditWagerReturn(blackId, gameId, wagerTokens, "wager_refund"),
+    ]);
+    return { wagerTokens, potTokens, winnerId: null };
+  }
+
+  const winnerId = result === "white" ? whiteId : blackId;
+  await creditWagerReturn(winnerId, gameId, potTokens, "wager_payout");
+  return { wagerTokens, potTokens, winnerId };
+}
+
+/** Refunds both players' stakes for a game that's being torn down before it
+ *  produced a real result (e.g. aborted with zero moves played). Uses the
+ *  same wagerSettled guard as settleWager so it can never double-refund. */
+export async function refundWagerBothSides(
+  gameId: string,
+  whiteId: string,
+  blackId: string,
+  wagerTokens: number,
+): Promise<void> {
+  if (wagerTokens <= 0) return;
+
+  const claimed = await Game.findOneAndUpdate(
+    { _id: gameId, wagerSettled: false },
+    { $set: { wagerSettled: true } },
   );
+  if (!claimed) return;
 
   await Promise.all([
-    User.updateOne({ _id: whiteId }, { $set: { rating: whiteRating } }),
-    User.updateOne({ _id: blackId }, { $set: { rating: blackRating } }),
+    creditWagerReturn(whiteId, gameId, wagerTokens, "wager_refund"),
+    creditWagerReturn(blackId, gameId, wagerTokens, "wager_refund"),
   ]);
-
-  return {
-    whiteRating,
-    blackRating,
-    whiteDelta: whiteRating - white.rating,
-    blackDelta: blackRating - black.rating,
-  };
 }
 
 export async function reconcileActiveGames(): Promise<{
@@ -303,8 +388,13 @@ export async function reconcileActiveGames(): Promise<{
     if (!liveState) {
       // No live state to resume from (Redis TTL expired, or it was never
       // properly initialized) — there's nothing safe to do but close it out
-      // rather than leave it stuck as "active" indefinitely.
+      // rather than leave it stuck as "active" indefinitely. Since neither
+      // side did anything wrong here, refund both stakes rather than
+      // treating it as a loss for either player.
       await finalizeGame(gameId, g.fen, "aborted", null, "abandoned");
+      await refundWagerBothSides(gameId, g.white.toString(), (g.black ?? "").toString(), g.wagerTokens).catch(
+        (err) => console.error("refundWagerBothSides failed during reconciliation:", err),
+      );
       aborted++;
       continue;
     }
@@ -319,12 +409,14 @@ export async function reconcileActiveGames(): Promise<{
         "timeout",
       );
       await deleteLiveState(gameId);
-      await updateRatings(
+      await settleWager(
+        gameId,
         liveState.whiteId,
         liveState.blackId,
+        liveState.wagerTokens,
         timeoutWinner,
       ).catch((err) =>
-        console.error("updateRatings failed during reconciliation:", err),
+        console.error("settleWager failed during reconciliation:", err),
       );
       timedOut++;
       continue;

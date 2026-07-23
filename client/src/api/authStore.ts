@@ -2,7 +2,6 @@ export interface CurrentUser {
   id: string;
   username: string;
   email: string;
-  rating: number;
 }
 
 interface AuthSnapshot {
@@ -24,15 +23,6 @@ export function setAuth(accessToken: string, user: CurrentUser): void {
 
 export function clearAuth(): void {
   snapshot = { accessToken: null, user: null };
-  listeners.forEach((l) => l());
-}
-
-/** Patches just the rating on the cached user — used after a game ends so the
- *  navbar/dashboard reflect the new rating immediately instead of showing a
- *  stale number until the next sign-in or token refresh. */
-export function updateCachedRating(newRating: number): void {
-  if (!snapshot.user) return;
-  snapshot = { ...snapshot, user: { ...snapshot.user, rating: newRating } };
   listeners.forEach((l) => l());
 }
 

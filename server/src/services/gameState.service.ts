@@ -31,6 +31,9 @@ export interface LiveGameState {
   result: 'white' | 'black' | 'draw' | null;
   endReason: string | null;
   moveCount: number;
+  // Per-player R token stake, carried in live state so end-of-game settlement
+  // doesn't need a separate Mongo round trip to know what's riding on it.
+  wagerTokens: number;
   timeControl: LiveTimeControl;
   whiteRemainingMs: number | null;
   blackRemainingMs: number | null;
@@ -83,6 +86,7 @@ export async function initLiveState(
   timeControl: LiveTimeControl,
   fen: string = STARTING_FEN,
   variant: 'standard' | 'chess960' = 'standard',
+  wagerTokens: number = 0,
 ): Promise<LiveGameState> {
   const state: LiveGameState = {
     gameId,
@@ -95,6 +99,7 @@ export async function initLiveState(
     result: null,
     endReason: null,
     moveCount: 0,
+    wagerTokens,
     timeControl,
     whiteRemainingMs: timeControl.baseMs,
     blackRemainingMs: timeControl.baseMs,

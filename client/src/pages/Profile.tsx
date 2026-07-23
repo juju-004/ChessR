@@ -59,7 +59,7 @@ export function Profile() {
       <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
         <h1 className="text-2xl font-bold text-neutral-100">{profile.username}</h1>
         <p className="mb-3 text-sm text-neutral-400">
-          Rating: {profile.rating} · Member since {new Date(profile.memberSince).toLocaleDateString()}
+          Member since {new Date(profile.memberSince).toLocaleDateString()}
         </p>
 
         <div className="mb-3 flex gap-4 text-sm">

@@ -11,11 +11,14 @@ import type { AuthedSocketData } from './socketAuth.js';
 const CHALLENGE_TTL_SECONDS = 60;
 const challengeKey = (id: string) => `challenge:${id}`;
 
+const MAX_WAGER_TOKENS = 100_000;
+
 const sendSchema = z.object({
   toUserId: z.string().refine(mongoose.isValidObjectId),
   baseMinutes: z.number().min(1).max(180).nullable().optional().default(10),
   incrementSeconds: z.number().min(0).max(60).optional().default(0),
   variant: z.enum(['standard', 'chess960']).optional().default('standard'),
+  wagerTokens: z.number().int().min(0).max(MAX_WAGER_TOKENS).optional().default(0),
 });
 const respondSchema = z.object({ challengeId: z.string(), accept: z.boolean() });
 
@@ -46,21 +49,28 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
     safeHandler(socket, async (raw) => {
       const parsed = sendSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid challenge payload');
-      const { toUserId, baseMinutes, incrementSeconds, variant } = parsed.data;
+      const { toUserId, baseMinutes, incrementSeconds, variant, wagerTokens } = parsed.data;
 
       if (toUserId === userId) return emitError(socket, "You can't challenge yourself");
 
-      const me = await User.findById(userId).select('friends').lean();
+      const me = await User.findById(userId).select('friends tokenBalance').lean();
       const isFriend = me?.friends.some((f) => f.toString() === toUserId);
       if (!isFriend) return emitError(socket, 'You can only challenge friends');
 
       const online = await isUserOnline(toUserId);
       if (!online) return emitError(socket, 'That friend is currently offline');
 
+      // Soft check up front so a challenger can't send a stake they can't
+      // cover — the authoritative debit still happens for both sides at
+      // acceptance time, since balances can change in the meantime.
+      if (wagerTokens > 0 && (me?.tokenBalance ?? 0) < wagerTokens) {
+        return emitError(socket, "You don't have enough R tokens for that wager");
+      }
+
       const challengeId = nanoid();
       await redis.set(
         challengeKey(challengeId),
-        JSON.stringify({ fromId: userId, toId: toUserId, baseMinutes, incrementSeconds, variant }),
+        JSON.stringify({ fromId: userId, toId: toUserId, baseMinutes, incrementSeconds, variant, wagerTokens }),
         'EX',
         CHALLENGE_TTL_SECONDS,
       );
@@ -70,10 +80,11 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
         from: { id: userId, username },
         timeControl: { baseMinutes, incrementSeconds },
         variant,
+        wagerTokens,
         expiresInSeconds: CHALLENGE_TTL_SECONDS,
       });
 
-      socket.emit('challenge:sent', { challengeId, toUserId });
+      socket.emit('challenge:sent', { challengeId, toUserId, wagerTokens });
     }),
   );
 
@@ -87,12 +98,13 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
       const stored = await redis.get(challengeKey(challengeId));
       if (!stored) return emitError(socket, 'This challenge has expired');
 
-      const { fromId, toId, baseMinutes, incrementSeconds, variant } = JSON.parse(stored) as {
+      const { fromId, toId, baseMinutes, incrementSeconds, variant, wagerTokens } = JSON.parse(stored) as {
         fromId: string;
         toId: string;
         baseMinutes: number | null;
         incrementSeconds: number;
         variant: 'standard' | 'chess960';
+        wagerTokens: number;
       };
       if (toId !== userId) return emitError(socket, 'This challenge is not addressed to you');
 
@@ -104,13 +116,26 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
       }
 
       const [whiteId, blackId] = Math.random() < 0.5 ? [fromId, toId] : [toId, fromId];
-      const game = await createDirectGame(
-        whiteId,
-        blackId,
-        { baseMinutes, incrementSeconds },
-        challengeId,
-        variant,
-      );
+      let game;
+      try {
+        game = await createDirectGame(
+          whiteId,
+          blackId,
+          { baseMinutes, incrementSeconds },
+          challengeId,
+          variant,
+          wagerTokens,
+        );
+      } catch (err) {
+        // Most likely: one side's R token balance dropped below the wager
+        // between sending/accepting. Nobody's tokens are left committed —
+        // createDirectGame already unwound any partial debit — so just tell
+        // both sides the game never started.
+        const message = err instanceof Error ? err.message : 'Could not start the game';
+        emitError(socket, message);
+        io.to(`user:${fromId}`).emit('challenge:error', { message });
+        return;
+      }
 
       const payload = {
         challengeId,
@@ -118,6 +143,7 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
         joinCode: game.joinCode,
         white: whiteId,
         black: blackId,
+        wagerTokens: game.wagerTokens,
       };
       io.to(`user:${fromId}`).emit('challenge:accepted', payload);
       io.to(`user:${toId}`).emit('challenge:accepted', payload);

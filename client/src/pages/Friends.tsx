@@ -16,6 +16,7 @@ export function Friends() {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [tcIndex, setTcIndex] = useState(2);
   const [variant, setVariant] = useState<'standard' | 'chess960'>('standard');
+  const [wagerInput, setWagerInput] = useState('0');
   const [status, setStatus] = useState<{ message: string; isError: boolean } | null>(null);
 
   const refreshRequests = useCallback(() => {
@@ -74,13 +75,19 @@ export function Friends() {
   function handleChallenge(friendId: string) {
     if (!socket) return;
     const tc = TIME_CONTROLS[tcIndex];
+    const wagerTokens = Math.max(0, Math.floor(Number(wagerInput) || 0));
     socket.emit('challenge:send', {
       toUserId: friendId,
       baseMinutes: tc.baseMinutes,
       incrementSeconds: tc.incrementSeconds,
       variant,
+      wagerTokens,
     });
-    setStatus({ message: `Challenge sent (${tc.label}${variant === 'chess960' ? ', Chess960' : ''}) — waiting for a response…`, isError: false });
+    const wagerNote = wagerTokens > 0 ? `, ${wagerTokens} R wager` : '';
+    setStatus({
+      message: `Challenge sent (${tc.label}${variant === 'chess960' ? ', Chess960' : ''}${wagerNote}) — waiting for a response…`,
+      isError: false,
+    });
   }
 
   return (
@@ -95,7 +102,7 @@ export function Friends() {
         {requests.map((r) => (
           <div key={r._id} className="flex items-center justify-between border-b border-neutral-800 py-2 last:border-none">
             <span className="text-sm text-neutral-200">
-              {r.from.username} <span className="text-neutral-500">({r.from.rating})</span>
+              {r.from.username}
             </span>
             <span className="flex gap-2">
               <button
@@ -140,12 +147,23 @@ export function Friends() {
           <option value="chess960">Chess960 (Fischer Random)</option>
         </select>
 
+        <label className="mb-1 block text-sm text-neutral-400">R token wager (per player)</label>
+        <input
+          type="number"
+          min={0}
+          step={1}
+          value={wagerInput}
+          onChange={(e) => setWagerInput(e.target.value)}
+          placeholder="0 for a free game"
+          className="mb-3 w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100"
+        />
+
         {friends.length === 0 && <p className="text-sm text-neutral-400">No friends yet. Find players and add some!</p>}
         {friends.map((f) => (
           <div key={f.id} className="flex items-center justify-between border-b border-neutral-800 py-2 last:border-none">
             <span className="flex items-center gap-2 text-sm text-neutral-200">
               <span className={`inline-block h-2 w-2 rounded-full ${f.online ? 'bg-green-500' : 'bg-neutral-600'}`} />
-              {f.username} <span className="text-neutral-500">({f.rating})</span>
+              {f.username}
             </span>
             <span className="flex gap-2">
               <Link
