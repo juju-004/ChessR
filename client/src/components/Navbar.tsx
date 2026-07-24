@@ -38,6 +38,9 @@ export function Navbar() {
           <Link to="/friends" className="text-sm text-neutral-300 hover:text-neutral-100">
             Friends
           </Link>
+          <Link to="/cage" className="text-sm text-neutral-300 hover:text-neutral-100">
+            Cage matches
+          </Link>
           {user && (
             <Link to={`/profile/${user.username}`} className="text-sm text-neutral-300 hover:text-neutral-100">
               My profile

@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Chess } from 'chess.js';
 import { listMyActiveGames, type MyActiveGame } from '../api/games.js';
 import { formatTimeControl } from '../timeControls.js';
 import { turnColor } from '../chessUtils.js';
 import { useAuth } from '../contexts/AuthContext.js';
-import { useSocket } from '../contexts/SocketContext.js';
 
 /** Games icon — a simple pawn glyph keeps this visually distinct from the
  *  wallet balance pill and the profile/friends text links either side of it. */
@@ -21,47 +20,28 @@ interface MyGamesMenuProps {
   className?: string;
 }
 
+// Deliberately dormant: no background fetching, no socket subscriptions, no
+// badge count. It only talks to the server the moment someone opens it —
+// keeps this a zero-cost navbar item for everyone who never clicks it, and
+// avoids re-rendering it on every move played anywhere in the app.
 export function MyGamesMenu({ className }: MyGamesMenuProps) {
   const { user } = useAuth();
-  const socket = useSocket();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [games, setGames] = useState<MyActiveGame[] | null>(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const refresh = useCallback(() => {
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    setError('');
     listMyActiveGames()
       .then((res) => setGames(res.games))
-      .catch(() => setError('Could not load your games'));
-  }, []);
-
-  // Initial load, then keep it fresh from the server in real time — a move,
-  // a new game starting, or one ending all ping this via socket regardless
-  // of which page you're on, so the badge count never goes stale just
-  // because the dropdown itself is closed.
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    if (!socket) return;
-    const onChanged = () => refresh();
-    socket.on('myGames:changed', onChanged);
-    socket.on('challenge:accepted', onChanged);
-    socket.on('game:rematch_accepted', onChanged);
-    return () => {
-      socket.off('myGames:changed', onChanged);
-      socket.off('challenge:accepted', onChanged);
-      socket.off('game:rematch_accepted', onChanged);
-    };
-  }, [socket, refresh]);
-
-  // Refetch every time the menu is opened too, so it can't ever show a
-  // stuck/stale list if a socket event was somehow missed.
-  useEffect(() => {
-    if (open) refresh();
-  }, [open, refresh]);
+      .catch(() => setError('Could not load your games'))
+      .finally(() => setLoading(false));
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -72,27 +52,15 @@ export function MyGamesMenu({ className }: MyGamesMenuProps) {
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, [open]);
 
-  const myTurnCount =
-    games?.filter((g) => {
-      if (g.status !== 'active' || !g.black) return false;
-      const myColor = g.white._id === user?.id ? 'white' : 'black';
-      return turnColor(new Chess(g.fen)) === myColor;
-    }).length ?? 0;
-
   return (
     <div ref={rootRef} className={`relative ${className ?? ''}`}>
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label="Your active games"
         aria-expanded={open}
-        className="relative rounded-md p-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100"
+        className="rounded-md p-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100"
       >
         <PawnIcon className="h-5 w-5" />
-        {myTurnCount > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white">
-            {myTurnCount}
-          </span>
-        )}
       </button>
 
       {open && (
@@ -103,9 +71,9 @@ export function MyGamesMenu({ className }: MyGamesMenuProps) {
 
           {error && <p className="p-3 text-sm text-red-400">{error}</p>}
 
-          {!error && games === null && <p className="p-3 text-sm text-neutral-400">Loading…</p>}
+          {!error && loading && games === null && <p className="p-3 text-sm text-neutral-400">Loading…</p>}
 
-          {games && games.length === 0 && (
+          {!error && games && games.length === 0 && (
             <p className="p-3 text-sm text-neutral-400">No active games. Head to the dashboard to start one.</p>
           )}
 

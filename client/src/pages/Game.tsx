@@ -17,6 +17,7 @@ import { ChessBoard } from "../components/ChessBoard.js";
 import { PromotionPicker } from "../components/PromotionPicker.js";
 import { ClockDisplay } from "../components/ClockDisplay.js";
 import { GameOverModal } from "../components/GameOverModal.js";
+import { CageMatchScoreboard } from "../components/CageMatchScoreboard.js";
 import {
   computeDests,
   needsPromotion,
@@ -42,6 +43,8 @@ interface GameMeta {
   black: { _id: string; username: string } | null;
   status: "waiting" | "active" | "finished" | "aborted";
   wagerTokens?: number;
+  cageMatchId?: string | null;
+  legIndex?: number | null;
 }
 
 interface MoveLogEntry {
@@ -541,6 +544,10 @@ export function Game() {
               : connStatus}
           </span>
         </div>
+
+        {gameMeta?.cageMatchId && (
+          <CageMatchScoreboard cageMatchId={gameMeta.cageMatchId} legIndex={gameMeta.legIndex ?? 0} />
+        )}
 
         {disconnectBanner && (
           <div className="mb-3 rounded-md border border-red-900 bg-red-950/40 p-3">

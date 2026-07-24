@@ -10,6 +10,7 @@ import authRoutes from './routes/auth.routes.js';
 import userRoutes from './routes/user.routes.js';
 import friendRoutes from './routes/friend.routes.js';
 import gameRoutes from './routes/game.routes.js';
+import cageMatchRoutes from './routes/cageMatch.routes.js';
 import walletRoutes from './routes/wallet.routes.js';
 import { handleWebhook } from './controllers/wallet.controller.js';
 
@@ -60,6 +61,7 @@ export function createApp() {
   app.use('/api/users', userRoutes);
   app.use('/api/friends', friendRoutes);
   app.use('/api/games', gameRoutes);
+  app.use('/api/cage-matches', cageMatchRoutes);
   app.use('/api/wallet', walletRoutes);
 
   app.use(notFoundHandler);

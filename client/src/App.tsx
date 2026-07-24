@@ -16,6 +16,8 @@ import { Profile } from './pages/Profile.js';
 import { Friends } from './pages/Friends.js';
 import { Game } from './pages/Game.js';
 import { GameReplay } from './pages/GameReplay.js';
+import { CageMatches } from './pages/CageMatches.js';
+import { CageMatchDetail } from './pages/CageMatchDetail.js';
 import { NotFound } from './pages/NotFound.js';
 import { BuyTokens } from './pages/BuyTokens.js';
 import { Transactions } from './pages/Transactions.js';
@@ -38,6 +40,11 @@ function GameRoute() {
 function GameReplayRoute() {
   const { code } = useParams<{ code: string }>();
   return <GameReplay key={code} />;
+}
+
+function CageMatchDetailRoute() {
+  const { code } = useParams<{ code: string }>();
+  return <CageMatchDetail key={code} />;
 }
 
 function AppShell() {
@@ -106,6 +113,22 @@ function AppShell() {
             element={
               <ProtectedRoute>
                 <GameReplayRoute />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/cage"
+            element={
+              <ProtectedRoute>
+                <CageMatches />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/cage/:code"
+            element={
+              <ProtectedRoute>
+                <CageMatchDetailRoute />
               </ProtectedRoute>
             }
           />

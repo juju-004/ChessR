@@ -56,6 +56,11 @@ export interface IGame extends Document {
   // settlement path is ever triggered twice for the same game (e.g. a
   // reconciliation sweep racing the live socket flow after a restart).
   wagerSettled: boolean;
+  // Set when this game is one leg of a cage match — links back to the parent
+  // CageMatch document and records this leg's position in its ordered list.
+  // Left undefined for standalone games (the overwhelming majority).
+  cageMatchId?: Types.ObjectId;
+  legIndex?: number;
   createdAt: Date;
   startedAt?: Date;
   endedAt?: Date;
@@ -117,6 +122,8 @@ const gameSchema = new Schema<IGame>(
     isPrivate: { type: Boolean, default: false },
     wagerTokens: { type: Number, default: 0, min: 0 },
     wagerSettled: { type: Boolean, default: false },
+    cageMatchId: { type: Schema.Types.ObjectId, ref: 'CageMatch', index: true },
+    legIndex: { type: Number },
     startedAt: { type: Date },
     endedAt: { type: Date },
   },

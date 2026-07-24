@@ -105,6 +105,71 @@ export function GlobalListeners() {
       notify("Your rematch offer was declined.", [], 4000);
     }
 
+    function onCageReceived(payload: {
+      inviteId: string;
+      from: { username: string };
+      legs: { baseMinutes: number | null; incrementSeconds: number; variant: string }[];
+      wagerMode: string;
+      wagerTokens?: number;
+    }) {
+      if (!socket) return;
+      const wagerNote =
+        payload.wagerMode !== "none" && payload.wagerTokens
+          ? `, ${payload.wagerTokens} R wager`
+          : "";
+      notify(
+        `${payload.from.username} challenged you to a ${payload.legs.length}-leg cage match${wagerNote}.`,
+        [
+          {
+            label: "Accept",
+            onClick: () =>
+              socket.emit("cage:respond", { inviteId: payload.inviteId, accept: true }),
+          },
+          {
+            label: "Decline",
+            variant: "secondary",
+            onClick: () =>
+              socket.emit("cage:respond", { inviteId: payload.inviteId, accept: false }),
+          },
+        ],
+        60_000,
+      );
+    }
+
+    function onCageAccepted(payload: { firstLeg: { joinCode: string } }) {
+      navigate(`/game/${payload.firstLeg.joinCode}`);
+    }
+
+    function onCageDeclined() {
+      notify("Your cage match invite was declined.", [], 4000);
+    }
+
+    function onCageCancelled() {
+      notify("That cage match invite was cancelled.", [], 4000);
+    }
+
+    function onCageError(payload: { message: string }) {
+      notify(payload.message, [], 6000);
+    }
+
+    function onCageNextLeg(payload: { nextLeg?: { joinCode: string } }) {
+      if (!payload.nextLeg) return;
+      const joinCode = payload.nextLeg.joinCode;
+      notify(
+        "Your cage match's next leg is starting.",
+        [{ label: "Play it now", onClick: () => navigate(`/game/${joinCode}`) }],
+        20_000,
+      );
+    }
+
+    function onCageMatchOver(payload: { matchCode: string }) {
+      notify(
+        "A cage match you're in has finished.",
+        [{ label: "View result", onClick: () => navigate(`/cage/${payload.matchCode}`) }],
+        20_000,
+      );
+    }
+
     socket.on("challenge:received", onChallengeReceived);
     socket.on("challenge:accepted", onChallengeAccepted);
     socket.on("challenge:declined", onChallengeDeclined);
@@ -113,6 +178,13 @@ export function GlobalListeners() {
     socket.on("game:rematch_offered", onRematchOffered);
     socket.on("game:rematch_accepted", onRematchAccepted);
     socket.on("game:rematch_declined", onRematchDeclined);
+    socket.on("cage:received", onCageReceived);
+    socket.on("cage:accepted", onCageAccepted);
+    socket.on("cage:declined", onCageDeclined);
+    socket.on("cage:cancelled", onCageCancelled);
+    socket.on("cage:error", onCageError);
+    socket.on("cage:next_leg", onCageNextLeg);
+    socket.on("cage:match_over", onCageMatchOver);
 
     return () => {
       socket.off("challenge:received", onChallengeReceived);
@@ -123,6 +195,13 @@ export function GlobalListeners() {
       socket.off("game:rematch_offered", onRematchOffered);
       socket.off("game:rematch_accepted", onRematchAccepted);
       socket.off("game:rematch_declined", onRematchDeclined);
+      socket.off("cage:received", onCageReceived);
+      socket.off("cage:accepted", onCageAccepted);
+      socket.off("cage:declined", onCageDeclined);
+      socket.off("cage:cancelled", onCageCancelled);
+      socket.off("cage:error", onCageError);
+      socket.off("cage:next_leg", onCageNextLeg);
+      socket.off("cage:match_over", onCageMatchOver);
     };
   }, [socket, navigate, notify]);
 

@@ -15,8 +15,8 @@ import {
   createDirectGame,
   settleWager,
   refundWagerBothSides,
-  notifyMyGamesChanged,
 } from '../services/game.service.js';
+import { advanceCageMatchLeg } from '../services/cageMatch.service.js';
 import { scheduleGameTimer, clearGameTimer, setTimeoutHandler } from '../services/clock.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
@@ -90,11 +90,29 @@ async function endGameAndBroadcast(
     reason: endReason,
     wagerSettlement,
   });
-  notifyMyGamesChanged([finalState.whiteId, finalState.blackId], gameId);
   finalizeGame(gameId, finalState.fen, 'finished', result, endReason).catch((err) =>
     console.error('finalizeGame failed:', err),
   );
   deleteLiveState(gameId).catch((err) => console.error('deleteLiveState failed:', err));
+
+  await advanceCageMatchIfLeg(gameId, result, endReason);
+}
+
+// If a game is one leg of a cage match, advance the series: either the next
+// leg starts automatically, or the whole match concludes (including any
+// winner-takes-all payout). Looked up fresh from Mongo rather than threaded
+// through every call site, since the overwhelming majority of games have
+// nothing to do with a cage match. A no-moves abort has no real winner, so
+// it's reported as a draw for leg-scoring purposes — the per-leg wager (if
+// any) is still refunded rather than paid out, via refundWagerBothSides.
+async function advanceCageMatchIfLeg(
+  gameId: string,
+  result: 'white' | 'black' | 'draw',
+  endReason: string,
+) {
+  const gameDoc = await Game.findById(gameId).select('cageMatchId legIndex').lean();
+  if (!gameDoc?.cageMatchId || gameDoc.legIndex === undefined) return;
+  await advanceCageMatchLeg(gameDoc.cageMatchId.toString(), gameDoc.legIndex, result, endReason);
 }
 
 export function registerClockTimeoutHandler(io: Server) {
@@ -252,6 +270,8 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         moves: game.moves,
         timeControl: game.timeControl,
         wagerTokens: game.wagerTokens,
+        cageMatchId: game.cageMatchId ?? null,
+        legIndex: game.legIndex ?? null,
         whiteRemainingMs:
           liveState?.whiteRemainingMs ?? (game.timeControl.baseSeconds ? game.timeControl.baseSeconds * 1000 : null),
         blackRemainingMs:
@@ -290,15 +310,6 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           blackRemainingMs: result.blackRemainingMs,
           turnStartedAtMs: Date.now(),
         });
-
-        // Lets a navbar "your games" widget update live even for a player
-        // who's currently on a different page — fired off after the
-        // broadcast above so it can never slow down move delivery.
-        getLiveState(gameId)
-          .then((s) => {
-            if (s) notifyMyGamesChanged([s.whiteId, s.blackId], gameId);
-          })
-          .catch(() => {});
 
         appendMove(gameId, {
           san: result.san,
@@ -512,7 +523,8 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       await deleteLiveState(gameId);
 
       io.to(gameRoom(gameId)).emit('game:over', { gameId, result: null, reason: 'aborted_no_moves' });
-      notifyMyGamesChanged([state.whiteId, state.blackId], gameId);
+
+      await advanceCageMatchIfLeg(gameId, 'draw', 'aborted_no_moves');
     }),
   );
 

@@ -13,6 +13,13 @@ import { scheduleGameTimer } from "./clock.service.js";
 import { getIo } from "../sockets/io.js";
 import { generateChess960Fen } from "./chess960.service.js";
 import { debitWagerStake, creditWagerReturn } from "./wallet.service.js";
+// NOTE: cageMatch.service.ts imports several functions from this same file
+// (createDirectGame, finalizeGame, settleWager), so this is a deliberate
+// circular import. It's safe here because every cross-reference on both
+// sides is a hoisted `function` export only ever called at runtime (inside
+// request/reconciliation handlers) — never evaluated at module-load time —
+// so there's no temporal-dead-zone issue either direction.
+import { advanceCageMatchLeg } from "./cageMatch.service.js";
 
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -103,12 +110,6 @@ export async function cancelOpenGame(gameId: string, hostUserId: string): Promis
   if (game.wagerTokens > 0) {
     await creditWagerReturn(hostUserId, game.id, game.wagerTokens, "wager_refund");
   }
-
-  try {
-    notifyMyGamesChanged([hostUserId], game.id);
-  } catch {
-    // Socket.IO not initialized — safe to ignore.
-  }
 }
 
 /** Joins an open game and starts it immediately. Also notifies anyone already
@@ -159,7 +160,6 @@ export async function joinOpenGame(
 
   try {
     getIo().to(`game:${game.id}`).emit("game:state_changed");
-    notifyMyGamesChanged([game.white.toString(), game.black?.toString()], game.id);
   } catch {
     // Socket.IO not initialized (e.g. in a script/test context) — safe to ignore.
   }
@@ -174,6 +174,7 @@ export async function createDirectGame(
   challengeId?: string,
   variant: "standard" | "chess960" = "standard",
   wagerTokens = 0,
+  cageLeg?: { cageMatchId: string; legIndex: number },
 ): Promise<IGame> {
   const joinCode = await uniqueJoinCode();
   const startingFen =
@@ -190,6 +191,9 @@ export async function createDirectGame(
     startedAt: new Date(),
     challengeId,
     wagerTokens,
+    ...(cageLeg
+      ? { cageMatchId: cageLeg.cageMatchId, legIndex: cageLeg.legIndex }
+      : {}),
     timeControl: {
       baseSeconds:
         timeControl.baseMinutes === null ? null : timeControl.baseMinutes * 60,
@@ -229,12 +233,6 @@ export async function createDirectGame(
   );
   await scheduleGameTimer(game.id);
 
-  try {
-    notifyMyGamesChanged([whiteId, blackId], game.id);
-  } catch {
-    // Socket.IO not initialized — safe to ignore.
-  }
-
   return game;
 }
 
@@ -251,18 +249,6 @@ export async function listMyActiveGames(userId: string) {
     .populate("white", "username")
     .populate("black", "username")
     .lean();
-}
-
-/** Pings a lightweight "something about one of your games changed" event at
- *  a set of users' personal rooms (joined by every authenticated socket on
- *  connect — see presenceSocket.ts). Deliberately payload-light: clients
- *  that care refetch listMyActiveGames rather than trying to keep a
- *  hand-rolled diff in sync across every place a game can change. */
-export function notifyMyGamesChanged(userIds: Array<string | null | undefined>, gameId: string): void {
-  const io = getIo();
-  for (const id of userIds) {
-    if (id) io.to(`user:${id}`).emit("myGames:changed", { gameId });
-  }
 }
 
 export async function listFriendsActiveGames(userId: string) {
@@ -435,6 +421,12 @@ export async function reconcileActiveGames(): Promise<{
       await refundWagerBothSides(gameId, g.white.toString(), (g.black ?? "").toString(), g.wagerTokens).catch(
         (err) => console.error("refundWagerBothSides failed during reconciliation:", err),
       );
+      if (g.cageMatchId && g.legIndex !== undefined) {
+        // Same treatment as a live no-moves abort: no real winner to report,
+        // so it's scored as a draw for this leg rather than stalling the
+        // whole cage match indefinitely.
+        await advanceCageMatchLeg(g.cageMatchId.toString(), g.legIndex, "draw", "abandoned");
+      }
       aborted++;
       continue;
     }
@@ -458,6 +450,9 @@ export async function reconcileActiveGames(): Promise<{
       ).catch((err) =>
         console.error("settleWager failed during reconciliation:", err),
       );
+      if (g.cageMatchId && g.legIndex !== undefined) {
+        await advanceCageMatchLeg(g.cageMatchId.toString(), g.legIndex, timeoutWinner, "timeout");
+      }
       timedOut++;
       continue;
     }
