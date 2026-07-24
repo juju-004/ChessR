@@ -8,6 +8,7 @@ import {
   joinOpenGame,
   cancelOpenGame,
   listOpenGames,
+  listMyActiveGames,
   getGameByCode,
   listFriendsActiveGames,
 } from '../services/game.service.js';
@@ -87,6 +88,11 @@ export const getGame = asyncHandler(async (req, res) => {
 
 export const getFriendsActiveGames = asyncHandler(async (req: AuthedRequest, res) => {
   const games = await listFriendsActiveGames(req.user!.id);
+  res.json({ games });
+});
+
+export const getMyActiveGames = asyncHandler(async (req: AuthedRequest, res) => {
+  const games = await listMyActiveGames(req.user!.id);
   res.json({ games });
 });
 

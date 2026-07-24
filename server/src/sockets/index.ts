@@ -7,6 +7,7 @@ import { socketAuthMiddleware } from './socketAuth.js';
 import { registerPresenceHandlers } from './presenceSocket.js';
 import { registerGameHandlers, registerClockTimeoutHandler } from './gameSocket.js';
 import { registerChallengeHandlers } from './challengeSocket.js';
+import { registerPingHandlers } from './pingSocket.js';
 import { setIo } from './io.js';
 
 export function initSocketServer(httpServer: HttpServer): Server {
@@ -33,6 +34,7 @@ export function initSocketServer(httpServer: HttpServer): Server {
     registerPresenceHandlers(io, socket);
     registerGameHandlers(io, socket);
     registerChallengeHandlers(io, socket);
+    registerPingHandlers(io, socket);
   });
 
   setIo(io);

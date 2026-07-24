@@ -2,6 +2,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext.js';
 import { logout } from '../api/auth.js';
 import { useTokenBalance } from '../hooks/useTokenBalance.js';
+import { MyGamesMenu } from './MyGamesMenu.js';
+import { ConnectionStatus } from './ConnectionStatus.js';
 
 export function Navbar() {
   const { isAuthed, user } = useAuth();
@@ -47,6 +49,8 @@ export function Navbar() {
           >
             {balance ?? '…'} R
           </Link>
+          <MyGamesMenu />
+          <ConnectionStatus />
           <span className="text-sm text-neutral-500">{user?.username}</span>
           <button onClick={handleLogout} className="text-sm text-neutral-300 hover:text-neutral-100">
             Log out

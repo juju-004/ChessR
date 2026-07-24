@@ -15,6 +15,7 @@ import {
   createDirectGame,
   settleWager,
   refundWagerBothSides,
+  notifyMyGamesChanged,
 } from '../services/game.service.js';
 import { scheduleGameTimer, clearGameTimer, setTimeoutHandler } from '../services/clock.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
@@ -89,6 +90,7 @@ async function endGameAndBroadcast(
     reason: endReason,
     wagerSettlement,
   });
+  notifyMyGamesChanged([finalState.whiteId, finalState.blackId], gameId);
   finalizeGame(gameId, finalState.fen, 'finished', result, endReason).catch((err) =>
     console.error('finalizeGame failed:', err),
   );
@@ -288,6 +290,15 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           blackRemainingMs: result.blackRemainingMs,
           turnStartedAtMs: Date.now(),
         });
+
+        // Lets a navbar "your games" widget update live even for a player
+        // who's currently on a different page — fired off after the
+        // broadcast above so it can never slow down move delivery.
+        getLiveState(gameId)
+          .then((s) => {
+            if (s) notifyMyGamesChanged([s.whiteId, s.blackId], gameId);
+          })
+          .catch(() => {});
 
         appendMove(gameId, {
           san: result.san,
@@ -501,6 +512,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       await deleteLiveState(gameId);
 
       io.to(gameRoom(gameId)).emit('game:over', { gameId, result: null, reason: 'aborted_no_moves' });
+      notifyMyGamesChanged([state.whiteId, state.blackId], gameId);
     }),
   );
 

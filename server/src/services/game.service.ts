@@ -103,6 +103,12 @@ export async function cancelOpenGame(gameId: string, hostUserId: string): Promis
   if (game.wagerTokens > 0) {
     await creditWagerReturn(hostUserId, game.id, game.wagerTokens, "wager_refund");
   }
+
+  try {
+    notifyMyGamesChanged([hostUserId], game.id);
+  } catch {
+    // Socket.IO not initialized — safe to ignore.
+  }
 }
 
 /** Joins an open game and starts it immediately. Also notifies anyone already
@@ -153,6 +159,7 @@ export async function joinOpenGame(
 
   try {
     getIo().to(`game:${game.id}`).emit("game:state_changed");
+    notifyMyGamesChanged([game.white.toString(), game.black?.toString()], game.id);
   } catch {
     // Socket.IO not initialized (e.g. in a script/test context) — safe to ignore.
   }
@@ -222,7 +229,40 @@ export async function createDirectGame(
   );
   await scheduleGameTimer(game.id);
 
+  try {
+    notifyMyGamesChanged([whiteId, blackId], game.id);
+  } catch {
+    // Socket.IO not initialized — safe to ignore.
+  }
+
   return game;
+}
+
+/** Every game — waiting or active — the given user is currently seated in,
+ *  across friends and strangers alike. Powers the "your games" switcher in
+ *  the navbar, which needs to work regardless of who the opponent is. */
+export async function listMyActiveGames(userId: string) {
+  return Game.find({
+    status: { $in: ["waiting", "active"] },
+    $or: [{ white: userId }, { black: userId }],
+  })
+    .sort({ startedAt: -1, createdAt: -1 })
+    .limit(50)
+    .populate("white", "username")
+    .populate("black", "username")
+    .lean();
+}
+
+/** Pings a lightweight "something about one of your games changed" event at
+ *  a set of users' personal rooms (joined by every authenticated socket on
+ *  connect — see presenceSocket.ts). Deliberately payload-light: clients
+ *  that care refetch listMyActiveGames rather than trying to keep a
+ *  hand-rolled diff in sync across every place a game can change. */
+export function notifyMyGamesChanged(userIds: Array<string | null | undefined>, gameId: string): void {
+  const io = getIo();
+  for (const id of userIds) {
+    if (id) io.to(`user:${id}`).emit("myGames:changed", { gameId });
+  }
 }
 
 export async function listFriendsActiveGames(userId: string) {

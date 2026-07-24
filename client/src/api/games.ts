@@ -55,6 +55,25 @@ export function cancelGame(gameId: string) {
   return apiFetch<void>(`/games/${gameId}`, { method: 'DELETE' });
 }
 
+export interface MyActiveGame {
+  _id: string;
+  joinCode: string;
+  variant: GameVariant;
+  status: 'waiting' | 'active';
+  white: { _id: string; username: string };
+  black: { _id: string; username: string } | null;
+  timeControl: { baseSeconds: number | null; incrementSeconds: number };
+  wagerTokens: number;
+  fen: string;
+  moves: unknown[];
+  startedAt?: string;
+  createdAt: string;
+}
+
+export function listMyActiveGames() {
+  return apiFetch<{ games: MyActiveGame[] }>('/games/active/mine');
+}
+
 export function listOpenGames() {
   return apiFetch<{ games: OpenGame[] }>('/games/open');
 }
