@@ -421,6 +421,17 @@ export function Game() {
     setPromoPending(null);
   }
 
+  function handleForfeitCageMatch() {
+    if (!gameMeta?.cageMatchId || !socket) return;
+    if (
+      confirm(
+        "Forfeit the ENTIRE cage match — not just this leg? Your opponent will be declared the overall winner and any remaining legs will be skipped.",
+      )
+    ) {
+      socket.emit("cage:forfeit", { matchId: gameMeta.cageMatchId });
+    }
+  }
+
   function handleResign() {
     if (!socket || !gameMeta) return;
     if (confirm("Are you sure you want to resign?")) {
@@ -630,6 +641,17 @@ export function Game() {
             )}
           </div>
         )}
+
+        {isPlayer && gameMeta?.cageMatchId && (
+          <div className="mt-2">
+            <button
+              onClick={handleForfeitCageMatch}
+              className="rounded-md border border-red-900 bg-red-950/30 px-4 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-950/50"
+            >
+              Forfeit entire cage match
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
@@ -690,7 +712,7 @@ export function Game() {
           reason={gameOver.reason}
           myColor={myColor}
           isPlayer={isPlayer}
-          canRematch={isPlayer && gameOver.reason !== "aborted_no_moves"}
+          canRematch={isPlayer && gameOver.reason !== "aborted_no_moves" && gameOver.reason !== "cage_forfeit"}
           rematchState={rematchState}
           wagerSettlement={gameOver.wagerSettlement}
           myUserId={user?.id}

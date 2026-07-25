@@ -32,6 +32,15 @@ export type LegCategory = 'bullet' | 'blitz' | 'rapid' | 'classical';
 
 export type LegResult = 'p1' | 'p2' | 'draw' | null;
 
+// Why the match itself ended (distinct from an individual leg's endReason):
+//  - 'completed': every leg was played (or the winner mode's target/clinch
+//    condition was met) and the score decided it normally.
+//  - 'timeout_forfeit': a player let their clock run out on some leg, which
+//    ends the WHOLE match immediately in the other player's favor — not just
+//    that one leg.
+//  - 'forfeit': a player explicitly forfeited the whole match.
+export type CageMatchEndReason = 'completed' | 'timeout_forfeit' | 'forfeit' | null;
+
 export interface ICageLeg {
   index: number;
   variant: 'standard' | 'chess960';
@@ -64,6 +73,7 @@ export interface ICageMatch extends Document {
   wagerTokens: number;
   wagerSettled: boolean;
   matchWinner: 'p1' | 'p2' | 'draw' | null;
+  matchEndReason: CageMatchEndReason;
   forfeitedBy: Types.ObjectId | null;
   createdAt: Date;
   startedAt?: Date;
@@ -117,6 +127,11 @@ const cageMatchSchema = new Schema<ICageMatch>(
     wagerTokens: { type: Number, default: 0, min: 0 },
     wagerSettled: { type: Boolean, default: false },
     matchWinner: { type: String, enum: ['p1', 'p2', 'draw', null], default: null },
+    matchEndReason: {
+      type: String,
+      enum: ['completed', 'timeout_forfeit', 'forfeit', null],
+      default: null,
+    },
     forfeitedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     startedAt: { type: Date, default: () => new Date() },
     endedAt: { type: Date },

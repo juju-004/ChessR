@@ -1,16 +1,33 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSocket } from '../contexts/SocketContext.js';
-import { getCageMatchByCode, computeCageStandings, type CageMatch } from '../api/cageMatches.js';
+import { getCageMatchByCode, computeCageStandings, type CageMatch, type CageLeg } from '../api/cageMatches.js';
 
 interface Props {
   cageMatchId: string;
   legIndex: number;
 }
 
-/** A compact "where are we in this series" strip shown on a leg's game page —
- *  for players AND spectators who land on a leg midway through a cage match
- *  and need the score and remaining-games context at a glance, without
+const PIP_COLOR: Record<CageLeg['status'], string> = {
+  finished: 'bg-neutral-600',
+  active: 'bg-blue-500',
+  pending: 'bg-neutral-800',
+  skipped: 'bg-neutral-900',
+};
+
+function pipTitle(leg: CageLeg, p1Name: string, p2Name: string): string {
+  if (leg.status === 'active') return `Leg ${leg.index + 1} — in progress`;
+  if (leg.status === 'skipped') return `Leg ${leg.index + 1} — skipped`;
+  if (leg.status === 'pending') return `Leg ${leg.index + 1} — not yet played`;
+  if (leg.result === 'draw') return `Leg ${leg.index + 1} — draw`;
+  if (leg.result === 'p1') return `Leg ${leg.index + 1} — ${p1Name} won`;
+  if (leg.result === 'p2') return `Leg ${leg.index + 1} — ${p2Name} won`;
+  return `Leg ${leg.index + 1}`;
+}
+
+/** A compact "where are we in this series" scoreboard shown on a leg's game
+ *  page — for players AND spectators who land on a leg midway through a cage
+ *  match and need the score and remaining-games context at a glance, without
  *  clicking through to the full match page. */
 export function CageMatchScoreboard({ cageMatchId, legIndex }: Props) {
   const socket = useSocket();
@@ -23,8 +40,8 @@ export function CageMatchScoreboard({ cageMatchId, legIndex }: Props) {
         if (!cancelled) setMatch(match);
       })
       .catch(() => {
-        /* Scoreboard is a nice-to-have — a fetch failure just means we don't
-           show it, no need to surface an error on the game page itself. */
+        /* Scoreboard is a nice-to-have — a fetch failure just means we
+           don't show it, no need to surface an error on the game page. */
       });
     return () => {
       cancelled = true;
@@ -52,22 +69,44 @@ export function CageMatchScoreboard({ cageMatchId, legIndex }: Props) {
   const standings = computeCageStandings(match);
   const totalLegs = match.legs.length;
   const legsLeft = match.legs.filter((l) => l.status === 'pending' || l.status === 'active').length;
+  const p1Name = match.player1.username;
+  const p2Name = match.player2.username;
 
   return (
-    <Link
-      to={`/cage/${match.matchCode}`}
-      className="mb-3 block rounded-md border border-purple-900 bg-purple-950/30 px-3 py-2 hover:bg-purple-950/50"
-    >
-      <div className="flex items-center justify-between text-sm">
-        <span className="font-semibold text-purple-200">
-          {match.player1.username} <span className="text-purple-300">{standings.p1Score}</span>
-          <span className="mx-1 text-purple-500">–</span>
-          <span className="text-purple-300">{standings.p2Score}</span> {match.player2.username}
-        </span>
-        <span className="text-purple-400">
-          Leg {legIndex + 1}/{totalLegs} · {legsLeft} left
-        </span>
+    <div className="mb-3 rounded-md border border-purple-900 bg-purple-950/30 px-3 py-2">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-semibold text-purple-100">
+          <span className={standings.p1Score >= standings.p2Score ? 'text-white' : 'text-purple-300'}>
+            {p1Name} {standings.p1Score}
+          </span>
+          <span className="mx-1.5 text-purple-500">–</span>
+          <span className={standings.p2Score >= standings.p1Score ? 'text-white' : 'text-purple-300'}>
+            {standings.p2Score} {p2Name}
+          </span>
+        </div>
+        <Link to={`/cage/${match.matchCode}`} className="text-xs text-purple-400 hover:text-purple-300">
+          Full match →
+        </Link>
       </div>
-    </Link>
+
+      <div className="mt-1.5 flex items-center gap-1">
+        {match.legs.map((leg) => (
+          <span
+            key={leg.index}
+            title={pipTitle(leg, p1Name, p2Name)}
+            className={`h-2 flex-1 rounded-sm ${PIP_COLOR[leg.status]} ${
+              leg.index === legIndex ? 'ring-1 ring-blue-400 ring-offset-1 ring-offset-purple-950' : ''
+            }`}
+          />
+        ))}
+      </div>
+
+      <div className="mt-1.5 flex items-center justify-between text-xs text-purple-400">
+        <span>
+          Leg {legIndex + 1} of {totalLegs}
+        </span>
+        <span>{legsLeft} to play</span>
+      </div>
+    </div>
   );
 }

@@ -39,7 +39,7 @@ function safeHandler<T>(socket: Socket, fn: (payload: T) => Promise<void>): (pay
   return (payload: T) => {
     fn(payload).catch((err) => {
       console.error('cage match socket handler failed:', err);
-      emitError(socket, 'Something went wrong with that cage match. Please try again.');
+      emitError(socket, err instanceof Error ? err.message : 'Something went wrong with that cage match');
     });
   };
 }
@@ -180,6 +180,7 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
         matchId: match.id,
         matchCode: match.matchCode,
         matchWinner: match.matchWinner,
+        matchEndReason: match.matchEndReason,
         forfeitedBy: userId,
       };
       io.to(`user:${match.player1.toString()}`).emit('cage:match_over', payload);

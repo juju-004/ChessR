@@ -352,17 +352,26 @@ export async function onLegFinished(
   leg.result = legResult;
   leg.endReason = endReason;
 
+  // Letting your clock run out on any single leg ends the WHOLE cage match
+  // immediately in the other player's favor — not just that one leg. This is
+  // treated the same as an explicit forfeit, regardless of the running score
+  // or which winner mode the match is using.
+  const isTimeoutForfeit = endReason === "timeout" && legResult !== "draw";
+
   const standings = computeStandings(match);
-  const outcome = decideOutcome(match, standings);
+  const outcome: Outcome = isTimeoutForfeit
+    ? { decided: true, winner: legResult }
+    : decideOutcome(match, standings);
 
   if (outcome.decided) {
-    // Skip any legs that never got played (only possible for first_to_n
-    // clinching early).
+    // Skip any legs that never got played (either a first_to_n clinch, or a
+    // timeout forfeit cutting the series short).
     for (const l of match.legs) {
       if (l.status === "pending") l.status = "skipped";
     }
     match.status = "finished";
     match.matchWinner = outcome.winner;
+    match.matchEndReason = isTimeoutForfeit ? "timeout_forfeit" : "completed";
     match.endedAt = new Date();
     await match.save();
     await settleWinnerTakesAll(match, outcome.winner!).catch((err) => console.error("settleWinnerTakesAll failed:", err));
@@ -434,6 +443,7 @@ export async function forfeitCageMatch(matchId: string, forfeitingUserId: string
   }
   match.status = "finished";
   match.matchWinner = winnerSide;
+  match.matchEndReason = "forfeit";
   match.forfeitedBy = forfeitingUserId as any;
   match.endedAt = new Date();
   await match.save();
@@ -467,7 +477,11 @@ export async function advanceCageMatchLeg(
     try {
       const io = getIo();
       if (outcome.matchStatus === "match_over") {
-        const payload = { ...basePayload, matchWinner: outcome.matchWinner };
+        const payload = {
+          ...basePayload,
+          matchWinner: outcome.matchWinner,
+          matchEndReason: outcome.match.matchEndReason,
+        };
         io.to(`user:${p1}`).emit("cage:match_over", payload);
         io.to(`user:${p2}`).emit("cage:match_over", payload);
       } else if (outcome.nextLeg) {

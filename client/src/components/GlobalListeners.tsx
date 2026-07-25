@@ -162,9 +162,13 @@ export function GlobalListeners() {
       );
     }
 
-    function onCageMatchOver(payload: { matchCode: string }) {
+    function onCageMatchOver(payload: { matchCode: string; matchEndReason?: string | null }) {
+      const message =
+        payload.matchEndReason === "timeout_forfeit"
+          ? "A cage match you're in just ended — someone ran out of time on a leg."
+          : "A cage match you're in has finished.";
       notify(
-        "A cage match you're in has finished.",
+        message,
         [{ label: "View result", onClick: () => navigate(`/cage/${payload.matchCode}`) }],
         20_000,
       );

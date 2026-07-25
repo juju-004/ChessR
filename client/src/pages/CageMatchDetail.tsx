@@ -103,11 +103,15 @@ export function CageMatchDetail() {
     if (match.matchWinner === 'draw') outcomeLine = 'Match drawn';
     else {
       const winnerIsMe = (match.matchWinner === 'p1' && iAmP1) || (match.matchWinner === 'p2' && !iAmP1);
-      outcomeLine = match.forfeitedBy
-        ? `${match.forfeitedBy === me._id ? 'You' : opponent.username} forfeited — ${winnerIsMe ? 'you won' : opponent.username + ' won'}`
-        : winnerIsMe
-          ? 'You won the match'
-          : `${opponent.username} won the match`;
+      const winnerLabel = winnerIsMe ? 'you won' : `${opponent.username} won`;
+      if (match.matchEndReason === 'timeout_forfeit') {
+        const loserLabel = winnerIsMe ? opponent.username : 'You';
+        outcomeLine = `${loserLabel} ran out of time on a leg — ${winnerLabel} the match`;
+      } else if (match.forfeitedBy) {
+        outcomeLine = `${match.forfeitedBy === me._id ? 'You' : opponent.username} forfeited — ${winnerLabel}`;
+      } else {
+        outcomeLine = winnerIsMe ? 'You won the match' : `${opponent.username} won the match`;
+      }
     }
   }
 

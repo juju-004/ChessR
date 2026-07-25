@@ -35,6 +35,7 @@ export interface CageMatch {
   wagerMode: CageWagerMode;
   wagerTokens: number;
   matchWinner: 'p1' | 'p2' | 'draw' | null;
+  matchEndReason: 'completed' | 'timeout_forfeit' | 'forfeit' | null;
   forfeitedBy: string | null;
   createdAt: string;
   endedAt?: string;
