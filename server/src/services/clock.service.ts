@@ -21,12 +21,23 @@ export function clearGameTimer(gameId: string): void {
 }
 
 /** (Re)schedules the flag-fall check for whoever's turn it currently is. Call this
- *  after game start and after every successful move. Safe to call redundantly. */
+ *  after game start and after every successful move. Safe to call redundantly.
+ *  No-ops entirely during the idle phase (before both sides have made their
+ *  first move) since the real clock isn't running yet — see
+ *  gameState.service.ts's computeTimeoutWinner/finalizeMove. */
 export async function scheduleGameTimer(gameId: string): Promise<void> {
   clearGameTimer(gameId);
 
   const state = await getLiveState(gameId);
-  if (!state || state.status !== 'active' || state.timeControl.baseMs === null) return;
+  if (
+    !state ||
+    state.status !== 'active' ||
+    state.paused ||
+    state.timeControl.baseMs === null ||
+    state.moveCount < 2
+  ) {
+    return;
+  }
 
   const alreadyExpired = computeTimeoutWinner(state);
   if (alreadyExpired) {

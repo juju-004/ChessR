@@ -38,6 +38,10 @@ export interface LiveGameState {
   whiteRemainingMs: number | null;
   blackRemainingMs: number | null;
   turnStartedAtMs: number;
+  // True only for the brief, mutually-agreed pause window at the very start
+  // of a cage match leg (before either side has moved) — see pauseLiveClock/
+  // resumeLiveClock. Both clocks and moves are frozen while true.
+  paused: boolean;
   castlingRights: CastlingRightsState;
   /** Repetition-relevant position keys (piece placement + turn + castling
    *  rights + en-passant target — the four FEN fields FIDE rules actually
@@ -66,9 +70,14 @@ export function getSideToMove(fen: string): 'white' | 'black' {
   return new Chess(fen).turn() === 'w' ? 'white' : 'black';
 }
 
-/** Pure clock check — does not mutate anything. Returns the winning side if time has run out. */
+/** Pure clock check — does not mutate anything. Returns the winning side if time has run out.
+ *  Also returns null during the "idle" phase (before both sides have made
+ *  their first move) — the real clock doesn't start counting down until
+ *  then, same as Lichess. See finalizeMove for where time stops being free. */
 export function computeTimeoutWinner(state: LiveGameState): 'white' | 'black' | null {
-  if (state.status !== 'active' || state.timeControl.baseMs === null) return null;
+  if (state.status !== 'active' || state.paused || state.timeControl.baseMs === null || state.moveCount < 2) {
+    return null;
+  }
 
   const sideToMove = getSideToMove(state.fen);
   const elapsed = Date.now() - state.turnStartedAtMs;
@@ -104,6 +113,7 @@ export async function initLiveState(
     whiteRemainingMs: timeControl.baseMs,
     blackRemainingMs: timeControl.baseMs,
     turnStartedAtMs: Date.now(),
+    paused: false,
     castlingRights: initialCastlingRights(),
     positionHistory: [repetitionKey(fen)],
   };
@@ -149,7 +159,15 @@ async function finalizeMove(
 ): Promise<MoveResult> {
   let whiteRemainingMs = state.whiteRemainingMs;
   let blackRemainingMs = state.blackRemainingMs;
-  if (state.timeControl.baseMs !== null) {
+  // The clock is "free" for each side's very first move — nothing is charged
+  // until BOTH sides have made their first move (same as Lichess). This move
+  // being applied is White's 1st when state.moveCount is 0, or Black's 1st
+  // when it's 1; only from state.moveCount >= 2 onward does real time get
+  // deducted. turnStartedAtMs still resets below regardless, so the instant
+  // this idle window closes (Black's first move lands), both clocks start
+  // counting down completely fresh with full time on them.
+  const clockIsLive = state.moveCount >= 2;
+  if (clockIsLive && state.timeControl.baseMs !== null) {
     const elapsed = Date.now() - state.turnStartedAtMs;
     const increment = state.timeControl.incrementMs;
     if (moverSide === 'white') {
@@ -234,6 +252,7 @@ export async function applyMove(
   const state = await getLiveState(gameId);
   if (!state) throw ApiError.notFound('Game is not active');
   if (state.status !== 'active') throw ApiError.conflict('Game has already ended');
+  if (state.paused) throw ApiError.conflict('Game is paused — resume it first');
 
   const isWhite = state.whiteId === userId;
   const isBlack = state.blackId === userId;
@@ -320,5 +339,47 @@ export async function endGame(
 
   const newState: LiveGameState = { ...state, status: 'finished', result, endReason };
   await redis.set(stateKey(gameId), JSON.stringify(newState), 'EX', 300);
+  return newState;
+}
+
+/** Freezes the clock — banks whatever time has elapsed on the current side's
+ *  clock so it isn't lost, then marks the game paused (which also blocks
+ *  applyMove). Only ever meaningful before any move has been made, i.e. at
+ *  the very start of a cage match leg — see cageMatch.service.ts's pause
+ *  request flow, which is the only caller. */
+export async function pauseLiveClock(gameId: string): Promise<LiveGameState | null> {
+  const state = await getLiveState(gameId);
+  if (!state || state.status !== 'active' || state.paused) return state;
+
+  let whiteRemainingMs = state.whiteRemainingMs;
+  let blackRemainingMs = state.blackRemainingMs;
+  if (state.timeControl.baseMs !== null) {
+    const elapsed = Date.now() - state.turnStartedAtMs;
+    const sideToMove = getSideToMove(state.fen);
+    if (sideToMove === 'white') whiteRemainingMs = Math.max(0, (whiteRemainingMs ?? 0) - elapsed);
+    else blackRemainingMs = Math.max(0, (blackRemainingMs ?? 0) - elapsed);
+  }
+
+  const newState: LiveGameState = {
+    ...state,
+    whiteRemainingMs,
+    blackRemainingMs,
+    turnStartedAtMs: Date.now(),
+    paused: true,
+  };
+  await redis.set(stateKey(gameId), JSON.stringify(newState), 'EX', LIVE_STATE_TTL_SECONDS);
+  return newState;
+}
+
+/** Un-freezes the clock — restarts the current side's clock counting down
+ *  from whatever was banked at pause time (none of the paused duration
+ *  counts against them). Caller is responsible for rescheduling the flag-fall
+ *  timer and any grace timer afterward. */
+export async function resumeLiveClock(gameId: string): Promise<LiveGameState | null> {
+  const state = await getLiveState(gameId);
+  if (!state || state.status !== 'active' || !state.paused) return state;
+
+  const newState: LiveGameState = { ...state, turnStartedAtMs: Date.now(), paused: false };
+  await redis.set(stateKey(gameId), JSON.stringify(newState), 'EX', LIVE_STATE_TTL_SECONDS);
   return newState;
 }

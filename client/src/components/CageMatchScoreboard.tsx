@@ -11,12 +11,14 @@ interface Props {
 const PIP_COLOR: Record<CageLeg['status'], string> = {
   finished: 'bg-neutral-600',
   active: 'bg-blue-500',
+  paused: 'bg-amber-500',
   pending: 'bg-neutral-800',
   skipped: 'bg-neutral-900',
 };
 
 function pipTitle(leg: CageLeg, p1Name: string, p2Name: string): string {
   if (leg.status === 'active') return `Leg ${leg.index + 1} — in progress`;
+  if (leg.status === 'paused') return `Leg ${leg.index + 1} — paused`;
   if (leg.status === 'skipped') return `Leg ${leg.index + 1} — skipped`;
   if (leg.status === 'pending') return `Leg ${leg.index + 1} — not yet played`;
   if (leg.result === 'draw') return `Leg ${leg.index + 1} — draw`;
@@ -58,9 +60,13 @@ export function CageMatchScoreboard({ cageMatchId, legIndex }: Props) {
     }
     socket.on('cage:next_leg', refresh);
     socket.on('cage:match_over', refresh);
+    socket.on('cage:paused', refresh);
+    socket.on('cage:resumed', refresh);
     return () => {
       socket.off('cage:next_leg', refresh);
       socket.off('cage:match_over', refresh);
+      socket.off('cage:paused', refresh);
+      socket.off('cage:resumed', refresh);
     };
   }, [socket, cageMatchId]);
 
@@ -68,7 +74,9 @@ export function CageMatchScoreboard({ cageMatchId, legIndex }: Props) {
 
   const standings = computeCageStandings(match);
   const totalLegs = match.legs.length;
-  const legsLeft = match.legs.filter((l) => l.status === 'pending' || l.status === 'active').length;
+  const legsLeft = match.legs.filter(
+    (l) => l.status === 'pending' || l.status === 'active' || l.status === 'paused',
+  ).length;
   const p1Name = match.player1.username;
   const p2Name = match.player2.username;
 

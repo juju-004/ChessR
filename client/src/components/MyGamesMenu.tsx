@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Chess } from 'chess.js';
 import { listMyActiveGames, type MyActiveGame } from '../api/games.js';
+import { listMyCageMatches, computeCageStandings, type CageMatch } from '../api/cageMatches.js';
 import { formatTimeControl } from '../timeControls.js';
 import { turnColor } from '../chessUtils.js';
 import { useAuth } from '../contexts/AuthContext.js';
@@ -29,6 +30,7 @@ export function MyGamesMenu({ className }: MyGamesMenuProps) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [games, setGames] = useState<MyActiveGame[] | null>(null);
+  const [cageMatches, setCageMatches] = useState<CageMatch[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
@@ -37,8 +39,11 @@ export function MyGamesMenu({ className }: MyGamesMenuProps) {
     if (!open) return;
     setLoading(true);
     setError('');
-    listMyActiveGames()
-      .then((res) => setGames(res.games))
+    Promise.all([listMyActiveGames(), listMyCageMatches()])
+      .then(([gamesRes, cageRes]) => {
+        setGames(gamesRes.games);
+        setCageMatches(cageRes.matches.filter((m) => m.status === 'active'));
+      })
       .catch(() => setError('Could not load your games'))
       .finally(() => setLoading(false));
   }, [open]);
@@ -73,49 +78,107 @@ export function MyGamesMenu({ className }: MyGamesMenuProps) {
 
           {!error && loading && games === null && <p className="p-3 text-sm text-neutral-400">Loading…</p>}
 
-          {!error && games && games.length === 0 && (
-            <p className="p-3 text-sm text-neutral-400">No active games. Head to the dashboard to start one.</p>
-          )}
+          {!error &&
+            games &&
+            cageMatches &&
+            games.filter((g) => !g.cageMatchId).length === 0 &&
+            cageMatches.length === 0 && (
+              <p className="p-3 text-sm text-neutral-400">No active games. Head to the dashboard to start one.</p>
+            )}
 
           <div className="max-h-96 overflow-y-auto">
-            {games?.map((g) => {
-              const myColor = g.white._id === user?.id ? 'white' : 'black';
-              const opponent = myColor === 'white' ? g.black : g.white;
-              const waiting = g.status === 'waiting';
-              const isMyTurn = !waiting && turnColor(new Chess(g.fen)) === myColor;
+            {cageMatches && cageMatches.length > 0 && (
+              <div className="border-b border-neutral-800 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-purple-400">
+                Cage matches
+              </div>
+            )}
+            {cageMatches?.map((m) => {
+              const iAmP1 = m.player1._id === user?.id;
+              const opponent = iAmP1 ? m.player2 : m.player1;
+              const standings = computeCageStandings(m);
+              const myScore = iAmP1 ? standings.p1Score : standings.p2Score;
+              const oppScore = iAmP1 ? standings.p2Score : standings.p1Score;
+              const activeLeg = m.legs.find((l) => l.status === 'active');
+              const pausedLeg = m.legs.find((l) => l.status === 'paused');
 
               return (
                 <button
-                  key={g._id}
+                  key={m._id}
                   onClick={() => {
                     setOpen(false);
-                    navigate(`/game/${g.joinCode}`);
+                    const leg = activeLeg ?? pausedLeg;
+                    navigate(leg?.joinCode ? `/game/${leg.joinCode}` : `/cage/${m.matchCode}`);
                   }}
-                  className="flex w-full items-center justify-between gap-2 border-b border-neutral-800 px-3 py-2 text-left last:border-none hover:bg-neutral-800"
+                  className="flex w-full items-center justify-between gap-2 border-b border-neutral-800 bg-purple-950/10 px-3 py-2 text-left last:border-none hover:bg-purple-950/20"
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm text-neutral-100">
-                      {waiting ? 'Waiting for opponent…' : `vs ${opponent?.username ?? '?'}`}
+                      🥊 vs {opponent.username} · {myScore}–{oppScore}
                     </p>
                     <p className="truncate text-xs text-neutral-500">
-                      {formatTimeControl(g.timeControl)}
-                      {g.variant === 'chess960' ? ' · Chess960' : ''}
-                      {g.wagerTokens > 0 ? ` · ${g.wagerTokens} R wager` : ''}
+                      Leg {m.currentLegIndex + 1}/{m.legs.length}
                     </p>
                   </div>
-                  {isMyTurn && (
-                    <span className="shrink-0 rounded bg-red-900/40 px-1.5 py-0.5 text-[10px] font-bold text-red-300">
-                      Your move
+                  {activeLeg && (
+                    <span className="shrink-0 rounded bg-blue-900/40 px-1.5 py-0.5 text-[10px] font-bold text-blue-300">
+                      In progress
                     </span>
                   )}
-                  {waiting && (
-                    <span className="shrink-0 rounded bg-neutral-700 px-1.5 py-0.5 text-[10px] font-bold text-neutral-300">
-                      Waiting
+                  {!activeLeg && pausedLeg && (
+                    <span className="shrink-0 rounded bg-amber-900/40 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">
+                      Paused
                     </span>
                   )}
                 </button>
               );
             })}
+
+            {cageMatches && cageMatches.length > 0 && games && games.filter((g) => !g.cageMatchId).length > 0 && (
+              <div className="border-b border-neutral-800 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                Single games
+              </div>
+            )}
+
+            {games
+              ?.filter((g) => !g.cageMatchId)
+              .map((g) => {
+                const myColor = g.white._id === user?.id ? 'white' : 'black';
+                const opponent = myColor === 'white' ? g.black : g.white;
+                const waiting = g.status === 'waiting';
+                const isMyTurn = !waiting && turnColor(new Chess(g.fen)) === myColor;
+
+                return (
+                  <button
+                    key={g._id}
+                    onClick={() => {
+                      setOpen(false);
+                      navigate(`/game/${g.joinCode}`);
+                    }}
+                    className="flex w-full items-center justify-between gap-2 border-b border-neutral-800 px-3 py-2 text-left last:border-none hover:bg-neutral-800"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm text-neutral-100">
+                        {waiting ? 'Waiting for opponent…' : `vs ${opponent?.username ?? '?'}`}
+                      </p>
+                      <p className="truncate text-xs text-neutral-500">
+                        {formatTimeControl(g.timeControl)}
+                        {g.variant === 'chess960' ? ' · Chess960' : ''}
+                        {g.wagerTokens > 0 ? ` · ${g.wagerTokens} R wager` : ''}
+                      </p>
+                    </div>
+                    {isMyTurn && (
+                      <span className="shrink-0 rounded bg-red-900/40 px-1.5 py-0.5 text-[10px] font-bold text-red-300">
+                        Your move
+                      </span>
+                    )}
+                    {waiting && (
+                      <span className="shrink-0 rounded bg-neutral-700 px-1.5 py-0.5 text-[10px] font-bold text-neutral-300">
+                        Waiting
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
           </div>
         </div>
       )}

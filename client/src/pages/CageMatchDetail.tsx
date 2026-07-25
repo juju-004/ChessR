@@ -27,6 +27,7 @@ const WAGER_MODE_LABEL: Record<CageMatch['wagerMode'], string> = {
 const LEG_STATUS_DOT: Record<string, string> = {
   pending: 'bg-neutral-700',
   active: 'bg-blue-500',
+  paused: 'bg-amber-500',
   finished: 'bg-green-600',
   skipped: 'bg-neutral-800',
 };
@@ -57,20 +58,30 @@ export function CageMatchDetail() {
     function onNextLeg(payload: { matchId: string; nextLeg: { joinCode: string } }) {
       if (payload.matchId !== match!._id) return;
       refresh();
-      notify('The next leg is starting.', [
-        { label: 'Play it now', onClick: () => navigate(`/game/${payload.nextLeg.joinCode}`) },
-      ], 15_000);
+      notify(
+        'The next leg is starting.',
+        [{ label: 'Play it now', onClick: () => navigate(`/game/${payload.nextLeg.joinCode}`) }],
+        15_000,
+      );
     }
     function onMatchOver(payload: { matchId: string }) {
+      if (payload.matchId !== match!._id) return;
+      refresh();
+    }
+    function onPausedOrResumed(payload: { matchId: string }) {
       if (payload.matchId !== match!._id) return;
       refresh();
     }
 
     socket.on('cage:next_leg', onNextLeg);
     socket.on('cage:match_over', onMatchOver);
+    socket.on('cage:paused', onPausedOrResumed);
+    socket.on('cage:resumed', onPausedOrResumed);
     return () => {
       socket.off('cage:next_leg', onNextLeg);
       socket.off('cage:match_over', onMatchOver);
+      socket.off('cage:paused', onPausedOrResumed);
+      socket.off('cage:resumed', onPausedOrResumed);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, match?._id]);
@@ -97,6 +108,7 @@ export function CageMatchDetail() {
 
   const isParticipant = match.player1._id === user?.id || match.player2._id === user?.id;
   const activeLeg = match.legs.find((l) => l.status === 'active');
+  const pausedLeg = match.legs.find((l) => l.status === 'paused');
 
   let outcomeLine = '';
   if (match.status === 'finished') {
@@ -104,9 +116,9 @@ export function CageMatchDetail() {
     else {
       const winnerIsMe = (match.matchWinner === 'p1' && iAmP1) || (match.matchWinner === 'p2' && !iAmP1);
       const winnerLabel = winnerIsMe ? 'you won' : `${opponent.username} won`;
-      if (match.matchEndReason === 'timeout_forfeit') {
+      if (match.matchEndReason === 'no_show_forfeit') {
         const loserLabel = winnerIsMe ? opponent.username : 'You';
-        outcomeLine = `${loserLabel} ran out of time on a leg — ${winnerLabel} the match`;
+        outcomeLine = `${loserLabel} didn't move in time at the start of a leg — ${winnerLabel} the match`;
       } else if (match.forfeitedBy) {
         outcomeLine = `${match.forfeitedBy === me._id ? 'You' : opponent.username} forfeited — ${winnerLabel}`;
       } else {
@@ -173,6 +185,14 @@ export function CageMatchDetail() {
             Go to current leg (#{activeLeg.index + 1})
           </Link>
         )}
+        {match.status === 'active' && pausedLeg && (
+          <Link
+            to={`/game/${pausedLeg.joinCode}`}
+            className="mb-2 block w-full rounded-md border border-amber-900 bg-amber-950/30 px-3 py-2 text-center text-sm text-amber-300 hover:bg-amber-950/50"
+          >
+            ⏸ Leg #{pausedLeg.index + 1} is paused — go there to resume
+          </Link>
+        )}
         {match.status === 'active' && isParticipant && (
           <button
             onClick={handleForfeit}
@@ -200,7 +220,9 @@ export function CageMatchDetail() {
                   ? 'Skipped'
                   : leg.status === 'active'
                     ? 'In progress'
-                    : 'Pending';
+                    : leg.status === 'paused'
+                      ? 'Paused'
+                      : 'Pending';
             return (
               <li
                 key={leg.index}

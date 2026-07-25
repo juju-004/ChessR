@@ -16,7 +16,7 @@ import {
   settleWager,
   refundWagerBothSides,
 } from '../services/game.service.js';
-import { advanceCageMatchLeg } from '../services/cageMatch.service.js';
+import { advanceCageMatchLeg, handleLegMoveForNoShow } from '../services/cageMatch.service.js';
 import { scheduleGameTimer, clearGameTimer, setTimeoutHandler } from '../services/clock.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
@@ -272,6 +272,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         wagerTokens: game.wagerTokens,
         cageMatchId: game.cageMatchId ?? null,
         legIndex: game.legIndex ?? null,
+        paused: liveState?.paused ?? false,
         whiteRemainingMs:
           liveState?.whiteRemainingMs ?? (game.timeControl.baseSeconds ? game.timeControl.baseSeconds * 1000 : null),
         blackRemainingMs:
@@ -295,6 +296,15 @@ export function registerGameHandlers(io: Server, socket: Socket) {
 
       try {
         const result = await applyMove(gameId, userId, { from, to, promotion });
+
+        // A move landing clears the no-show grace window it just satisfied —
+        // and if this was White's first move, re-arms a fresh one for
+        // Black's first reply. Harmless no-op for any game that was never a
+        // cage match leg, or that's already past both first moves. Not
+        // awaited so it can't slow down how fast the opponent sees the move.
+        handleLegMoveForNoShow(gameId, result.moveNumber).catch((err) =>
+          console.error('handleLegMoveForNoShow failed:', err),
+        );
 
         // Broadcast first — Mongo persistence is for history/reconnect sync, it
         // doesn't need to gate how fast the opponent sees the move land.
@@ -510,8 +520,8 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       if (state.whiteId !== userId && state.blackId !== userId) {
         return emitError(socket, 'You are not a player in this game');
       }
-      if (state.moveCount > 0) {
-        return emitError(socket, 'This game can no longer be aborted — a move has already been played');
+      if (state.moveCount >= 2) {
+        return emitError(socket, 'This game can no longer be aborted — both sides have moved');
       }
 
       clearGameTimer(gameId);

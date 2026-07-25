@@ -68,6 +68,7 @@ export interface MyActiveGame {
   moves: unknown[];
   startedAt?: string;
   createdAt: string;
+  cageMatchId?: string | null;
 }
 
 export function listMyActiveGames() {

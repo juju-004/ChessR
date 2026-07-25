@@ -103,6 +103,9 @@ export function Game() {
     claimable: boolean;
   } | null>(null);
   const [rematchState, setRematchState] = useState<"idle" | "offered">("idle");
+  const [pausedLeg, setPausedLeg] = useState(false);
+  const [pauseRequestSent, setPauseRequestSent] = useState(false);
+  const [resumeRequestSent, setResumeRequestSent] = useState(false);
   const [gameOverModalDismissed, setGameOverModalDismissed] = useState(false);
   const [chatMessages, setChatMessages] = useState<
     { username: string; message: string; at: number }[]
@@ -208,6 +211,7 @@ export function Game() {
       setTurnStartedAtMs(payload.turnStartedAtMs);
       setWhiteConnected(!!payload.whiteConnected);
       setBlackConnected(!!payload.blackConnected);
+      setPausedLeg(!!payload.paused);
       const gameIsOver =
         payload.status === "finished" || payload.status === "aborted";
       setGameOver(
@@ -231,6 +235,7 @@ export function Game() {
       setWhiteRemainingMs(payload.whiteRemainingMs);
       setBlackRemainingMs(payload.blackRemainingMs);
       setTurnStartedAtMs(payload.turnStartedAtMs);
+      setPausedLeg(false);
       setMoves((prev) => [
         ...prev,
         {
@@ -360,6 +365,38 @@ export function Game() {
       setChatMessages((prev) => [...prev.slice(-199), payload]);
     }
 
+    function onLegPaused(payload: { gameId: string }) {
+      if (payload.gameId !== gameId) return;
+      setPausedLeg(true);
+      setPauseRequestSent(false);
+    }
+
+    function onLegResumed(payload: { gameId: string }) {
+      if (payload.gameId !== gameId) return;
+      setPausedLeg(false);
+      setResumeRequestSent(false);
+    }
+
+    function onPauseRequestSent(payload: { matchId: string }) {
+      if (payload.matchId !== gameMeta?.cageMatchId) return;
+      setPauseRequestSent(true);
+    }
+
+    function onPauseDeclinedLocal(payload: { matchId: string }) {
+      if (payload.matchId !== gameMeta?.cageMatchId) return;
+      setPauseRequestSent(false);
+    }
+
+    function onResumeRequestSent(payload: { matchId: string }) {
+      if (payload.matchId !== gameMeta?.cageMatchId) return;
+      setResumeRequestSent(true);
+    }
+
+    function onResumeDeclinedLocal(payload: { matchId: string }) {
+      if (payload.matchId !== gameMeta?.cageMatchId) return;
+      setResumeRequestSent(false);
+    }
+
     socket.on("connect_error", onConnectError);
     socket.on("connect", joinRoom);
     socket.on("game:sync", onSync);
@@ -373,6 +410,12 @@ export function Game() {
     socket.on("game:opponent_reconnected", onOpponentReconnected);
     socket.on("game:draw_offered", onDrawOffered);
     socket.on("spectator_chat:message", onChatMessage);
+    socket.on("cage:leg_paused", onLegPaused);
+    socket.on("cage:leg_resumed", onLegResumed);
+    socket.on("cage:pause_request_sent", onPauseRequestSent);
+    socket.on("cage:pause_declined", onPauseDeclinedLocal);
+    socket.on("cage:resume_request_sent", onResumeRequestSent);
+    socket.on("cage:resume_declined", onResumeDeclinedLocal);
 
     // Covers the common case where the socket is already connected by the
     // time this effect runs (normal navigation to the page).
@@ -393,6 +436,12 @@ export function Game() {
       socket.off("game:opponent_reconnected", onOpponentReconnected);
       socket.off("game:draw_offered", onDrawOffered);
       socket.off("spectator_chat:message", onChatMessage);
+      socket.off("cage:leg_paused", onLegPaused);
+      socket.off("cage:leg_resumed", onLegResumed);
+      socket.off("cage:pause_request_sent", onPauseRequestSent);
+      socket.off("cage:pause_declined", onPauseDeclinedLocal);
+      socket.off("cage:resume_request_sent", onResumeRequestSent);
+      socket.off("cage:resume_declined", onResumeDeclinedLocal);
     };
   }, [mode, socket, gameMeta, notify]);
 
@@ -430,6 +479,16 @@ export function Game() {
     ) {
       socket.emit("cage:forfeit", { matchId: gameMeta.cageMatchId });
     }
+  }
+
+  function handlePauseRequest() {
+    if (!gameMeta?.cageMatchId || !socket) return;
+    socket.emit("cage:pause_request", { matchId: gameMeta.cageMatchId });
+  }
+
+  function handleResumeRequest() {
+    if (!gameMeta?.cageMatchId || !socket) return;
+    socket.emit("cage:resume_request", { matchId: gameMeta.cageMatchId });
   }
 
   function handleResign() {
@@ -560,6 +619,12 @@ export function Game() {
           <CageMatchScoreboard cageMatchId={gameMeta.cageMatchId} legIndex={gameMeta.legIndex ?? 0} />
         )}
 
+        {pausedLeg && !gameOver && (
+          <div className="mb-3 rounded-md border border-amber-800 bg-amber-950/30 p-3 text-center text-sm text-amber-300">
+            ⏸ This leg is paused{isPlayer ? "" : " by the players"}.
+          </div>
+        )}
+
         {disconnectBanner && (
           <div className="mb-3 rounded-md border border-red-900 bg-red-950/40 p-3">
             <p className="mb-2 text-sm text-red-300">
@@ -590,6 +655,7 @@ export function Game() {
           blackRemainingMs={blackRemainingMs}
           turnStartedAtMs={turnStartedAtMs}
           isActive={status === "active"}
+          movesPlayed={moves.length}
           whiteUsername={gameMeta?.white?.username}
           blackUsername={gameMeta?.black?.username}
           whiteConnected={whiteConnected}
@@ -600,7 +666,7 @@ export function Game() {
           <ChessBoard
             fen={fen}
             orientation={myColor ?? "white"}
-            viewOnly={!isPlayer || status !== "active"}
+            viewOnly={!isPlayer || status !== "active" || pausedLeg}
             turnColor={chess.turn() === "w" ? "white" : "black"}
             movableColor={myColor}
             dests={dests}
@@ -616,7 +682,7 @@ export function Game() {
 
         {isPlayer && status === "active" && (
           <div className="mt-3 flex gap-2">
-            {moves.length === 0 ? (
+            {moves.length < 2 ? (
               <button
                 onClick={handleAbort}
                 className="rounded-md bg-neutral-700 px-4 py-2 text-sm font-semibold text-neutral-100 hover:bg-neutral-600"
@@ -639,6 +705,31 @@ export function Game() {
                 </button>
               </>
             )}
+          </div>
+        )}
+
+        {isPlayer && gameMeta?.cageMatchId && status === "active" && moves.length === 0 && !pausedLeg && (
+          <div className="mt-2">
+            <button
+              onClick={handlePauseRequest}
+              disabled={pauseRequestSent}
+              className="rounded-md border border-amber-800 bg-amber-950/30 px-4 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-950/50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {pauseRequestSent ? "Pause request sent…" : "⏸ Request pause"}
+            </button>
+          </div>
+        )}
+
+        {isPlayer && gameMeta?.cageMatchId && pausedLeg && (
+          <div className="mt-2 rounded-md border border-amber-800 bg-amber-950/30 px-4 py-2 text-sm text-amber-300">
+            <p className="mb-2 font-semibold">⏸ This leg is paused.</p>
+            <button
+              onClick={handleResumeRequest}
+              disabled={resumeRequestSent}
+              className="rounded-md bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {resumeRequestSent ? "Resume request sent…" : "▶ Request resume"}
+            </button>
           </div>
         )}
 

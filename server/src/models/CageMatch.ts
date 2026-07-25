@@ -35,11 +35,14 @@ export type LegResult = 'p1' | 'p2' | 'draw' | null;
 // Why the match itself ended (distinct from an individual leg's endReason):
 //  - 'completed': every leg was played (or the winner mode's target/clinch
 //    condition was met) and the score decided it normally.
-//  - 'timeout_forfeit': a player let their clock run out on some leg, which
-//    ends the WHOLE match immediately in the other player's favor — not just
-//    that one leg.
+//  - 'no_show_forfeit': a player didn't make their first move of a leg
+//    within the grace period, which ends the WHOLE match immediately in the
+//    other player's favor — not just that one leg. This exists specifically
+//    to stop someone from just walking away mid-series once a new leg
+//    auto-starts. A normal mid-game clock timeout, by contrast, only loses
+//    that one leg and the match continues on score as usual.
 //  - 'forfeit': a player explicitly forfeited the whole match.
-export type CageMatchEndReason = 'completed' | 'timeout_forfeit' | 'forfeit' | null;
+export type CageMatchEndReason = 'completed' | 'no_show_forfeit' | 'forfeit' | null;
 
 export interface ICageLeg {
   index: number;
@@ -47,7 +50,11 @@ export interface ICageLeg {
   baseMinutes: number | null;
   incrementSeconds: number;
   category: LegCategory;
-  status: 'pending' | 'active' | 'finished' | 'skipped';
+  // 'paused' only ever applies before either side has moved — see the
+  // cage:pause_request / cage:resume_request socket flow. Both players must
+  // agree to pause and to resume; either can request, the other accepts or
+  // declines.
+  status: 'pending' | 'active' | 'paused' | 'finished' | 'skipped';
   gameId: Types.ObjectId | null;
   joinCode: string | null;
   result: LegResult;
@@ -89,7 +96,7 @@ const legSchema = new Schema<ICageLeg>(
     category: { type: String, enum: ['bullet', 'blitz', 'rapid', 'classical'], required: true },
     status: {
       type: String,
-      enum: ['pending', 'active', 'finished', 'skipped'],
+      enum: ['pending', 'active', 'paused', 'finished', 'skipped'],
       default: 'pending',
     },
     gameId: { type: Schema.Types.ObjectId, ref: 'Game', default: null },
@@ -129,7 +136,7 @@ const cageMatchSchema = new Schema<ICageMatch>(
     matchWinner: { type: String, enum: ['p1', 'p2', 'draw', null], default: null },
     matchEndReason: {
       type: String,
-      enum: ['completed', 'timeout_forfeit', 'forfeit', null],
+      enum: ['completed', 'no_show_forfeit', 'forfeit', null],
       default: null,
     },
     forfeitedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },

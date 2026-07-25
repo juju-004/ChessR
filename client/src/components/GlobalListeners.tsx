@@ -164,14 +164,60 @@ export function GlobalListeners() {
 
     function onCageMatchOver(payload: { matchCode: string; matchEndReason?: string | null }) {
       const message =
-        payload.matchEndReason === "timeout_forfeit"
-          ? "A cage match you're in just ended — someone ran out of time on a leg."
+        payload.matchEndReason === "no_show_forfeit"
+          ? "A cage match you're in just ended — someone didn't move in time at the start of a leg."
           : "A cage match you're in has finished.";
       notify(
         message,
         [{ label: "View result", onClick: () => navigate(`/cage/${payload.matchCode}`) }],
         20_000,
       );
+    }
+
+    function onPauseRequested(payload: { matchId: string; matchCode: string }) {
+      if (!socket) return;
+      notify(
+        "Your opponent wants to pause the current leg before either of you has moved.",
+        [
+          {
+            label: "Allow pause",
+            onClick: () => socket.emit("cage:pause_respond", { matchId: payload.matchId, accept: true }),
+          },
+          {
+            label: "Decline",
+            variant: "secondary",
+            onClick: () => socket.emit("cage:pause_respond", { matchId: payload.matchId, accept: false }),
+          },
+        ],
+        60_000,
+      );
+    }
+
+    function onPauseDeclined() {
+      notify("Your pause request was declined.", [], 4000);
+    }
+
+    function onResumeRequested(payload: { matchId: string; matchCode: string }) {
+      if (!socket) return;
+      notify(
+        "Your opponent wants to resume the paused leg.",
+        [
+          {
+            label: "Resume",
+            onClick: () => socket.emit("cage:resume_respond", { matchId: payload.matchId, accept: true }),
+          },
+          {
+            label: "Not yet",
+            variant: "secondary",
+            onClick: () => socket.emit("cage:resume_respond", { matchId: payload.matchId, accept: false }),
+          },
+        ],
+        60_000,
+      );
+    }
+
+    function onResumeDeclined() {
+      notify("Your resume request was declined.", [], 4000);
     }
 
     socket.on("challenge:received", onChallengeReceived);
@@ -189,6 +235,10 @@ export function GlobalListeners() {
     socket.on("cage:error", onCageError);
     socket.on("cage:next_leg", onCageNextLeg);
     socket.on("cage:match_over", onCageMatchOver);
+    socket.on("cage:pause_requested", onPauseRequested);
+    socket.on("cage:pause_declined", onPauseDeclined);
+    socket.on("cage:resume_requested", onResumeRequested);
+    socket.on("cage:resume_declined", onResumeDeclined);
 
     return () => {
       socket.off("challenge:received", onChallengeReceived);
@@ -206,6 +256,10 @@ export function GlobalListeners() {
       socket.off("cage:error", onCageError);
       socket.off("cage:next_leg", onCageNextLeg);
       socket.off("cage:match_over", onCageMatchOver);
+      socket.off("cage:pause_requested", onPauseRequested);
+      socket.off("cage:pause_declined", onPauseDeclined);
+      socket.off("cage:resume_requested", onResumeRequested);
+      socket.off("cage:resume_declined", onResumeDeclined);
     };
   }, [socket, navigate, notify]);
 

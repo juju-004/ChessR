@@ -15,7 +15,9 @@ export interface CageLegPlan {
 export interface CageLeg extends CageLegPlan {
   index: number;
   category: LegCategory;
-  status: 'pending' | 'active' | 'finished' | 'skipped';
+  // 'paused' only ever applies before either side has moved — see the
+  // pause/resume request flow.
+  status: 'pending' | 'active' | 'paused' | 'finished' | 'skipped';
   gameId: string | null;
   joinCode: string | null;
   result: LegResult;
@@ -35,7 +37,7 @@ export interface CageMatch {
   wagerMode: CageWagerMode;
   wagerTokens: number;
   matchWinner: 'p1' | 'p2' | 'draw' | null;
-  matchEndReason: 'completed' | 'timeout_forfeit' | 'forfeit' | null;
+  matchEndReason: 'completed' | 'no_show_forfeit' | 'forfeit' | null;
   forfeitedBy: string | null;
   createdAt: string;
   endedAt?: string;

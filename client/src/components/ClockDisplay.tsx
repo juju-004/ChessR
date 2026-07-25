@@ -8,6 +8,11 @@ interface ClockDisplayProps {
   blackRemainingMs: number | null;
   turnStartedAtMs: number;
   isActive: boolean;
+  // How many plies have been played so far. The real clock (server-side)
+  // doesn't start counting down until BOTH sides have made their first move
+  // — this display mirrors that so it doesn't misleadingly tick during the
+  // idle opening window only to visually "snap back" once someone moves.
+  movesPlayed: number;
   whiteUsername?: string;
   blackUsername?: string;
   whiteConnected?: boolean;
@@ -20,21 +25,23 @@ export function ClockDisplay({
   blackRemainingMs,
   turnStartedAtMs,
   isActive,
+  movesPlayed,
   whiteUsername,
   blackUsername,
   whiteConnected,
   blackConnected,
 }: ClockDisplayProps) {
   const [, forceTick] = useState(0);
+  const clockRunning = isActive && movesPlayed >= 2;
 
   useEffect(() => {
-    if (!isActive || whiteRemainingMs === null || blackRemainingMs === null) return;
+    if (!clockRunning || whiteRemainingMs === null || blackRemainingMs === null) return;
     // 100ms keeps the tenths-of-a-second display (shown under 10s remaining,
     // lichess-style) looking smooth without being wastefully frequent the
     // rest of the time.
     const interval = window.setInterval(() => forceTick((n) => n + 1), 100);
     return () => window.clearInterval(interval);
-  }, [isActive, whiteRemainingMs, blackRemainingMs]);
+  }, [clockRunning, whiteRemainingMs, blackRemainingMs]);
 
   const dot = (connected?: boolean) => (
     <span
@@ -62,7 +69,7 @@ export function ClockDisplay({
   }
 
   const sideToMove = turnColor(new Chess(fen));
-  const elapsed = isActive ? Date.now() - turnStartedAtMs : 0;
+  const elapsed = clockRunning ? Date.now() - turnStartedAtMs : 0;
   const liveWhite = sideToMove === 'white' ? whiteRemainingMs - elapsed : whiteRemainingMs;
   const liveBlack = sideToMove === 'black' ? blackRemainingMs - elapsed : blackRemainingMs;
 

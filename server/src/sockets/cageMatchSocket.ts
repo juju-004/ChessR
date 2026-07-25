@@ -5,11 +5,25 @@ import { nanoid } from 'nanoid';
 import { redis } from '../config/redis.js';
 import { User } from '../models/User.js';
 import { isUserOnline } from '../services/presence.service.js';
-import { startCageMatch, forfeitCageMatch, type CageLegInput } from '../services/cageMatch.service.js';
+import {
+  startCageMatch,
+  forfeitCageMatch,
+  pauseCageLeg,
+  resumeCageLeg,
+  getCageMatchByCode,
+  type CageLegInput,
+} from '../services/cageMatch.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
 const CAGE_INVITE_TTL_SECONDS = 90;
 const inviteKey = (id: string) => `cageInvite:${id}`;
+
+// Pause/resume requests are short-lived, Redis-backed, and keyed by match —
+// same pattern as a normal challenge invite, just scoped to a specific match
+// rather than a specific pair of strangers.
+const PAUSE_REQUEST_TTL_SECONDS = 60;
+const pauseRequestKey = (matchId: string) => `cagePauseReq:${matchId}`;
+const resumeRequestKey = (matchId: string) => `cageResumeReq:${matchId}`;
 
 const MAX_WAGER_TOKENS = 100_000;
 
@@ -29,7 +43,11 @@ const sendSchema = z.object({
 });
 const respondSchema = z.object({ inviteId: z.string(), accept: z.boolean() });
 const cancelSchema = z.object({ inviteId: z.string() });
-const forfeitSchema = z.object({ matchId: z.string().refine(mongoose.isValidObjectId) });
+const matchIdSchema = z.object({ matchId: z.string().refine(mongoose.isValidObjectId) });
+const matchRespondSchema = z.object({
+  matchId: z.string().refine(mongoose.isValidObjectId),
+  accept: z.boolean(),
+});
 
 function emitError(socket: Socket, message: string) {
   socket.emit('cage:error', { message });
@@ -51,6 +69,15 @@ function estimatedMaxCommitment(wagerMode: string, wagerTokens: number, legCount
   if (wagerMode === 'winner_takes_all' || wagerMode === 'split_even') return wagerTokens;
   if (wagerMode === 'per_leg') return wagerTokens * legCount;
   return 0;
+}
+
+async function assertParticipant(matchId: string, userId: string) {
+  const match = await getCageMatchByCode(matchId);
+  const isP1 = match.player1._id.toString() === userId;
+  const isP2 = match.player2._id.toString() === userId;
+  if (!isP1 && !isP2) throw new Error("You're not part of this match");
+  const opponentId = isP1 ? match.player2._id.toString() : match.player1._id.toString();
+  return { match, opponentId };
 }
 
 export function registerCageMatchHandlers(io: Server, socket: Socket) {
@@ -172,7 +199,7 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
   socket.on(
     'cage:forfeit',
     safeHandler(socket, async (raw) => {
-      const parsed = forfeitSchema.safeParse(raw);
+      const parsed = matchIdSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid payload');
 
       const match = await forfeitCageMatch(parsed.data.matchId, userId);
@@ -185,6 +212,108 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
       };
       io.to(`user:${match.player1.toString()}`).emit('cage:match_over', payload);
       io.to(`user:${match.player2.toString()}`).emit('cage:match_over', payload);
+    }),
+  );
+
+  // --- Pause / resume, only ever meaningful before either side has moved ---
+
+  socket.on(
+    'cage:pause_request',
+    safeHandler(socket, async (raw) => {
+      const parsed = matchIdSchema.safeParse(raw);
+      if (!parsed.success) return emitError(socket, 'Invalid payload');
+      const { matchId } = parsed.data;
+
+      const { match, opponentId } = await assertParticipant(matchId, userId);
+      if (match.status !== 'active') return emitError(socket, 'This match is already over');
+      const leg = match.legs[match.currentLegIndex];
+      if (!leg || leg.status !== 'active') {
+        return emitError(socket, "There's no leg in progress to pause");
+      }
+
+      await redis.set(pauseRequestKey(matchId), userId, 'EX', PAUSE_REQUEST_TTL_SECONDS);
+      io.to(`user:${opponentId}`).emit('cage:pause_requested', {
+        matchId,
+        matchCode: match.matchCode,
+        by: userId,
+        expiresInSeconds: PAUSE_REQUEST_TTL_SECONDS,
+      });
+      socket.emit('cage:pause_request_sent', { matchId });
+    }),
+  );
+
+  socket.on(
+    'cage:pause_respond',
+    safeHandler(socket, async (raw) => {
+      const parsed = matchRespondSchema.safeParse(raw);
+      if (!parsed.success) return emitError(socket, 'Invalid payload');
+      const { matchId, accept } = parsed.data;
+
+      await assertParticipant(matchId, userId);
+      const requesterId = await redis.get(pauseRequestKey(matchId));
+      if (!requesterId) return emitError(socket, 'That pause request has expired');
+      if (requesterId === userId) return emitError(socket, "You can't respond to your own request");
+      await redis.del(pauseRequestKey(matchId));
+
+      if (!accept) {
+        io.to(`user:${requesterId}`).emit('cage:pause_declined', { matchId });
+        return;
+      }
+
+      const { match } = await pauseCageLeg(matchId);
+      const payload = { matchId: match.id, matchCode: match.matchCode };
+      io.to(`user:${match.player1.toString()}`).emit('cage:paused', payload);
+      io.to(`user:${match.player2.toString()}`).emit('cage:paused', payload);
+    }),
+  );
+
+  socket.on(
+    'cage:resume_request',
+    safeHandler(socket, async (raw) => {
+      const parsed = matchIdSchema.safeParse(raw);
+      if (!parsed.success) return emitError(socket, 'Invalid payload');
+      const { matchId } = parsed.data;
+
+      const { match, opponentId } = await assertParticipant(matchId, userId);
+      if (match.status !== 'active') return emitError(socket, 'This match is already over');
+      const leg = match.legs[match.currentLegIndex];
+      if (!leg || leg.status !== 'paused') {
+        return emitError(socket, "There's no paused leg to resume");
+      }
+
+      await redis.set(resumeRequestKey(matchId), userId, 'EX', PAUSE_REQUEST_TTL_SECONDS);
+      io.to(`user:${opponentId}`).emit('cage:resume_requested', {
+        matchId,
+        matchCode: match.matchCode,
+        by: userId,
+        expiresInSeconds: PAUSE_REQUEST_TTL_SECONDS,
+      });
+      socket.emit('cage:resume_request_sent', { matchId });
+    }),
+  );
+
+  socket.on(
+    'cage:resume_respond',
+    safeHandler(socket, async (raw) => {
+      const parsed = matchRespondSchema.safeParse(raw);
+      if (!parsed.success) return emitError(socket, 'Invalid payload');
+      const { matchId, accept } = parsed.data;
+
+      await assertParticipant(matchId, userId);
+      const requesterId = await redis.get(resumeRequestKey(matchId));
+      if (!requesterId) return emitError(socket, 'That resume request has expired');
+      if (requesterId === userId) return emitError(socket, "You can't respond to your own request");
+      await redis.del(resumeRequestKey(matchId));
+
+      if (!accept) {
+        io.to(`user:${requesterId}`).emit('cage:resume_declined', { matchId });
+        return;
+      }
+
+      const { match } = await resumeCageLeg(matchId);
+      const payload = { matchId: match.id, matchCode: match.matchCode };
+      io.to(`user:${match.player1.toString()}`).emit('cage:resumed', payload);
+      io.to(`user:${match.player2.toString()}`).emit('cage:resumed', payload);
     }),
   );
 }
