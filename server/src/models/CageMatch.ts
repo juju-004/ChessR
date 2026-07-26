@@ -50,9 +50,9 @@ export interface ICageLeg {
   baseMinutes: number | null;
   incrementSeconds: number;
   category: LegCategory;
-  // 'paused' only ever applies before either side has moved — see the
-  // cage:pause_request / cage:resume_request socket flow. Both players must
-  // agree to pause and to resume; either can request, the other accepts or
+  // 'paused' only ever applies before BOTH sides have made their first
+  // move — see the cage:pause_request / cage:resume_request socket flow.
+  // Both players must agree to pause and to resume; either can request, the other accepts or
   // declines.
   status: 'pending' | 'active' | 'paused' | 'finished' | 'skipped';
   gameId: Types.ObjectId | null;

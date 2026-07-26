@@ -18,6 +18,8 @@ import { Game } from './pages/Game.js';
 import { GameReplay } from './pages/GameReplay.js';
 import { CageMatches } from './pages/CageMatches.js';
 import { CageMatchDetail } from './pages/CageMatchDetail.js';
+import { Tournaments } from './pages/Tournaments.js';
+import { TournamentDetail } from './pages/TournamentDetail.js';
 import { NotFound } from './pages/NotFound.js';
 import { BuyTokens } from './pages/BuyTokens.js';
 import { Transactions } from './pages/Transactions.js';
@@ -45,6 +47,11 @@ function GameReplayRoute() {
 function CageMatchDetailRoute() {
   const { code } = useParams<{ code: string }>();
   return <CageMatchDetail key={code} />;
+}
+
+function TournamentDetailRoute() {
+  const { code } = useParams<{ code: string }>();
+  return <TournamentDetail key={code} />;
 }
 
 function AppShell() {
@@ -129,6 +136,22 @@ function AppShell() {
             element={
               <ProtectedRoute>
                 <CageMatchDetailRoute />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tournaments"
+            element={
+              <ProtectedRoute>
+                <Tournaments />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tournaments/:code"
+            element={
+              <ProtectedRoute>
+                <TournamentDetailRoute />
               </ProtectedRoute>
             }
           />

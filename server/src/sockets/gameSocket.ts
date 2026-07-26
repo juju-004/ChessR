@@ -8,6 +8,7 @@ import {
   getLiveState,
   deleteLiveState,
   GameTimeoutError,
+  BerserkNotAllowedError,
 } from '../services/gameState.service.js';
 import {
   appendMove,
@@ -17,6 +18,7 @@ import {
   refundWagerBothSides,
 } from '../services/game.service.js';
 import { advanceCageMatchLeg, handleLegMoveForNoShow } from '../services/cageMatch.service.js';
+import { advanceTournamentIfPairing, berserkInTournamentGame } from '../services/tournament.service.js';
 import { scheduleGameTimer, clearGameTimer, setTimeoutHandler } from '../services/clock.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
@@ -41,6 +43,7 @@ const rematchRespondSchema = z.object({
   accept: z.boolean(),
 });
 const abortSchema = z.object({ gameId: z.string().refine(mongoose.isValidObjectId) });
+const berserkSchema = z.object({ gameId: z.string().refine(mongoose.isValidObjectId) });
 const chatSchema = z.object({
   gameId: z.string().refine(mongoose.isValidObjectId),
   message: z.string().trim().min(1).max(300),
@@ -96,6 +99,7 @@ async function endGameAndBroadcast(
   deleteLiveState(gameId).catch((err) => console.error('deleteLiveState failed:', err));
 
   await advanceCageMatchIfLeg(gameId, result, endReason);
+  await advanceTournamentIfPairingLeg(gameId, result, endReason);
 }
 
 // If a game is one leg of a cage match, advance the series: either the next
@@ -113,6 +117,25 @@ async function advanceCageMatchIfLeg(
   const gameDoc = await Game.findById(gameId).select('cageMatchId legIndex').lean();
   if (!gameDoc?.cageMatchId || gameDoc.legIndex === undefined) return;
   await advanceCageMatchLeg(gameDoc.cageMatchId.toString(), gameDoc.legIndex, result, endReason);
+}
+
+// Mirror of advanceCageMatchIfLeg, but for tournament pairings — a game tagged
+// with tournamentId/roundIndex/pairingIndex advances that pairing's round the
+// same way a cage leg advances its match.
+async function advanceTournamentIfPairingLeg(
+  gameId: string,
+  result: 'white' | 'black' | 'draw',
+  endReason: string,
+) {
+  const gameDoc = await Game.findById(gameId).select('tournamentId roundIndex pairingIndex').lean();
+  if (!gameDoc?.tournamentId || gameDoc.roundIndex === undefined || gameDoc.pairingIndex === undefined) return;
+  await advanceTournamentIfPairing(
+    gameDoc.tournamentId.toString(),
+    gameDoc.roundIndex,
+    gameDoc.pairingIndex,
+    result,
+    endReason,
+  );
 }
 
 export function registerClockTimeoutHandler(io: Server) {
@@ -272,6 +295,12 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         wagerTokens: game.wagerTokens,
         cageMatchId: game.cageMatchId ?? null,
         legIndex: game.legIndex ?? null,
+        tournamentId: game.tournamentId ?? null,
+        roundIndex: game.roundIndex ?? null,
+        pairingIndex: game.pairingIndex ?? null,
+        berserk: liveState
+          ? { white: liveState.whiteBerserk, black: liveState.blackBerserk }
+          : (game.berserk ?? { white: false, black: false }),
         paused: liveState?.paused ?? false,
         whiteRemainingMs:
           liveState?.whiteRemainingMs ?? (game.timeControl.baseSeconds ? game.timeControl.baseSeconds * 1000 : null),
@@ -282,6 +311,10 @@ export function registerGameHandlers(io: Server, socket: Socket) {
 
       if (role !== 'spectator') {
         socket.to(gameRoom(gameId)).emit('game:opponent_connected', { userId });
+      }
+
+      if (game.tournamentId) {
+        await socket.join(`tournament:${game.tournamentId.toString()}`);
       }
     }),
   );
@@ -359,6 +392,32 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       if (!winner) return emitError(socket, 'You are not a player in this game');
 
       await endGameAndBroadcast(io, gameId, winner, 'resignation');
+    }),
+  );
+
+  socket.on(
+    'game:berserk',
+    safeHandler(socket, async (raw: unknown) => {
+      const parsed = berserkSchema.safeParse(raw);
+      if (!parsed.success) return emitError(socket, 'Invalid payload');
+      const { gameId } = parsed.data;
+
+      try {
+        const side = await berserkInTournamentGame(gameId, userId);
+        const state = await getLiveState(gameId);
+        io.to(gameRoom(gameId)).emit('game:berserked', {
+          gameId,
+          side,
+          whiteRemainingMs: state?.whiteRemainingMs ?? null,
+          blackRemainingMs: state?.blackRemainingMs ?? null,
+        });
+      } catch (err) {
+        if (err instanceof BerserkNotAllowedError) {
+          emitError(socket, err.message);
+          return;
+        }
+        throw err;
+      }
     }),
   );
 

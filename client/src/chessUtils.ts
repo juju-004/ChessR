@@ -117,7 +117,15 @@ export function computePremoveDests(chess: Chess, color: 'white' | 'black'): Map
   try {
     const parts = chess.fen().split(' ');
     parts[1] = color === 'white' ? 'w' : 'b';
-    const hypothetical = new Chess(parts.join(' '));
+    // Constructing `new Chess(fen)` runs chess.js's strict FEN validation,
+    // which rejects any position where the side NOT to move is in check.
+    // That's exactly the position we're building here whenever it's the
+    // opponent's turn and they happen to be in check right now — i.e.
+    // precisely a case someone would want to premove through. `load()` with
+    // skipValidation bypasses that check while still parsing the board
+    // correctly for move generation.
+    const hypothetical = new Chess();
+    hypothetical.load(parts.join(' '), { skipValidation: true } as any);
     return computeDests(hypothetical);
   } catch {
     return new Map();

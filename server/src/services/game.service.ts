@@ -20,6 +20,8 @@ import { debitWagerStake, creditWagerReturn } from "./wallet.service.js";
 // request/reconciliation handlers) — never evaluated at module-load time —
 // so there's no temporal-dead-zone issue either direction.
 import { advanceCageMatchLeg } from "./cageMatch.service.js";
+// Same deliberate circular-import pattern as advanceCageMatchLeg above.
+import { advanceTournamentIfPairing } from "./tournament.service.js";
 
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -175,6 +177,7 @@ export async function createDirectGame(
   variant: "standard" | "chess960" = "standard",
   wagerTokens = 0,
   cageLeg?: { cageMatchId: string; legIndex: number },
+  tournamentPairing?: { tournamentId: string; roundIndex: number; pairingIndex: number },
 ): Promise<IGame> {
   const joinCode = await uniqueJoinCode();
   const startingFen =
@@ -193,6 +196,13 @@ export async function createDirectGame(
     wagerTokens,
     ...(cageLeg
       ? { cageMatchId: cageLeg.cageMatchId, legIndex: cageLeg.legIndex }
+      : {}),
+    ...(tournamentPairing
+      ? {
+          tournamentId: tournamentPairing.tournamentId,
+          roundIndex: tournamentPairing.roundIndex,
+          pairingIndex: tournamentPairing.pairingIndex,
+        }
       : {}),
     timeControl: {
       baseSeconds:
@@ -427,6 +437,15 @@ export async function reconcileActiveGames(): Promise<{
         // whole cage match indefinitely.
         await advanceCageMatchLeg(g.cageMatchId.toString(), g.legIndex, "draw", "abandoned");
       }
+      if (g.tournamentId && g.roundIndex !== undefined && g.pairingIndex !== undefined) {
+        await advanceTournamentIfPairing(
+          g.tournamentId.toString(),
+          g.roundIndex,
+          g.pairingIndex,
+          "draw",
+          "abandoned",
+        );
+      }
       aborted++;
       continue;
     }
@@ -452,6 +471,15 @@ export async function reconcileActiveGames(): Promise<{
       );
       if (g.cageMatchId && g.legIndex !== undefined) {
         await advanceCageMatchLeg(g.cageMatchId.toString(), g.legIndex, timeoutWinner, "timeout");
+      }
+      if (g.tournamentId && g.roundIndex !== undefined && g.pairingIndex !== undefined) {
+        await advanceTournamentIfPairing(
+          g.tournamentId.toString(),
+          g.roundIndex,
+          g.pairingIndex,
+          timeoutWinner,
+          "timeout",
+        );
       }
       timedOut++;
       continue;

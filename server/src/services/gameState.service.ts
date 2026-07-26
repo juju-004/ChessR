@@ -39,9 +39,15 @@ export interface LiveGameState {
   blackRemainingMs: number | null;
   turnStartedAtMs: number;
   // True only for the brief, mutually-agreed pause window at the very start
-  // of a cage match leg (before either side has moved) — see pauseLiveClock/
+  // of a cage match leg (before both sides have moved) — see pauseLiveClock/
   // resumeLiveClock. Both clocks and moves are frozen while true.
   paused: boolean;
+  // Tournament berserk flags — true once that side has berserked. Purely
+  // informational for the client (the halved-time effect already happened to
+  // whiteRemainingMs/blackRemainingMs below); onTournamentGameFinished reads
+  // the Game document's own berserk field, not this, when scoring bonuses.
+  whiteBerserk: boolean;
+  blackBerserk: boolean;
   castlingRights: CastlingRightsState;
   /** Repetition-relevant position keys (piece placement + turn + castling
    *  rights + en-passant target — the four FEN fields FIDE rules actually
@@ -114,6 +120,8 @@ export async function initLiveState(
     blackRemainingMs: timeControl.baseMs,
     turnStartedAtMs: Date.now(),
     paused: false,
+    whiteBerserk: false,
+    blackBerserk: false,
     castlingRights: initialCastlingRights(),
     positionHistory: [repetitionKey(fen)],
   };
@@ -169,10 +177,11 @@ async function finalizeMove(
   const clockIsLive = state.moveCount >= 2;
   if (clockIsLive && state.timeControl.baseMs !== null) {
     const elapsed = Date.now() - state.turnStartedAtMs;
-    const increment = state.timeControl.incrementMs;
     if (moverSide === 'white') {
+      const increment = state.whiteBerserk ? 0 : state.timeControl.incrementMs;
       whiteRemainingMs = Math.max(0, (whiteRemainingMs ?? 0) - elapsed) + increment;
     } else {
+      const increment = state.blackBerserk ? 0 : state.timeControl.incrementMs;
       blackRemainingMs = Math.max(0, (blackRemainingMs ?? 0) - elapsed) + increment;
     }
   }
@@ -344,16 +353,18 @@ export async function endGame(
 
 /** Freezes the clock — banks whatever time has elapsed on the current side's
  *  clock so it isn't lost, then marks the game paused (which also blocks
- *  applyMove). Only ever meaningful before any move has been made, i.e. at
- *  the very start of a cage match leg — see cageMatch.service.ts's pause
- *  request flow, which is the only caller. */
+ *  applyMove). Meaningful any time before BOTH sides have made their first
+ *  move (moveCount < 2) — see cageMatch.service.ts's pause request flow,
+ *  which is the only caller. During that window the real clock isn't even
+ *  running yet (see computeTimeoutWinner/finalizeMove), so there's nothing
+ *  to bank; time is only actually deducted once moveCount >= 2. */
 export async function pauseLiveClock(gameId: string): Promise<LiveGameState | null> {
   const state = await getLiveState(gameId);
   if (!state || state.status !== 'active' || state.paused) return state;
 
   let whiteRemainingMs = state.whiteRemainingMs;
   let blackRemainingMs = state.blackRemainingMs;
-  if (state.timeControl.baseMs !== null) {
+  if (state.timeControl.baseMs !== null && state.moveCount >= 2) {
     const elapsed = Date.now() - state.turnStartedAtMs;
     const sideToMove = getSideToMove(state.fen);
     if (sideToMove === 'white') whiteRemainingMs = Math.max(0, (whiteRemainingMs ?? 0) - elapsed);
@@ -382,4 +393,59 @@ export async function resumeLiveClock(gameId: string): Promise<LiveGameState | n
   const newState: LiveGameState = { ...state, turnStartedAtMs: Date.now(), paused: false };
   await redis.set(stateKey(gameId), JSON.stringify(newState), 'EX', LIVE_STATE_TTL_SECONDS);
   return newState;
+}
+
+export class BerserkNotAllowedError extends Error {
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+/** Lichess-style berserk: halves the berserking side's own remaining base
+ *  time in exchange for a shot at a bonus point if they go on to win (the
+ *  bonus itself is awarded by tournament.service.ts when the game concludes,
+ *  based on the Game document's `berserk` field — this function just applies
+ *  the clock cut and flips that field).
+ *
+ *  Only ever allowed before that side has made their own first move — once
+ *  you've moved, the decision window is closed. Untimed games (baseMs ===
+ *  null) can't berserk since there's no clock to cut. */
+export async function applyBerserk(
+  gameId: string,
+  userId: string,
+): Promise<{ state: LiveGameState; side: 'white' | 'black' }> {
+  const state = await getLiveState(gameId);
+  if (!state) throw ApiError.notFound('Game is not active');
+  if (state.status !== 'active') throw new BerserkNotAllowedError('This game has already ended');
+  if (state.timeControl.baseMs === null) {
+    throw new BerserkNotAllowedError("There's no clock to berserk on an unlimited game");
+  }
+
+  const isWhite = state.whiteId === userId;
+  const isBlack = state.blackId === userId;
+  if (!isWhite && !isBlack) throw ApiError.forbidden('You are not a player in this game');
+  const side: 'white' | 'black' = isWhite ? 'white' : 'black';
+
+  if (side === 'white' && (state.whiteBerserk || state.moveCount > 0)) {
+    throw new BerserkNotAllowedError('Too late to berserk — make your move');
+  }
+  if (side === 'black' && (state.blackBerserk || state.moveCount > 1)) {
+    throw new BerserkNotAllowedError('Too late to berserk — make your move');
+  }
+
+  const newState: LiveGameState = {
+    ...state,
+    whiteBerserk: side === 'white' ? true : state.whiteBerserk,
+    blackBerserk: side === 'black' ? true : state.blackBerserk,
+    whiteRemainingMs:
+      side === 'white' && state.whiteRemainingMs !== null
+        ? Math.floor(state.whiteRemainingMs / 2)
+        : state.whiteRemainingMs,
+    blackRemainingMs:
+      side === 'black' && state.blackRemainingMs !== null
+        ? Math.floor(state.blackRemainingMs / 2)
+        : state.blackRemainingMs,
+  };
+  await redis.set(stateKey(gameId), JSON.stringify(newState), 'EX', LIVE_STATE_TTL_SECONDS);
+  return { state: newState, side };
 }

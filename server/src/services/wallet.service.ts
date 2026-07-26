@@ -249,6 +249,61 @@ export async function creditWagerReturn(
   });
 }
 
+// --- Tournament entry-fee escrow -----------------------------------------------
+// Same atomic-conditional-update pattern as the wager helpers above, just
+// scoped to a Tournament document (and its own transaction types/reference
+// prefixes) instead of a single Game.
+
+/** Debits a player's entry fee when they join a tournament. Throws if their
+ *  balance can't cover it. */
+export async function debitTournamentEntry(userId: string, tournamentId: string, tokens: number): Promise<void> {
+  if (tokens <= 0) return;
+
+  const debited = await User.findOneAndUpdate(
+    { _id: userId, tokenBalance: { $gte: tokens } },
+    { $inc: { tokenBalance: -tokens } },
+    { new: true },
+  );
+  if (!debited) throw ApiError.badRequest('Insufficient R token balance for that entry fee');
+
+  await Transaction.create({
+    user: userId,
+    type: 'tournament_entry',
+    status: 'success',
+    tokens,
+    amountKobo: 0,
+    reference: `TRN-ENT-${tournamentId}-${userId}`,
+    tournament: tournamentId,
+  });
+}
+
+/** Refunds (leave before start / cancelled event) or pays out (prize
+ *  distribution) tokens tied to a tournament. Reference is deterministic per
+ *  tournament+user+kind+suffix so a retry can't double-credit; `suffix` lets
+ *  a payout be distinguished from an earlier refund attempt for the same
+ *  person if that ever happens (it shouldn't, but cheap insurance). */
+export async function creditTournamentReturn(
+  userId: string,
+  tournamentId: string,
+  tokens: number,
+  kind: 'tournament_refund' | 'tournament_payout',
+  suffix = '',
+): Promise<void> {
+  if (tokens <= 0) return;
+
+  await User.updateOne({ _id: userId }, { $inc: { tokenBalance: tokens } });
+
+  await Transaction.create({
+    user: userId,
+    type: kind,
+    status: 'success',
+    tokens,
+    amountKobo: 0,
+    reference: `TRN-${kind === 'tournament_payout' ? 'WIN' : 'RFD'}-${tournamentId}-${userId}${suffix ? `-${suffix}` : ''}`,
+    tournament: tournamentId,
+  });
+}
+
 export async function listTransactions(userId: string, page: number, limit: number) {
   const filter = { user: userId };
   const [transactions, total] = await Promise.all([

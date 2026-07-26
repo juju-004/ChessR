@@ -215,7 +215,7 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
     }),
   );
 
-  // --- Pause / resume, only ever meaningful before either side has moved ---
+  // --- Pause / resume, only ever meaningful before both sides have moved ---
 
   socket.on(
     'cage:pause_request',

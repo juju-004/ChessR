@@ -3,7 +3,7 @@ import { customAlphabet } from "nanoid";
 import { CageMatch, type ICageMatch, type ICageLeg, type CageWinnerMode, type CageWagerMode, type LegCategory } from "../models/CageMatch.js";
 import { Game } from "../models/Game.js";
 import { ApiError } from "../utils/ApiError.js";
-import { createDirectGame, finalizeGame, settleWager, type TimeControlInput } from "./game.service.js";
+import { createDirectGame, finalizeGame, settleWager, refundWagerBothSides, type TimeControlInput } from "./game.service.js";
 import { getLiveState, deleteLiveState, pauseLiveClock, resumeLiveClock, getSideToMove } from "./gameState.service.js";
 import { clearGameTimer, scheduleGameTimer } from "./clock.service.js";
 import { debitWagerStake, creditWagerReturn } from "./wallet.service.js";
@@ -337,33 +337,61 @@ async function finalizeCageMatchForfeit(
     clearNoShowTimer(gameId);
     const liveState = await getLiveState(gameId);
     if (liveState && liveState.status === "active") {
-      const winnerColor = liveState.whiteId === forfeitingUserId ? "black" : "white";
-      const wagerSettlement = await settleWager(
-        gameId,
-        liveState.whiteId,
-        liveState.blackId,
-        liveState.wagerTokens,
-        winnerColor,
-      ).catch((err) => {
-        console.error("settleWager failed during cage forfeit:", err);
-        return null;
-      });
-      try {
-        getIo().to(`game:${gameId}`).emit("game:over", {
+      // If neither side has really gotten going yet (fewer than both sides'
+      // first moves played), there's no game to award a "win" for — treat
+      // this leg as a no-decision abort and refund any per-leg wager,
+      // exactly like the manual "Abort game" button would. Only once both
+      // sides have actually made a move does forfeiting count as a genuine
+      // loss on that leg.
+      const legWasIdle = liveState.moveCount < 2;
+
+      if (legWasIdle) {
+        try {
+          getIo().to(`game:${gameId}`).emit("game:over", { gameId, result: null, reason: "aborted_no_moves" });
+        } catch {
+          // Socket.IO not initialized (e.g. script/test context) — safe to ignore.
+        }
+        await finalizeGame(gameId, liveState.fen, "aborted", null, "aborted_no_moves");
+        await refundWagerBothSides(gameId, liveState.whiteId, liveState.blackId, liveState.wagerTokens).catch(
+          (err) => console.error("refundWagerBothSides failed during cage forfeit:", err),
+        );
+        await deleteLiveState(gameId);
+        activeLeg.status = "skipped";
+        activeLeg.result = null;
+        activeLeg.endReason = "aborted_no_moves";
+      } else {
+        const winnerColor = liveState.whiteId === forfeitingUserId ? "black" : "white";
+        const wagerSettlement = await settleWager(
           gameId,
-          result: winnerColor,
-          reason: legEndReason,
-          wagerSettlement,
+          liveState.whiteId,
+          liveState.blackId,
+          liveState.wagerTokens,
+          winnerColor,
+        ).catch((err) => {
+          console.error("settleWager failed during cage forfeit:", err);
+          return null;
         });
-      } catch {
-        // Socket.IO not initialized (e.g. script/test context) — safe to ignore.
+        try {
+          getIo().to(`game:${gameId}`).emit("game:over", {
+            gameId,
+            result: winnerColor,
+            reason: legEndReason,
+            wagerSettlement,
+          });
+        } catch {
+          // Socket.IO not initialized (e.g. script/test context) — safe to ignore.
+        }
+        await finalizeGame(gameId, liveState.fen, "finished", winnerColor, legEndReason);
+        await deleteLiveState(gameId);
+        activeLeg.status = "finished";
+        activeLeg.result = winnerSide;
+        activeLeg.endReason = legEndReason;
       }
-      await finalizeGame(gameId, liveState.fen, "finished", winnerColor, legEndReason);
-      await deleteLiveState(gameId);
+    } else {
+      activeLeg.status = "finished";
+      activeLeg.result = winnerSide;
+      activeLeg.endReason = legEndReason;
     }
-    activeLeg.status = "finished";
-    activeLeg.result = winnerSide;
-    activeLeg.endReason = legEndReason;
   }
 
   for (const l of match.legs) {
@@ -622,12 +650,13 @@ export async function advanceCageMatchLeg(
   }
 }
 
-// --- Pause / resume (only ever valid before either side has moved) -----------
+// --- Pause / resume (only ever valid before both sides have moved) -----------
 
 /** Actually pauses a leg once both players have agreed (the accept/decline
  *  negotiation itself lives in cageMatchSocket.ts, Redis-backed like a normal
- *  invite) — freezes the clock and blocks moves. Only valid while the current
- *  leg is active with zero moves played. */
+ *  invite) — freezes the clock and blocks moves. Valid any time before BOTH
+ *  sides have made their first move (moveCount < 2) — same window as the
+ *  no-show grace timer and the abort button. */
 export async function pauseCageLeg(matchId: string): Promise<{ match: ICageMatch; leg: ICageLeg }> {
   const match = await CageMatch.findById(matchId);
   if (!match) throw ApiError.notFound("Cage match not found");
@@ -641,8 +670,8 @@ export async function pauseCageLeg(matchId: string): Promise<{ match: ICageMatch
   const gameId = leg.gameId.toString();
   const liveState = await getLiveState(gameId);
   if (!liveState || liveState.status !== "active") throw ApiError.badRequest("That leg has already ended");
-  if (liveState.moveCount > 0) {
-    throw ApiError.badRequest("This leg can only be paused before either side has moved");
+  if (liveState.moveCount >= 2) {
+    throw ApiError.badRequest("This leg can only be paused before both sides have moved");
   }
 
   clearGameTimer(gameId);

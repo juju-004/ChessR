@@ -7,7 +7,12 @@ export type TransactionType =
   // game's escrow, purely internal (no Paystack money movement involved).
   | 'wager_stake'
   | 'wager_payout'
-  | 'wager_refund';
+  | 'wager_refund'
+  // Tournament entry-fee ledger entries — same idea as the wager_* entries
+  // above, just scoped to a Tournament document instead of a Game.
+  | 'tournament_entry'
+  | 'tournament_payout'
+  | 'tournament_refund';
 export type TransactionStatus = 'pending' | 'success' | 'failed';
 
 export interface ITransaction extends Document {
@@ -20,6 +25,7 @@ export interface ITransaction extends Document {
   reference: string; // Paystack transaction reference (purchases), our own generated ref (withdrawals), or gameId-derived (wagers)
   planId?: string; // which purchase plan, if type === 'purchase'
   game?: Types.ObjectId; // which game, if type is one of the wager_* entries
+  tournament?: Types.ObjectId; // which tournament, if type is one of the tournament_* entries
   paystackRecipientCode?: string; // withdrawals — Paystack transfer recipient
   paystackTransferCode?: string; // withdrawals — Paystack transfer
   bankAccountNumber?: string;
@@ -35,7 +41,16 @@ const transactionSchema = new Schema<ITransaction>(
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     type: {
       type: String,
-      enum: ['purchase', 'withdrawal', 'wager_stake', 'wager_payout', 'wager_refund'],
+      enum: [
+        'purchase',
+        'withdrawal',
+        'wager_stake',
+        'wager_payout',
+        'wager_refund',
+        'tournament_entry',
+        'tournament_payout',
+        'tournament_refund',
+      ],
       required: true,
     },
     status: { type: String, enum: ['pending', 'success', 'failed'], default: 'pending', index: true },
@@ -44,6 +59,7 @@ const transactionSchema = new Schema<ITransaction>(
     reference: { type: String, required: true, unique: true, index: true },
     planId: { type: String },
     game: { type: Schema.Types.ObjectId, ref: 'Game', index: true },
+    tournament: { type: Schema.Types.ObjectId, ref: 'Tournament', index: true },
     paystackRecipientCode: { type: String },
     paystackTransferCode: { type: String },
     bankAccountNumber: { type: String },

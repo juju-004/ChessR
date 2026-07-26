@@ -15,8 +15,8 @@ export interface CageLegPlan {
 export interface CageLeg extends CageLegPlan {
   index: number;
   category: LegCategory;
-  // 'paused' only ever applies before either side has moved — see the
-  // pause/resume request flow.
+  // 'paused' only ever applies before BOTH sides have made their first
+  // move — see the pause/resume request flow.
   status: 'pending' | 'active' | 'paused' | 'finished' | 'skipped';
   gameId: string | null;
   joinCode: string | null;

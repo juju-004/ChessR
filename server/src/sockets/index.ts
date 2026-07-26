@@ -8,6 +8,7 @@ import { registerPresenceHandlers } from './presenceSocket.js';
 import { registerGameHandlers, registerClockTimeoutHandler } from './gameSocket.js';
 import { registerChallengeHandlers } from './challengeSocket.js';
 import { registerCageMatchHandlers } from './cageMatchSocket.js';
+import { registerTournamentHandlers } from './tournamentSocket.js';
 import { registerPingHandlers } from './pingSocket.js';
 import { setIo } from './io.js';
 
@@ -36,6 +37,7 @@ export function initSocketServer(httpServer: HttpServer): Server {
     registerGameHandlers(io, socket);
     registerChallengeHandlers(io, socket);
     registerCageMatchHandlers(io, socket);
+    registerTournamentHandlers(io, socket);
     registerPingHandlers(io, socket);
   });
 

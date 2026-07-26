@@ -61,6 +61,16 @@ export interface IGame extends Document {
   // Left undefined for standalone games (the overwhelming majority).
   cageMatchId?: Types.ObjectId;
   legIndex?: number;
+  // Set when this game is one pairing of a tournament round — links back to
+  // the parent Tournament document. Left undefined for standalone games and
+  // cage match legs.
+  tournamentId?: Types.ObjectId;
+  roundIndex?: number;
+  pairingIndex?: number;
+  // Whether each side chose to berserk (halve their own clock, forfeit their
+  // own increment) before making their first move. Only ever settable when
+  // tournamentId is set and the tournament allows it.
+  berserk?: { white: boolean; black: boolean };
   createdAt: Date;
   startedAt?: Date;
   endedAt?: Date;
@@ -124,6 +134,16 @@ const gameSchema = new Schema<IGame>(
     wagerSettled: { type: Boolean, default: false },
     cageMatchId: { type: Schema.Types.ObjectId, ref: 'CageMatch', index: true },
     legIndex: { type: Number },
+    tournamentId: { type: Schema.Types.ObjectId, ref: 'Tournament', index: true },
+    roundIndex: { type: Number },
+    pairingIndex: { type: Number },
+    berserk: {
+      type: new Schema(
+        { white: { type: Boolean, default: false }, black: { type: Boolean, default: false } },
+        { _id: false },
+      ),
+      default: () => ({ white: false, black: false }),
+    },
     startedAt: { type: Date },
     endedAt: { type: Date },
   },

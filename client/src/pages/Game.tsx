@@ -6,7 +6,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { Chess } from "chess.js";
 import { getGameByCode, joinGame } from "../api/games.js";
 import { ApiRequestError } from "../api/http.js";
@@ -45,6 +45,7 @@ interface GameMeta {
   wagerTokens?: number;
   cageMatchId?: string | null;
   legIndex?: number | null;
+  tournamentId?: string | null;
 }
 
 interface MoveLogEntry {
@@ -104,6 +105,8 @@ export function Game() {
   } | null>(null);
   const [rematchState, setRematchState] = useState<"idle" | "offered">("idle");
   const [pausedLeg, setPausedLeg] = useState(false);
+  const [whiteBerserk, setWhiteBerserk] = useState(false);
+  const [blackBerserk, setBlackBerserk] = useState(false);
   const [pauseRequestSent, setPauseRequestSent] = useState(false);
   const [resumeRequestSent, setResumeRequestSent] = useState(false);
   const [gameOverModalDismissed, setGameOverModalDismissed] = useState(false);
@@ -212,6 +215,8 @@ export function Game() {
       setWhiteConnected(!!payload.whiteConnected);
       setBlackConnected(!!payload.blackConnected);
       setPausedLeg(!!payload.paused);
+      setWhiteBerserk(!!payload.berserk?.white);
+      setBlackBerserk(!!payload.berserk?.black);
       const gameIsOver =
         payload.status === "finished" || payload.status === "aborted";
       setGameOver(
@@ -297,6 +302,17 @@ export function Game() {
       if (!socket) return;
 
       socket.emit("game:join", { gameId });
+    }
+
+    function onBerserked(payload: {
+      side: "white" | "black";
+      whiteRemainingMs: number | null;
+      blackRemainingMs: number | null;
+    }) {
+      if (payload.side === "white") setWhiteBerserk(true);
+      else setBlackBerserk(true);
+      if (payload.whiteRemainingMs !== null) setWhiteRemainingMs(payload.whiteRemainingMs);
+      if (payload.blackRemainingMs !== null) setBlackRemainingMs(payload.blackRemainingMs);
     }
 
     function onOpponentDisconnected(payload: {
@@ -409,6 +425,7 @@ export function Game() {
     socket.on("game:claim_available", onClaimAvailable);
     socket.on("game:opponent_reconnected", onOpponentReconnected);
     socket.on("game:draw_offered", onDrawOffered);
+    socket.on("game:berserked", onBerserked);
     socket.on("spectator_chat:message", onChatMessage);
     socket.on("cage:leg_paused", onLegPaused);
     socket.on("cage:leg_resumed", onLegResumed);
@@ -435,6 +452,7 @@ export function Game() {
       socket.off("game:claim_available", onClaimAvailable);
       socket.off("game:opponent_reconnected", onOpponentReconnected);
       socket.off("game:draw_offered", onDrawOffered);
+      socket.off("game:berserked", onBerserked);
       socket.off("spectator_chat:message", onChatMessage);
       socket.off("cage:leg_paused", onLegPaused);
       socket.off("cage:leg_resumed", onLegResumed);
@@ -504,6 +522,13 @@ export function Game() {
       confirm("Abort this game? No result will be recorded for either player.")
     ) {
       socket.emit("game:abort", { gameId: gameMeta._id });
+    }
+  }
+
+  function handleBerserk() {
+    if (!socket || !gameMeta) return;
+    if (confirm("Berserk! Halve your own clock and give up your increment for a shot at a bonus 0.5 point if you win. Continue?")) {
+      socket.emit("game:berserk", { gameId: gameMeta._id });
     }
   }
 
@@ -607,6 +632,16 @@ export function Game() {
                 {gameMeta.wagerTokens} R wager
               </span>
             )}
+            {gameMeta?.tournamentId && (
+              <Link
+                to={`/tournaments`}
+                className="ml-2 rounded bg-neutral-800 px-2 py-0.5 text-xs font-semibold text-neutral-300 hover:bg-neutral-700"
+              >
+                Tournament game
+              </Link>
+            )}
+            {whiteBerserk && <span className="ml-2 text-xs text-red-400">⚔ White berserked</span>}
+            {blackBerserk && <span className="ml-2 text-xs text-red-400">⚔ Black berserked</span>}
           </h1>
           <span className="text-sm text-neutral-400">
             {gameOver
@@ -708,7 +743,23 @@ export function Game() {
           </div>
         )}
 
-        {isPlayer && gameMeta?.cageMatchId && status === "active" && moves.length === 0 && !pausedLeg && (
+        {isPlayer &&
+          status === "active" &&
+          gameMeta?.tournamentId &&
+          myColor &&
+          !(myColor === "white" ? whiteBerserk : blackBerserk) &&
+          (myColor === "white" ? moves.length === 0 : moves.length <= 1) && (
+            <div className="mt-2">
+              <button
+                onClick={handleBerserk}
+                className="rounded-md border border-red-800 bg-red-950/30 px-4 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-950/50"
+              >
+                ⚔ Berserk — halve your clock for a bonus point
+              </button>
+            </div>
+          )}
+
+        {isPlayer && gameMeta?.cageMatchId && status === "active" && moves.length < 2 && !pausedLeg && (
           <div className="mt-2">
             <button
               onClick={handlePauseRequest}
