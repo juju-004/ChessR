@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { getGameByCode } from '../api/games.js';
 import { ApiRequestError } from '../api/http.js';
 import { ChessBoard } from '../components/ChessBoard.js';
+import { useSettings } from '../contexts/SettingsContext.js';
 import { formatTimeControl } from '../timeControls.js';
 
 const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -27,6 +28,7 @@ interface ReplayGame {
 
 export function GameReplay() {
   const { code = '' } = useParams<{ code: string }>();
+  const { settings } = useSettings();
   const [game, setGame] = useState<ReplayGame | null>(null);
   const [error, setError] = useState('');
   // -1 means the starting position, before any move has been played.
@@ -64,7 +66,9 @@ export function GameReplay() {
           {game.endReason ? ` (${game.endReason.replace(/_/g, ' ')})` : ''}
         </p>
 
-        <div className="relative mx-auto aspect-square w-full max-w-[480px]">
+        <div
+          className={`relative mx-auto aspect-square w-full max-w-[480px] board-theme-${settings.boardTheme} piece-theme-${settings.pieceTheme}`}
+        >
           <ChessBoard
             fen={fen}
             orientation="white"
@@ -73,6 +77,8 @@ export function GameReplay() {
             dests={new Map()}
             lastMove={lastMove}
             onUserMove={() => {}}
+            animationEnabled={settings.pieceAnimation}
+            showCoordinates={settings.showCoordinates}
           />
         </div>
 

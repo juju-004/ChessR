@@ -36,9 +36,8 @@ export function ClockDisplay({
 
   useEffect(() => {
     if (!clockRunning || whiteRemainingMs === null || blackRemainingMs === null) return;
-    // 100ms keeps the tenths-of-a-second display (shown under 10s remaining,
-    // lichess-style) looking smooth without being wastefully frequent the
-    // rest of the time.
+    // 100ms keeps the tenths-of-a-second digit in formatClock's MM:SS:D
+    // display ticking smoothly without being wastefully frequent.
     const interval = window.setInterval(() => forceTick((n) => n + 1), 100);
     return () => window.clearInterval(interval);
   }, [clockRunning, whiteRemainingMs, blackRemainingMs]);

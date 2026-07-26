@@ -9,6 +9,15 @@
 
 let ctx: AudioContext | null = null;
 
+// Module-level mute switch driven by the Settings page's "Move sounds"
+// toggle (see SettingsContext.tsx / Game.tsx) — checked once at the top of
+// playTones rather than threading an `enabled` flag through every call site.
+let soundEnabled = true;
+
+export function setSoundEnabled(enabled: boolean) {
+  soundEnabled = enabled;
+}
+
 function getCtx(): AudioContext {
   if (!ctx) ctx = new AudioContext();
   return ctx;
@@ -23,6 +32,7 @@ interface Tone {
 }
 
 function playTones(tones: Tone[]) {
+  if (!soundEnabled) return;
   const audioCtx = getCtx();
   // Browsers suspend AudioContext until a user gesture; every sound call is
   // triggered by one (a drag, a click), so resuming here is safe and cheap.

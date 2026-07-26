@@ -12,6 +12,26 @@
   display: block;
 }
 
+/* Board & piece themes — only chessground's "brown" board + "cburnett" piece
+   asset CSS is bundled (see the @imports above), so rather than depend on
+   additional theme asset files that may or may not ship with the installed
+   chessground version, both are done as CSS filters: board themes tint the
+   `cg-board` element (the square texture), piece themes tint just the
+   `piece` elements, independently of each other. Not a pixel-perfect
+   recreation of lichess's actual separate board/piece asset sets, but a
+   real, working visual distinction with zero extra asset dependencies.
+   Wrapper classes are set from the Settings page's boardTheme/pieceTheme. */
+.board-theme-brown .cg-wrap cg-board { filter: none; }
+.board-theme-green .cg-wrap cg-board { filter: hue-rotate(70deg) saturate(1.15); }
+.board-theme-blue .cg-wrap cg-board { filter: hue-rotate(178deg) saturate(1.25); }
+.board-theme-gray .cg-wrap cg-board { filter: grayscale(0.9) contrast(1.05); }
+.board-theme-purple .cg-wrap cg-board { filter: hue-rotate(255deg) saturate(1.3); }
+
+.piece-theme-classic .cg-wrap piece { filter: none; }
+.piece-theme-mono .cg-wrap piece { filter: grayscale(1) contrast(1.15); }
+.piece-theme-contrast .cg-wrap piece { filter: contrast(1.5) saturate(1.3) brightness(1.05); }
+.piece-theme-wood .cg-wrap piece { filter: sepia(0.6) saturate(1.4) brightness(0.95); }
+
 .notify-in {
   animation: notify-in 0.15s ease-out;
 }

@@ -20,15 +20,21 @@ export function turnColor(chess: Chess): 'white' | 'black' {
   return chess.turn() === 'w' ? 'white' : 'black';
 }
 
-export function formatClock(ms: number, precise = false): string {
+/**
+ * Always renders as MM:SS:D (minutes : seconds : tenths-of-a-second), e.g.
+ * "05:30:0" or, right at the buzzer, "00:00:0" — previously this only showed
+ * minutes:seconds and (via Math.floor on whole seconds) visually got stuck
+ * on "0:01" for the better part of a second before the flag actually fell,
+ * making it look like the clock never really reached zero. Carrying the
+ * deciseconds through at all times fixes that and matches what's asked for.
+ */
+export function formatClock(ms: number, _precise = false): string {
   const clamped = Math.max(0, ms);
-  if (precise && clamped < 10_000) {
-    return (clamped / 1000).toFixed(1);
-  }
-  const totalSeconds = Math.floor(clamped / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  const totalDeciseconds = Math.floor(clamped / 100);
+  const minutes = Math.floor(totalDeciseconds / 600);
+  const seconds = Math.floor(totalDeciseconds / 10) % 60;
+  const deciseconds = totalDeciseconds % 10;
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}:${deciseconds}`;
 }
 
 /** Whether the side to move is currently in check. */
@@ -100,6 +106,7 @@ export function addChess960CastlingDests(
   return dests;
 }
 
+// ================= PREMOVE LOGIC =================
 /**
  * Premove destinations for chessground's `premovable.customDests` — confirmed
  * via chessground's actual source (src/board.ts) to be a `Map<Key, Key[]>`,
@@ -131,3 +138,4 @@ export function computePremoveDests(chess: Chess, color: 'white' | 'black'): Map
     return new Map();
   }
 }
+// =============== END PREMOVE LOGIC ================

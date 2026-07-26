@@ -13,6 +13,7 @@ import { ApiRequestError } from "../api/http.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useNotify } from "../contexts/NotificationContext.js";
+import { useSettings } from "../contexts/SettingsContext.js";
 import { ChessBoard } from "../components/ChessBoard.js";
 import { PromotionPicker } from "../components/PromotionPicker.js";
 import { ClockDisplay } from "../components/ClockDisplay.js";
@@ -32,6 +33,7 @@ import {
   playCheckSound,
   playGameStartSound,
   playGameOverSound,
+  setSoundEnabled,
 } from "../sounds.js";
 
 interface GameMeta {
@@ -62,6 +64,11 @@ export function Game() {
   const { user } = useAuth();
   const socket = useSocket();
   const { notify } = useNotify();
+  const { settings } = useSettings();
+
+  useEffect(() => {
+    setSoundEnabled(settings.soundEnabled);
+  }, [settings.soundEnabled]);
 
   const [gameMeta, setGameMeta] = useState<GameMeta | null>(null);
   const [mode, setMode] = useState<"loading" | "need-join" | "board">(
@@ -469,12 +476,16 @@ export function Game() {
       setMoveError("");
       const localChess = new Chess(fen);
       if (needsPromotion(localChess, orig, dest)) {
+        if (settings.autoQueen) {
+          socket.emit("game:move", { gameId: gameMeta._id, from: orig, to: dest, promotion: "q" });
+          return;
+        }
         setPromoPending({ orig, dest });
         return;
       }
       socket.emit("game:move", { gameId: gameMeta._id, from: orig, to: dest });
     },
-    [socket, gameMeta, fen],
+    [socket, gameMeta, fen, settings.autoQueen],
   );
 
   function handlePromotionPick(piece: "q" | "r" | "b" | "n") {
@@ -511,7 +522,7 @@ export function Game() {
 
   function handleResign() {
     if (!socket || !gameMeta) return;
-    if (confirm("Are you sure you want to resign?")) {
+    if (!settings.confirmResign || confirm("Are you sure you want to resign?")) {
       socket.emit("game:resign", { gameId: gameMeta._id });
     }
   }
@@ -612,6 +623,8 @@ export function Game() {
     dests = addChess960CastlingDests(dests, chess, gameMeta.initialFen);
   }
   const inCheck = isInCheck(chess);
+  // PREMOVE LOGIC: compute the destinations offered for the player's next
+  // (not-yet-legal) move, passed down to ChessBoard as premoveDests.
   const premoveDests = myColor
     ? computePremoveDests(chess, myColor)
     : new Map<string, string[]>();
@@ -622,17 +635,17 @@ export function Game() {
         <div className="mb-2 flex items-center justify-between">
           <h1 className="text-xl font-bold text-neutral-100">
             Game <span className="font-normal text-neutral-500">· {code}</span>
-            {gameMeta?.variant === "chess960" && (
+            {!settings.zenMode && gameMeta?.variant === "chess960" && (
               <span className="ml-2 rounded bg-purple-900 px-2 py-0.5 text-xs font-semibold text-purple-200">
                 Chess960
               </span>
             )}
-            {!!gameMeta?.wagerTokens && (
+            {!settings.zenMode && !!gameMeta?.wagerTokens && (
               <span className="ml-2 rounded bg-amber-900/40 px-2 py-0.5 text-xs font-semibold text-amber-300">
                 {gameMeta.wagerTokens} R wager
               </span>
             )}
-            {gameMeta?.tournamentId && (
+            {!settings.zenMode && gameMeta?.tournamentId && (
               <Link
                 to={`/tournaments`}
                 className="ml-2 rounded bg-neutral-800 px-2 py-0.5 text-xs font-semibold text-neutral-300 hover:bg-neutral-700"
@@ -640,8 +653,8 @@ export function Game() {
                 Tournament game
               </Link>
             )}
-            {whiteBerserk && <span className="ml-2 text-xs text-red-400">⚔ White berserked</span>}
-            {blackBerserk && <span className="ml-2 text-xs text-red-400">⚔ Black berserked</span>}
+            {!settings.zenMode && whiteBerserk && <span className="ml-2 text-xs text-red-400">⚔ White berserked</span>}
+            {!settings.zenMode && blackBerserk && <span className="ml-2 text-xs text-red-400">⚔ Black berserked</span>}
           </h1>
           <span className="text-sm text-neutral-400">
             {gameOver
@@ -650,7 +663,7 @@ export function Game() {
           </span>
         </div>
 
-        {gameMeta?.cageMatchId && (
+        {!settings.zenMode && gameMeta?.cageMatchId && (
           <CageMatchScoreboard cageMatchId={gameMeta.cageMatchId} legIndex={gameMeta.legIndex ?? 0} />
         )}
 
@@ -697,7 +710,9 @@ export function Game() {
           blackConnected={blackConnected}
         />
 
-        <div className="relative mx-auto aspect-square w-full max-w-[480px]">
+        <div
+          className={`relative mx-auto aspect-square w-full max-w-[480px] board-theme-${settings.boardTheme} piece-theme-${settings.pieceTheme}`}
+        >
           <ChessBoard
             fen={fen}
             orientation={myColor ?? "white"}
@@ -709,6 +724,9 @@ export function Game() {
             inCheck={inCheck}
             lastMove={lastMove}
             onUserMove={handleUserMove}
+            animationEnabled={settings.pieceAnimation}
+            showCoordinates={settings.showCoordinates}
+            showLegalMoves={settings.showLegalMoves}
           />
           {promoPending && <PromotionPicker onPick={handlePromotionPick} />}
         </div>
@@ -796,18 +814,20 @@ export function Game() {
         )}
       </div>
 
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-        <h2 className="mb-2 text-lg font-semibold text-neutral-100">Moves</h2>
-        <div className="max-h-48 overflow-y-auto font-mono text-sm text-neutral-300">
-          {moves.map((m) => (
-            <div key={m.moveNumber}>
-              {m.moveNumber}. {m.san}
-            </div>
-          ))}
+      {!settings.zenMode && (
+        <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
+          <h2 className="mb-2 text-lg font-semibold text-neutral-100">Moves</h2>
+          <div className="max-h-48 overflow-y-auto font-mono text-sm text-neutral-300">
+            {moves.map((m) => (
+              <div key={m.moveNumber}>
+                {m.moveNumber}. {m.san}
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
-      {role === "spectator" && (
+      {!settings.zenMode && role === "spectator" && (
         <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
           <h2 className="mb-2 text-lg font-semibold text-neutral-100">
             Spectator chat

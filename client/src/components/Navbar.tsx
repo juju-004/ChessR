@@ -44,6 +44,9 @@ export function Navbar() {
           <Link to="/tournaments" className="text-sm text-neutral-300 hover:text-neutral-100">
             Tournaments
           </Link>
+          <Link to="/settings" className="text-sm text-neutral-300 hover:text-neutral-100">
+            Settings
+          </Link>
           {user && (
             <Link to={`/profile/${user.username}`} className="text-sm text-neutral-300 hover:text-neutral-100">
               My profile

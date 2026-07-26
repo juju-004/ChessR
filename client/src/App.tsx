@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext.js';
 import { SocketProvider } from './contexts/SocketContext.js';
 import { NotificationProvider } from './contexts/NotificationContext.js';
+import { SettingsProvider } from './contexts/SettingsContext.js';
 import { GlobalListeners } from './components/GlobalListeners.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { Navbar } from './components/Navbar.js';
@@ -24,6 +25,7 @@ import { NotFound } from './pages/NotFound.js';
 import { BuyTokens } from './pages/BuyTokens.js';
 import { Transactions } from './pages/Transactions.js';
 import { Withdraw } from './pages/Withdraw.js';
+import { Settings } from './pages/Settings.js';
 
 function RootRedirect() {
   const { isAuthed } = useAuth();
@@ -179,6 +181,14 @@ function AppShell() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <Settings />
+              </ProtectedRoute>
+            }
+          />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
@@ -192,7 +202,9 @@ export function App() {
       <AuthProvider>
         <SocketProvider>
           <NotificationProvider>
-            <AppShell />
+            <SettingsProvider>
+              <AppShell />
+            </SettingsProvider>
           </NotificationProvider>
         </SocketProvider>
       </AuthProvider>

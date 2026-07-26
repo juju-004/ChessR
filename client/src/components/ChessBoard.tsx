@@ -26,6 +26,11 @@ export interface ChessBoardProps {
    *  square a player last dragged locally. */
   lastMove?: [string, string];
   onUserMove: (orig: string, dest: string) => void;
+  /** Settings-page toggles — all optional so existing callers keep working
+   *  with chessground's own sensible defaults. */
+  animationEnabled?: boolean;
+  showCoordinates?: boolean;
+  showLegalMoves?: boolean;
 }
 
 export function ChessBoard({
@@ -39,6 +44,9 @@ export function ChessBoard({
   inCheck,
   lastMove,
   onUserMove,
+  animationEnabled = true,
+  showCoordinates = true,
+  showLegalMoves = true,
 }: ChessBoardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const groundRef = useRef<CgApi | null>(null);
@@ -53,19 +61,30 @@ export function ChessBoard({
       viewOnly,
       turnColor,
       check: inCheck,
+      coordinates: showCoordinates,
+      animation: { enabled: animationEnabled, duration: 200 },
       movable: {
         free: false,
         color: movableColor,
         dests: dests as any,
+        showDests: showLegalMoves,
         events: {
           after: (orig: string, dest: string) => onUserMoveRef.current(orig, dest),
         },
       },
+      // ================= PREMOVE LOGIC =================
+      // This `premovable` block is what actually arms a premove on the board:
+      // chessground lets the player drag a piece even when it's not their
+      // turn, holds that move client-side, then auto-plays it (firing
+      // `movable.events.after` itself, same as a normal move) the instant
+      // the position updates to make it legal. `customDests` restricts which
+      // squares are offered, computed by computePremoveDests in chessUtils.ts.
       premovable: {
         enabled: !!movableColor,
         showDests: true,
         customDests: premoveDests as any,
       },
+      // =============== END PREMOVE LOGIC ================
       lastMove: lastMove as Key[] | undefined,
     };
     groundRef.current = Chessground(containerRef.current, config);
@@ -90,10 +109,26 @@ export function ChessBoard({
       turnColor,
       lastMove: lastMove as Key[] | undefined,
       check: inCheck,
-      movable: { color: movableColor, dests: dests as any },
+      coordinates: showCoordinates,
+      animation: { enabled: animationEnabled, duration: 200 },
+      movable: { color: movableColor, dests: dests as any, showDests: showLegalMoves },
+      // PREMOVE LOGIC: keep the armed-premove config in sync on every re-render.
       premovable: { enabled: !!movableColor, customDests: premoveDests as any },
     });
-  }, [fen, orientation, viewOnly, turnColor, movableColor, dests, premoveDests, inCheck, lastMove]);
+  }, [
+    fen,
+    orientation,
+    viewOnly,
+    turnColor,
+    movableColor,
+    dests,
+    premoveDests,
+    inCheck,
+    lastMove,
+    animationEnabled,
+    showCoordinates,
+    showLegalMoves,
+  ]);
 
   return <div ref={containerRef} className="cg-wrap" />;
 }
