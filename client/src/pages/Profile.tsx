@@ -69,19 +69,30 @@ export function Profile() {
           <span className="text-neutral-500">({profile.stats.gamesPlayed} games)</span>
         </div>
 
-        {!profile.isSelf &&
-          (profile.isFriend ? (
-            <p className="text-sm text-green-400">✓ Friends</p>
-          ) : friendRequestSent ? (
-            <p className="text-sm text-green-400">✓ Friend request sent</p>
-          ) : (
-            <button
-              onClick={handleAddFriend}
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500"
-            >
-              Add friend
-            </button>
-          ))}
+        {!profile.isSelf && (
+          <div className="flex flex-wrap items-center gap-2">
+            {profile.isFriend ? (
+              <p className="text-sm text-green-400">✓ Friends</p>
+            ) : friendRequestSent ? (
+              <p className="text-sm text-green-400">✓ Friend request sent</p>
+            ) : (
+              <button
+                onClick={handleAddFriend}
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500"
+              >
+                Add friend
+              </button>
+            )}
+            {profile.activeGameCode && (
+              <Link
+                to={`/game/${profile.activeGameCode}`}
+                className="rounded-md bg-green-800 px-4 py-2 text-sm font-semibold text-green-100 hover:bg-green-700"
+              >
+                Watch — currently playing
+              </Link>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">

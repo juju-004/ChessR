@@ -4,6 +4,7 @@ import { logout } from '../api/auth.js';
 import { useTokenBalance } from '../hooks/useTokenBalance.js';
 import { MyGamesMenu } from './MyGamesMenu.js';
 import { ConnectionStatus } from './ConnectionStatus.js';
+import { InstallAppButton } from './InstallAppButton.js';
 
 export function Navbar() {
   const { isAuthed, user } = useAuth();
@@ -18,6 +19,7 @@ export function Navbar() {
   return (
     <nav className="flex items-center gap-4 border-b border-neutral-800 bg-neutral-900 px-6 py-3">
       <span className="mr-auto font-bold text-neutral-100">♟ Chess App</span>
+      <InstallAppButton compact />
       {!isAuthed ? (
         <>
           <Link to="/signin" className="text-sm text-neutral-300 hover:text-neutral-100">

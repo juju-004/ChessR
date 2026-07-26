@@ -1,14 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Chess } from 'chess.js';
 import {
   createGame,
-  cancelGame,
-  joinGame,
-  listOpenGames,
   listFriendsActiveGames,
   type ActiveFriendGame,
-  type OpenGame,
 } from '../api/games.js';
 import { ApiRequestError } from '../api/http.js';
 import { useAuth } from '../contexts/AuthContext.js';
@@ -26,16 +22,7 @@ export function Dashboard() {
   const [error, setError] = useState('');
   const [activeGames, setActiveGames] = useState<ActiveFriendGame[] | null>(null);
   const [gamesError, setGamesError] = useState('');
-  const [openGames, setOpenGames] = useState<OpenGame[] | null>(null);
-  const [openGamesError, setOpenGamesError] = useState('');
-  const [openGamesBusyId, setOpenGamesBusyId] = useState<string | null>(null);
   const { balance, refresh } = useTokenBalance();
-
-  const refreshOpenGames = useCallback(() => {
-    listOpenGames()
-      .then((res) => setOpenGames(res.games))
-      .catch(() => setOpenGamesError('Failed to load open games.'));
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,10 +33,6 @@ export function Dashboard() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    refreshOpenGames();
-  }, [refreshOpenGames]);
 
   const wagerTokens = Math.max(0, Math.floor(Number(wagerInput) || 0));
 
@@ -73,33 +56,6 @@ export function Dashboard() {
   function handleJoinByCode() {
     const code = joinCodeInput.trim().toUpperCase();
     if (code) navigate(`/game/${code}`);
-  }
-
-  async function handleJoinOpenGame(game: OpenGame) {
-    setOpenGamesError('');
-    setOpenGamesBusyId(game._id);
-    try {
-      await joinGame(game._id);
-      refresh().catch(() => {});
-      navigate(`/game/${game.joinCode}`);
-    } catch (err) {
-      setOpenGamesError(err instanceof ApiRequestError ? err.message : 'Could not join that game');
-      setOpenGamesBusyId(null);
-    }
-  }
-
-  async function handleCancelOpenGame(game: OpenGame) {
-    setOpenGamesError('');
-    setOpenGamesBusyId(game._id);
-    try {
-      await cancelGame(game._id);
-      refresh().catch(() => {});
-      refreshOpenGames();
-    } catch (err) {
-      setOpenGamesError(err instanceof ApiRequestError ? err.message : 'Could not cancel that game');
-    } finally {
-      setOpenGamesBusyId(null);
-    }
   }
 
   return (
@@ -207,53 +163,6 @@ export function Dashboard() {
             Go to game
           </button>
         </div>
-      </div>
-
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-        <h2 className="mb-2 text-lg font-semibold text-neutral-100">Open games</h2>
-        {openGamesError && <p className="mb-2 text-sm text-red-400">{openGamesError}</p>}
-        {!openGamesError && openGames === null && <p className="text-sm text-neutral-400">Loading…</p>}
-        {openGames && openGames.length === 0 && (
-          <p className="text-sm text-neutral-400">No open games right now — create one above.</p>
-        )}
-        {openGames &&
-          openGames.map((g) => {
-            const isMine = g.white._id === user?.id;
-            const busy = openGamesBusyId === g._id;
-            return (
-              <div key={g._id} className="flex items-center justify-between border-b border-neutral-800 py-2 last:border-none">
-                <div className="text-sm text-neutral-200">
-                  {g.white.username}
-                  <span className="ml-2 text-neutral-500">
-                    {formatTimeControl(g.timeControl)}
-                    {g.variant === 'chess960' ? ' · Chess960' : ''}
-                  </span>
-                  {g.wagerTokens > 0 && (
-                    <span className="ml-2 rounded bg-amber-900/40 px-1.5 py-0.5 text-xs font-semibold text-amber-300">
-                      {g.wagerTokens} R wager
-                    </span>
-                  )}
-                </div>
-                {isMine ? (
-                  <button
-                    onClick={() => handleCancelOpenGame(g)}
-                    disabled={busy}
-                    className="rounded-md bg-neutral-700 px-3 py-1.5 text-sm font-semibold text-neutral-100 hover:bg-neutral-600 disabled:opacity-40"
-                  >
-                    {busy ? 'Cancelling…' : 'Cancel'}
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => handleJoinOpenGame(g)}
-                    disabled={busy}
-                    className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-40"
-                  >
-                    {busy ? 'Joining…' : 'Join'}
-                  </button>
-                )}
-              </div>
-            );
-          })}
       </div>
 
       <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">

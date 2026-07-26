@@ -269,12 +269,29 @@ export async function listFriendsActiveGames(userId: string) {
   return Game.find({
     status: "active",
     $or: [{ white: { $in: friendIds } }, { black: { $in: friendIds } }],
+    // A game the viewer is themself playing in isn't "a friend currently
+    // playing" from their own point of view — it's just their own game, and
+    // showing it here (with a "Watch" link back into their own live game)
+    // was the actual bug being fixed. Exclude it regardless of which side
+    // of the board the viewer is on.
+    white: { $ne: userId },
+    black: { $ne: userId },
   })
     .sort({ startedAt: -1 })
     .limit(50)
     .populate("white", "username")
     .populate("black", "username")
     .lean();
+}
+
+/** Used by the Friends list and Profile page to swap a "Challenge"/"Add
+ *  friend" button for a "Watch" link when that person is mid-game. Returns
+ *  just the join code (cheap projection) or null if they're not playing. */
+export async function getActiveGameCodeForUser(userId: string): Promise<string | null> {
+  const game = await Game.findOne({ status: "active", $or: [{ white: userId }, { black: userId }] })
+    .select("joinCode")
+    .lean();
+  return game?.joinCode ?? null;
 }
 
 export async function listOpenGames(excludeUserId?: string) {

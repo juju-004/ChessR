@@ -115,6 +115,16 @@ export function ChessBoard({
       // PREMOVE LOGIC: keep the armed-premove config in sync on every re-render.
       premovable: { enabled: !!movableColor, customDests: premoveDests as any },
     });
+
+    // PREMOVE LOGIC: chessground only *stores* a premove when you drag a
+    // piece out of turn (that's what arms the ghost piece/highlight) — it
+    // does not execute it on its own. `.playPremove()` must be called
+    // explicitly after every position update so it can (re)validate the
+    // queued premove against the fresh `movable.dests`/turnColor set just
+    // above, and fire `movable.events.after` (→ onUserMove) if it's still
+    // legal. This runs after every fen/turnColor change, i.e. after both the
+    // opponent's move and our own — it's a safe no-op when nothing is queued.
+    groundRef.current?.playPremove();
   }, [
     fen,
     orientation,

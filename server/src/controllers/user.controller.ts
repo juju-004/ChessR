@@ -3,6 +3,7 @@ import { User } from '../models/User.js';
 import { Game } from '../models/Game.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { getActiveGameCodeForUser } from '../services/game.service.js';
 import type { AuthedRequest } from '../middleware/auth.js';
 
 const searchSchema = z.object({
@@ -53,6 +54,9 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
 
   const isFriend = req.user ? user.friends.some((f) => f.toString() === req.user!.id) : false;
   const isSelf = req.user?.id === user._id.toString();
+  // Only worth checking once we know it isn't the viewer's own profile —
+  // there's no "watch yourself" button to show either way.
+  const activeGameCode = isSelf ? null : await getActiveGameCodeForUser(user._id.toString());
 
   res.json({
     id: user._id,
@@ -62,6 +66,7 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
     stats: { wins, losses, draws, gamesPlayed: wins + losses + draws },
     isFriend,
     isSelf,
+    activeGameCode,
   });
 });
 

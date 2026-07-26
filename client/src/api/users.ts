@@ -12,6 +12,7 @@ export interface UserProfile {
   stats: { wins: number; losses: number; draws: number; gamesPlayed: number };
   isFriend: boolean;
   isSelf: boolean;
+  activeGameCode: string | null;
 }
 
 export interface UserGameHistoryItem {

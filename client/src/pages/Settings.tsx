@@ -1,5 +1,7 @@
 import { useSettings, DEFAULT_SETTINGS, type BoardTheme, type PieceTheme } from '../contexts/SettingsContext.js';
 import { ChessBoard } from '../components/ChessBoard.js';
+import { InstallAppButton } from '../components/InstallAppButton.js';
+import { useInstallPrompt } from '../hooks/useInstallPrompt.js';
 import { computeDests } from '../chessUtils.js';
 import { Chess } from 'chess.js';
 
@@ -47,6 +49,7 @@ function ToggleRow({
 
 export function Settings() {
   const { settings, updateSetting, resetSettings } = useSettings();
+  const { isInstalled } = useInstallPrompt();
 
   const previewChess = new Chess();
 
@@ -64,6 +67,21 @@ export function Settings() {
 
       <div className="grid gap-4 md:grid-cols-[1fr_240px]">
         <div className="space-y-4">
+          <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
+            <h2 className="mb-2 text-sm font-semibold text-neutral-200">App</h2>
+            {isInstalled ? (
+              <p className="text-sm text-green-400">✓ Installed — you're already running Chess App standalone.</p>
+            ) : (
+              <>
+                <p className="mb-3 text-xs text-neutral-500">
+                  Install Chess App on this device for a full-screen, standalone experience — no browser tabs or
+                  address bar, launches from your home screen/app list like any other app.
+                </p>
+                <InstallAppButton />
+              </>
+            )}
+          </div>
+
           <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
             <h2 className="mb-3 text-sm font-semibold text-neutral-200">Board theme</h2>
             <div className="flex flex-wrap gap-2">

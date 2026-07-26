@@ -5,6 +5,7 @@ import { FriendRequest } from '../models/FriendRequest.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { getUserSocketIds } from '../services/presence.service.js';
+import { getActiveGameCodeForUser } from '../services/game.service.js';
 import { getIo } from '../sockets/io.js';
 import type { AuthedRequest } from '../middleware/auth.js';
 
@@ -96,6 +97,7 @@ export const listFriends = asyncHandler(async (req: AuthedRequest, res) => {
       username: f.username,
       avatarUrl: f.avatarUrl,
       online: (await getUserSocketIds(f._id.toString())).length > 0,
+      activeGameCode: await getActiveGameCodeForUser(f._id.toString()),
     })),
   );
 

@@ -4,6 +4,7 @@ export interface Friend {
   id: string;
   username: string;
   online: boolean;
+  activeGameCode: string | null;
 }
 
 export interface IncomingRequest {
