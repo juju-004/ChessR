@@ -123,6 +123,50 @@ export function Game() {
   const [chatInput, setChatInput] = useState("");
 
   const chess = useMemo(() => new Chess(fen), [fen]);
+  const myColor: "white" | "black" | undefined =
+    role === "white" || role === "black" ? role : undefined;
+
+  // PREMOVE LOGIC: these must be memoized, not recomputed inline on every
+  // render, AND — just as importantly — declared unconditionally up here
+  // rather than further down past the `if (mode === "loading") return (...)`
+  // / `if (mode === "need-join") return (...)` early returns below. Hooks
+  // called after a conditional return fire a different number of times
+  // depending on which branch a given render takes, which is exactly what
+  // broke the whole page just now (React bails out with "Rendered more/fewer
+  // hooks than during the previous render" the moment `mode` changes).
+  //
+  // Separately from that crash: `chess` itself is already useMemo'd on
+  // `fen`, but a plain `computeDests(chess)` call in the render body still
+  // allocates a brand new Map every single render — including renders
+  // triggered by something totally unrelated to the game (chat input
+  // keystrokes, a connection status blip, etc). Since dests/premoveDests
+  // are reference-unstable, ChessBoard's reactive useLayoutEffect (which
+  // depends on them) re-fires on every one of those renders too, calling
+  // `.set({ fen, ... })` again with whatever `fen` this component currently
+  // holds.
+  //
+  // That's the real cause of premoves appearing to take a network
+  // round-trip to "stick": the moment a premove becomes legal, chessground
+  // executes it internally (via playPremove) and visually moves the piece
+  // right away — but our own `fen` state doesn't update until the server
+  // echoes OUR move back (handleUserMove only emits over the socket, it
+  // never applies the move locally). Any incidental re-render in that
+  // window called `.set({ fen: <the pre-premove fen> })` again, which
+  // resets chessground back to the old position — undoing the premove's
+  // own visual move — until the round-trip finally lands and `fen` catches
+  // up. It wasn't slow; it was being told to un-happen and redo itself.
+  // Memoizing on `fen` (the only thing these actually depend on) stops that.
+  const dests = useMemo(() => {
+    let d = computeDests(chess);
+    if (gameMeta?.variant === "chess960") {
+      d = addChess960CastlingDests(d, chess, gameMeta.initialFen);
+    }
+    return d;
+  }, [chess, gameMeta?.variant, gameMeta?.initialFen]);
+  const premoveDests = useMemo(
+    () => (myColor ? computePremoveDests(chess, myColor) : new Map<string, string[]>()),
+    [chess, myColor],
+  );
 
   // --- Load game metadata, decide whether to show a "join" gate --------------
   useEffect(() => {
@@ -616,18 +660,7 @@ export function Game() {
   }
 
   const isPlayer = role !== "spectator";
-  const myColor: "white" | "black" | undefined =
-    role === "white" || role === "black" ? role : undefined;
-  let dests = computeDests(chess);
-  if (gameMeta?.variant === "chess960") {
-    dests = addChess960CastlingDests(dests, chess, gameMeta.initialFen);
-  }
   const inCheck = isInCheck(chess);
-  // PREMOVE LOGIC: compute the destinations offered for the player's next
-  // (not-yet-legal) move, passed down to ChessBoard as premoveDests.
-  const premoveDests = myColor
-    ? computePremoveDests(chess, myColor)
-    : new Map<string, string[]>();
 
   return (
     <div className="mx-auto mt-6 max-w-2xl space-y-4">
