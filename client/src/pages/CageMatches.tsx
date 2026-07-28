@@ -149,18 +149,18 @@ export function CageMatches() {
         <p className={`text-sm ${status.isError ? 'text-red-400' : 'text-green-400'}`}>{status.message}</p>
       )}
 
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-        <h1 className="mb-1 text-lg font-semibold text-neutral-100">Start a cage match</h1>
-        <p className="mb-4 text-sm text-neutral-400">
+      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
+        <h1 className="mb-1 text-lg font-semibold text-base-content">Start a cage match</h1>
+        <p className="mb-4 text-sm text-base-content/60">
           Challenge a friend to an ordered series of games — mix bullet, blitz, rapid, and Chess960 legs
           however you like, then optionally back it with a wager.
         </p>
 
-        <label className="mb-1 block text-sm text-neutral-400">Opponent</label>
+        <label className="mb-1 block text-sm text-base-content/60">Opponent</label>
         <select
           value={selectedFriend}
           onChange={(e) => setSelectedFriend(e.target.value)}
-          className="mb-4 w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100"
+          className="mb-4 w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content"
         >
           <option value="">Select a friend…</option>
           {friends.map((f) => (
@@ -170,35 +170,35 @@ export function CageMatches() {
           ))}
         </select>
 
-        <div className="mb-4 rounded-md border border-neutral-800 bg-neutral-950 p-3">
-          <h2 className="mb-2 text-sm font-semibold text-neutral-200">Leg plan ({legs.length} legs)</h2>
+        <div className="mb-4 rounded-md border border-base-300 bg-base-100 p-3">
+          <h2 className="mb-2 text-sm font-semibold text-base-content">Leg plan ({legs.length} legs)</h2>
 
           {legs.length === 0 && (
-            <p className="mb-2 text-sm text-neutral-500">No legs yet — add some below.</p>
+            <p className="mb-2 text-sm text-base-content/50">No legs yet — add some below.</p>
           )}
           {legs.length > 0 && (
             <ol className="mb-3 max-h-56 space-y-1 overflow-y-auto pr-1">
               {legs.map((leg, i) => (
                 <li
                   key={i}
-                  className="flex items-center justify-between rounded bg-neutral-900 px-2 py-1 text-sm text-neutral-200"
+                  className="flex items-center justify-between rounded bg-base-200 px-2 py-1 text-sm text-base-content"
                 >
                   <span>
-                    <span className="mr-2 text-neutral-500">#{i + 1}</span>
+                    <span className="mr-2 text-base-content/50">#{i + 1}</span>
                     {formatLegTimeControl(leg)}
                   </span>
                   <span className="flex gap-1">
                     <button
                       onClick={() => moveLeg(i, -1)}
                       disabled={i === 0}
-                      className="rounded bg-neutral-800 px-2 text-xs text-neutral-300 hover:bg-neutral-700 disabled:opacity-30"
+                      className="rounded bg-base-300 px-2 text-xs text-base-content/80 hover:bg-base-300 disabled:opacity-30"
                     >
                       ↑
                     </button>
                     <button
                       onClick={() => moveLeg(i, 1)}
                       disabled={i === legs.length - 1}
-                      className="rounded bg-neutral-800 px-2 text-xs text-neutral-300 hover:bg-neutral-700 disabled:opacity-30"
+                      className="rounded bg-base-300 px-2 text-xs text-base-content/80 hover:bg-base-300 disabled:opacity-30"
                     >
                       ↓
                     </button>
@@ -214,13 +214,13 @@ export function CageMatches() {
             </ol>
           )}
 
-          <div className="flex flex-wrap items-end gap-2 border-t border-neutral-800 pt-3">
+          <div className="flex flex-wrap items-end gap-2 border-t border-base-300 pt-3">
             <div>
-              <label className="mb-1 block text-xs text-neutral-500">Time control</label>
+              <label className="mb-1 block text-xs text-base-content/50">Time control</label>
               <select
                 value={quickPreset}
                 onChange={(e) => setQuickPreset(Number(e.target.value))}
-                className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm text-neutral-100"
+                className="rounded-md border border-base-300 bg-base-200 px-2 py-1.5 text-sm text-base-content"
               >
                 {QUICK_ADD_PRESETS.map((p, i) => (
                   <option key={p.label} value={i}>
@@ -230,25 +230,25 @@ export function CageMatches() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs text-neutral-500">Variant</label>
+              <label className="mb-1 block text-xs text-base-content/50">Variant</label>
               <select
                 value={quickVariant}
                 onChange={(e) => setQuickVariant(e.target.value as CageVariant)}
-                className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm text-neutral-100"
+                className="rounded-md border border-base-300 bg-base-200 px-2 py-1.5 text-sm text-base-content"
               >
                 <option value="standard">Standard</option>
                 <option value="chess960">Chess960</option>
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs text-neutral-500">Count</label>
+              <label className="mb-1 block text-xs text-base-content/50">Count</label>
               <input
                 type="number"
                 min={1}
                 max={30}
                 value={quickCount}
                 onChange={(e) => setQuickCount(Number(e.target.value))}
-                className="w-16 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm text-neutral-100"
+                className="w-16 rounded-md border border-base-300 bg-base-200 px-2 py-1.5 text-sm text-base-content"
               />
             </div>
             <button
@@ -260,11 +260,11 @@ export function CageMatches() {
           </div>
         </div>
 
-        <label className="mb-1 block text-sm text-neutral-400">How the winner is decided</label>
+        <label className="mb-1 block text-sm text-base-content/60">How the winner is decided</label>
         <select
           value={winnerMode}
           onChange={(e) => setWinnerMode(e.target.value as CageWinnerMode)}
-          className="mb-3 w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100"
+          className="mb-3 w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content"
         >
           <option value="total_score">Total score (win = 1, draw = 0.5)</option>
           <option value="most_categories">Most categories won (bullet/blitz/rapid/classical)</option>
@@ -278,15 +278,15 @@ export function CageMatches() {
             value={targetWins}
             onChange={(e) => setTargetWins(Number(e.target.value))}
             placeholder="Wins needed"
-            className="mb-3 w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100"
+            className="mb-3 w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content"
           />
         )}
 
-        <label className="mb-1 block text-sm text-neutral-400">Wager</label>
+        <label className="mb-1 block text-sm text-base-content/60">Wager</label>
         <select
           value={wagerMode}
           onChange={(e) => setWagerMode(e.target.value as CageWagerMode)}
-          className="mb-3 w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100"
+          className="mb-3 w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content"
         >
           <option value="none">No wager</option>
           <option value="winner_takes_all">Winner takes all — one stake for the whole match</option>
@@ -303,7 +303,7 @@ export function CageMatches() {
             placeholder={
               wagerMode === 'per_leg' ? 'R tokens per leg' : 'Total R tokens for the whole match'
             }
-            className="mb-3 w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100"
+            className="mb-3 w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content"
           />
         )}
 
@@ -316,9 +316,9 @@ export function CageMatches() {
         </button>
       </div>
 
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-        <h2 className="mb-2 text-lg font-semibold text-neutral-100">Active cage matches</h2>
-        {activeMatches.length === 0 && <p className="text-sm text-neutral-400">None right now.</p>}
+      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
+        <h2 className="mb-2 text-lg font-semibold text-base-content">Active cage matches</h2>
+        {activeMatches.length === 0 && <p className="text-sm text-base-content/60">None right now.</p>}
         {activeMatches.map((m) => {
           const opp = opponentOf(m, myId);
           const standings = computeCageStandings(m);
@@ -329,12 +329,12 @@ export function CageMatches() {
             <Link
               key={m._id}
               to={`/cage/${m.matchCode}`}
-              className="mb-2 flex items-center justify-between rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 hover:border-neutral-700"
+              className="mb-2 flex items-center justify-between rounded-md border border-base-300 bg-base-100 px-3 py-2 hover:border-base-300"
             >
-              <span className="text-sm text-neutral-200">
+              <span className="text-sm text-base-content">
                 vs {opp.username} · leg {m.currentLegIndex + 1}/{m.legs.length}
               </span>
-              <span className="text-sm text-neutral-400">
+              <span className="text-sm text-base-content/60">
                 {myScore}–{oppScore}
                 {m.wagerMode !== 'none' ? ` · ${m.wagerTokens} R` : ''}
               </span>
@@ -343,19 +343,19 @@ export function CageMatches() {
         })}
       </div>
 
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-        <h2 className="mb-2 text-lg font-semibold text-neutral-100">Match history</h2>
-        {finishedMatches.length === 0 && <p className="text-sm text-neutral-400">No finished cage matches yet.</p>}
+      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
+        <h2 className="mb-2 text-lg font-semibold text-base-content">Match history</h2>
+        {finishedMatches.length === 0 && <p className="text-sm text-base-content/60">No finished cage matches yet.</p>}
         {finishedMatches.map((m) => {
           const opp = opponentOf(m, myId);
           return (
             <Link
               key={m._id}
               to={`/cage/${m.matchCode}`}
-              className="mb-2 flex items-center justify-between rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 hover:border-neutral-700"
+              className="mb-2 flex items-center justify-between rounded-md border border-base-300 bg-base-100 px-3 py-2 hover:border-base-300"
             >
-              <span className="text-sm text-neutral-200">vs {opp.username}</span>
-              <span className="text-sm text-neutral-400">{matchOutcomeLabel(m, myId)}</span>
+              <span className="text-sm text-base-content">vs {opp.username}</span>
+              <span className="text-sm text-base-content/60">{matchOutcomeLabel(m, myId)}</span>
             </Link>
           );
         })}

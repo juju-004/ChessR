@@ -55,31 +55,31 @@ export function GameOverModal({
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-sm rounded-xl border border-neutral-700 bg-neutral-900 p-6 text-center shadow-2xl"
+        className="relative w-full max-w-sm rounded-xl border border-base-300 bg-base-200 p-6 text-center shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
           aria-label="Close"
-          className="absolute right-3 top-3 text-neutral-500 hover:text-neutral-300"
+          className="absolute right-3 top-3 text-base-content/50 hover:text-base-content/80"
         >
           ✕
         </button>
 
         <h2
           className={`mb-1 text-2xl font-bold ${
-            isWin ? 'text-green-400' : isLoss ? 'text-red-400' : 'text-neutral-100'
+            isWin ? 'text-green-400' : isLoss ? 'text-red-400' : 'text-base-content'
           }`}
         >
           {title}
         </h2>
-        <p className="mb-5 text-sm text-neutral-400">{reasonText(reason)}</p>
+        <p className="mb-5 text-sm text-base-content/60">{reasonText(reason)}</p>
 
         {wagerText && (
           <p
             className={`mb-5 text-sm font-semibold ${
               wagerSettlement?.winnerId === null
-                ? 'text-neutral-300'
+                ? 'text-base-content/80'
                 : wagerSettlement?.winnerId === myUserId
                   ? 'text-amber-400'
                   : 'text-red-400'
@@ -101,7 +101,7 @@ export function GameOverModal({
           )}
           <button
             onClick={onClose}
-            className="rounded-md bg-neutral-700 px-4 py-2 font-semibold text-neutral-100 hover:bg-neutral-600"
+            className="rounded-md bg-base-300 px-4 py-2 font-semibold text-base-content hover:bg-base-300"
           >
             Close
           </button>

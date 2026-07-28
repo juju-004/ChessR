@@ -47,11 +47,7 @@ export function Popover({
   useEffect(() => {
     if (!open) return;
     function handlePointerDown(e: PointerEvent) {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      )
-        setOpen(false);
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
     }
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
@@ -75,11 +71,9 @@ export function Popover({
             animate="visible"
             exit="exit"
             variants={scaleIn}
-            style={{
-              transformOrigin: `${side === "bottom" ? "top" : "bottom"} ${align === "start" ? "left" : "right"}`,
-            }}
+            style={{ transformOrigin: `${side === "bottom" ? "top" : "bottom"} ${align === "start" ? "left" : "right"}` }}
             className={cn(
-              "glass-strong absolute z-50 min-w-40 rounded-xl p-1.5",
+              "glass-strong absolute z-50 min-w-[10rem] rounded-xl p-1.5",
               side === "bottom" ? "top-full mt-2" : "bottom-full mb-2",
               align === "start" ? "left-0" : "right-0",
               className,

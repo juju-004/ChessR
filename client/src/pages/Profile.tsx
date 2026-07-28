@@ -8,7 +8,7 @@ import { formatTimeControl } from '../timeControls.js';
 const resultStyles: Record<UserGameHistoryItem['result'], string> = {
   win: 'text-green-400',
   loss: 'text-red-400',
-  draw: 'text-neutral-400',
+  draw: 'text-base-content/60',
 };
 
 export function Profile() {
@@ -41,7 +41,7 @@ export function Profile() {
   }
 
   if (!profile) {
-    return <div className="mx-auto mt-6 max-w-2xl text-neutral-400">Loading profile…</div>;
+    return <div className="mx-auto mt-6 max-w-2xl text-base-content/60">Loading profile…</div>;
   }
 
   async function handleAddFriend() {
@@ -56,17 +56,17 @@ export function Profile() {
 
   return (
     <div className="mx-auto mt-6 max-w-2xl space-y-4">
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-        <h1 className="text-2xl font-bold text-neutral-100">{profile.username}</h1>
-        <p className="mb-3 text-sm text-neutral-400">
+      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
+        <h1 className="text-2xl font-bold text-base-content">{profile.username}</h1>
+        <p className="mb-3 text-sm text-base-content/60">
           Member since {new Date(profile.memberSince).toLocaleDateString()}
         </p>
 
         <div className="mb-3 flex gap-4 text-sm">
           <span className="text-green-400">{profile.stats.wins}W</span>
           <span className="text-red-400">{profile.stats.losses}L</span>
-          <span className="text-neutral-400">{profile.stats.draws}D</span>
-          <span className="text-neutral-500">({profile.stats.gamesPlayed} games)</span>
+          <span className="text-base-content/60">{profile.stats.draws}D</span>
+          <span className="text-base-content/50">({profile.stats.gamesPlayed} games)</span>
         </div>
 
         {!profile.isSelf && (
@@ -95,18 +95,18 @@ export function Profile() {
         )}
       </div>
 
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-        <h2 className="mb-2 text-lg font-semibold text-neutral-100">Game history</h2>
-        {games.length === 0 && <p className="text-sm text-neutral-400">No games played yet.</p>}
+      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
+        <h2 className="mb-2 text-lg font-semibold text-base-content">Game history</h2>
+        {games.length === 0 && <p className="text-sm text-base-content/60">No games played yet.</p>}
         {games.map((g) => (
           <Link
             key={g.gameId}
             to={`/replay/${g.joinCode}`}
-            className="flex items-center justify-between border-b border-neutral-800 py-2 text-sm last:border-none hover:bg-neutral-800/50"
+            className="flex items-center justify-between border-b border-base-300 py-2 text-sm last:border-none hover:bg-base-300/50"
           >
-            <span className="text-neutral-200">
+            <span className="text-base-content">
               {g.color === 'white' ? 'vs' : 'as black vs'} {g.opponent?.username ?? 'Unknown'}
-              <span className="ml-2 text-neutral-500">
+              <span className="ml-2 text-base-content/50">
                 {formatTimeControl(g.timeControl)} · {g.moveCount} moves · {new Date(g.endedAt).toLocaleDateString()}
               </span>
             </span>
@@ -119,17 +119,17 @@ export function Profile() {
             <button
               disabled={page <= 1}
               onClick={() => setPage((p) => p - 1)}
-              className="rounded-md bg-neutral-700 px-3 py-1 text-neutral-100 disabled:opacity-30"
+              className="rounded-md bg-base-300 px-3 py-1 text-base-content disabled:opacity-30"
             >
               Prev
             </button>
-            <span className="text-neutral-400">
+            <span className="text-base-content/60">
               Page {page} of {totalPages}
             </span>
             <button
               disabled={page >= totalPages}
               onClick={() => setPage((p) => p + 1)}
-              className="rounded-md bg-neutral-700 px-3 py-1 text-neutral-100 disabled:opacity-30"
+              className="rounded-md bg-base-300 px-3 py-1 text-base-content disabled:opacity-30"
             >
               Next
             </button>

@@ -68,7 +68,7 @@ function AppShell() {
   }, []);
 
   if (!bootstrapped) {
-    return <div className="p-6 text-neutral-400">Loading…</div>;
+    return <div className="p-6 text-base-content/60">Loading…</div>;
   }
 
   return (

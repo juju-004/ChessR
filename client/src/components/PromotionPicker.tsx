@@ -11,12 +11,12 @@ const PIECES: Array<{ key: 'q' | 'r' | 'b' | 'n'; label: string }> = [
 
 export function PromotionPicker({ onPick }: PromotionPickerProps) {
   return (
-    <div className="absolute top-1/2 left-1/2 z-10 w-40 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-neutral-700 bg-neutral-800 p-3 shadow-xl">
+    <div className="absolute top-1/2 left-1/2 z-10 w-40 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-base-300 bg-base-300 p-3 shadow-xl">
       {PIECES.map((p) => (
         <button
           key={p.key}
           onClick={() => onPick(p.key)}
-          className="mb-1 block w-full rounded-md bg-neutral-700 px-3 py-2 text-left text-sm text-neutral-100 last:mb-0 hover:bg-neutral-600"
+          className="mb-1 block w-full rounded-md bg-base-300 px-3 py-2 text-left text-sm text-base-content last:mb-0 hover:bg-base-300"
         >
           {p.label}
         </button>

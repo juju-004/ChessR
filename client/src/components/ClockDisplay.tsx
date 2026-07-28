@@ -44,7 +44,7 @@ export function ClockDisplay({
 
   const dot = (connected?: boolean) => (
     <span
-      className={`mr-1.5 inline-block h-2 w-2 rounded-full ${connected ? 'bg-green-500' : 'bg-neutral-600'}`}
+      className={`mr-1.5 inline-block h-2 w-2 rounded-full ${connected ? 'bg-green-500' : 'bg-base-300'}`}
       title={connected ? 'Connected' : 'Not connected'}
     />
   );
@@ -55,11 +55,11 @@ export function ClockDisplay({
   if (whiteRemainingMs === null || blackRemainingMs === null) {
     return (
       <div className="mb-3 flex gap-3">
-        <div className="flex-1 rounded-md bg-neutral-900 px-3 py-2 text-center font-mono text-sm text-neutral-400">
+        <div className="flex-1 rounded-md bg-base-200 px-3 py-2 text-center font-mono text-sm text-base-content/60">
           {dot(blackConnected)}
           {blackLabel} · ∞
         </div>
-        <div className="flex-1 rounded-md bg-neutral-900 px-3 py-2 text-center font-mono text-sm text-neutral-400">
+        <div className="flex-1 rounded-md bg-base-200 px-3 py-2 text-center font-mono text-sm text-base-content/60">
           {dot(whiteConnected)}
           {whiteLabel} · ∞
         </div>
@@ -76,7 +76,7 @@ export function ClockDisplay({
     <div className="mb-3 flex gap-3">
       <div
         className={`flex-1 rounded-md px-3 py-2 text-center font-mono text-sm font-semibold ${
-          isActive && sideToMove === 'black' ? 'bg-blue-900 text-blue-100' : 'bg-neutral-900 text-neutral-300'
+          isActive && sideToMove === 'black' ? 'bg-blue-900 text-blue-100' : 'bg-base-200 text-base-content/80'
         }`}
       >
         {dot(blackConnected)}
@@ -84,7 +84,7 @@ export function ClockDisplay({
       </div>
       <div
         className={`flex-1 rounded-md px-3 py-2 text-center font-mono text-sm font-semibold ${
-          isActive && sideToMove === 'white' ? 'bg-blue-900 text-blue-100' : 'bg-neutral-900 text-neutral-300'
+          isActive && sideToMove === 'white' ? 'bg-blue-900 text-blue-100' : 'bg-base-200 text-base-content/80'
         }`}
       >
         {dot(whiteConnected)}

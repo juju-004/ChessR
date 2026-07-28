@@ -1,4 +1,8 @@
 @import "tailwindcss";
+@import "@fontsource/poppins/400.css";
+@import "@fontsource/poppins/500.css";
+@import "@fontsource/poppins/600.css";
+@import "@fontsource/poppins/700.css";
 
 /* ---------------------------------------------------------------------------
    daisyUI + theming
@@ -17,7 +21,9 @@
    kit) is plain CSS/Tailwind and doesn't depend on daisyUI internals at all.
    --------------------------------------------------------------------- */
 @plugin "daisyui" {
-  themes: light --default, dark --prefersdark;
+  themes:
+    light --default,
+    dark --prefersdark;
 }
 
 @plugin "daisyui/theme" {
@@ -86,12 +92,6 @@
   --noise: 0;
 }
 
-/* ---------------------------------------------------------------------------
-   Brand tokens — the exact values requested, plus a light/dark-aware glass
-   palette layered on top. These are plain custom properties independent of
-   daisyUI, consumed directly by @/components/ui/* and the .gradient-*/.glass
-   utility classes below.
-   --------------------------------------------------------------------- */
 :root,
 [data-theme="light"] {
   --primary: #3b82f6;
@@ -119,19 +119,38 @@
   --glass-shadow: rgba(0, 0, 0, 0.45);
 }
 
+body {
+  font-family: "Poppins", sans-serif;
+}
 /* Gradients built from the tokens above — used by Button/Card variants and
    available anywhere as plain classes. */
 .gradient-primary {
-  background-image: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+  background-image: linear-gradient(
+    135deg,
+    var(--primary) 0%,
+    var(--primary-light) 100%
+  );
 }
 .gradient-secondary {
-  background-image: linear-gradient(135deg, var(--secondary) 0%, var(--secondary-light) 100%);
+  background-image: linear-gradient(
+    135deg,
+    var(--secondary) 0%,
+    var(--secondary-light) 100%
+  );
 }
 .gradient-brand {
-  background-image: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  background-image: linear-gradient(
+    135deg,
+    var(--primary) 0%,
+    var(--secondary) 100%
+  );
 }
 .text-gradient-brand {
-  background-image: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  background-image: linear-gradient(
+    135deg,
+    var(--primary) 0%,
+    var(--secondary) 100%
+  );
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -182,23 +201,33 @@
    recreation of lichess's actual separate board/piece asset sets, but a
    real, working visual distinction with zero extra asset dependencies.
    Wrapper classes are set from the Settings page's boardTheme/pieceTheme. */
-.board-theme-brown .cg-wrap cg-board { filter: none; }
-.board-theme-green .cg-wrap cg-board { filter: hue-rotate(70deg) saturate(1.15); }
-.board-theme-blue .cg-wrap cg-board { filter: hue-rotate(178deg) saturate(1.25); }
-.board-theme-gray .cg-wrap cg-board { filter: grayscale(0.9) contrast(1.05); }
-.board-theme-purple .cg-wrap cg-board { filter: hue-rotate(255deg) saturate(1.3); }
-
-.piece-theme-classic .cg-wrap piece { filter: none; }
-.piece-theme-mono .cg-wrap piece { filter: grayscale(1) contrast(1.15); }
-.piece-theme-contrast .cg-wrap piece { filter: contrast(1.5) saturate(1.3) brightness(1.05); }
-.piece-theme-wood .cg-wrap piece { filter: sepia(0.6) saturate(1.4) brightness(0.95); }
-
-.notify-in {
-  animation: notify-in 0.15s ease-out;
+.board-theme-brown .cg-wrap cg-board {
+  filter: none;
 }
-@keyframes notify-in {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
+.board-theme-green .cg-wrap cg-board {
+  filter: hue-rotate(70deg) saturate(1.15);
+}
+.board-theme-blue .cg-wrap cg-board {
+  filter: hue-rotate(178deg) saturate(1.25);
+}
+.board-theme-gray .cg-wrap cg-board {
+  filter: grayscale(0.9) contrast(1.05);
+}
+.board-theme-purple .cg-wrap cg-board {
+  filter: hue-rotate(255deg) saturate(1.3);
+}
+
+.piece-theme-classic .cg-wrap piece {
+  filter: none;
+}
+.piece-theme-mono .cg-wrap piece {
+  filter: grayscale(1) contrast(1.15);
+}
+.piece-theme-contrast .cg-wrap piece {
+  filter: contrast(1.5) saturate(1.3) brightness(1.05);
+}
+.piece-theme-wood .cg-wrap piece {
+  filter: sepia(0.6) saturate(1.4) brightness(0.95);
 }
 
 /* Check-square highlighting works out of the box once you pass a `check`

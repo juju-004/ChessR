@@ -32,9 +32,9 @@ const FORMAT_DEFAULT_MAX: Record<TournamentFormat, number> = {
 
 function statusBadge(status: Tournament['status']) {
   const styles: Record<Tournament['status'], string> = {
-    pending: 'bg-neutral-800 text-neutral-300',
+    pending: 'bg-base-300 text-base-content/80',
     active: 'bg-green-900/40 text-green-300',
-    finished: 'bg-neutral-800 text-neutral-500',
+    finished: 'bg-base-300 text-base-content/50',
     cancelled: 'bg-red-900/40 text-red-300',
   };
   return <span className={`rounded px-2 py-0.5 text-xs font-medium ${styles[status]}`}>{status}</span>;
@@ -44,20 +44,20 @@ function TournamentRow({ t }: { t: Tournament }) {
   return (
     <Link
       to={`/tournaments/${t.code}`}
-      className="flex items-center justify-between rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 hover:border-neutral-700"
+      className="flex items-center justify-between rounded-md border border-base-300 bg-base-100 px-3 py-2 hover:border-base-300"
     >
       <div>
         <div className="flex items-center gap-2">
-          <span className="font-medium text-neutral-100">{t.name}</span>
+          <span className="font-medium text-base-content">{t.name}</span>
           {statusBadge(t.status)}
         </div>
-        <div className="text-xs text-neutral-500">
+        <div className="text-xs text-base-content/50">
           {FORMAT_LABEL[t.format]} · {formatTimeControl(t)} · {t.players.length}/{t.maxPlayers} players
           {t.wagerMode === 'entry_fee' && <> · {t.wagerTokens} R entry</>}
           {t.berserkAllowed && <> · Berserk on</>}
         </div>
       </div>
-      <span className="text-xs text-neutral-500">#{t.code}</span>
+      <span className="text-xs text-base-content/50">#{t.code}</span>
     </Link>
   );
 }
@@ -147,21 +147,21 @@ export function Tournaments() {
     <div className="mx-auto mt-6 max-w-3xl space-y-4">
       {status && <p className={`text-sm ${status.isError ? 'text-red-400' : 'text-green-400'}`}>{status.message}</p>}
 
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-        <h1 className="mb-1 text-lg font-semibold text-neutral-100">Create a tournament</h1>
-        <p className="mb-4 text-sm text-neutral-400">
+      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
+        <h1 className="mb-1 text-lg font-semibold text-base-content">Create a tournament</h1>
+        <p className="mb-4 text-sm text-base-content/60">
           Run a knockout bracket, a swiss event, or a full round-robin — anyone can join until you start it.
         </p>
 
-        <label className="mb-1 block text-sm text-neutral-400">Name</label>
+        <label className="mb-1 block text-sm text-base-content/60">Name</label>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Friday Night Blitz"
-          className="mb-4 w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100"
+          className="mb-4 w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content"
         />
 
-        <label className="mb-1 block text-sm text-neutral-400">Format</label>
+        <label className="mb-1 block text-sm text-base-content/60">Format</label>
         <div className="mb-4 grid grid-cols-2 gap-2">
           {(Object.keys(FORMAT_LABEL) as TournamentFormat[]).map((f) => (
             <button
@@ -170,22 +170,22 @@ export function Tournaments() {
               className={`rounded-md border px-3 py-2 text-left text-sm ${
                 format === f
                   ? 'border-amber-700 bg-amber-900/20 text-amber-200'
-                  : 'border-neutral-800 bg-neutral-950 text-neutral-300 hover:border-neutral-700'
+                  : 'border-base-300 bg-base-100 text-base-content/80 hover:border-base-300'
               }`}
             >
               <div className="font-medium">{FORMAT_LABEL[f]}</div>
-              <div className="text-xs text-neutral-500">{FORMAT_DESCRIPTION[f]}</div>
+              <div className="text-xs text-base-content/50">{FORMAT_DESCRIPTION[f]}</div>
             </button>
           ))}
         </div>
 
         <div className="mb-4 flex flex-wrap items-end gap-3">
           <div>
-            <label className="mb-1 block text-xs text-neutral-500">Time control</label>
+            <label className="mb-1 block text-xs text-base-content/50">Time control</label>
             <select
               value={presetIdx}
               onChange={(e) => setPresetIdx(Number(e.target.value))}
-              className="rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-sm text-neutral-100"
+              className="rounded-md border border-base-300 bg-base-100 px-2 py-1.5 text-sm text-base-content"
             >
               {TIME_PRESETS.map((p, i) => (
                 <option key={p.label} value={i}>
@@ -195,54 +195,54 @@ export function Tournaments() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-neutral-500">Variant</label>
+            <label className="mb-1 block text-xs text-base-content/50">Variant</label>
             <select
               value={variant}
               onChange={(e) => setVariant(e.target.value as 'standard' | 'chess960')}
-              className="rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-sm text-neutral-100"
+              className="rounded-md border border-base-300 bg-base-100 px-2 py-1.5 text-sm text-base-content"
             >
               <option value="standard">Standard</option>
               <option value="chess960">Chess960</option>
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-neutral-500">Max players</label>
+            <label className="mb-1 block text-xs text-base-content/50">Max players</label>
             <input
               type="number"
               min={2}
               max={64}
               value={maxPlayers}
               onChange={(e) => setMaxPlayers(Number(e.target.value))}
-              className="w-24 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-sm text-neutral-100"
+              className="w-24 rounded-md border border-base-300 bg-base-100 px-2 py-1.5 text-sm text-base-content"
             />
           </div>
           {format === 'swiss' && (
             <div>
-              <label className="mb-1 block text-xs text-neutral-500">Rounds</label>
+              <label className="mb-1 block text-xs text-base-content/50">Rounds</label>
               <input
                 type="number"
                 min={3}
                 max={15}
                 value={swissRounds}
                 onChange={(e) => setSwissRounds(Number(e.target.value))}
-                className="w-20 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-sm text-neutral-100"
+                className="w-20 rounded-md border border-base-300 bg-base-100 px-2 py-1.5 text-sm text-base-content"
               />
             </div>
           )}
         </div>
 
-        <label className="mb-4 flex items-center gap-2 text-sm text-neutral-300">
+        <label className="mb-4 flex items-center gap-2 text-sm text-base-content/80">
           <input type="checkbox" checked={berserkAllowed} onChange={(e) => setBerserkAllowed(e.target.checked)} />
           Allow berserking — halve your own clock (and forfeit your increment) for a shot at a bonus 0.5 point on a win
         </label>
 
-        <div className="mb-4 flex flex-wrap items-end gap-3 border-t border-neutral-800 pt-3">
+        <div className="mb-4 flex flex-wrap items-end gap-3 border-t border-base-300 pt-3">
           <div>
-            <label className="mb-1 block text-xs text-neutral-500">Wager</label>
+            <label className="mb-1 block text-xs text-base-content/50">Wager</label>
             <select
               value={wagerMode}
               onChange={(e) => setWagerMode(e.target.value as TournamentWagerMode)}
-              className="rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-sm text-neutral-100"
+              className="rounded-md border border-base-300 bg-base-100 px-2 py-1.5 text-sm text-base-content"
             >
               <option value="none">No wager</option>
               <option value="entry_fee">Entry fee (winner-takes-most prize pool)</option>
@@ -250,13 +250,13 @@ export function Tournaments() {
           </div>
           {wagerMode === 'entry_fee' && (
             <div>
-              <label className="mb-1 block text-xs text-neutral-500">Entry fee (R tokens)</label>
+              <label className="mb-1 block text-xs text-base-content/50">Entry fee (R tokens)</label>
               <input
                 type="number"
                 min={1}
                 value={wagerInput}
                 onChange={(e) => setWagerInput(e.target.value)}
-                className="w-28 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-sm text-neutral-100"
+                className="w-28 rounded-md border border-base-300 bg-base-100 px-2 py-1.5 text-sm text-base-content"
               />
             </div>
           )}
@@ -271,8 +271,8 @@ export function Tournaments() {
       </div>
 
       {openActive.length > 0 && (
-        <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-          <h2 className="mb-3 text-sm font-semibold text-neutral-200">In progress</h2>
+        <div className="rounded-lg border border-base-300 bg-base-200 p-5">
+          <h2 className="mb-3 text-sm font-semibold text-base-content">In progress</h2>
           <div className="space-y-2">
             {openActive.map((t) => (
               <TournamentRow key={t._id} t={t} />
@@ -281,9 +281,9 @@ export function Tournaments() {
         </div>
       )}
 
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-        <h2 className="mb-3 text-sm font-semibold text-neutral-200">Open for registration</h2>
-        {openPending.length === 0 && <p className="text-sm text-neutral-500">No tournaments waiting for players right now.</p>}
+      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
+        <h2 className="mb-3 text-sm font-semibold text-base-content">Open for registration</h2>
+        {openPending.length === 0 && <p className="text-sm text-base-content/50">No tournaments waiting for players right now.</p>}
         <div className="space-y-2">
           {openPending.map((t) => (
             <TournamentRow key={t._id} t={t} />
@@ -292,8 +292,8 @@ export function Tournaments() {
       </div>
 
       {mine.length > 0 && (
-        <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-          <h2 className="mb-3 text-sm font-semibold text-neutral-200">Your tournaments</h2>
+        <div className="rounded-lg border border-base-300 bg-base-200 p-5">
+          <h2 className="mb-3 text-sm font-semibold text-base-content">Your tournaments</h2>
           <div className="space-y-2">
             {mine.map((t) => (
               <TournamentRow key={t._id} t={t} />

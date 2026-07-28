@@ -38,7 +38,7 @@ export function Sidebar() {
       {/* Desktop: vertical rail, flows alongside the page content. */}
       <nav
         aria-label="Primary"
-        className="glass sticky top-4 hidden h-fit w-56 shrink-0 flex-col gap-1 self-start rounded-2xl p-3 md:flex"
+        className="glass sticky top-20 hidden h-fit w-56 shrink-0 flex-col gap-1 self-start rounded-2xl p-3 md:flex"
       >
         {NAV_ITEMS.map((item) => (
           <SidebarLink key={item.to} item={item} layoutId="sidebar-desktop-active" orientation="vertical" />

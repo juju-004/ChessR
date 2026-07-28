@@ -30,17 +30,17 @@ function PairingRow({ tournament, pairing, myId }: { tournament: Tournament; pai
   return (
     <div
       className={`flex items-center justify-between rounded-md border px-3 py-2 text-sm ${
-        involvesMe ? 'border-amber-800 bg-amber-950/20' : 'border-neutral-800 bg-neutral-950'
+        involvesMe ? 'border-amber-800 bg-amber-950/20' : 'border-base-300 bg-base-100'
       }`}
     >
-      <span className="text-neutral-200">
+      <span className="text-base-content">
         {p1Name}
         {pairing.berserk.p1 && ' ⚔'} {pairing.player2 && <>vs {p2Name}{pairing.berserk.p2 && ' ⚔'}</>}
       </span>
       <span className="flex items-center gap-2">
-        <span className="text-neutral-500">{outcome}</span>
+        <span className="text-base-content/50">{outcome}</span>
         {pairing.status === 'active' && pairing.joinCode && (
-          <Link to={`/game/${pairing.joinCode}`} className="rounded bg-neutral-800 px-2 py-0.5 text-xs text-amber-300 hover:bg-neutral-700">
+          <Link to={`/game/${pairing.joinCode}`} className="rounded bg-base-300 px-2 py-0.5 text-xs text-amber-300 hover:bg-base-300">
             {involvesMe ? 'Play' : 'Watch'}
           </Link>
         )}
@@ -93,7 +93,7 @@ export function TournamentDetail() {
   }, [socket, tournament?._id, code, refresh]);
 
   if (error) return <p className="mt-6 text-center text-red-400">{error}</p>;
-  if (!tournament) return <p className="mt-6 text-center text-neutral-400">Loading…</p>;
+  if (!tournament) return <p className="mt-6 text-center text-base-content/60">Loading…</p>;
 
   const myId = user?.id;
   const isPlayer = !!myId && tournament.players.some((p) => p.user === myId);
@@ -124,18 +124,18 @@ export function TournamentDetail() {
 
   return (
     <div className="mx-auto mt-6 max-w-3xl space-y-4">
-      <button onClick={() => navigate('/tournaments')} className="text-sm text-neutral-500 hover:text-neutral-300">
+      <button onClick={() => navigate('/tournaments')} className="text-sm text-base-content/50 hover:text-base-content/80">
         ← All tournaments
       </button>
 
       {status && <p className={`text-sm ${status.isError ? 'text-red-400' : 'text-green-400'}`}>{status.message}</p>}
 
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
+      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
         <div className="mb-2 flex items-center justify-between">
-          <h1 className="text-lg font-semibold text-neutral-100">{tournament.name}</h1>
-          <span className="text-xs text-neutral-500">#{tournament.code}</span>
+          <h1 className="text-lg font-semibold text-base-content">{tournament.name}</h1>
+          <span className="text-xs text-base-content/50">#{tournament.code}</span>
         </div>
-        <p className="mb-4 text-sm text-neutral-400">
+        <p className="mb-4 text-sm text-base-content/60">
           {FORMAT_LABEL[tournament.format]} · {formatTimeControl(tournament)} · {tournament.players.length}/
           {tournament.maxPlayers} players
           {tournament.format === 'swiss' && <> · {tournament.swissRounds} rounds</>}
@@ -156,7 +156,7 @@ export function TournamentDetail() {
               </button>
             )}
             {isPlayer && !isCreator && (
-              <button onClick={leave} className="rounded-md bg-neutral-800 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-700">
+              <button onClick={leave} className="rounded-md bg-base-300 px-3 py-1.5 text-sm text-base-content/80 hover:bg-base-300">
                 Leave
               </button>
             )}
@@ -193,11 +193,11 @@ export function TournamentDetail() {
       </div>
 
       {tournament.status === 'pending' && (
-        <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-          <h2 className="mb-2 text-sm font-semibold text-neutral-200">Players ({tournament.players.length})</h2>
+        <div className="rounded-lg border border-base-300 bg-base-200 p-5">
+          <h2 className="mb-2 text-sm font-semibold text-base-content">Players ({tournament.players.length})</h2>
           <div className="flex flex-wrap gap-2">
             {tournament.players.map((p) => (
-              <span key={p.user} className="rounded bg-neutral-800 px-2 py-1 text-xs text-neutral-200">
+              <span key={p.user} className="rounded bg-base-300 px-2 py-1 text-xs text-base-content">
                 {p.username}
                 {p.user === tournament.createdBy && <span className="ml-1 text-amber-400">★</span>}
               </span>
@@ -207,11 +207,11 @@ export function TournamentDetail() {
       )}
 
       {isPointsFormat && standings.length > 0 && (
-        <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-          <h2 className="mb-2 text-sm font-semibold text-neutral-200">Standings</h2>
+        <div className="rounded-lg border border-base-300 bg-base-200 p-5">
+          <h2 className="mb-2 text-sm font-semibold text-base-content">Standings</h2>
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs text-neutral-500">
+              <tr className="text-left text-xs text-base-content/50">
                 <th className="pb-1">#</th>
                 <th className="pb-1">Player</th>
                 <th className="pb-1 text-right">Pts</th>
@@ -221,7 +221,7 @@ export function TournamentDetail() {
             </thead>
             <tbody>
               {standings.map((p, i) => (
-                <tr key={p.user} className={p.user === myId ? 'text-amber-300' : 'text-neutral-200'}>
+                <tr key={p.user} className={p.user === myId ? 'text-amber-300' : 'text-base-content'}>
                   <td className="py-0.5">{i + 1}</td>
                   <td className="py-0.5">{p.username}</td>
                   <td className="py-0.5 text-right">{p.points}</td>
@@ -237,8 +237,8 @@ export function TournamentDetail() {
       {tournament.rounds.length > 0 && (
         <div className="space-y-3">
           {[...tournament.rounds].reverse().map((round) => (
-            <div key={round.index} className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-              <h2 className="mb-2 text-sm font-semibold text-neutral-200">
+            <div key={round.index} className="rounded-lg border border-base-300 bg-base-200 p-5">
+              <h2 className="mb-2 text-sm font-semibold text-base-content">
                 {tournament.format === 'normal' ? `Round ${round.index + 1}` : `Round ${round.index + 1}`}
                 {round.index === currentRound?.index && round.status === 'active' && (
                   <span className="ml-2 rounded bg-green-900/40 px-2 py-0.5 text-xs text-green-300">current</span>

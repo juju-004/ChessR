@@ -62,9 +62,9 @@ export function BuyTokens() {
 
   return (
     <div className="mx-auto mt-6 max-w-2xl space-y-4">
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
+      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
         <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-neutral-100">Buy R Tokens</h1>
+          <h1 className="text-xl font-bold text-base-content">Buy R Tokens</h1>
           <div className="flex gap-3 text-sm">
             <Link to="/wallet/transactions" className="text-blue-400 hover:underline">
               Transactions
@@ -84,9 +84,9 @@ export function BuyTokens() {
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {plans.map((plan) => (
-            <div key={plan.id} className="rounded-lg border border-neutral-700 bg-neutral-950 p-4">
-              <p className="text-lg font-bold text-neutral-100">{plan.tokens} tokens</p>
-              <p className="mb-3 text-sm text-neutral-400">₦{plan.priceNaira.toLocaleString()}</p>
+            <div key={plan.id} className="rounded-lg border border-base-300 bg-base-100 p-4">
+              <p className="text-lg font-bold text-base-content">{plan.tokens} tokens</p>
+              <p className="mb-3 text-sm text-base-content/60">₦{plan.priceNaira.toLocaleString()}</p>
               <button
                 onClick={() => handleBuy(plan)}
                 disabled={busyPlanId !== null || !publicKey}
@@ -100,7 +100,7 @@ export function BuyTokens() {
 
         <button
           onClick={() => navigate('/dashboard')}
-          className="mt-4 text-sm text-neutral-400 hover:text-neutral-200"
+          className="mt-4 text-sm text-base-content/60 hover:text-base-content"
         >
           ← Back to dashboard
         </button>

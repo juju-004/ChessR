@@ -8,7 +8,7 @@ const PING_TIMEOUT_MS = 6000;
 
 function dotColor(state: ConnState, latencyMs: number | null): string {
   if (state !== 'connected') return 'bg-red-500';
-  if (latencyMs === null) return 'bg-neutral-500';
+  if (latencyMs === null) return 'bg-base-300';
   if (latencyMs < 150) return 'bg-green-500';
   if (latencyMs < 400) return 'bg-amber-500';
   return 'bg-red-500';
@@ -86,7 +86,7 @@ export function ConnectionStatus() {
 
   return (
     <span
-      className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-neutral-400"
+      className="glass flex h-9 items-center gap-1.5 rounded-full px-3 text-xs text-base-content/70"
       title={
         state === 'connected'
           ? `Connected${latencyMs !== null ? ` · ${latencyMs}ms round trip` : ''}`

@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource/poppins": "^5.3.0",
     "@lichess-org/chessground": "^9.8.1",
     "chess.js": "^1.4.0",
     "daisyui": "^5.0.43",

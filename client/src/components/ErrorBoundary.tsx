@@ -25,7 +25,7 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="mx-auto mt-16 max-w-md rounded-lg border border-red-900 bg-red-950/40 p-6 text-center">
           <h1 className="mb-2 text-xl font-bold text-red-400">Something went wrong</h1>
-          <p className="mb-4 text-sm text-neutral-400">
+          <p className="mb-4 text-sm text-base-content/60">
             The page hit an unexpected error. Reloading usually fixes it.
           </p>
           <button

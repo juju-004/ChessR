@@ -23,25 +23,25 @@ export function ProfileSearch() {
 
   return (
     <div className="mx-auto mt-6 max-w-2xl">
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-        <h1 className="mb-3 text-xl font-bold text-neutral-100">Find players</h1>
+      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
+        <h1 className="mb-3 text-xl font-bold text-base-content">Find players</h1>
         <input
           type="text"
           placeholder="Search by username…"
           value={query}
           onChange={(e) => handleChange(e.target.value)}
-          className="mb-3 w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100"
+          className="mb-3 w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content"
         />
         {error && <p className="text-sm text-red-400">{error}</p>}
         {results.length === 0 && query.trim() && !error && (
-          <p className="text-sm text-neutral-400">No users found.</p>
+          <p className="text-sm text-base-content/60">No users found.</p>
         )}
         {results.map((u) => (
-          <div key={u._id} className="flex items-center justify-between border-b border-neutral-800 py-2 last:border-none">
-            <span className="text-sm text-neutral-200">{u.username}</span>
+          <div key={u._id} className="flex items-center justify-between border-b border-base-300 py-2 last:border-none">
+            <span className="text-sm text-base-content">{u.username}</span>
             <Link
               to={`/profile/${u.username}`}
-              className="rounded-md bg-neutral-700 px-3 py-1.5 text-sm font-semibold text-neutral-100 hover:bg-neutral-600"
+              className="rounded-md bg-base-300 px-3 py-1.5 text-sm font-semibold text-base-content hover:bg-base-300"
             >
               View
             </Link>

@@ -37,9 +37,9 @@ export function Transactions() {
 
   return (
     <div className="mx-auto mt-6 max-w-2xl space-y-4">
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
+      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
         <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-neutral-100">Transactions</h1>
+          <h1 className="text-xl font-bold text-base-content">Transactions</h1>
           <div className="flex gap-3 text-sm">
             <Link to="/wallet/buy" className="text-blue-400 hover:underline">
               Buy tokens
@@ -50,18 +50,18 @@ export function Transactions() {
           </div>
         </div>
 
-        {loading && <p className="text-sm text-neutral-400">Loading…</p>}
+        {loading && <p className="text-sm text-base-content/60">Loading…</p>}
         {!loading && transactions.length === 0 && (
-          <p className="text-sm text-neutral-400">No transactions yet.</p>
+          <p className="text-sm text-base-content/60">No transactions yet.</p>
         )}
 
         {transactions.map((t) => (
-          <div key={t._id} className="flex items-center justify-between border-b border-neutral-800 py-2 text-sm last:border-none">
+          <div key={t._id} className="flex items-center justify-between border-b border-base-300 py-2 text-sm last:border-none">
             <div>
-              <p className="text-neutral-200">
+              <p className="text-base-content">
                 {typeLabels[t.type]} · {t.tokens} tokens
               </p>
-              <p className="text-xs text-neutral-500">
+              <p className="text-xs text-base-content/50">
                 {isMoneyMovement(t.type)
                   ? `₦${(t.amountKobo / 100).toLocaleString()} · `
                   : ''}
@@ -80,17 +80,17 @@ export function Transactions() {
             <button
               disabled={page <= 1}
               onClick={() => setPage((p) => p - 1)}
-              className="rounded-md bg-neutral-700 px-3 py-1 text-neutral-100 disabled:opacity-30"
+              className="rounded-md bg-base-300 px-3 py-1 text-base-content disabled:opacity-30"
             >
               Prev
             </button>
-            <span className="text-neutral-400">
+            <span className="text-base-content/60">
               Page {page} of {totalPages}
             </span>
             <button
               disabled={page >= totalPages}
               onClick={() => setPage((p) => p + 1)}
-              className="rounded-md bg-neutral-700 px-3 py-1 text-neutral-100 disabled:opacity-30"
+              className="rounded-md bg-base-300 px-3 py-1 text-base-content disabled:opacity-30"
             >
               Next
             </button>

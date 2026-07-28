@@ -81,9 +81,9 @@ export function Withdraw() {
 
   return (
     <div className="mx-auto mt-6 max-w-2xl space-y-4">
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
+      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
         <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-neutral-100">Withdraw</h1>
+          <h1 className="text-xl font-bold text-base-content">Withdraw</h1>
           <div className="flex gap-3 text-sm">
             <Link to="/wallet/buy" className="text-blue-400 hover:underline">
               Buy tokens
@@ -94,31 +94,31 @@ export function Withdraw() {
           </div>
         </div>
 
-        <p className="mb-1 text-sm text-neutral-400">
-          Balance: <span className="font-semibold text-neutral-100">{balance ?? '…'}</span> tokens
+        <p className="mb-1 text-sm text-base-content/60">
+          Balance: <span className="font-semibold text-base-content">{balance ?? '…'}</span> tokens
         </p>
-        <p className="mb-4 text-xs text-neutral-500">
+        <p className="mb-4 text-xs text-base-content/50">
           Rate: ₦{nairaPerToken} per token · Minimum withdrawal: {minTokens} tokens
         </p>
 
-        <label className="mb-1 block text-sm text-neutral-400">Tokens to withdraw</label>
+        <label className="mb-1 block text-sm text-base-content/60">Tokens to withdraw</label>
         <input
           type="number"
           min={minTokens}
           max={balance ?? undefined}
           value={tokens}
           onChange={(e) => setTokens(e.target.value)}
-          className="mb-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100"
+          className="mb-1 w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content"
         />
         {tokensNum > 0 && (
-          <p className="mb-3 text-xs text-neutral-500">≈ ₦{estimatedNaira.toLocaleString()}</p>
+          <p className="mb-3 text-xs text-base-content/50">≈ ₦{estimatedNaira.toLocaleString()}</p>
         )}
 
-        <label className="mb-1 block text-sm text-neutral-400">Bank</label>
+        <label className="mb-1 block text-sm text-base-content/60">Bank</label>
         <select
           value={bankCode}
           onChange={(e) => setBankCode(e.target.value)}
-          className="mb-3 w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100"
+          className="mb-3 w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content"
         >
           <option value="">Select a bank…</option>
           {banks.map((b) => (
@@ -128,16 +128,16 @@ export function Withdraw() {
           ))}
         </select>
 
-        <label className="mb-1 block text-sm text-neutral-400">Account number</label>
+        <label className="mb-1 block text-sm text-base-content/60">Account number</label>
         <input
           type="text"
           inputMode="numeric"
           maxLength={10}
           value={accountNumber}
           onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ''))}
-          className="mb-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100"
+          className="mb-1 w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content"
         />
-        {resolving && <p className="mb-3 text-xs text-neutral-500">Resolving account…</p>}
+        {resolving && <p className="mb-3 text-xs text-base-content/50">Resolving account…</p>}
         {resolveError && <p className="mb-3 text-xs text-red-400">{resolveError}</p>}
         {accountName && <p className="mb-3 text-sm text-green-400">✓ {accountName}</p>}
 
@@ -154,7 +154,7 @@ export function Withdraw() {
 
         <button
           onClick={() => navigate('/dashboard')}
-          className="mt-4 block text-sm text-neutral-400 hover:text-neutral-200"
+          className="mt-4 block text-sm text-base-content/60 hover:text-base-content"
         >
           ← Back to dashboard
         </button>

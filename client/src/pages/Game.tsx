@@ -638,22 +638,22 @@ export function Game() {
 
   if (mode === "loading") {
     return (
-      <div className="mx-auto mt-6 max-w-2xl text-neutral-400">Loading…</div>
+      <div className="mx-auto mt-6 max-w-2xl text-base-content/60">Loading…</div>
     );
   }
 
   if (mode === "need-join" && gameMeta) {
     return (
-      <div className="mx-auto mt-6 max-w-2xl rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-        <h1 className="mb-2 text-xl font-bold text-neutral-100">
-          Game <span className="font-normal text-neutral-500">· {code}</span>
+      <div className="mx-auto mt-6 max-w-2xl rounded-lg border border-base-300 bg-base-200 p-5">
+        <h1 className="mb-2 text-xl font-bold text-base-content">
+          Game <span className="font-normal text-base-content/50">· {code}</span>
           {gameMeta.variant === "chess960" && (
             <span className="ml-2 rounded bg-purple-900 px-2 py-0.5 text-xs font-semibold text-purple-200">
               Chess960
             </span>
           )}
         </h1>
-        <p className="mb-3 text-sm text-neutral-400">
+        <p className="mb-3 text-sm text-base-content/60">
           {gameMeta.white?.username} is waiting for an opponent.
         </p>
         {!!gameMeta.wagerTokens && (
@@ -678,10 +678,10 @@ export function Game() {
 
   return (
     <div className="mx-auto mt-6 max-w-2xl space-y-4">
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
+      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
         <div className="mb-2 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-neutral-100">
-            Game <span className="font-normal text-neutral-500">· {code}</span>
+          <h1 className="text-xl font-bold text-base-content">
+            Game <span className="font-normal text-base-content/50">· {code}</span>
             {!settings.zenMode && gameMeta?.variant === "chess960" && (
               <span className="ml-2 rounded bg-purple-900 px-2 py-0.5 text-xs font-semibold text-purple-200">
                 Chess960
@@ -695,7 +695,7 @@ export function Game() {
             {!settings.zenMode && gameMeta?.tournamentId && (
               <Link
                 to={`/tournaments`}
-                className="ml-2 rounded bg-neutral-800 px-2 py-0.5 text-xs font-semibold text-neutral-300 hover:bg-neutral-700"
+                className="ml-2 rounded bg-base-300 px-2 py-0.5 text-xs font-semibold text-base-content/80 hover:bg-base-300"
               >
                 Tournament game
               </Link>
@@ -703,7 +703,7 @@ export function Game() {
             {!settings.zenMode && whiteBerserk && <span className="ml-2 text-xs text-red-400">⚔ White berserked</span>}
             {!settings.zenMode && blackBerserk && <span className="ml-2 text-xs text-red-400">⚔ Black berserked</span>}
           </h1>
-          <span className="text-sm text-neutral-400">
+          <span className="text-sm text-base-content/60">
             {gameOver
               ? `Game over — ${describeResult(gameOver.result)} (${gameOver.reason.replace(/_/g, " ")})`
               : connStatus}
@@ -735,7 +735,7 @@ export function Game() {
                 </button>
                 <button
                   onClick={() => handleClaim("draw")}
-                  className="rounded-md bg-neutral-700 px-3 py-1.5 text-sm font-semibold text-neutral-100 hover:bg-neutral-600"
+                  className="rounded-md bg-base-300 px-3 py-1.5 text-sm font-semibold text-base-content hover:bg-base-300"
                 >
                   Claim draw
                 </button>
@@ -785,7 +785,7 @@ export function Game() {
             {moves.length < 2 ? (
               <button
                 onClick={handleAbort}
-                className="rounded-md bg-neutral-700 px-4 py-2 text-sm font-semibold text-neutral-100 hover:bg-neutral-600"
+                className="rounded-md bg-base-300 px-4 py-2 text-sm font-semibold text-base-content hover:bg-base-300"
               >
                 Abort game
               </button>
@@ -793,7 +793,7 @@ export function Game() {
               <>
                 <button
                   onClick={handleOfferDraw}
-                  className="rounded-md bg-neutral-700 px-4 py-2 text-sm font-semibold text-neutral-100 hover:bg-neutral-600"
+                  className="rounded-md bg-base-300 px-4 py-2 text-sm font-semibold text-base-content hover:bg-base-300"
                 >
                   Offer draw
                 </button>
@@ -862,9 +862,9 @@ export function Game() {
       </div>
 
       {!settings.zenMode && (
-        <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-          <h2 className="mb-2 text-lg font-semibold text-neutral-100">Moves</h2>
-          <div className="max-h-48 overflow-y-auto font-mono text-sm text-neutral-300">
+        <div className="rounded-lg border border-base-300 bg-base-200 p-5">
+          <h2 className="mb-2 text-lg font-semibold text-base-content">Moves</h2>
+          <div className="max-h-48 overflow-y-auto font-mono text-sm text-base-content/80">
             {moves.map((m) => (
               <div key={m.moveNumber}>
                 {m.moveNumber}. {m.san}
@@ -875,24 +875,24 @@ export function Game() {
       )}
 
       {!settings.zenMode && role === "spectator" && (
-        <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-          <h2 className="mb-2 text-lg font-semibold text-neutral-100">
+        <div className="rounded-lg border border-base-300 bg-base-200 p-5">
+          <h2 className="mb-2 text-lg font-semibold text-base-content">
             Spectator chat
           </h2>
-          <p className="mb-2 text-xs text-neutral-500">
+          <p className="mb-2 text-xs text-base-content/50">
             Only visible to spectators, not the players. Not saved — refreshing
             clears it.
           </p>
-          <div className="mb-2 max-h-48 space-y-1 overflow-y-auto rounded-md bg-neutral-950 p-2 text-sm">
+          <div className="mb-2 max-h-48 space-y-1 overflow-y-auto rounded-md bg-base-100 p-2 text-sm">
             {chatMessages.length === 0 && (
-              <p className="text-neutral-500">No messages yet.</p>
+              <p className="text-base-content/50">No messages yet.</p>
             )}
             {chatMessages.map((m, i) => (
               <p key={i}>
                 <span className="font-semibold text-blue-400">
                   {m.username}:
                 </span>{" "}
-                <span className="text-neutral-200">{m.message}</span>
+                <span className="text-base-content">{m.message}</span>
               </p>
             ))}
           </div>
@@ -903,7 +903,7 @@ export function Game() {
               onChange={(e) => setChatInput(e.target.value)}
               maxLength={300}
               placeholder="Say something…"
-              className="flex-1 rounded-md border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-sm text-neutral-100"
+              className="flex-1 rounded-md border border-base-300 bg-base-100 px-3 py-1.5 text-sm text-base-content"
             />
             <button
               type="submit"

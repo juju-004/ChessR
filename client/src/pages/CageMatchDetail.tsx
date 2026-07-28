@@ -25,11 +25,11 @@ const WAGER_MODE_LABEL: Record<CageMatch['wagerMode'], string> = {
 };
 
 const LEG_STATUS_DOT: Record<string, string> = {
-  pending: 'bg-neutral-700',
+  pending: 'bg-base-300',
   active: 'bg-blue-500',
   paused: 'bg-amber-500',
   finished: 'bg-green-600',
-  skipped: 'bg-neutral-800',
+  skipped: 'bg-base-300',
 };
 
 export function CageMatchDetail() {
@@ -95,7 +95,7 @@ export function CageMatchDetail() {
   }
 
   if (loadError) return <p className="mx-auto mt-10 max-w-lg text-center text-red-400">{loadError}</p>;
-  if (!match) return <p className="mx-auto mt-10 max-w-lg text-center text-neutral-400">Loading…</p>;
+  if (!match) return <p className="mx-auto mt-10 max-w-lg text-center text-base-content/60">Loading…</p>;
 
   const iAmP1 = match.player1._id === user?.id;
   const me = iAmP1 ? match.player1 : match.player2;
@@ -129,35 +129,35 @@ export function CageMatchDetail() {
 
   return (
     <div className="mx-auto mt-6 max-w-2xl space-y-4">
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
+      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
         <div className="mb-3 flex items-center justify-between">
-          <h1 className="text-lg font-semibold text-neutral-100">
+          <h1 className="text-lg font-semibold text-base-content">
             Cage match vs {opponent.username}
           </h1>
-          <Link to="/cage" className="text-sm text-neutral-400 hover:text-neutral-200">
+          <Link to="/cage" className="text-sm text-base-content/60 hover:text-base-content">
             ← All cage matches
           </Link>
         </div>
 
-        <div className="mb-3 flex items-center justify-center gap-6 rounded-md border border-neutral-800 bg-neutral-950 py-4">
+        <div className="mb-3 flex items-center justify-center gap-6 rounded-md border border-base-300 bg-base-100 py-4">
           <div className="text-center">
-            <p className="text-sm text-neutral-400">You</p>
-            <p className="text-2xl font-bold text-neutral-100">{myScore}</p>
+            <p className="text-sm text-base-content/60">You</p>
+            <p className="text-2xl font-bold text-base-content">{myScore}</p>
           </div>
-          <span className="text-neutral-600">–</span>
+          <span className="text-base-content/40">–</span>
           <div className="text-center">
-            <p className="text-sm text-neutral-400">{opponent.username}</p>
-            <p className="text-2xl font-bold text-neutral-100">{oppScore}</p>
+            <p className="text-sm text-base-content/60">{opponent.username}</p>
+            <p className="text-2xl font-bold text-base-content">{oppScore}</p>
           </div>
         </div>
 
         {match.winnerMode === 'most_categories' && (
-          <p className="mb-2 text-center text-sm text-neutral-400">
+          <p className="mb-2 text-center text-sm text-base-content/60">
             Categories won — you: {myCats}, {opponent.username}: {oppCats}
           </p>
         )}
         {match.winnerMode === 'first_to_n' && (
-          <p className="mb-2 text-center text-sm text-neutral-400">
+          <p className="mb-2 text-center text-sm text-base-content/60">
             First to {match.targetWins} wins
           </p>
         )}
@@ -166,7 +166,7 @@ export function CageMatchDetail() {
           <p className="mb-2 text-center text-base font-semibold text-amber-300">{outcomeLine}</p>
         )}
 
-        <div className="mb-3 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-neutral-500">
+        <div className="mb-3 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-base-content/50">
           <span>{WINNER_MODE_LABEL[match.winnerMode]}</span>
           <span>·</span>
           <span>
@@ -203,8 +203,8 @@ export function CageMatchDetail() {
         )}
       </div>
 
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-        <h2 className="mb-2 text-sm font-semibold text-neutral-200">Legs</h2>
+      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
+        <h2 className="mb-2 text-sm font-semibold text-base-content">Legs</h2>
         <ol className="space-y-1">
           {match.legs.map((leg) => {
             const resultLabel =
@@ -226,13 +226,13 @@ export function CageMatchDetail() {
             return (
               <li
                 key={leg.index}
-                className="flex items-center justify-between rounded bg-neutral-950 px-3 py-1.5 text-sm"
+                className="flex items-center justify-between rounded bg-base-100 px-3 py-1.5 text-sm"
               >
-                <span className="flex items-center gap-2 text-neutral-300">
+                <span className="flex items-center gap-2 text-base-content/80">
                   <span className={`inline-block h-2 w-2 rounded-full ${LEG_STATUS_DOT[leg.status]}`} />
                   #{leg.index + 1} · {formatLegTimeControl(leg)} · {CATEGORY_LABEL[leg.category]}
                 </span>
-                <span className="flex items-center gap-2 text-neutral-500">
+                <span className="flex items-center gap-2 text-base-content/50">
                   {resultLabel}
                   {leg.status === 'finished' && leg.joinCode && (
                     <Link to={`/game/${leg.joinCode}`} className="text-blue-400 hover:text-blue-300">

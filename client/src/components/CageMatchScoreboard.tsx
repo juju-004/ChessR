@@ -9,11 +9,11 @@ interface Props {
 }
 
 const PIP_COLOR: Record<CageLeg['status'], string> = {
-  finished: 'bg-neutral-600',
+  finished: 'bg-base-300',
   active: 'bg-blue-500',
   paused: 'bg-amber-500',
-  pending: 'bg-neutral-800',
-  skipped: 'bg-neutral-900',
+  pending: 'bg-base-300',
+  skipped: 'bg-base-200',
 };
 
 function pipTitle(leg: CageLeg, p1Name: string, p2Name: string): string {

@@ -38,25 +38,25 @@ export function InstallAppButton({ compact = false }: { compact?: boolean }) {
         onClick={handleClick}
         className={
           compact
-            ? 'rounded-md bg-neutral-800 px-3 py-1.5 text-sm font-semibold text-neutral-100 hover:bg-neutral-700'
+            ? 'glass h-9 rounded-full px-3.5 text-sm font-semibold text-base-content hover:bg-white/10'
             : 'rounded-md bg-amber-700 px-4 py-2 font-semibold text-neutral-950 hover:bg-amber-600'
         }
       >
         📲 {label}
       </button>
-      {status && <p className="text-xs text-neutral-500">{status}</p>}
+      {status && <p className="text-xs text-base-content/50">{status}</p>}
       {showIosSteps && (
-        <div className="rounded-md border border-neutral-800 bg-neutral-950 p-3 text-sm text-neutral-300">
-          <p className="mb-1 font-medium text-neutral-200">On iPhone/iPad:</p>
-          <ol className="list-inside list-decimal space-y-1 text-neutral-400">
+        <div className="rounded-md border border-base-300 bg-base-100 p-3 text-sm text-base-content/80">
+          <p className="mb-1 font-medium text-base-content">On iPhone/iPad:</p>
+          <ol className="list-inside list-decimal space-y-1 text-base-content/60">
             <li>
-              Tap the <span className="text-neutral-200">Share</span> icon in Safari's toolbar.
+              Tap the <span className="text-base-content">Share</span> icon in Safari's toolbar.
             </li>
             <li>
-              Scroll down and tap <span className="text-neutral-200">Add to Home Screen</span>.
+              Scroll down and tap <span className="text-base-content">Add to Home Screen</span>.
             </li>
             <li>
-              Tap <span className="text-neutral-200">Add</span> — Chess App will open full-screen, just like a
+              Tap <span className="text-base-content">Add</span> — Chess App will open full-screen, just like a
               normal app.
             </li>
           </ol>

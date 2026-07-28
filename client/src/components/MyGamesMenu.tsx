@@ -63,32 +63,32 @@ export function MyGamesMenu({ className }: MyGamesMenuProps) {
         onClick={() => setOpen((o) => !o)}
         aria-label="Your active games"
         aria-expanded={open}
-        className="rounded-md p-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100"
+        className="glass flex h-9 w-9 items-center justify-center rounded-full text-base-content/80 hover:text-base-content"
       >
-        <PawnIcon className="h-5 w-5" />
+        <PawnIcon className="h-4 w-4" />
       </button>
 
       {open && (
-        <div className="absolute right-0 z-20 mt-2 w-80 rounded-lg border border-neutral-700 bg-neutral-900 shadow-xl">
-          <div className="border-b border-neutral-800 px-3 py-2 text-sm font-semibold text-neutral-200">
+        <div className="glass-strong absolute right-0 z-20 mt-2 w-80 overflow-hidden rounded-2xl">
+          <div className="border-b border-base-content/10 px-3 py-2 text-sm font-semibold text-base-content">
             Your games
           </div>
 
           {error && <p className="p-3 text-sm text-red-400">{error}</p>}
 
-          {!error && loading && games === null && <p className="p-3 text-sm text-neutral-400">Loading…</p>}
+          {!error && loading && games === null && <p className="p-3 text-sm text-base-content/60">Loading…</p>}
 
           {!error &&
             games &&
             cageMatches &&
             games.filter((g) => !g.cageMatchId).length === 0 &&
             cageMatches.length === 0 && (
-              <p className="p-3 text-sm text-neutral-400">No active games. Head to the dashboard to start one.</p>
+              <p className="p-3 text-sm text-base-content/60">No active games. Head to the dashboard to start one.</p>
             )}
 
           <div className="max-h-96 overflow-y-auto">
             {cageMatches && cageMatches.length > 0 && (
-              <div className="border-b border-neutral-800 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-purple-400">
+              <div className="border-b border-base-300 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-purple-400">
                 Cage matches
               </div>
             )}
@@ -109,13 +109,13 @@ export function MyGamesMenu({ className }: MyGamesMenuProps) {
                     const leg = activeLeg ?? pausedLeg;
                     navigate(leg?.joinCode ? `/game/${leg.joinCode}` : `/cage/${m.matchCode}`);
                   }}
-                  className="flex w-full items-center justify-between gap-2 border-b border-neutral-800 bg-purple-950/10 px-3 py-2 text-left last:border-none hover:bg-purple-950/20"
+                  className="flex w-full items-center justify-between gap-2 border-b border-base-300 bg-purple-950/10 px-3 py-2 text-left last:border-none hover:bg-purple-950/20"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-sm text-neutral-100">
+                    <p className="truncate text-sm text-base-content">
                       🥊 vs {opponent.username} · {myScore}–{oppScore}
                     </p>
-                    <p className="truncate text-xs text-neutral-500">
+                    <p className="truncate text-xs text-base-content/50">
                       Leg {m.currentLegIndex + 1}/{m.legs.length}
                     </p>
                   </div>
@@ -134,7 +134,7 @@ export function MyGamesMenu({ className }: MyGamesMenuProps) {
             })}
 
             {cageMatches && cageMatches.length > 0 && games && games.filter((g) => !g.cageMatchId).length > 0 && (
-              <div className="border-b border-neutral-800 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+              <div className="border-b border-base-300 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-base-content/50">
                 Single games
               </div>
             )}
@@ -154,13 +154,13 @@ export function MyGamesMenu({ className }: MyGamesMenuProps) {
                       setOpen(false);
                       navigate(`/game/${g.joinCode}`);
                     }}
-                    className="flex w-full items-center justify-between gap-2 border-b border-neutral-800 px-3 py-2 text-left last:border-none hover:bg-neutral-800"
+                    className="flex w-full items-center justify-between gap-2 border-b border-base-300 px-3 py-2 text-left last:border-none hover:bg-base-300"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm text-neutral-100">
+                      <p className="truncate text-sm text-base-content">
                         {waiting ? 'Waiting for opponent…' : `vs ${opponent?.username ?? '?'}`}
                       </p>
-                      <p className="truncate text-xs text-neutral-500">
+                      <p className="truncate text-xs text-base-content/50">
                         {formatTimeControl(g.timeControl)}
                         {g.variant === 'chess960' ? ' · Chess960' : ''}
                         {g.wagerTokens > 0 ? ` · ${g.wagerTokens} R wager` : ''}
@@ -172,7 +172,7 @@ export function MyGamesMenu({ className }: MyGamesMenuProps) {
                       </span>
                     )}
                     {waiting && (
-                      <span className="shrink-0 rounded bg-neutral-700 px-1.5 py-0.5 text-[10px] font-bold text-neutral-300">
+                      <span className="shrink-0 rounded bg-base-300 px-1.5 py-0.5 text-[10px] font-bold text-base-content/80">
                         Waiting
                       </span>
                     )}
