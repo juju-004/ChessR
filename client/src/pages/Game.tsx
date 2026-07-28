@@ -14,6 +14,7 @@ import { useAuth } from "../contexts/AuthContext.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useNotify } from "../contexts/NotificationContext.js";
 import { useSettings } from "../contexts/SettingsContext.js";
+import { useConfirm } from "../contexts/ConfirmContext.js";
 import { ChessBoard } from "../components/ChessBoard.js";
 import { PromotionPicker } from "../components/PromotionPicker.js";
 import { ClockDisplay } from "../components/ClockDisplay.js";
@@ -65,6 +66,7 @@ export function Game() {
   const socket = useSocket();
   const { notify } = useNotify();
   const { settings } = useSettings();
+  const confirmDialog = useConfirm();
 
   useEffect(() => {
     setSoundEnabled(settings.soundEnabled);
@@ -564,25 +566,37 @@ export function Game() {
     socket.emit("cage:resume_request", { matchId: gameMeta.cageMatchId });
   }
 
-  function handleResign() {
+  async function handleResign() {
     if (!socket || !gameMeta) return;
-    if (!settings.confirmResign || confirm("Are you sure you want to resign?")) {
+    if (
+      !settings.confirmResign ||
+      (await confirmDialog({ title: "Resign this game?", variant: "danger", confirmLabel: "Resign" }))
+    ) {
       socket.emit("game:resign", { gameId: gameMeta._id });
     }
   }
 
-  function handleAbort() {
+  async function handleAbort() {
     if (!socket || !gameMeta) return;
-    if (
-      confirm("Abort this game? No result will be recorded for either player.")
-    ) {
+    const ok = await confirmDialog({
+      title: "Abort this game?",
+      description: "No result will be recorded for either player.",
+      variant: "danger",
+      confirmLabel: "Abort",
+    });
+    if (ok) {
       socket.emit("game:abort", { gameId: gameMeta._id });
     }
   }
 
-  function handleBerserk() {
+  async function handleBerserk() {
     if (!socket || !gameMeta) return;
-    if (confirm("Berserk! Halve your own clock and give up your increment for a shot at a bonus 0.5 point if you win. Continue?")) {
+    const ok = await confirmDialog({
+      title: "Berserk!",
+      description: "Halve your own clock and give up your increment for a shot at a bonus 0.5 point if you win.",
+      confirmLabel: "Berserk",
+    });
+    if (ok) {
       socket.emit("game:berserk", { gameId: gameMeta._id });
     }
   }

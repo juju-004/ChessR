@@ -1,4 +1,165 @@
 @import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   daisyUI + theming
+   -------------------------------------------------------------------------
+   Tailwind v4 config is CSS-first (no tailwind.config.js), so daisyUI is
+   wired up the same way: `@plugin "daisyui"` registers the plugin itself,
+   and each `@plugin "daisyui/theme"` block defines one selectable theme.
+   `data-theme="light"` / `data-theme="dark"` on <html> (see
+   contexts/ThemeContext.tsx) is what actually switches between them.
+
+   NOTE: this was written against daisyUI v5's documented CSS-variable theme
+   API from memory (no network access while building this) — if your
+   installed daisyui version expects slightly different variable names,
+   the fix is just adjusting the names in the two blocks below; everything
+   else in this file (the gradient/glass utilities, the `@/components/ui`
+   kit) is plain CSS/Tailwind and doesn't depend on daisyUI internals at all.
+   --------------------------------------------------------------------- */
+@plugin "daisyui" {
+  themes: light --default, dark --prefersdark;
+}
+
+@plugin "daisyui/theme" {
+  name: "light";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+  --color-base-100: #f8fafc;
+  --color-base-200: #eef1f6;
+  --color-base-300: #e2e6ee;
+  --color-base-content: #1c1c1e;
+  --color-primary: #3b82f6;
+  --color-primary-content: #ffffff;
+  --color-secondary: #8b5cf6;
+  --color-secondary-content: #ffffff;
+  --color-accent: #60a5fa;
+  --color-accent-content: #ffffff;
+  --color-neutral: #e2e6ee;
+  --color-neutral-content: #1c1c1e;
+  --color-info: #60a5fa;
+  --color-info-content: #ffffff;
+  --color-success: #22c55e;
+  --color-success-content: #ffffff;
+  --color-warning: #f59e0b;
+  --color-warning-content: #1c1c1e;
+  --color-error: #ef4444;
+  --color-error-content: #ffffff;
+  --radius-selector: 0.75rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+
+@plugin "daisyui/theme" {
+  name: "dark";
+  default: false;
+  prefersdark: true;
+  color-scheme: dark;
+  --color-base-100: #14141a;
+  --color-base-200: #0e0e13;
+  --color-base-300: #09090c;
+  --color-base-content: #f2f2f5;
+  --color-primary: #3b82f6;
+  --color-primary-content: #ffffff;
+  --color-secondary: #8b5cf6;
+  --color-secondary-content: #ffffff;
+  --color-accent: #a78bfa;
+  --color-accent-content: #ffffff;
+  --color-neutral: #1c1c24;
+  --color-neutral-content: #f2f2f5;
+  --color-info: #60a5fa;
+  --color-info-content: #0e0e13;
+  --color-success: #22c55e;
+  --color-success-content: #06170c;
+  --color-warning: #f59e0b;
+  --color-warning-content: #1c1c1e;
+  --color-error: #ef4444;
+  --color-error-content: #ffffff;
+  --radius-selector: 0.75rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Brand tokens — the exact values requested, plus a light/dark-aware glass
+   palette layered on top. These are plain custom properties independent of
+   daisyUI, consumed directly by @/components/ui/* and the .gradient-*/.glass
+   utility classes below.
+   --------------------------------------------------------------------- */
+:root,
+[data-theme="light"] {
+  --primary: #3b82f6;
+  --primary-light: #60a5fa;
+  --secondary: #8b5cf6;
+  --secondary-light: #a78bfa;
+
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-bg-strong: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.45);
+  --glass-highlight: rgba(255, 255, 255, 0.65);
+  --glass-shadow: rgba(30, 41, 59, 0.14);
+}
+
+[data-theme="dark"] {
+  --primary: #3b82f6;
+  --primary-light: #60a5fa;
+  --secondary: #8b5cf6;
+  --secondary-light: #a78bfa;
+
+  --glass-bg: rgba(24, 24, 30, 0.5);
+  --glass-bg-strong: rgba(24, 24, 30, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-highlight: rgba(255, 255, 255, 0.05);
+  --glass-shadow: rgba(0, 0, 0, 0.45);
+}
+
+/* Gradients built from the tokens above — used by Button/Card variants and
+   available anywhere as plain classes. */
+.gradient-primary {
+  background-image: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+}
+.gradient-secondary {
+  background-image: linear-gradient(135deg, var(--secondary) 0%, var(--secondary-light) 100%);
+}
+.gradient-brand {
+  background-image: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+}
+.text-gradient-brand {
+  background-image: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* "Liquid glass" — translucent, blurred, faintly-bordered surface with a
+   soft top highlight, the shared look for Card/Modal/glass Button variants.
+   Kept as plain CSS rather than Tailwind's backdrop-blur-* utilities so the
+   blur+saturate+border+shadow combo is one class, one place to tune. */
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  box-shadow:
+    0 8px 32px var(--glass-shadow),
+    inset 0 1px 0 var(--glass-highlight);
+}
+.glass-strong {
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow:
+    0 12px 40px var(--glass-shadow),
+    inset 0 1px 0 var(--glass-highlight);
+}
+
 @import "@lichess-org/chessground/assets/chessground.base.css";
 @import "@lichess-org/chessground/assets/chessground.brown.css";
 @import "@lichess-org/chessground/assets/chessground.cburnett.css";

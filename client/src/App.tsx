@@ -4,9 +4,12 @@ import { AuthProvider, useAuth } from './contexts/AuthContext.js';
 import { SocketProvider } from './contexts/SocketContext.js';
 import { NotificationProvider } from './contexts/NotificationContext.js';
 import { SettingsProvider } from './contexts/SettingsContext.js';
+import { ThemeProvider } from './contexts/ThemeContext.js';
+import { ConfirmProvider } from './contexts/ConfirmContext.js';
 import { GlobalListeners } from './components/GlobalListeners.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { Navbar } from './components/Navbar.js';
+import { Sidebar } from './components/Sidebar.js';
 import { ProtectedRoute } from './components/ProtectedRoute.js';
 import { tryRestoreSession } from './api/auth.js';
 import { SignIn } from './pages/SignIn.js';
@@ -72,8 +75,12 @@ function AppShell() {
     <BrowserRouter>
       <Navbar />
       <GlobalListeners />
-      <main className="px-4 pb-12">
-        <Routes>
+      <div className="flex items-start gap-4 px-4 md:px-6">
+        <Sidebar />
+        {/* pb-24 clears the fixed mobile dock (see Sidebar.tsx); md:pb-12
+         *  drops back to a normal bottom gap once the dock is hidden. */}
+        <main className="min-w-0 flex-1 pb-24 md:pb-12">
+          <Routes>
           <Route path="/" element={<RootRedirect />} />
           <Route path="/signin" element={<SignIn />} />
           <Route path="/signup" element={<SignUp />} />
@@ -191,7 +198,8 @@ function AppShell() {
           />
           <Route path="*" element={<NotFound />} />
         </Routes>
-      </main>
+        </main>
+      </div>
     </BrowserRouter>
   );
 }
@@ -199,15 +207,19 @@ function AppShell() {
 export function App() {
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <SocketProvider>
-          <NotificationProvider>
-            <SettingsProvider>
-              <AppShell />
-            </SettingsProvider>
-          </NotificationProvider>
-        </SocketProvider>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <SocketProvider>
+            <NotificationProvider>
+              <SettingsProvider>
+                <ConfirmProvider>
+                  <AppShell />
+                </ConfirmProvider>
+              </SettingsProvider>
+            </NotificationProvider>
+          </SocketProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }

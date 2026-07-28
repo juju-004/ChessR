@@ -1,22 +1,24 @@
-import { useState, type FormEvent } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { signin } from '../api/auth.js';
-import { ApiRequestError } from '../api/http.js';
+import { useState, type FormEvent } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { signin } from "../api/auth.js";
+import { ApiRequestError } from "../api/http.js";
+import { Popover } from "@/components/ui/Popover.js";
+import { Spinner } from "@/components/ui/Spinner.js";
 
 export function SignIn() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setError('');
+    setError("");
     try {
       await signin(email, password);
-      navigate('/dashboard');
+      navigate("/dashboard");
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : 'Sign in failed');
+      setError(err instanceof ApiRequestError ? err.message : "Sign in failed");
     }
   }
 
@@ -35,8 +37,17 @@ export function SignIn() {
             className="w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100"
           />
         </div>
+        <Popover trigger={<>Time control</>}>
+          {["1+0", "2+0", "3+0"].map((i, key) => (
+            <span key={key}>{i}</span>
+          ))}
+        </Popover>
+        <Spinner size="sm"></Spinner>
+
         <div>
-          <label className="mb-1 block text-sm text-neutral-400">Password</label>
+          <label className="mb-1 block text-sm text-neutral-400">
+            Password
+          </label>
           <input
             type="password"
             required
@@ -55,7 +66,7 @@ export function SignIn() {
         </button>
       </form>
       <p className="mt-3 text-sm text-neutral-400">
-        No account?{' '}
+        No account?{" "}
         <Link to="/signup" className="text-blue-400 hover:underline">
           Sign up
         </Link>

@@ -40,6 +40,15 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       }
     });
 
+    // Echoes straight back whatever timestamp the server sent — this is
+    // what feeds the server's own move-clock lag compensation estimate (see
+    // latencySocket.ts / latency.service.ts server-side). Deliberately just
+    // a bounce-back with no client-side timing logic of its own, so there's
+    // nothing here for a client to fudge in its own favor.
+    s.on('latency:ping', (serverSentAt: number) => {
+      s.emit('latency:pong', serverSentAt);
+    });
+
     socketRef.current = s;
     setSocket(s);
     // Deliberately not disconnecting in a cleanup here — the `!isAuthed` branch

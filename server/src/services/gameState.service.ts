@@ -164,6 +164,7 @@ async function finalizeMove(
   to: string,
   promotion: string | undefined,
   updatedRights: CastlingRightsState,
+  lagCompensationMs = 0,
 ): Promise<MoveResult> {
   let whiteRemainingMs = state.whiteRemainingMs;
   let blackRemainingMs = state.blackRemainingMs;
@@ -176,7 +177,14 @@ async function finalizeMove(
   // counting down completely fresh with full time on them.
   const clockIsLive = state.moveCount >= 2;
   if (clockIsLive && state.timeControl.baseMs !== null) {
-    const elapsed = Date.now() - state.turnStartedAtMs;
+    // Lag compensation: the raw elapsed time includes the network round
+    // trip needed for this move to reach the server at all, which for a
+    // premove (fired the instant the position updates) IS almost entirely
+    // that round trip rather than any real thinking time. `lagCompensationMs`
+    // is a small, server-measured, capped estimate of that unavoidable
+    // network cost (see latency.service.ts) subtracted before charging the
+    // clock — same idea Lichess calls lag compensation.
+    const elapsed = Math.max(0, Date.now() - state.turnStartedAtMs - lagCompensationMs);
     if (moverSide === 'white') {
       const increment = state.whiteBerserk ? 0 : state.timeControl.incrementMs;
       whiteRemainingMs = Math.max(0, (whiteRemainingMs ?? 0) - elapsed) + increment;
@@ -257,6 +265,7 @@ export async function applyMove(
   gameId: string,
   userId: string,
   move: { from: string; to: string; promotion?: string },
+  lagCompensationMs = 0,
 ): Promise<MoveResult> {
   const state = await getLiveState(gameId);
   if (!state) throw ApiError.notFound('Game is not active');
@@ -306,6 +315,7 @@ export async function applyMove(
         castle.kingTo!,
         undefined,
         updatedRights,
+        lagCompensationMs,
       );
     }
   }
@@ -334,6 +344,7 @@ export async function applyMove(
     moveResult.to,
     moveResult.promotion,
     updatedRights,
+    lagCompensationMs,
   );
 }
 

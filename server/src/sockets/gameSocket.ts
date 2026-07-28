@@ -19,6 +19,7 @@ import {
 } from '../services/game.service.js';
 import { advanceCageMatchLeg, handleLegMoveForNoShow } from '../services/cageMatch.service.js';
 import { advanceTournamentIfPairing, berserkInTournamentGame } from '../services/tournament.service.js';
+import { getLagCompensationMs } from '../services/latency.service.js';
 import { scheduleGameTimer, clearGameTimer, setTimeoutHandler } from '../services/clock.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
@@ -328,7 +329,8 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       const { gameId, from, to, promotion } = parsed.data;
 
       try {
-        const result = await applyMove(gameId, userId, { from, to, promotion });
+        const lagCompensationMs = getLagCompensationMs(socket.id);
+        const result = await applyMove(gameId, userId, { from, to, promotion }, lagCompensationMs);
 
         // A move landing clears the no-show grace window it just satisfied —
         // and if this was White's first move, re-arms a fresh one for

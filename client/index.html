@@ -11,6 +11,27 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Chess App" />
+    <script>
+      // Runs before anything renders — sets data-theme synchronously so
+      // there's no flash of the wrong theme while React/ThemeContext
+      // (contexts/ThemeContext.tsx) boots up and does the exact same
+      // lookup. Keep this logic in sync with getInitialTheme() there.
+      (function () {
+        try {
+          var stored = localStorage.getItem('chess-app:theme');
+          var theme =
+            stored === 'light' || stored === 'dark'
+              ? stored
+              : window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light';
+          document.documentElement.setAttribute('data-theme', theme);
+          document.documentElement.style.colorScheme = theme;
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
     <script src="https://js.paystack.co/v1/inline.js"></script>
   </head>
   <body class="bg-neutral-950 text-neutral-100">

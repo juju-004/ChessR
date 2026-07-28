@@ -5,6 +5,7 @@ import { useTokenBalance } from '../hooks/useTokenBalance.js';
 import { MyGamesMenu } from './MyGamesMenu.js';
 import { ConnectionStatus } from './ConnectionStatus.js';
 import { InstallAppButton } from './InstallAppButton.js';
+import { ThemeToggle } from './ui/ThemeToggle.js';
 
 export function Navbar() {
   const { isAuthed, user } = useAuth();
@@ -20,6 +21,7 @@ export function Navbar() {
     <nav className="flex items-center gap-4 border-b border-neutral-800 bg-neutral-900 px-6 py-3">
       <span className="mr-auto font-bold text-neutral-100">♟ Chess App</span>
       <InstallAppButton compact />
+      <ThemeToggle />
       {!isAuthed ? (
         <>
           <Link to="/signin" className="text-sm text-neutral-300 hover:text-neutral-100">
@@ -31,24 +33,6 @@ export function Navbar() {
         </>
       ) : (
         <>
-          <Link to="/dashboard" className="text-sm text-neutral-300 hover:text-neutral-100">
-            Dashboard
-          </Link>
-          <Link to="/find" className="text-sm text-neutral-300 hover:text-neutral-100">
-            Find players
-          </Link>
-          <Link to="/friends" className="text-sm text-neutral-300 hover:text-neutral-100">
-            Friends
-          </Link>
-          <Link to="/cage" className="text-sm text-neutral-300 hover:text-neutral-100">
-            Cage matches
-          </Link>
-          <Link to="/tournaments" className="text-sm text-neutral-300 hover:text-neutral-100">
-            Tournaments
-          </Link>
-          <Link to="/settings" className="text-sm text-neutral-300 hover:text-neutral-100">
-            Settings
-          </Link>
           {user && (
             <Link to={`/profile/${user.username}`} className="text-sm text-neutral-300 hover:text-neutral-100">
               My profile

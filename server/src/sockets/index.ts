@@ -10,6 +10,7 @@ import { registerChallengeHandlers } from './challengeSocket.js';
 import { registerCageMatchHandlers } from './cageMatchSocket.js';
 import { registerTournamentHandlers } from './tournamentSocket.js';
 import { registerPingHandlers } from './pingSocket.js';
+import { registerLatencyHandlers } from './latencySocket.js';
 import { setIo } from './io.js';
 
 export function initSocketServer(httpServer: HttpServer): Server {
@@ -39,6 +40,7 @@ export function initSocketServer(httpServer: HttpServer): Server {
     registerCageMatchHandlers(io, socket);
     registerTournamentHandlers(io, socket);
     registerPingHandlers(io, socket);
+    registerLatencyHandlers(io, socket);
   });
 
   setIo(io);
