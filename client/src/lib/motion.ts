@@ -22,11 +22,20 @@ import type { Variants, Transition, TargetAndTransition } from "framer-motion";
 
 // "Expo out" — fast start, gentle settle, no overshoot. Good default for
 // anything entering the screen.
-export const EASE_OUT: Transition["ease"] = [0.16, 1, 0.3, 1];
-export const EASE_IN_OUT: Transition["ease"] = [0.65, 0, 0.35, 1];
+export const EASE_OUT: Transition = [0.16, 1, 0.3, 1];
+export const EASE_IN_OUT: Transition = [0.65, 0, 0.35, 1];
 
-export const springSnappy: Transition = { type: "spring", stiffness: 420, damping: 32, mass: 0.7 };
-export const springSoft: Transition = { type: "spring", stiffness: 260, damping: 26 };
+export const springSnappy: Transition = {
+  type: "spring",
+  stiffness: 420,
+  damping: 32,
+  mass: 0.7,
+};
+export const springSoft: Transition = {
+  type: "spring",
+  stiffness: 260,
+  damping: 26,
+};
 export const tweenFast: Transition = { duration: 0.15, ease: EASE_OUT };
 export const tweenBase: Transition = { duration: 0.25, ease: EASE_OUT };
 export const tweenSlow: Transition = { duration: 0.4, ease: EASE_IN_OUT };
@@ -77,7 +86,9 @@ export const slideInLeft: Variants = {
 export function staggerContainer(staggerMs = 0.06, delayMs = 0): Variants {
   return {
     hidden: {},
-    visible: { transition: { staggerChildren: staggerMs, delayChildren: delayMs } },
+    visible: {
+      transition: { staggerChildren: staggerMs, delayChildren: delayMs },
+    },
   };
 }
 
@@ -100,13 +111,21 @@ export const modalContent: Variants = {
 // --- Interaction micro-states -------------------------------------------------
 // Spread directly onto a `motion.*` element: <motion.button {...pressable}>
 
-export const pressable: { whileTap: TargetAndTransition; whileHover: TargetAndTransition; transition: Transition } = {
+export const pressable: {
+  whileTap: TargetAndTransition;
+  whileHover: TargetAndTransition;
+  transition: Transition;
+} = {
   whileTap: { scale: 0.96 },
   whileHover: { scale: 1.02 },
   transition: springSnappy,
 };
 
-export const liftable: { whileTap: TargetAndTransition; whileHover: TargetAndTransition; transition: Transition } = {
+export const liftable: {
+  whileTap: TargetAndTransition;
+  whileHover: TargetAndTransition;
+  transition: Transition;
+} = {
   whileTap: { scale: 0.98 },
   whileHover: { scale: 1.015, y: -2 },
   transition: springSnappy,

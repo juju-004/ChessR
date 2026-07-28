@@ -1,26 +1,26 @@
-import { useState, type FormEvent } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { signup } from '../api/auth.js';
-import { ApiRequestError } from '../api/http.js';
-import { Card, Input, Button } from '../components/ui/index.js';
+import { useState, type FormEvent } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { signup } from "../api/auth.js";
+import { ApiRequestError } from "../api/http.js";
+import { Card, Input, Button } from "../components/ui/index.js";
 
 export function SignUp() {
   const navigate = useNavigate();
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setError('');
+    setError("");
     setLoading(true);
     try {
       await signup(username, email, password);
-      navigate('/dashboard');
+      navigate("/dashboard");
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : 'Sign up failed');
+      setError(err instanceof ApiRequestError ? err.message : "Sign up failed");
     } finally {
       setLoading(false);
     }
@@ -28,7 +28,9 @@ export function SignUp() {
 
   return (
     <Card variant="solid" className="mx-auto mt-8 max-w-md">
-      <h1 className="mb-4 text-2xl font-bold text-base-content">Create account</h1>
+      <h1 className="mb-4 text-2xl font-bold text-base-content">
+        Create account
+      </h1>
       <form onSubmit={handleSubmit} className="space-y-3">
         <Input
           label="Username"
@@ -63,8 +65,8 @@ export function SignUp() {
         </Button>
       </form>
       <p className="mt-3 text-sm text-base-content/60">
-        Already have an account?{' '}
-        <Link to="/signin" className="text-[var(--primary)] hover:underline">
+        Already have an account?{" "}
+        <Link to="/signin" className="text-(--primary) hover:underline">
           Sign in
         </Link>
       </p>

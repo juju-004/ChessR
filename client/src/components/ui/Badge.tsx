@@ -1,11 +1,19 @@
 import type { HTMLAttributes } from "react";
 import { cn } from "@/lib/cn.js";
 
-export type BadgeVariant = "primary" | "secondary" | "gradient" | "glass" | "success" | "warning" | "error" | "neutral";
+export type BadgeVariant =
+  | "primary"
+  | "secondary"
+  | "gradient"
+  | "glass"
+  | "success"
+  | "warning"
+  | "error"
+  | "neutral";
 
 const VARIANT_CLASSES: Record<BadgeVariant, string> = {
-  primary: "bg-[var(--primary)]/15 text-[var(--primary)]",
-  secondary: "bg-[var(--secondary)]/15 text-[var(--secondary)]",
+  primary: "bg-(--primary)/15 text-(--primary)",
+  secondary: "bg-(--secondary)/15 text-(--secondary)",
   gradient: "gradient-brand text-white",
   glass: "glass text-base-content",
   success: "bg-green-500/15 text-green-500",
@@ -18,7 +26,11 @@ export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
   variant?: BadgeVariant;
 }
 
-export function Badge({ variant = "neutral", className, ...props }: BadgeProps) {
+export function Badge({
+  variant = "neutral",
+  className,
+  ...props
+}: BadgeProps) {
   return (
     <span
       className={cn(

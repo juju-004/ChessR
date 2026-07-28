@@ -23,8 +23,16 @@ export function AccountMenu() {
   }
 
   const items: DropdownItem[] = [
-    { label: "My profile", icon: User, onClick: () => navigate(`/profile/${user.username}`) },
-    { label: "Buy tokens", icon: Coins, onClick: () => navigate("/wallet/buy") },
+    {
+      label: "My profile",
+      icon: User,
+      onClick: () => navigate(`/profile/${user.username}`),
+    },
+    {
+      label: "Buy tokens",
+      icon: Coins,
+      onClick: () => navigate("/wallet/buy"),
+    },
     { label: "Log out", icon: LogOut, danger: true, onClick: handleLogout },
   ];
 
@@ -35,7 +43,7 @@ export function AccountMenu() {
         <button className="glass flex h-9 items-center gap-2 rounded-full py-1 pr-3 pl-1 text-sm font-medium text-base-content hover:bg-white/10">
           <Avatar username={user.username} size="xs" />
           <span className="hidden sm:inline">{user.username}</span>
-          <span className="hidden items-center gap-1 rounded-full bg-[var(--primary)]/15 px-2 py-0.5 text-xs font-semibold text-[var(--primary)] sm:flex">
+          <span className="hidden items-center gap-1 rounded-full bg-(--primary)/15 px-2 py-0.5 text-xs font-semibold text-(--primary) sm:flex">
             <Coins className="h-3 w-3" />
             {balance ?? "…"}
           </span>

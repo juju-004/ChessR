@@ -1,25 +1,25 @@
-import { useState, type FormEvent } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { signin } from '../api/auth.js';
-import { ApiRequestError } from '../api/http.js';
-import { Card, Input, Button } from '../components/ui/index.js';
+import { useState, type FormEvent } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { signin } from "../api/auth.js";
+import { ApiRequestError } from "../api/http.js";
+import { Card, Input, Button } from "../components/ui/index.js";
 
 export function SignIn() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setError('');
+    setError("");
     setLoading(true);
     try {
       await signin(email, password);
-      navigate('/dashboard');
+      navigate("/dashboard");
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : 'Sign in failed');
+      setError(err instanceof ApiRequestError ? err.message : "Sign in failed");
     } finally {
       setLoading(false);
     }
@@ -51,8 +51,8 @@ export function SignIn() {
         </Button>
       </form>
       <p className="mt-3 text-sm text-base-content/60">
-        No account?{' '}
-        <Link to="/signup" className="text-[var(--primary)] hover:underline">
+        No account?{" "}
+        <Link to="/signup" className="text-(--primary) hover:underline">
           Sign up
         </Link>
       </p>

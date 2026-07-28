@@ -140,7 +140,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   return (
     <NotificationContext.Provider value={{ notify, dismiss }}>
       {children}
-      <div className="fixed top-4 right-4 z-[1000] flex w-80 max-w-[90vw] flex-col gap-2">
+      <div className="fixed top-4 right-4 z-1000 flex w-80 max-w-[90vw] flex-col gap-2">
         <AnimatePresence>
           {items.map((item) => (
             <Toast

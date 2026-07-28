@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { getGameByCode } from '../api/games.js';
-import { ApiRequestError } from '../api/http.js';
-import { ChessBoard } from '../components/ChessBoard.js';
-import { useSettings } from '../contexts/SettingsContext.js';
-import { formatTimeControl } from '../timeControls.js';
+import { useEffect, useState } from "react";
+import { useParams, Link } from "react-router-dom";
+import { getGameByCode } from "../api/games.js";
+import { ApiRequestError } from "../api/http.js";
+import { ChessBoard } from "../components/ChessBoard.js";
+import { useSettings } from "../contexts/SettingsContext.js";
+import { formatTimeControl } from "../timeControls.js";
 
-const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 interface ReplayMove {
   san: string;
@@ -27,10 +27,10 @@ interface ReplayGame {
 }
 
 export function GameReplay() {
-  const { code = '' } = useParams<{ code: string }>();
+  const { code = "" } = useParams<{ code: string }>();
   const { settings } = useSettings();
   const [game, setGame] = useState<ReplayGame | null>(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   // -1 means the starting position, before any move has been played.
   const [index, setIndex] = useState(-1);
 
@@ -40,19 +40,33 @@ export function GameReplay() {
         setGame(game);
         setIndex(game.moves.length > 0 ? game.moves.length - 1 : -1);
       })
-      .catch((err) => setError(err instanceof ApiRequestError ? err.message : 'Game not found'));
+      .catch((err) =>
+        setError(
+          err instanceof ApiRequestError ? err.message : "Game not found",
+        ),
+      );
   }, [code]);
 
   if (error) {
-    return <div className="mx-auto mt-6 max-w-2xl rounded-lg border border-red-900 bg-red-950/40 p-5 text-red-400">{error}</div>;
+    return (
+      <div className="mx-auto mt-6 max-w-2xl rounded-lg border border-red-900 bg-red-950/40 p-5 text-red-400">
+        {error}
+      </div>
+    );
   }
   if (!game) {
-    return <div className="mx-auto mt-6 max-w-2xl text-base-content/60">Loading…</div>;
+    return (
+      <div className="mx-auto mt-6 max-w-2xl text-base-content/60">
+        Loading…
+      </div>
+    );
   }
 
   const current = index >= 0 ? game.moves[index] : null;
   const fen = current?.fenAfter ?? STARTING_FEN;
-  const lastMove: [string, string] | undefined = current ? [current.from, current.to] : undefined;
+  const lastMove: [string, string] | undefined = current
+    ? [current.from, current.to]
+    : undefined;
 
   return (
     <div className="mx-auto mt-6 max-w-2xl space-y-4">
@@ -61,13 +75,17 @@ export function GameReplay() {
           {game.white.username} vs {game.black.username}
         </h1>
         <p className="mb-3 text-sm text-base-content/60">
-          {formatTimeControl(game.timeControl)} ·{' '}
-          {game.result === 'draw' ? 'Draw' : game.result === 'white' ? `${game.white.username} won` : `${game.black.username} won`}
-          {game.endReason ? ` (${game.endReason.replace(/_/g, ' ')})` : ''}
+          {formatTimeControl(game.timeControl)} ·{" "}
+          {game.result === "draw"
+            ? "Draw"
+            : game.result === "white"
+              ? `${game.white.username} won`
+              : `${game.black.username} won`}
+          {game.endReason ? ` (${game.endReason.replace(/_/g, " ")})` : ""}
         </p>
 
         <div
-          className={`relative mx-auto aspect-square w-full max-w-[480px] board-theme-${settings.boardTheme} piece-theme-${settings.pieceTheme}`}
+          className={`relative mx-auto aspect-square w-full max-w-120 board-theme-${settings.boardTheme} piece-theme-${settings.pieceTheme}`}
         >
           <ChessBoard
             fen={fen}
@@ -101,7 +119,9 @@ export function GameReplay() {
             {index + 1} / {game.moves.length}
           </span>
           <button
-            onClick={() => setIndex((i) => Math.min(game.moves.length - 1, i + 1))}
+            onClick={() =>
+              setIndex((i) => Math.min(game.moves.length - 1, i + 1))
+            }
             disabled={index >= game.moves.length - 1}
             className="rounded-md bg-base-300 px-3 py-1.5 text-sm text-base-content disabled:opacity-30"
           >
@@ -124,7 +144,7 @@ export function GameReplay() {
             <button
               key={i}
               onClick={() => setIndex(i)}
-              className={`rounded px-2 py-1 text-left ${i === index ? 'bg-blue-600 text-white' : 'text-base-content/80 hover:bg-base-300'}`}
+              className={`rounded px-2 py-1 text-left ${i === index ? "bg-blue-600 text-white" : "text-base-content/80 hover:bg-base-300"}`}
             >
               {m.moveNumber}. {m.san}
             </button>
@@ -132,7 +152,10 @@ export function GameReplay() {
         </div>
       </div>
 
-      <Link to={`/game/${game.joinCode}`} className="inline-block text-sm text-blue-400 hover:underline">
+      <Link
+        to={`/game/${game.joinCode}`}
+        className="inline-block text-sm text-blue-400 hover:underline"
+      >
         Go to live game page →
       </Link>
     </div>

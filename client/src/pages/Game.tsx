@@ -166,7 +166,10 @@ export function Game() {
     return d;
   }, [chess, gameMeta?.variant, gameMeta?.initialFen]);
   const premoveDests = useMemo(
-    () => (myColor ? computePremoveDests(chess, myColor) : new Map<string, string[]>()),
+    () =>
+      myColor
+        ? computePremoveDests(chess, myColor)
+        : new Map<string, string[]>(),
     [chess, myColor],
   );
 
@@ -364,8 +367,10 @@ export function Game() {
     }) {
       if (payload.side === "white") setWhiteBerserk(true);
       else setBlackBerserk(true);
-      if (payload.whiteRemainingMs !== null) setWhiteRemainingMs(payload.whiteRemainingMs);
-      if (payload.blackRemainingMs !== null) setBlackRemainingMs(payload.blackRemainingMs);
+      if (payload.whiteRemainingMs !== null)
+        setWhiteRemainingMs(payload.whiteRemainingMs);
+      if (payload.blackRemainingMs !== null)
+        setBlackRemainingMs(payload.blackRemainingMs);
     }
 
     function onOpponentDisconnected(payload: {
@@ -523,7 +528,12 @@ export function Game() {
       const localChess = new Chess(fen);
       if (needsPromotion(localChess, orig, dest)) {
         if (settings.autoQueen) {
-          socket.emit("game:move", { gameId: gameMeta._id, from: orig, to: dest, promotion: "q" });
+          socket.emit("game:move", {
+            gameId: gameMeta._id,
+            from: orig,
+            to: dest,
+            promotion: "q",
+          });
           return;
         }
         setPromoPending({ orig, dest });
@@ -570,7 +580,11 @@ export function Game() {
     if (!socket || !gameMeta) return;
     if (
       !settings.confirmResign ||
-      (await confirmDialog({ title: "Resign this game?", variant: "danger", confirmLabel: "Resign" }))
+      (await confirmDialog({
+        title: "Resign this game?",
+        variant: "danger",
+        confirmLabel: "Resign",
+      }))
     ) {
       socket.emit("game:resign", { gameId: gameMeta._id });
     }
@@ -593,7 +607,8 @@ export function Game() {
     if (!socket || !gameMeta) return;
     const ok = await confirmDialog({
       title: "Berserk!",
-      description: "Halve your own clock and give up your increment for a shot at a bonus 0.5 point if you win.",
+      description:
+        "Halve your own clock and give up your increment for a shot at a bonus 0.5 point if you win.",
       confirmLabel: "Berserk",
     });
     if (ok) {
@@ -638,7 +653,9 @@ export function Game() {
 
   if (mode === "loading") {
     return (
-      <div className="mx-auto mt-6 max-w-2xl text-base-content/60">Loading…</div>
+      <div className="mx-auto mt-6 max-w-2xl text-base-content/60">
+        Loading…
+      </div>
     );
   }
 
@@ -646,7 +663,8 @@ export function Game() {
     return (
       <div className="mx-auto mt-6 max-w-2xl rounded-lg border border-base-300 bg-base-200 p-5">
         <h1 className="mb-2 text-xl font-bold text-base-content">
-          Game <span className="font-normal text-base-content/50">· {code}</span>
+          Game{" "}
+          <span className="font-normal text-base-content/50">· {code}</span>
           {gameMeta.variant === "chess960" && (
             <span className="ml-2 rounded bg-purple-900 px-2 py-0.5 text-xs font-semibold text-purple-200">
               Chess960
@@ -658,8 +676,9 @@ export function Game() {
         </p>
         {!!gameMeta.wagerTokens && (
           <p className="mb-3 rounded-md border border-amber-900/50 bg-amber-950/20 p-3 text-sm text-amber-300">
-            This is a wagered game — joining will stake <strong>{gameMeta.wagerTokens} R tokens</strong> from
-            your balance. The winner takes the full {gameMeta.wagerTokens * 2}.
+            This is a wagered game — joining will stake{" "}
+            <strong>{gameMeta.wagerTokens} R tokens</strong> from your balance.
+            The winner takes the full {gameMeta.wagerTokens * 2}.
           </p>
         )}
         {loadError && <p className="mb-3 text-sm text-red-400">{loadError}</p>}
@@ -681,7 +700,8 @@ export function Game() {
       <div className="rounded-lg border border-base-300 bg-base-200 p-5">
         <div className="mb-2 flex items-center justify-between">
           <h1 className="text-xl font-bold text-base-content">
-            Game <span className="font-normal text-base-content/50">· {code}</span>
+            Game{" "}
+            <span className="font-normal text-base-content/50">· {code}</span>
             {!settings.zenMode && gameMeta?.variant === "chess960" && (
               <span className="ml-2 rounded bg-purple-900 px-2 py-0.5 text-xs font-semibold text-purple-200">
                 Chess960
@@ -700,8 +720,16 @@ export function Game() {
                 Tournament game
               </Link>
             )}
-            {!settings.zenMode && whiteBerserk && <span className="ml-2 text-xs text-red-400">⚔ White berserked</span>}
-            {!settings.zenMode && blackBerserk && <span className="ml-2 text-xs text-red-400">⚔ Black berserked</span>}
+            {!settings.zenMode && whiteBerserk && (
+              <span className="ml-2 text-xs text-red-400">
+                ⚔ White berserked
+              </span>
+            )}
+            {!settings.zenMode && blackBerserk && (
+              <span className="ml-2 text-xs text-red-400">
+                ⚔ Black berserked
+              </span>
+            )}
           </h1>
           <span className="text-sm text-base-content/60">
             {gameOver
@@ -711,7 +739,10 @@ export function Game() {
         </div>
 
         {!settings.zenMode && gameMeta?.cageMatchId && (
-          <CageMatchScoreboard cageMatchId={gameMeta.cageMatchId} legIndex={gameMeta.legIndex ?? 0} />
+          <CageMatchScoreboard
+            cageMatchId={gameMeta.cageMatchId}
+            legIndex={gameMeta.legIndex ?? 0}
+          />
         )}
 
         {pausedLeg && !gameOver && (
@@ -758,7 +789,7 @@ export function Game() {
         />
 
         <div
-          className={`relative mx-auto aspect-square w-full max-w-[480px] board-theme-${settings.boardTheme} piece-theme-${settings.pieceTheme}`}
+          className={`relative mx-auto aspect-square w-full max-w-120 board-theme-${settings.boardTheme} piece-theme-${settings.pieceTheme}`}
         >
           <ChessBoard
             fen={fen}
@@ -824,17 +855,21 @@ export function Game() {
             </div>
           )}
 
-        {isPlayer && gameMeta?.cageMatchId && status === "active" && moves.length < 2 && !pausedLeg && (
-          <div className="mt-2">
-            <button
-              onClick={handlePauseRequest}
-              disabled={pauseRequestSent}
-              className="rounded-md border border-amber-800 bg-amber-950/30 px-4 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-950/50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {pauseRequestSent ? "Pause request sent…" : "⏸ Request pause"}
-            </button>
-          </div>
-        )}
+        {isPlayer &&
+          gameMeta?.cageMatchId &&
+          status === "active" &&
+          moves.length < 2 &&
+          !pausedLeg && (
+            <div className="mt-2">
+              <button
+                onClick={handlePauseRequest}
+                disabled={pauseRequestSent}
+                className="rounded-md border border-amber-800 bg-amber-950/30 px-4 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-950/50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {pauseRequestSent ? "Pause request sent…" : "⏸ Request pause"}
+              </button>
+            </div>
+          )}
 
         {isPlayer && gameMeta?.cageMatchId && pausedLeg && (
           <div className="mt-2 rounded-md border border-amber-800 bg-amber-950/30 px-4 py-2 text-sm text-amber-300">
@@ -863,7 +898,9 @@ export function Game() {
 
       {!settings.zenMode && (
         <div className="rounded-lg border border-base-300 bg-base-200 p-5">
-          <h2 className="mb-2 text-lg font-semibold text-base-content">Moves</h2>
+          <h2 className="mb-2 text-lg font-semibold text-base-content">
+            Moves
+          </h2>
           <div className="max-h-48 overflow-y-auto font-mono text-sm text-base-content/80">
             {moves.map((m) => (
               <div key={m.moveNumber}>
@@ -921,7 +958,11 @@ export function Game() {
           reason={gameOver.reason}
           myColor={myColor}
           isPlayer={isPlayer}
-          canRematch={isPlayer && gameOver.reason !== "aborted_no_moves" && gameOver.reason !== "cage_forfeit"}
+          canRematch={
+            isPlayer &&
+            gameOver.reason !== "aborted_no_moves" &&
+            gameOver.reason !== "cage_forfeit"
+          }
           rematchState={rematchState}
           wagerSettlement={gameOver.wagerSettlement}
           myUserId={user?.id}
