@@ -63,12 +63,16 @@ export function playMoveSound() {
   playTones([{ freq: 520, startOffset: 0, duration: 0.09, type: 'triangle' }]);
 }
 
-/** A sharp "click-thud" impact — a brief high click immediately followed by a
- *  low thump, evoking a piece actually being knocked off the board. */
+/** A woodier "knock-knock" impact — a short square-wave rap immediately
+ *  followed by two descending low thuds, evoking a captured piece being
+ *  knocked over and set down off the board. Deliberately busier/lower than
+ *  the old single click-thud so it reads as distinct from a normal move
+ *  even with the sound played back-to-back in a fast exchange. */
 export function playCaptureSound() {
   playTones([
-    { freq: 1400, startOffset: 0, duration: 0.035, type: 'triangle', gain: 0.16 },
-    { freq: 140, startOffset: 0.015, duration: 0.14, type: 'square', gain: 0.2 },
+    { freq: 1100, startOffset: 0, duration: 0.03, type: 'square', gain: 0.13 },
+    { freq: 196, startOffset: 0.02, duration: 0.1, type: 'triangle', gain: 0.22 },
+    { freq: 123, startOffset: 0.1, duration: 0.16, type: 'triangle', gain: 0.17 },
   ]);
 }
 

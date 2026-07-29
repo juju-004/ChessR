@@ -153,7 +153,7 @@ export function Withdraw() {
         </button>
 
         <button
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate('/')}
           className="mt-4 block text-sm text-base-content/60 hover:text-base-content"
         >
           ← Back to dashboard

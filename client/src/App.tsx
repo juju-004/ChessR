@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { AuthProvider, useAuth } from './contexts/AuthContext.js';
+import { AuthProvider } from './contexts/AuthContext.js';
 import { SocketProvider } from './contexts/SocketContext.js';
 import { NotificationProvider } from './contexts/NotificationContext.js';
 import { SettingsProvider } from './contexts/SettingsContext.js';
@@ -29,11 +29,6 @@ import { BuyTokens } from './pages/BuyTokens.js';
 import { Transactions } from './pages/Transactions.js';
 import { Withdraw } from './pages/Withdraw.js';
 import { Settings } from './pages/Settings.js';
-
-function RootRedirect() {
-  const { isAuthed } = useAuth();
-  return <Navigate to={isAuthed ? '/dashboard' : '/signin'} replace />;
-}
 
 // Rematching (or navigating directly between two different game codes) keeps
 // the same route element mounted — without a key tied to the code, stale
@@ -81,17 +76,18 @@ function AppShell() {
          *  drops back to a normal bottom gap once the dock is hidden. */}
         <main className="min-w-0 flex-1 pb-24 md:pb-12">
           <Routes>
-          <Route path="/" element={<RootRedirect />} />
-          <Route path="/signin" element={<SignIn />} />
-          <Route path="/signup" element={<SignUp />} />
           <Route
-            path="/dashboard"
+            path="/"
             element={
               <ProtectedRoute>
                 <Dashboard />
               </ProtectedRoute>
             }
           />
+          <Route path="/signin" element={<SignIn />} />
+          <Route path="/signup" element={<SignUp />} />
+          {/* Old bookmarks/links to /dashboard keep working — / is the dashboard now. */}
+          <Route path="/dashboard" element={<Navigate to="/" replace />} />
           <Route
             path="/find"
             element={

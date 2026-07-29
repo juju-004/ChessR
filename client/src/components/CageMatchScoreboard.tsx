@@ -81,35 +81,35 @@ export function CageMatchScoreboard({ cageMatchId, legIndex }: Props) {
   const p2Name = match.player2.username;
 
   return (
-    <div className="mb-3 rounded-md border border-purple-900 bg-purple-950/30 px-3 py-2">
+    <div className="mb-3 rounded-xl border border-(--secondary)/30 bg-(--secondary)/10 px-3 py-2.5">
       <div className="flex items-center justify-between">
-        <div className="text-sm font-semibold text-purple-100">
-          <span className={standings.p1Score >= standings.p2Score ? 'text-white' : 'text-purple-300'}>
+        <div className="text-sm font-semibold text-base-content">
+          <span className={standings.p1Score >= standings.p2Score ? 'text-base-content' : 'text-base-content/50'}>
             {p1Name} {standings.p1Score}
           </span>
-          <span className="mx-1.5 text-purple-500">–</span>
-          <span className={standings.p2Score >= standings.p1Score ? 'text-white' : 'text-purple-300'}>
+          <span className="mx-1.5 text-(--secondary)">–</span>
+          <span className={standings.p2Score >= standings.p1Score ? 'text-base-content' : 'text-base-content/50'}>
             {standings.p2Score} {p2Name}
           </span>
         </div>
-        <Link to={`/cage/${match.matchCode}`} className="text-xs text-purple-400 hover:text-purple-300">
+        <Link to={`/cage/${match.matchCode}`} className="text-xs font-medium text-(--secondary) hover:brightness-110">
           Full match →
         </Link>
       </div>
 
-      <div className="mt-1.5 flex items-center gap-1">
+      <div className="mt-2 flex items-center gap-1">
         {match.legs.map((leg) => (
           <span
             key={leg.index}
             title={pipTitle(leg, p1Name, p2Name)}
-            className={`h-2 flex-1 rounded-sm ${PIP_COLOR[leg.status]} ${
-              leg.index === legIndex ? 'ring-1 ring-blue-400 ring-offset-1 ring-offset-purple-950' : ''
+            className={`h-1.5 flex-1 rounded-full ${PIP_COLOR[leg.status]} ${
+              leg.index === legIndex ? 'ring-2 ring-(--primary) ring-offset-1 ring-offset-base-200' : ''
             }`}
           />
         ))}
       </div>
 
-      <div className="mt-1.5 flex items-center justify-between text-xs text-purple-400">
+      <div className="mt-1.5 flex items-center justify-between text-xs text-base-content/50">
         <span>
           Leg {legIndex + 1} of {totalLegs}
         </span>

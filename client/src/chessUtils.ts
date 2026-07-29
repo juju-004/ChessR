@@ -42,6 +42,93 @@ export function isInCheck(chess: Chess): boolean {
   return chess.inCheck();
 }
 
+// ================= MATERIAL DIFF =================
+type MaterialPieceType = 'p' | 'n' | 'b' | 'r' | 'q';
+
+export interface CapturedPieceCount {
+  type: MaterialPieceType;
+  count: number;
+}
+
+export interface MaterialDiff {
+  /** Pieces missing from black's side, i.e. captured BY white — shown on
+   *  white's panel. */
+  capturedByWhite: CapturedPieceCount[];
+  /** Pieces missing from white's side, i.e. captured BY black — shown on
+   *  black's panel. */
+  capturedByBlack: CapturedPieceCount[];
+  /** Standard point value of white's remaining pieces minus black's.
+   *  Positive → white is ahead by that many points, negative → black is. */
+  advantage: number;
+}
+
+const MATERIAL_START_COUNTS: Record<MaterialPieceType, number> = {
+  q: 1,
+  r: 2,
+  b: 2,
+  n: 2,
+  p: 8,
+};
+
+const MATERIAL_PIECE_VALUE: Record<MaterialPieceType, number> = {
+  q: 9,
+  r: 5,
+  b: 3,
+  n: 3,
+  p: 1,
+};
+
+/** Display order — most valuable first, matches how lichess/chess.com lay
+ *  out the captured-pieces tray. */
+const MATERIAL_DISPLAY_ORDER: MaterialPieceType[] = ['q', 'r', 'b', 'n', 'p'];
+
+/**
+ * Derives per-side captured pieces + point advantage purely from the current
+ * FEN's piece counts (starting counts minus what's left on the board) — no
+ * move-history bookkeeping needed, so it works identically for a live game,
+ * a replay scrubbed to any position, or a freshly-loaded spectate.
+ *
+ * Known simplification (same one lichess/chess.com make): a pawn that's been
+ * promoted looks identical, count-wise, to a pawn that's been captured — the
+ * board just has one fewer pawn and one extra piece of the promoted type
+ * either way. So on the rare game with a promotion, the captured-pieces
+ * *icons* can be slightly off (may show a "captured pawn" that was actually
+ * promoted, or miss counting the piece it promoted into as unusual). The
+ * point-value `advantage` figure is unaffected by this — it's computed
+ * directly from what's actually on the board, not by tallying captures.
+ */
+export function computeMaterialDiff(fen: string): MaterialDiff {
+  const boardPart = fen.split(' ')[0];
+  const whiteCounts: Record<MaterialPieceType, number> = { p: 0, n: 0, b: 0, r: 0, q: 0 };
+  const blackCounts: Record<MaterialPieceType, number> = { p: 0, n: 0, b: 0, r: 0, q: 0 };
+
+  for (const ch of boardPart) {
+    if (ch === '/' || (ch >= '1' && ch <= '8')) continue;
+    const lower = ch.toLowerCase() as MaterialPieceType | 'k';
+    if (lower === 'k' || !(lower in whiteCounts)) continue;
+    if (ch === lower) blackCounts[lower]++;
+    else whiteCounts[lower]++;
+  }
+
+  const capturedByWhite: CapturedPieceCount[] = [];
+  const capturedByBlack: CapturedPieceCount[] = [];
+  let whiteValue = 0;
+  let blackValue = 0;
+
+  for (const type of MATERIAL_DISPLAY_ORDER) {
+    whiteValue += whiteCounts[type] * MATERIAL_PIECE_VALUE[type];
+    blackValue += blackCounts[type] * MATERIAL_PIECE_VALUE[type];
+
+    const missingFromBlack = MATERIAL_START_COUNTS[type] - blackCounts[type];
+    const missingFromWhite = MATERIAL_START_COUNTS[type] - whiteCounts[type];
+    if (missingFromBlack > 0) capturedByWhite.push({ type, count: missingFromBlack });
+    if (missingFromWhite > 0) capturedByBlack.push({ type, count: missingFromWhite });
+  }
+
+  return { capturedByWhite, capturedByBlack, advantage: whiteValue - blackValue };
+}
+// =============== END MATERIAL DIFF ================
+
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 
 interface Chess960StartingFiles {

@@ -30,3 +30,14 @@ export function subscribeAuth(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
+
+/**
+ * Plain (non-hook) check for "is someone signed in right now" — for use
+ * outside React render (e.g. a one-off redirect guard on mount) where
+ * useAuth()'s reactive isAuthed isn't necessary. Inside a component that
+ * needs to stay in sync with auth state over time, prefer useAuth().isAuthed
+ * instead, since this doesn't itself trigger a re-render on change.
+ */
+export function isLoggedIn(): boolean {
+  return !!snapshot.accessToken && !!snapshot.user;
+}

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Search } from 'lucide-react';
 import { searchUsers, type UserSearchResult } from '../api/users.js';
+import { Page, Card, Input, Avatar, Button } from '../components/ui/index.js';
 
 export function ProfileSearch() {
   const [query, setQuery] = useState('');
@@ -22,32 +24,37 @@ export function ProfileSearch() {
   }
 
   return (
-    <div className="mx-auto mt-6 max-w-2xl">
-      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
-        <h1 className="mb-3 text-xl font-bold text-base-content">Find players</h1>
-        <input
+    <Page title="Find players" description="Search for anyone by their username.">
+      <Card variant="solid">
+        <Input
           type="text"
           placeholder="Search by username…"
           value={query}
           onChange={(e) => handleChange(e.target.value)}
-          className="mb-3 w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content"
+          leadingIcon={<Search className="h-4 w-4" />}
         />
-        {error && <p className="text-sm text-red-400">{error}</p>}
+
+        {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
         {results.length === 0 && query.trim() && !error && (
-          <p className="text-sm text-base-content/60">No users found.</p>
+          <p className="mt-3 text-sm text-base-content/50">No users found.</p>
         )}
-        {results.map((u) => (
-          <div key={u._id} className="flex items-center justify-between border-b border-base-300 py-2 last:border-none">
-            <span className="text-sm text-base-content">{u.username}</span>
-            <Link
-              to={`/profile/${u.username}`}
-              className="rounded-md bg-base-300 px-3 py-1.5 text-sm font-semibold text-base-content hover:bg-base-300"
-            >
-              View
-            </Link>
-          </div>
-        ))}
-      </div>
-    </div>
+
+        <div className="mt-3 divide-y divide-base-300">
+          {results.map((u) => (
+            <div key={u._id} className="flex items-center justify-between gap-3 py-2.5">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <Avatar username={u.username} size="sm" />
+                <span className="truncate text-sm font-medium text-base-content">{u.username}</span>
+              </div>
+              <Link to={`/profile/${u.username}`}>
+                <Button variant="glass" size="sm">
+                  View
+                </Button>
+              </Link>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </Page>
   );
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Pause } from 'lucide-react';
 import {
   getCageMatchByCode,
   computeCageStandings,
@@ -10,6 +11,7 @@ import {
 import { useAuth } from '../contexts/AuthContext.js';
 import { useSocket } from '../contexts/SocketContext.js';
 import { useNotify } from '../contexts/NotificationContext.js';
+import { Page, Card, CardHeader, CardTitle, Button, Spinner } from '../components/ui/index.js';
 
 const WINNER_MODE_LABEL: Record<CageMatch['winnerMode'], string> = {
   total_score: 'Total score (win = 1, draw = 0.5)',
@@ -94,8 +96,22 @@ export function CageMatchDetail() {
     socket.emit('cage:forfeit', { matchId: match._id });
   }
 
-  if (loadError) return <p className="mx-auto mt-10 max-w-lg text-center text-red-400">{loadError}</p>;
-  if (!match) return <p className="mx-auto mt-10 max-w-lg text-center text-base-content/60">Loading…</p>;
+  if (loadError) {
+    return (
+      <div className="mx-auto mt-6 max-w-lg px-4">
+        <Card variant="solid" className="border-red-900/50 bg-red-950/20 text-center text-red-300">
+          {loadError}
+        </Card>
+      </div>
+    );
+  }
+  if (!match) {
+    return (
+      <div className="flex justify-center pt-16">
+        <Spinner className="text-base-content/40" />
+      </div>
+    );
+  }
 
   const iAmP1 = match.player1._id === user?.id;
   const me = iAmP1 ? match.player1 : match.player2;
@@ -128,123 +144,114 @@ export function CageMatchDetail() {
   }
 
   return (
-    <div className="mx-auto mt-6 max-w-2xl space-y-4">
-      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
-        <div className="mb-3 flex items-center justify-between">
-          <h1 className="text-lg font-semibold text-base-content">
-            Cage match vs {opponent.username}
-          </h1>
-          <Link to="/cage" className="text-sm text-base-content/60 hover:text-base-content">
-            ← All cage matches
-          </Link>
-        </div>
-
-        <div className="mb-3 flex items-center justify-center gap-6 rounded-md border border-base-300 bg-base-100 py-4">
-          <div className="text-center">
-            <p className="text-sm text-base-content/60">You</p>
-            <p className="text-2xl font-bold text-base-content">{myScore}</p>
+    <Page title={`Cage match vs ${opponent.username}`} back="/cage">
+      <div className="mx-auto max-w-2xl space-y-4">
+        <Card variant="solid">
+          <div className="mb-3 flex items-center justify-center gap-6 rounded-xl bg-base-100/60 py-4">
+            <div className="text-center">
+              <p className="text-sm text-base-content/60">You</p>
+              <p className="text-2xl font-bold text-base-content">{myScore}</p>
+            </div>
+            <span className="text-base-content/40">–</span>
+            <div className="text-center">
+              <p className="text-sm text-base-content/60">{opponent.username}</p>
+              <p className="text-2xl font-bold text-base-content">{oppScore}</p>
+            </div>
           </div>
-          <span className="text-base-content/40">–</span>
-          <div className="text-center">
-            <p className="text-sm text-base-content/60">{opponent.username}</p>
-            <p className="text-2xl font-bold text-base-content">{oppScore}</p>
+
+          {match.winnerMode === 'most_categories' && (
+            <p className="mb-2 text-center text-sm text-base-content/60">
+              Categories won — you: {myCats}, {opponent.username}: {oppCats}
+            </p>
+          )}
+          {match.winnerMode === 'first_to_n' && (
+            <p className="mb-2 text-center text-sm text-base-content/60">First to {match.targetWins} wins</p>
+          )}
+
+          {outcomeLine && (
+            <p className="mb-2 text-center text-base font-semibold text-amber-400">{outcomeLine}</p>
+          )}
+
+          <div className="mb-3 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-base-content/50">
+            <span>{WINNER_MODE_LABEL[match.winnerMode]}</span>
+            <span>·</span>
+            <span>
+              {WAGER_MODE_LABEL[match.wagerMode]}
+              {match.wagerMode !== 'none' ? ` · ${match.wagerTokens} R` : ''}
+            </span>
+            <span>·</span>
+            <span>
+              Leg {Math.min(match.currentLegIndex + 1, match.legs.length)} of {match.legs.length}
+            </span>
           </div>
-        </div>
 
-        {match.winnerMode === 'most_categories' && (
-          <p className="mb-2 text-center text-sm text-base-content/60">
-            Categories won — you: {myCats}, {opponent.username}: {oppCats}
-          </p>
-        )}
-        {match.winnerMode === 'first_to_n' && (
-          <p className="mb-2 text-center text-sm text-base-content/60">
-            First to {match.targetWins} wins
-          </p>
-        )}
-
-        {outcomeLine && (
-          <p className="mb-2 text-center text-base font-semibold text-amber-300">{outcomeLine}</p>
-        )}
-
-        <div className="mb-3 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-base-content/50">
-          <span>{WINNER_MODE_LABEL[match.winnerMode]}</span>
-          <span>·</span>
-          <span>
-            {WAGER_MODE_LABEL[match.wagerMode]}
-            {match.wagerMode !== 'none' ? ` · ${match.wagerTokens} R` : ''}
-          </span>
-          <span>·</span>
-          <span>Leg {Math.min(match.currentLegIndex + 1, match.legs.length)} of {match.legs.length}</span>
-        </div>
-
-        {match.status === 'active' && activeLeg?.joinCode && (
-          <Link
-            to={`/game/${activeLeg.joinCode}`}
-            className="mb-2 block w-full rounded-md bg-blue-600 px-3 py-2 text-center text-sm font-semibold text-white hover:bg-blue-500"
-          >
-            Go to current leg (#{activeLeg.index + 1})
-          </Link>
-        )}
-        {match.status === 'active' && pausedLeg && (
-          <Link
-            to={`/game/${pausedLeg.joinCode}`}
-            className="mb-2 block w-full rounded-md border border-amber-900 bg-amber-950/30 px-3 py-2 text-center text-sm text-amber-300 hover:bg-amber-950/50"
-          >
-            ⏸ Leg #{pausedLeg.index + 1} is paused — go there to resume
-          </Link>
-        )}
-        {match.status === 'active' && isParticipant && (
-          <button
-            onClick={handleForfeit}
-            className="w-full rounded-md bg-red-900/40 px-3 py-2 text-sm font-semibold text-red-300 hover:bg-red-900/60"
-          >
-            Forfeit match
-          </button>
-        )}
-      </div>
-
-      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
-        <h2 className="mb-2 text-sm font-semibold text-base-content">Legs</h2>
-        <ol className="space-y-1">
-          {match.legs.map((leg) => {
-            const resultLabel =
-              leg.status === 'finished'
-                ? leg.result === 'draw'
-                  ? 'Draw'
-                  : leg.result === 'p1'
-                    ? `${match.player1.username} won`
-                    : leg.result === 'p2'
-                      ? `${match.player2.username} won`
-                      : ''
-                : leg.status === 'skipped'
-                  ? 'Skipped'
-                  : leg.status === 'active'
-                    ? 'In progress'
-                    : leg.status === 'paused'
-                      ? 'Paused'
-                      : 'Pending';
-            return (
-              <li
-                key={leg.index}
-                className="flex items-center justify-between rounded bg-base-100 px-3 py-1.5 text-sm"
+          {match.status === 'active' && activeLeg?.joinCode && (
+            <Link to={`/game/${activeLeg.joinCode}`} className="mb-2 block">
+              <Button fullWidth>Go to current leg (#{activeLeg.index + 1})</Button>
+            </Link>
+          )}
+          {match.status === 'active' && pausedLeg && (
+            <Link to={`/game/${pausedLeg.joinCode}`} className="mb-2 block">
+              <Button
+                fullWidth
+                className="border border-amber-800 bg-amber-950/30 text-amber-300 shadow-none hover:bg-amber-950/50 hover:brightness-100"
               >
-                <span className="flex items-center gap-2 text-base-content/80">
-                  <span className={`inline-block h-2 w-2 rounded-full ${LEG_STATUS_DOT[leg.status]}`} />
-                  #{leg.index + 1} · {formatLegTimeControl(leg)} · {CATEGORY_LABEL[leg.category]}
-                </span>
-                <span className="flex items-center gap-2 text-base-content/50">
-                  {resultLabel}
-                  {leg.status === 'finished' && leg.joinCode && (
-                    <Link to={`/game/${leg.joinCode}`} className="text-blue-400 hover:text-blue-300">
-                      Review
-                    </Link>
-                  )}
-                </span>
-              </li>
-            );
-          })}
-        </ol>
+                <Pause className="h-4 w-4" /> Leg #{pausedLeg.index + 1} is paused — go there to resume
+              </Button>
+            </Link>
+          )}
+          {match.status === 'active' && isParticipant && (
+            <Button variant="danger" fullWidth onClick={handleForfeit}>
+              Forfeit match
+            </Button>
+          )}
+        </Card>
+
+        <Card variant="solid">
+          <CardHeader>
+            <CardTitle>Legs</CardTitle>
+          </CardHeader>
+          <ol className="space-y-1.5">
+            {match.legs.map((leg) => {
+              const resultLabel =
+                leg.status === 'finished'
+                  ? leg.result === 'draw'
+                    ? 'Draw'
+                    : leg.result === 'p1'
+                      ? `${match.player1.username} won`
+                      : leg.result === 'p2'
+                        ? `${match.player2.username} won`
+                        : ''
+                  : leg.status === 'skipped'
+                    ? 'Skipped'
+                    : leg.status === 'active'
+                      ? 'In progress'
+                      : leg.status === 'paused'
+                        ? 'Paused'
+                        : 'Pending';
+              return (
+                <li
+                  key={leg.index}
+                  className="flex items-center justify-between rounded-lg bg-base-100/60 px-3 py-2 text-sm"
+                >
+                  <span className="flex items-center gap-2 text-base-content/80">
+                    <span className={`inline-block h-2 w-2 rounded-full ${LEG_STATUS_DOT[leg.status]}`} />
+                    #{leg.index + 1} · {formatLegTimeControl(leg)} · {CATEGORY_LABEL[leg.category]}
+                  </span>
+                  <span className="flex items-center gap-2 text-base-content/50">
+                    {resultLabel}
+                    {leg.status === 'finished' && leg.joinCode && (
+                      <Link to={`/game/${leg.joinCode}`} className="text-(--primary) hover:brightness-110">
+                        Review
+                      </Link>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        </Card>
       </div>
-    </div>
+    </Page>
   );
 }

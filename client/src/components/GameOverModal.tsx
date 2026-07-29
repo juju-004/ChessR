@@ -1,3 +1,6 @@
+import { Trophy, Frown, Handshake, Ban } from "lucide-react";
+import { Card, Button } from "./ui/index.js";
+
 interface GameOverModalProps {
   result: string | null;
   reason: string;
@@ -14,7 +17,7 @@ interface GameOverModalProps {
 function titleFor(result: string | null, myColor: 'white' | 'black' | undefined, isPlayer: boolean): string {
   if (result === null) return 'Game Aborted';
   if (result === 'draw') return 'Draw';
-  if (isPlayer && myColor) return result === myColor ? 'You Won! 🎉' : 'You Lost';
+  if (isPlayer && myColor) return result === myColor ? 'You Won!' : 'You Lost';
   return result === 'white' ? 'White Wins' : 'Black Wins';
 }
 
@@ -37,6 +40,7 @@ export function GameOverModal({
   const title = titleFor(result, myColor, isPlayer);
   const isWin = isPlayer && myColor && result === myColor;
   const isLoss = isPlayer && myColor && result !== null && result !== 'draw' && result !== myColor;
+  const Icon = result === null ? Ban : isWin ? Trophy : isLoss ? Frown : Handshake;
 
   const wagerText = (() => {
     if (!isPlayer || !wagerSettlement || wagerSettlement.wagerTokens <= 0) return null;
@@ -51,11 +55,12 @@ export function GameOverModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
-      <div
-        className="relative w-full max-w-sm rounded-xl border border-base-300 bg-base-200 p-6 text-center shadow-2xl"
+      <Card
+        variant="strong"
+        className="relative w-full max-w-sm text-center shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -65,6 +70,18 @@ export function GameOverModal({
         >
           ✕
         </button>
+
+        <div
+          className={`mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full ${
+            isWin
+              ? 'bg-green-500/15 text-green-400'
+              : isLoss
+                ? 'bg-red-500/15 text-red-400'
+                : 'gradient-brand text-white'
+          }`}
+        >
+          <Icon className="h-7 w-7" />
+        </div>
 
         <h2
           className={`mb-1 text-2xl font-bold ${
@@ -91,22 +108,15 @@ export function GameOverModal({
 
         <div className="flex flex-col gap-2">
           {canRematch && (
-            <button
-              onClick={onRematch}
-              disabled={rematchState === 'offered'}
-              className="rounded-md bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500 disabled:opacity-40"
-            >
+            <Button onClick={onRematch} disabled={rematchState === 'offered'} loading={false} fullWidth>
               {rematchState === 'offered' ? 'Rematch offer sent…' : 'Rematch'}
-            </button>
+            </Button>
           )}
-          <button
-            onClick={onClose}
-            className="rounded-md bg-base-300 px-4 py-2 font-semibold text-base-content hover:bg-base-300"
-          >
+          <Button variant="glass" onClick={onClose} fullWidth>
             Close
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

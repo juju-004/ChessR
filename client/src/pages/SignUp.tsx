@@ -1,11 +1,18 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Navigate, Link } from "react-router-dom";
 import { signup } from "../api/auth.js";
+import { isLoggedIn } from "../api/authStore.js";
 import { ApiRequestError } from "../api/http.js";
 import { Card, Input, Button } from "../components/ui/index.js";
 
 export function SignUp() {
   const navigate = useNavigate();
+
+  // Already signed in? There's nothing for this page to do — bounce straight
+  // to the dashboard instead of showing a signup form to someone who doesn't
+  // need one.
+  if (isLoggedIn()) return <Navigate to="/" replace />;
+
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,7 +25,7 @@ export function SignUp() {
     setLoading(true);
     try {
       await signup(username, email, password);
-      navigate("/dashboard");
+      navigate("/");
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Sign up failed");
     } finally {

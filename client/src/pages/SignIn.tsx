@@ -1,11 +1,17 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Navigate, Link } from "react-router-dom";
 import { signin } from "../api/auth.js";
+import { isLoggedIn } from "../api/authStore.js";
 import { ApiRequestError } from "../api/http.js";
 import { Card, Input, Button } from "../components/ui/index.js";
 
 export function SignIn() {
   const navigate = useNavigate();
+
+  // Same guard as SignUp — a logged-in user hitting /signin has nothing to
+  // do here.
+  if (isLoggedIn()) return <Navigate to="/" replace />;
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -17,7 +23,7 @@ export function SignIn() {
     setLoading(true);
     try {
       await signin(email, password);
-      navigate("/dashboard");
+      navigate("/");
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Sign in failed");
     } finally {

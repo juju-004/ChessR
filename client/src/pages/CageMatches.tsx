@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ArrowUp, ArrowDown, X, Swords } from 'lucide-react';
 import { listFriends, type Friend } from '../api/friends.js';
 import {
   listMyCageMatches,
@@ -13,6 +14,7 @@ import {
 } from '../api/cageMatches.js';
 import { useSocket } from '../contexts/SocketContext.js';
 import { useAuth } from '../contexts/AuthContext.js';
+import { Page, Card, CardHeader, CardTitle, CardContent, Select, Input, Button, Badge } from '../components/ui/index.js';
 
 const QUICK_ADD_PRESETS: { label: string; baseMinutes: number | null; incrementSeconds: number }[] = [
   { label: 'Bullet · 1+0', baseMinutes: 1, incrementSeconds: 0 },
@@ -144,222 +146,210 @@ export function CageMatches() {
   const finishedMatches = matches.filter((m) => m.status !== 'active');
 
   return (
-    <div className="mx-auto mt-6 max-w-3xl space-y-4">
-      {status && (
-        <p className={`text-sm ${status.isError ? 'text-red-400' : 'text-green-400'}`}>{status.message}</p>
-      )}
+    <Page title="Cage matches" description="Challenge a friend to an ordered series of games.">
+      <div className="mx-auto max-w-2xl space-y-4">
+        {status && (
+          <p className={`text-sm ${status.isError ? 'text-red-400' : 'text-green-400'}`}>{status.message}</p>
+        )}
 
-      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
-        <h1 className="mb-1 text-lg font-semibold text-base-content">Start a cage match</h1>
-        <p className="mb-4 text-sm text-base-content/60">
-          Challenge a friend to an ordered series of games — mix bullet, blitz, rapid, and Chess960 legs
-          however you like, then optionally back it with a wager.
-        </p>
+        <Card variant="solid">
+          <CardHeader>
+            <CardTitle>Start a cage match</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-base-content/60">
+              Mix bullet, blitz, rapid, and Chess960 legs however you like, then optionally back it with a wager.
+            </p>
 
-        <label className="mb-1 block text-sm text-base-content/60">Opponent</label>
-        <select
-          value={selectedFriend}
-          onChange={(e) => setSelectedFriend(e.target.value)}
-          className="mb-4 w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content"
-        >
-          <option value="">Select a friend…</option>
-          {friends.map((f) => (
-            <option key={f.id} value={f.id} disabled={!f.online}>
-              {f.username} {f.online ? '' : '(offline)'}
-            </option>
-          ))}
-        </select>
-
-        <div className="mb-4 rounded-md border border-base-300 bg-base-100 p-3">
-          <h2 className="mb-2 text-sm font-semibold text-base-content">Leg plan ({legs.length} legs)</h2>
-
-          {legs.length === 0 && (
-            <p className="mb-2 text-sm text-base-content/50">No legs yet — add some below.</p>
-          )}
-          {legs.length > 0 && (
-            <ol className="mb-3 max-h-56 space-y-1 overflow-y-auto pr-1">
-              {legs.map((leg, i) => (
-                <li
-                  key={i}
-                  className="flex items-center justify-between rounded bg-base-200 px-2 py-1 text-sm text-base-content"
-                >
-                  <span>
-                    <span className="mr-2 text-base-content/50">#{i + 1}</span>
-                    {formatLegTimeControl(leg)}
-                  </span>
-                  <span className="flex gap-1">
-                    <button
-                      onClick={() => moveLeg(i, -1)}
-                      disabled={i === 0}
-                      className="rounded bg-base-300 px-2 text-xs text-base-content/80 hover:bg-base-300 disabled:opacity-30"
-                    >
-                      ↑
-                    </button>
-                    <button
-                      onClick={() => moveLeg(i, 1)}
-                      disabled={i === legs.length - 1}
-                      className="rounded bg-base-300 px-2 text-xs text-base-content/80 hover:bg-base-300 disabled:opacity-30"
-                    >
-                      ↓
-                    </button>
-                    <button
-                      onClick={() => removeLeg(i)}
-                      className="rounded bg-red-900/40 px-2 text-xs text-red-300 hover:bg-red-900/60"
-                    >
-                      Remove
-                    </button>
-                  </span>
-                </li>
+            <Select label="Opponent" value={selectedFriend} onChange={(e) => setSelectedFriend(e.target.value)}>
+              <option value="">Select a friend…</option>
+              {friends.map((f) => (
+                <option key={f.id} value={f.id} disabled={!f.online}>
+                  {f.username} {f.online ? '' : '(offline)'}
+                </option>
               ))}
-            </ol>
-          )}
+            </Select>
 
-          <div className="flex flex-wrap items-end gap-2 border-t border-base-300 pt-3">
-            <div>
-              <label className="mb-1 block text-xs text-base-content/50">Time control</label>
-              <select
-                value={quickPreset}
-                onChange={(e) => setQuickPreset(Number(e.target.value))}
-                className="rounded-md border border-base-300 bg-base-200 px-2 py-1.5 text-sm text-base-content"
-              >
-                {QUICK_ADD_PRESETS.map((p, i) => (
-                  <option key={p.label} value={i}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
+            <div className="rounded-xl border border-base-300 bg-base-100/60 p-3">
+              <h3 className="mb-2 text-sm font-semibold text-base-content">Leg plan ({legs.length} legs)</h3>
+
+              {legs.length === 0 && (
+                <p className="mb-2 text-sm text-base-content/50">No legs yet — add some below.</p>
+              )}
+              {legs.length > 0 && (
+                <ol className="mb-3 max-h-56 space-y-1 overflow-y-auto pr-1">
+                  {legs.map((leg, i) => (
+                    <li
+                      key={i}
+                      className="flex items-center justify-between rounded-lg bg-base-200 px-2.5 py-1.5 text-sm text-base-content"
+                    >
+                      <span>
+                        <span className="mr-2 text-base-content/40">#{i + 1}</span>
+                        {formatLegTimeControl(leg)}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <button
+                          onClick={() => moveLeg(i, -1)}
+                          disabled={i === 0}
+                          aria-label="Move up"
+                          className="rounded-md p-1 text-base-content/60 hover:bg-base-300 disabled:opacity-30"
+                        >
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => moveLeg(i, 1)}
+                          disabled={i === legs.length - 1}
+                          aria-label="Move down"
+                          className="rounded-md p-1 text-base-content/60 hover:bg-base-300 disabled:opacity-30"
+                        >
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => removeLeg(i)}
+                          aria-label="Remove leg"
+                          className="rounded-md p-1 text-red-400 hover:bg-red-900/30"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2 border-t border-base-300 pt-3">
+                <div className="w-40">
+                  <Select value={quickPreset} onChange={(e) => setQuickPreset(Number(e.target.value))}>
+                    {QUICK_ADD_PRESETS.map((p, i) => (
+                      <option key={p.label} value={i}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="w-32">
+                  <Select value={quickVariant} onChange={(e) => setQuickVariant(e.target.value as CageVariant)}>
+                    <option value="standard">Standard</option>
+                    <option value="chess960">Chess960</option>
+                  </Select>
+                </div>
+                <div className="w-16">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={quickCount}
+                    onChange={(e) => setQuickCount(Number(e.target.value))}
+                  />
+                </div>
+                <Button size="md" onClick={addQuickLegs}>
+                  Add legs
+                </Button>
+              </div>
             </div>
-            <div>
-              <label className="mb-1 block text-xs text-base-content/50">Variant</label>
-              <select
-                value={quickVariant}
-                onChange={(e) => setQuickVariant(e.target.value as CageVariant)}
-                className="rounded-md border border-base-300 bg-base-200 px-2 py-1.5 text-sm text-base-content"
-              >
-                <option value="standard">Standard</option>
-                <option value="chess960">Chess960</option>
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-base-content/50">Count</label>
-              <input
+
+            <Select
+              label="How the winner is decided"
+              value={winnerMode}
+              onChange={(e) => setWinnerMode(e.target.value as CageWinnerMode)}
+            >
+              <option value="total_score">Total score (win = 1, draw = 0.5)</option>
+              <option value="most_categories">Most categories won (bullet/blitz/rapid/classical)</option>
+              <option value="first_to_n">First to N wins</option>
+            </Select>
+            {winnerMode === 'first_to_n' && (
+              <Input
                 type="number"
                 min={1}
                 max={30}
-                value={quickCount}
-                onChange={(e) => setQuickCount(Number(e.target.value))}
-                className="w-16 rounded-md border border-base-300 bg-base-200 px-2 py-1.5 text-sm text-base-content"
+                value={targetWins}
+                onChange={(e) => setTargetWins(Number(e.target.value))}
+                placeholder="Wins needed"
               />
+            )}
+
+            <Select label="Wager" value={wagerMode} onChange={(e) => setWagerMode(e.target.value as CageWagerMode)}>
+              <option value="none">No wager</option>
+              <option value="winner_takes_all">Winner takes all — one stake for the whole match</option>
+              <option value="per_leg">Per leg — staked and settled as each leg finishes</option>
+              <option value="split_even">Split evenly — total stake divided across all legs</option>
+            </Select>
+            {wagerMode !== 'none' && (
+              <Input
+                type="number"
+                min={1}
+                step={1}
+                value={wagerInput}
+                onChange={(e) => setWagerInput(e.target.value)}
+                placeholder={wagerMode === 'per_leg' ? 'R tokens per leg' : 'Total R tokens for the whole match'}
+              />
+            )}
+
+            <Button fullWidth disabled={!selectedFriend || legs.length < 2} onClick={handleSend}>
+              <Swords className="h-4 w-4" /> Send cage match invite
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card variant="solid">
+          <CardHeader>
+            <CardTitle>Active cage matches</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {activeMatches.length === 0 && <p className="text-sm text-base-content/50">None right now.</p>}
+            <div className="space-y-2">
+              {activeMatches.map((m) => {
+                const opp = opponentOf(m, myId);
+                const standings = computeCageStandings(m);
+                const iAmP1 = m.player1._id === myId;
+                const myScore = iAmP1 ? standings.p1Score : standings.p2Score;
+                const oppScore = iAmP1 ? standings.p2Score : standings.p1Score;
+                return (
+                  <Link
+                    key={m._id}
+                    to={`/cage/${m.matchCode}`}
+                    className="flex items-center justify-between rounded-xl border border-base-300 bg-base-100/60 px-3 py-2.5 transition-colors hover:border-(--primary)/40"
+                  >
+                    <span className="text-sm text-base-content">
+                      vs {opp.username} · leg {m.currentLegIndex + 1}/{m.legs.length}
+                    </span>
+                    <span className="flex items-center gap-2 text-sm text-base-content/60">
+                      {myScore}–{oppScore}
+                      {m.wagerMode !== 'none' && <Badge variant="warning">{m.wagerTokens} R</Badge>}
+                    </span>
+                  </Link>
+                );
+              })}
             </div>
-            <button
-              onClick={addQuickLegs}
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-500"
-            >
-              Add legs
-            </button>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        <label className="mb-1 block text-sm text-base-content/60">How the winner is decided</label>
-        <select
-          value={winnerMode}
-          onChange={(e) => setWinnerMode(e.target.value as CageWinnerMode)}
-          className="mb-3 w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content"
-        >
-          <option value="total_score">Total score (win = 1, draw = 0.5)</option>
-          <option value="most_categories">Most categories won (bullet/blitz/rapid/classical)</option>
-          <option value="first_to_n">First to N wins</option>
-        </select>
-        {winnerMode === 'first_to_n' && (
-          <input
-            type="number"
-            min={1}
-            max={30}
-            value={targetWins}
-            onChange={(e) => setTargetWins(Number(e.target.value))}
-            placeholder="Wins needed"
-            className="mb-3 w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content"
-          />
-        )}
-
-        <label className="mb-1 block text-sm text-base-content/60">Wager</label>
-        <select
-          value={wagerMode}
-          onChange={(e) => setWagerMode(e.target.value as CageWagerMode)}
-          className="mb-3 w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content"
-        >
-          <option value="none">No wager</option>
-          <option value="winner_takes_all">Winner takes all — one stake for the whole match</option>
-          <option value="per_leg">Per leg — staked and settled as each leg finishes</option>
-          <option value="split_even">Split evenly — total stake divided across all legs</option>
-        </select>
-        {wagerMode !== 'none' && (
-          <input
-            type="number"
-            min={1}
-            step={1}
-            value={wagerInput}
-            onChange={(e) => setWagerInput(e.target.value)}
-            placeholder={
-              wagerMode === 'per_leg' ? 'R tokens per leg' : 'Total R tokens for the whole match'
-            }
-            className="mb-3 w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content"
-          />
-        )}
-
-        <button
-          onClick={handleSend}
-          disabled={!selectedFriend || legs.length < 2}
-          className="w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          Send cage match invite
-        </button>
+        <Card variant="solid">
+          <CardHeader>
+            <CardTitle>Match history</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {finishedMatches.length === 0 && (
+              <p className="text-sm text-base-content/50">No finished cage matches yet.</p>
+            )}
+            <div className="space-y-2">
+              {finishedMatches.map((m) => {
+                const opp = opponentOf(m, myId);
+                return (
+                  <Link
+                    key={m._id}
+                    to={`/cage/${m.matchCode}`}
+                    className="flex items-center justify-between rounded-xl border border-base-300 bg-base-100/60 px-3 py-2.5 transition-colors hover:border-(--primary)/40"
+                  >
+                    <span className="text-sm text-base-content">vs {opp.username}</span>
+                    <span className="text-sm text-base-content/60">{matchOutcomeLabel(m, myId)}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
       </div>
-
-      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
-        <h2 className="mb-2 text-lg font-semibold text-base-content">Active cage matches</h2>
-        {activeMatches.length === 0 && <p className="text-sm text-base-content/60">None right now.</p>}
-        {activeMatches.map((m) => {
-          const opp = opponentOf(m, myId);
-          const standings = computeCageStandings(m);
-          const iAmP1 = m.player1._id === myId;
-          const myScore = iAmP1 ? standings.p1Score : standings.p2Score;
-          const oppScore = iAmP1 ? standings.p2Score : standings.p1Score;
-          return (
-            <Link
-              key={m._id}
-              to={`/cage/${m.matchCode}`}
-              className="mb-2 flex items-center justify-between rounded-md border border-base-300 bg-base-100 px-3 py-2 hover:border-base-300"
-            >
-              <span className="text-sm text-base-content">
-                vs {opp.username} · leg {m.currentLegIndex + 1}/{m.legs.length}
-              </span>
-              <span className="text-sm text-base-content/60">
-                {myScore}–{oppScore}
-                {m.wagerMode !== 'none' ? ` · ${m.wagerTokens} R` : ''}
-              </span>
-            </Link>
-          );
-        })}
-      </div>
-
-      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
-        <h2 className="mb-2 text-lg font-semibold text-base-content">Match history</h2>
-        {finishedMatches.length === 0 && <p className="text-sm text-base-content/60">No finished cage matches yet.</p>}
-        {finishedMatches.map((m) => {
-          const opp = opponentOf(m, myId);
-          return (
-            <Link
-              key={m._id}
-              to={`/cage/${m.matchCode}`}
-              className="mb-2 flex items-center justify-between rounded-md border border-base-300 bg-base-100 px-3 py-2 hover:border-base-300"
-            >
-              <span className="text-sm text-base-content">vs {opp.username}</span>
-              <span className="text-sm text-base-content/60">{matchOutcomeLabel(m, myId)}</span>
-            </Link>
-          );
-        })}
-      </div>
-    </div>
+    </Page>
   );
 }

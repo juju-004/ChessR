@@ -99,7 +99,7 @@ export function BuyTokens() {
         </div>
 
         <button
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate('/')}
           className="mt-4 text-sm text-base-content/60 hover:text-base-content"
         >
           ← Back to dashboard

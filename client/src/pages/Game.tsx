@@ -5,21 +5,24 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type ReactNode,
 } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { Chess } from "chess.js";
-import { getGameByCode, joinGame } from "../api/games.js";
+import { getGameByCode, joinGame, cancelGame } from "../api/games.js";
 import { ApiRequestError } from "../api/http.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useNotify } from "../contexts/NotificationContext.js";
 import { useSettings } from "../contexts/SettingsContext.js";
 import { useConfirm } from "../contexts/ConfirmContext.js";
+import { Swords, Flag, Handshake, Ban, Pause, Play, ShieldAlert, MessageSquare } from "lucide-react";
 import { ChessBoard } from "../components/ChessBoard.js";
 import { PromotionPicker } from "../components/PromotionPicker.js";
-import { ClockDisplay } from "../components/ClockDisplay.js";
+import { PlayerPanels } from "../components/PlayerPanels.js";
 import { GameOverModal } from "../components/GameOverModal.js";
 import { CageMatchScoreboard } from "../components/CageMatchScoreboard.js";
+import { Card, Button, Badge, Spinner } from "../components/ui/index.js";
 import {
   computeDests,
   needsPromotion,
@@ -64,6 +67,7 @@ export function Game() {
   const { code = "" } = useParams<{ code: string }>();
   const { user } = useAuth();
   const socket = useSocket();
+  const navigate = useNavigate();
   const { notify } = useNotify();
   const { settings } = useSettings();
   const confirmDialog = useConfirm();
@@ -286,7 +290,9 @@ export function Game() {
           ? "Spectating"
           : payload.status === "active"
             ? "Your game"
-            : payload.status,
+            : payload.status === "waiting"
+              ? "Waiting for opponent…"
+              : payload.status,
       );
     }
 
@@ -603,6 +609,31 @@ export function Game() {
     }
   }
 
+  // Separate from handleAbort above: a game nobody has joined yet is a
+  // different lifecycle stage server-side (status "waiting", no live game
+  // state in Redis at all) — game:abort's live-state lookup would just fail
+  // on it, so cancelling it is a plain REST call instead of a socket event.
+  async function handleCancelWaitingGame() {
+    if (!gameMeta) return;
+    const ok = await confirmDialog({
+      title: "Cancel this game?",
+      description: gameMeta.wagerTokens
+        ? `Your ${gameMeta.wagerTokens} R token stake will be refunded.`
+        : "You can create a new one any time.",
+      variant: "danger",
+      confirmLabel: "Cancel game",
+    });
+    if (!ok) return;
+    try {
+      await cancelGame(gameMeta._id);
+      navigate("/");
+    } catch (err) {
+      setLoadError(
+        err instanceof ApiRequestError ? err.message : "Could not cancel the game",
+      );
+    }
+  }
+
   async function handleBerserk() {
     if (!socket || !gameMeta) return;
     const ok = await confirmDialog({
@@ -645,49 +676,49 @@ export function Game() {
 
   if (loadError) {
     return (
-      <div className="mx-auto mt-6 max-w-2xl rounded-lg border border-red-900 bg-red-950/40 p-5 text-red-400">
-        {loadError}
+      <div className="mx-auto mt-6 max-w-2xl px-4">
+        <Card variant="solid" className="border-red-900/50 bg-red-950/20 text-red-300">
+          {loadError}
+        </Card>
       </div>
     );
   }
 
   if (mode === "loading") {
     return (
-      <div className="mx-auto mt-6 max-w-2xl text-base-content/60">
-        Loading…
+      <div className="flex justify-center pt-16">
+        <Spinner className="text-base-content/40" />
       </div>
     );
   }
 
   if (mode === "need-join" && gameMeta) {
     return (
-      <div className="mx-auto mt-6 max-w-2xl rounded-lg border border-base-300 bg-base-200 p-5">
-        <h1 className="mb-2 text-xl font-bold text-base-content">
-          Game{" "}
-          <span className="font-normal text-base-content/50">· {code}</span>
+      <div className="mx-auto mt-6 max-w-md px-4">
+        <Card variant="strong" className="text-center">
+          <h1 className="mb-1 text-xl font-bold text-base-content">
+            Game <span className="font-normal text-base-content/50">· {code}</span>
+          </h1>
           {gameMeta.variant === "chess960" && (
-            <span className="ml-2 rounded bg-purple-900 px-2 py-0.5 text-xs font-semibold text-purple-200">
+            <Badge variant="secondary" className="mb-2">
               Chess960
-            </span>
+            </Badge>
           )}
-        </h1>
-        <p className="mb-3 text-sm text-base-content/60">
-          {gameMeta.white?.username} is waiting for an opponent.
-        </p>
-        {!!gameMeta.wagerTokens && (
-          <p className="mb-3 rounded-md border border-amber-900/50 bg-amber-950/20 p-3 text-sm text-amber-300">
-            This is a wagered game — joining will stake{" "}
-            <strong>{gameMeta.wagerTokens} R tokens</strong> from your balance.
-            The winner takes the full {gameMeta.wagerTokens * 2}.
+          <p className="mb-4 text-sm text-base-content/60">
+            {gameMeta.white?.username} is waiting for an opponent.
           </p>
-        )}
-        {loadError && <p className="mb-3 text-sm text-red-400">{loadError}</p>}
-        <button
-          onClick={handleJoin}
-          className="rounded-md bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500"
-        >
-          Join this game
-        </button>
+          {!!gameMeta.wagerTokens && (
+            <Card variant="solid" className="mb-4 border-amber-900/40 bg-amber-950/20 text-left text-sm text-amber-300">
+              This is a wagered game — joining will stake{" "}
+              <strong>{gameMeta.wagerTokens} R tokens</strong> from your balance.
+              The winner takes the full {gameMeta.wagerTokens * 2}.
+            </Card>
+          )}
+          {loadError && <p className="mb-3 text-sm text-red-400">{loadError}</p>}
+          <Button onClick={handleJoin} fullWidth>
+            Join this game
+          </Button>
+        </Card>
       </div>
     );
   }
@@ -695,43 +726,31 @@ export function Game() {
   const isPlayer = role !== "spectator";
   const inCheck = isInCheck(chess);
 
+  const badges: ReactNode[] = [];
+  if (!settings.zenMode) {
+    if (gameMeta?.variant === "chess960") badges.push(<Badge key="960" variant="secondary">Chess960</Badge>);
+    if (gameMeta?.wagerTokens) badges.push(<Badge key="wager" variant="warning">{gameMeta.wagerTokens} R wager</Badge>);
+    if (gameMeta?.tournamentId) badges.push(
+      <Link key="tourney" to="/tournaments">
+        <Badge variant="glass" className="hover:brightness-110">Tournament game</Badge>
+      </Link>,
+    );
+    if (whiteBerserk) badges.push(<Badge key="wb" variant="error">⚔ White berserked</Badge>);
+    if (blackBerserk) badges.push(<Badge key="bb" variant="error">⚔ Black berserked</Badge>);
+  }
+
   return (
-    <div className="mx-auto mt-6 max-w-2xl space-y-4">
-      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
-        <div className="mb-2 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-base-content">
-            Game{" "}
-            <span className="font-normal text-base-content/50">· {code}</span>
-            {!settings.zenMode && gameMeta?.variant === "chess960" && (
-              <span className="ml-2 rounded bg-purple-900 px-2 py-0.5 text-xs font-semibold text-purple-200">
-                Chess960
-              </span>
-            )}
-            {!settings.zenMode && !!gameMeta?.wagerTokens && (
-              <span className="ml-2 rounded bg-amber-900/40 px-2 py-0.5 text-xs font-semibold text-amber-300">
-                {gameMeta.wagerTokens} R wager
-              </span>
-            )}
-            {!settings.zenMode && gameMeta?.tournamentId && (
-              <Link
-                to={`/tournaments`}
-                className="ml-2 rounded bg-base-300 px-2 py-0.5 text-xs font-semibold text-base-content/80 hover:bg-base-300"
-              >
-                Tournament game
-              </Link>
-            )}
-            {!settings.zenMode && whiteBerserk && (
-              <span className="ml-2 text-xs text-red-400">
-                ⚔ White berserked
-              </span>
-            )}
-            {!settings.zenMode && blackBerserk && (
-              <span className="ml-2 text-xs text-red-400">
-                ⚔ Black berserked
-              </span>
-            )}
-          </h1>
-          <span className="text-sm text-base-content/60">
+    <div className="mx-auto mt-4 max-w-2xl space-y-4 px-4 pb-4 sm:px-0">
+      <Card variant="solid">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-lg font-bold text-base-content">
+              Game <span className="font-normal text-base-content/40">· {code}</span>
+            </h1>
+            {badges}
+          </div>
+          <span className="flex items-center gap-1.5 text-xs font-medium text-base-content/60">
+            {!gameOver && <span className="h-1.5 w-1.5 rounded-full bg-green-500" />}
             {gameOver
               ? `Game over — ${describeResult(gameOver.result)} (${gameOver.reason.replace(/_/g, " ")})`
               : connStatus}
@@ -746,36 +765,30 @@ export function Game() {
         )}
 
         {pausedLeg && !gameOver && (
-          <div className="mb-3 rounded-md border border-amber-800 bg-amber-950/30 p-3 text-center text-sm text-amber-300">
-            ⏸ This leg is paused{isPlayer ? "" : " by the players"}.
+          <div className="mb-3 flex items-center justify-center gap-1.5 rounded-xl border border-amber-800/40 bg-amber-950/20 p-2.5 text-center text-sm text-amber-300">
+            <Pause className="h-4 w-4" /> This leg is paused{isPlayer ? "" : " by the players"}.
           </div>
         )}
 
         {disconnectBanner && (
-          <div className="mb-3 rounded-md border border-red-900 bg-red-950/40 p-3">
-            <p className="mb-2 text-sm text-red-300">
-              {disconnectBanner.message}
+          <Card variant="solid" className="mb-3 border-red-900/50 bg-red-950/20">
+            <p className="mb-2 flex items-center gap-1.5 text-sm text-red-300">
+              <ShieldAlert className="h-4 w-4 shrink-0" /> {disconnectBanner.message}
             </p>
             {disconnectBanner.claimable && (
               <div className="flex gap-2">
-                <button
-                  onClick={() => handleClaim("win")}
-                  className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-500"
-                >
+                <Button size="sm" variant="danger" onClick={() => handleClaim("win")}>
                   Claim victory
-                </button>
-                <button
-                  onClick={() => handleClaim("draw")}
-                  className="rounded-md bg-base-300 px-3 py-1.5 text-sm font-semibold text-base-content hover:bg-base-300"
-                >
+                </Button>
+                <Button size="sm" variant="glass" onClick={() => handleClaim("draw")}>
                   Claim draw
-                </button>
+                </Button>
               </div>
             )}
-          </div>
+          </Card>
         )}
 
-        <ClockDisplay
+        <PlayerPanels
           fen={fen}
           whiteRemainingMs={whiteRemainingMs}
           blackRemainingMs={blackRemainingMs}
@@ -786,10 +799,11 @@ export function Game() {
           blackUsername={gameMeta?.black?.username}
           whiteConnected={whiteConnected}
           blackConnected={blackConnected}
+          orientation={myColor ?? "white"}
         />
 
         <div
-          className={`relative mx-auto aspect-square w-full max-w-120 board-theme-${settings.boardTheme} piece-theme-${settings.pieceTheme}`}
+          className={`relative mx-auto aspect-square w-full max-w-120 overflow-hidden rounded-2xl shadow-lg board-theme-${settings.boardTheme} piece-theme-${settings.pieceTheme}`}
         >
           <ChessBoard
             fen={fen}
@@ -809,31 +823,31 @@ export function Game() {
           {promoPending && <PromotionPicker onPick={handlePromotionPick} />}
         </div>
 
-        {moveError && <p className="mt-2 text-sm text-red-400">{moveError}</p>}
+        {moveError && <p className="mt-2 text-center text-sm text-red-400">{moveError}</p>}
+
+        {isPlayer && status === "waiting" && (
+          <div className="mt-3 flex items-center gap-3 rounded-xl border border-base-300 bg-base-100/60 px-3 py-2.5">
+            <p className="flex-1 text-sm text-base-content/60">Waiting for an opponent to join…</p>
+            <Button variant="glass" size="sm" onClick={handleCancelWaitingGame}>
+              <Ban className="h-4 w-4" /> Cancel game
+            </Button>
+          </div>
+        )}
 
         {isPlayer && status === "active" && (
           <div className="mt-3 flex gap-2">
             {moves.length < 2 ? (
-              <button
-                onClick={handleAbort}
-                className="rounded-md bg-base-300 px-4 py-2 text-sm font-semibold text-base-content hover:bg-base-300"
-              >
-                Abort game
-              </button>
+              <Button variant="glass" size="sm" onClick={handleAbort}>
+                <Ban className="h-4 w-4" /> Abort game
+              </Button>
             ) : (
               <>
-                <button
-                  onClick={handleOfferDraw}
-                  className="rounded-md bg-base-300 px-4 py-2 text-sm font-semibold text-base-content hover:bg-base-300"
-                >
-                  Offer draw
-                </button>
-                <button
-                  onClick={handleResign}
-                  className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500"
-                >
-                  Resign
-                </button>
+                <Button variant="glass" size="sm" onClick={handleOfferDraw}>
+                  <Handshake className="h-4 w-4" /> Offer draw
+                </Button>
+                <Button variant="danger" size="sm" onClick={handleResign}>
+                  <Flag className="h-4 w-4" /> Resign
+                </Button>
               </>
             )}
           </div>
@@ -846,12 +860,13 @@ export function Game() {
           !(myColor === "white" ? whiteBerserk : blackBerserk) &&
           (myColor === "white" ? moves.length === 0 : moves.length <= 1) && (
             <div className="mt-2">
-              <button
+              <Button
+                size="sm"
                 onClick={handleBerserk}
-                className="rounded-md border border-red-800 bg-red-950/30 px-4 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-950/50"
+                className="border border-red-800 bg-red-950/30 text-red-300 shadow-none hover:bg-red-950/50 hover:brightness-100"
               >
-                ⚔ Berserk — halve your clock for a bonus point
-              </button>
+                <Swords className="h-4 w-4" /> Berserk — halve your clock for a bonus point
+              </Button>
             </div>
           )}
 
@@ -861,72 +876,81 @@ export function Game() {
           moves.length < 2 &&
           !pausedLeg && (
             <div className="mt-2">
-              <button
-                onClick={handlePauseRequest}
+              <Button
+                size="sm"
                 disabled={pauseRequestSent}
-                className="rounded-md border border-amber-800 bg-amber-950/30 px-4 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-950/50 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={handlePauseRequest}
+                className="border border-amber-800 bg-amber-950/30 text-amber-300 shadow-none hover:bg-amber-950/50 hover:brightness-100"
               >
-                {pauseRequestSent ? "Pause request sent…" : "⏸ Request pause"}
-              </button>
+                <Pause className="h-4 w-4" />
+                {pauseRequestSent ? "Pause request sent…" : "Request pause"}
+              </Button>
             </div>
           )}
 
         {isPlayer && gameMeta?.cageMatchId && pausedLeg && (
-          <div className="mt-2 rounded-md border border-amber-800 bg-amber-950/30 px-4 py-2 text-sm text-amber-300">
-            <p className="mb-2 font-semibold">⏸ This leg is paused.</p>
-            <button
-              onClick={handleResumeRequest}
+          <Card variant="solid" className="mt-2 border-amber-800/40 bg-amber-950/20 text-sm text-amber-300">
+            <p className="mb-2 flex items-center gap-1.5 font-semibold">
+              <Pause className="h-4 w-4" /> This leg is paused.
+            </p>
+            <Button
+              size="sm"
               disabled={resumeRequestSent}
-              className="rounded-md bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={handleResumeRequest}
+              className="bg-amber-700 text-white shadow-none hover:bg-amber-600 hover:brightness-100"
             >
-              {resumeRequestSent ? "Resume request sent…" : "▶ Request resume"}
-            </button>
-          </div>
+              <Play className="h-4 w-4" />
+              {resumeRequestSent ? "Resume request sent…" : "Request resume"}
+            </Button>
+          </Card>
         )}
 
         {isPlayer && gameMeta?.cageMatchId && (
           <div className="mt-2">
-            <button
+            <Button
+              size="sm"
               onClick={handleForfeitCageMatch}
-              className="rounded-md border border-red-900 bg-red-950/30 px-4 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-950/50"
+              className="border border-red-900 bg-red-950/30 text-red-300 shadow-none hover:bg-red-950/50 hover:brightness-100"
             >
               Forfeit entire cage match
-            </button>
+            </Button>
           </div>
         )}
-      </div>
+      </Card>
 
       {!settings.zenMode && (
-        <div className="rounded-lg border border-base-300 bg-base-200 p-5">
-          <h2 className="mb-2 text-lg font-semibold text-base-content">
-            Moves
-          </h2>
-          <div className="max-h-48 overflow-y-auto font-mono text-sm text-base-content/80">
-            {moves.map((m) => (
-              <div key={m.moveNumber}>
-                {m.moveNumber}. {m.san}
-              </div>
-            ))}
-          </div>
-        </div>
+        <Card variant="solid">
+          <h2 className="mb-2 text-base font-semibold text-base-content">Moves</h2>
+          {moves.length === 0 ? (
+            <p className="text-sm text-base-content/50">No moves yet.</p>
+          ) : (
+            <div className="grid max-h-48 grid-cols-2 gap-x-4 gap-y-1 overflow-y-auto pr-1 font-mono text-sm text-base-content/80 sm:grid-cols-3">
+              {moves.map((m) => (
+                <div key={m.moveNumber}>
+                  <span className="text-base-content/40">{m.moveNumber}.</span> {m.san}
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
       )}
 
       {!settings.zenMode && role === "spectator" && (
-        <div className="rounded-lg border border-base-300 bg-base-200 p-5">
-          <h2 className="mb-2 text-lg font-semibold text-base-content">
-            Spectator chat
+        <Card variant="solid">
+          <h2 className="mb-1 flex items-center gap-1.5 text-base font-semibold text-base-content">
+            <MessageSquare className="h-4 w-4" /> Spectator chat
           </h2>
           <p className="mb-2 text-xs text-base-content/50">
             Only visible to spectators, not the players. Not saved — refreshing
             clears it.
           </p>
-          <div className="mb-2 max-h-48 space-y-1 overflow-y-auto rounded-md bg-base-100 p-2 text-sm">
+          <div className="mb-2 max-h-48 space-y-1 overflow-y-auto rounded-xl bg-base-100/60 p-2.5 text-sm">
             {chatMessages.length === 0 && (
               <p className="text-base-content/50">No messages yet.</p>
             )}
             {chatMessages.map((m, i) => (
               <p key={i}>
-                <span className="font-semibold text-blue-400">
+                <span className="font-semibold text-(--primary)">
                   {m.username}:
                 </span>{" "}
                 <span className="text-base-content">{m.message}</span>
@@ -940,16 +964,13 @@ export function Game() {
               onChange={(e) => setChatInput(e.target.value)}
               maxLength={300}
               placeholder="Say something…"
-              className="flex-1 rounded-md border border-base-300 bg-base-100 px-3 py-1.5 text-sm text-base-content"
+              className="h-10 flex-1 rounded-lg border border-base-300 bg-base-100/60 px-3 text-sm text-base-content backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-(--primary)"
             />
-            <button
-              type="submit"
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-500"
-            >
+            <Button type="submit" size="md">
               Send
-            </button>
+            </Button>
           </form>
-        </div>
+        </Card>
       )}
 
       {gameOver && !gameOverModalDismissed && (

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Trophy } from 'lucide-react';
 import {
   listOpenTournaments,
   listMyTournaments,
@@ -12,6 +13,7 @@ import {
 } from '../api/tournaments.js';
 import { useSocket } from '../contexts/SocketContext.js';
 import { useAuth } from '../contexts/AuthContext.js';
+import { Page, Card, CardHeader, CardTitle, CardContent, Input, Select, Button, Badge, Switch } from '../components/ui/index.js';
 
 const TIME_PRESETS: { label: string; baseMinutes: number | null; incrementSeconds: number }[] = [
   { label: 'Bullet · 1+0', baseMinutes: 1, incrementSeconds: 0 },
@@ -30,34 +32,31 @@ const FORMAT_DEFAULT_MAX: Record<TournamentFormat, number> = {
   round_robin: 6,
 };
 
-function statusBadge(status: Tournament['status']) {
-  const styles: Record<Tournament['status'], string> = {
-    pending: 'bg-base-300 text-base-content/80',
-    active: 'bg-green-900/40 text-green-300',
-    finished: 'bg-base-300 text-base-content/50',
-    cancelled: 'bg-red-900/40 text-red-300',
-  };
-  return <span className={`rounded px-2 py-0.5 text-xs font-medium ${styles[status]}`}>{status}</span>;
-}
+const STATUS_VARIANT: Record<Tournament['status'], 'neutral' | 'success' | 'error'> = {
+  pending: 'neutral',
+  active: 'success',
+  finished: 'neutral',
+  cancelled: 'error',
+};
 
 function TournamentRow({ t }: { t: Tournament }) {
   return (
     <Link
       to={`/tournaments/${t.code}`}
-      className="flex items-center justify-between rounded-md border border-base-300 bg-base-100 px-3 py-2 hover:border-base-300"
+      className="flex items-center justify-between gap-3 rounded-xl border border-base-300 bg-base-100/60 px-3 py-2.5 transition-colors hover:border-(--primary)/40"
     >
-      <div>
-        <div className="flex items-center gap-2">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium text-base-content">{t.name}</span>
-          {statusBadge(t.status)}
+          <Badge variant={STATUS_VARIANT[t.status]}>{t.status}</Badge>
         </div>
-        <div className="text-xs text-base-content/50">
+        <div className="mt-0.5 text-xs text-base-content/50">
           {FORMAT_LABEL[t.format]} · {formatTimeControl(t)} · {t.players.length}/{t.maxPlayers} players
           {t.wagerMode === 'entry_fee' && <> · {t.wagerTokens} R entry</>}
           {t.berserkAllowed && <> · Berserk on</>}
         </div>
       </div>
-      <span className="text-xs text-base-content/50">#{t.code}</span>
+      <span className="shrink-0 text-xs text-base-content/40">#{t.code}</span>
     </Link>
   );
 }
@@ -144,163 +143,165 @@ export function Tournaments() {
   const openActive = open.filter((t) => t.status === 'active');
 
   return (
-    <div className="mx-auto mt-6 max-w-3xl space-y-4">
-      {status && <p className={`text-sm ${status.isError ? 'text-red-400' : 'text-green-400'}`}>{status.message}</p>}
+    <Page title="Tournaments" description="Run a knockout bracket, a swiss event, or a full round-robin.">
+      <div className="mx-auto max-w-2xl space-y-4">
+        {status && (
+          <p className={`text-sm ${status.isError ? 'text-red-400' : 'text-green-400'}`}>{status.message}</p>
+        )}
 
-      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
-        <h1 className="mb-1 text-lg font-semibold text-base-content">Create a tournament</h1>
-        <p className="mb-4 text-sm text-base-content/60">
-          Run a knockout bracket, a swiss event, or a full round-robin — anyone can join until you start it.
-        </p>
-
-        <label className="mb-1 block text-sm text-base-content/60">Name</label>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Friday Night Blitz"
-          className="mb-4 w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content"
-        />
-
-        <label className="mb-1 block text-sm text-base-content/60">Format</label>
-        <div className="mb-4 grid grid-cols-2 gap-2">
-          {(Object.keys(FORMAT_LABEL) as TournamentFormat[]).map((f) => (
-            <button
-              key={f}
-              onClick={() => handleFormatChange(f)}
-              className={`rounded-md border px-3 py-2 text-left text-sm ${
-                format === f
-                  ? 'border-amber-700 bg-amber-900/20 text-amber-200'
-                  : 'border-base-300 bg-base-100 text-base-content/80 hover:border-base-300'
-              }`}
-            >
-              <div className="font-medium">{FORMAT_LABEL[f]}</div>
-              <div className="text-xs text-base-content/50">{FORMAT_DESCRIPTION[f]}</div>
-            </button>
-          ))}
-        </div>
-
-        <div className="mb-4 flex flex-wrap items-end gap-3">
-          <div>
-            <label className="mb-1 block text-xs text-base-content/50">Time control</label>
-            <select
-              value={presetIdx}
-              onChange={(e) => setPresetIdx(Number(e.target.value))}
-              className="rounded-md border border-base-300 bg-base-100 px-2 py-1.5 text-sm text-base-content"
-            >
-              {TIME_PRESETS.map((p, i) => (
-                <option key={p.label} value={i}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-base-content/50">Variant</label>
-            <select
-              value={variant}
-              onChange={(e) => setVariant(e.target.value as 'standard' | 'chess960')}
-              className="rounded-md border border-base-300 bg-base-100 px-2 py-1.5 text-sm text-base-content"
-            >
-              <option value="standard">Standard</option>
-              <option value="chess960">Chess960</option>
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-base-content/50">Max players</label>
-            <input
-              type="number"
-              min={2}
-              max={64}
-              value={maxPlayers}
-              onChange={(e) => setMaxPlayers(Number(e.target.value))}
-              className="w-24 rounded-md border border-base-300 bg-base-100 px-2 py-1.5 text-sm text-base-content"
+        <Card variant="solid">
+          <CardHeader>
+            <CardTitle>Create a tournament</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Input
+              label="Name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Friday Night Blitz"
             />
-          </div>
-          {format === 'swiss' && (
+
             <div>
-              <label className="mb-1 block text-xs text-base-content/50">Rounds</label>
-              <input
-                type="number"
-                min={3}
-                max={15}
-                value={swissRounds}
-                onChange={(e) => setSwissRounds(Number(e.target.value))}
-                className="w-20 rounded-md border border-base-300 bg-base-100 px-2 py-1.5 text-sm text-base-content"
-              />
+              <label className="mb-1.5 block text-sm font-medium text-base-content/80">Format</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(Object.keys(FORMAT_LABEL) as TournamentFormat[]).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => handleFormatChange(f)}
+                    className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
+                      format === f
+                        ? 'border-(--secondary)/50 bg-(--secondary)/10 text-base-content'
+                        : 'border-base-300 bg-base-100/60 text-base-content/70 hover:border-(--secondary)/30'
+                    }`}
+                  >
+                    <div className="font-medium">{FORMAT_LABEL[f]}</div>
+                    <div className="text-xs text-base-content/50">{FORMAT_DESCRIPTION[f]}</div>
+                  </button>
+                ))}
+              </div>
             </div>
-          )}
-        </div>
 
-        <label className="mb-4 flex items-center gap-2 text-sm text-base-content/80">
-          <input type="checkbox" checked={berserkAllowed} onChange={(e) => setBerserkAllowed(e.target.checked)} />
-          Allow berserking — halve your own clock (and forfeit your increment) for a shot at a bonus 0.5 point on a win
-        </label>
-
-        <div className="mb-4 flex flex-wrap items-end gap-3 border-t border-base-300 pt-3">
-          <div>
-            <label className="mb-1 block text-xs text-base-content/50">Wager</label>
-            <select
-              value={wagerMode}
-              onChange={(e) => setWagerMode(e.target.value as TournamentWagerMode)}
-              className="rounded-md border border-base-300 bg-base-100 px-2 py-1.5 text-sm text-base-content"
-            >
-              <option value="none">No wager</option>
-              <option value="entry_fee">Entry fee (winner-takes-most prize pool)</option>
-            </select>
-          </div>
-          {wagerMode === 'entry_fee' && (
-            <div>
-              <label className="mb-1 block text-xs text-base-content/50">Entry fee (R tokens)</label>
-              <input
-                type="number"
-                min={1}
-                value={wagerInput}
-                onChange={(e) => setWagerInput(e.target.value)}
-                className="w-28 rounded-md border border-base-300 bg-base-100 px-2 py-1.5 text-sm text-base-content"
-              />
+            <div className="flex flex-wrap gap-3">
+              <div className="w-44">
+                <Select
+                  label="Time control"
+                  value={presetIdx}
+                  onChange={(e) => setPresetIdx(Number(e.target.value))}
+                >
+                  {TIME_PRESETS.map((p, i) => (
+                    <option key={p.label} value={i}>
+                      {p.label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="w-32">
+                <Select
+                  label="Variant"
+                  value={variant}
+                  onChange={(e) => setVariant(e.target.value as 'standard' | 'chess960')}
+                >
+                  <option value="standard">Standard</option>
+                  <option value="chess960">Chess960</option>
+                </Select>
+              </div>
+              <div className="w-28">
+                <Input
+                  label="Max players"
+                  type="number"
+                  min={2}
+                  max={64}
+                  value={maxPlayers}
+                  onChange={(e) => setMaxPlayers(Number(e.target.value))}
+                />
+              </div>
+              {format === 'swiss' && (
+                <div className="w-24">
+                  <Input
+                    label="Rounds"
+                    type="number"
+                    min={3}
+                    max={15}
+                    value={swissRounds}
+                    onChange={(e) => setSwissRounds(Number(e.target.value))}
+                  />
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        <button
-          onClick={handleCreate}
-          className="w-full rounded-md bg-amber-700 px-4 py-2 font-semibold text-neutral-950 hover:bg-amber-600"
-        >
-          Create tournament
-        </button>
-      </div>
+            <Switch
+              checked={berserkAllowed}
+              onChange={setBerserkAllowed}
+              label="Allow berserking"
+              description="Halve your own clock (and forfeit your increment) for a shot at a bonus 0.5 point on a win."
+            />
 
-      {openActive.length > 0 && (
-        <div className="rounded-lg border border-base-300 bg-base-200 p-5">
-          <h2 className="mb-3 text-sm font-semibold text-base-content">In progress</h2>
-          <div className="space-y-2">
-            {openActive.map((t) => (
+            <div className="flex flex-wrap gap-3 border-t border-base-300 pt-4">
+              <div className="w-56">
+                <Select label="Wager" value={wagerMode} onChange={(e) => setWagerMode(e.target.value as TournamentWagerMode)}>
+                  <option value="none">No wager</option>
+                  <option value="entry_fee">Entry fee (winner-takes-most prize pool)</option>
+                </Select>
+              </div>
+              {wagerMode === 'entry_fee' && (
+                <div className="w-36">
+                  <Input
+                    label="Entry fee (R tokens)"
+                    type="number"
+                    min={1}
+                    value={wagerInput}
+                    onChange={(e) => setWagerInput(e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+
+            <Button variant="secondary" fullWidth onClick={handleCreate}>
+              <Trophy className="h-4 w-4" /> Create tournament
+            </Button>
+          </CardContent>
+        </Card>
+
+        {openActive.length > 0 && (
+          <Card variant="solid">
+            <CardHeader>
+              <CardTitle>In progress</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {openActive.map((t) => (
+                <TournamentRow key={t._id} t={t} />
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        <Card variant="solid">
+          <CardHeader>
+            <CardTitle>Open for registration</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {openPending.length === 0 && (
+              <p className="text-sm text-base-content/50">No tournaments waiting for players right now.</p>
+            )}
+            {openPending.map((t) => (
               <TournamentRow key={t._id} t={t} />
             ))}
-          </div>
-        </div>
-      )}
+          </CardContent>
+        </Card>
 
-      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
-        <h2 className="mb-3 text-sm font-semibold text-base-content">Open for registration</h2>
-        {openPending.length === 0 && <p className="text-sm text-base-content/50">No tournaments waiting for players right now.</p>}
-        <div className="space-y-2">
-          {openPending.map((t) => (
-            <TournamentRow key={t._id} t={t} />
-          ))}
-        </div>
+        {mine.length > 0 && (
+          <Card variant="solid">
+            <CardHeader>
+              <CardTitle>Your tournaments</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {mine.map((t) => (
+                <TournamentRow key={t._id} t={t} />
+              ))}
+            </CardContent>
+          </Card>
+        )}
       </div>
-
-      {mine.length > 0 && (
-        <div className="rounded-lg border border-base-300 bg-base-200 p-5">
-          <h2 className="mb-3 text-sm font-semibold text-base-content">Your tournaments</h2>
-          <div className="space-y-2">
-            {mine.map((t) => (
-              <TournamentRow key={t._id} t={t} />
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
+    </Page>
   );
 }

@@ -19,7 +19,7 @@ export function Navbar() {
   return (
     <nav className="sticky top-0 z-30 flex flex-wrap items-center gap-2 px-4 py-3 md:px-6">
       <Link
-        to={isAuthed ? '/dashboard' : '/'}
+        to="/"
         className="glass mr-auto flex h-9 items-center gap-2 rounded-full px-4 font-bold text-base-content hover:bg-white/10"
       >
         <span className="text-base leading-none">♟</span>
