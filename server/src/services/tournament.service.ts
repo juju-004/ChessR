@@ -10,10 +10,23 @@ import {
 } from "../models/Tournament.js";
 import { Game } from "../models/Game.js";
 import { ApiError } from "../utils/ApiError.js";
-import { createDirectGame, finalizeGame, type TimeControlInput } from "./game.service.js";
-import { getLiveState, deleteLiveState, endGame, applyBerserk, BerserkNotAllowedError } from "./gameState.service.js";
+import {
+  createDirectGame,
+  finalizeGame,
+  type TimeControlInput,
+} from "./game.service.js";
+import {
+  getLiveState,
+  deleteLiveState,
+  endGame,
+  applyBerserk,
+  BerserkNotAllowedError,
+} from "./gameState.service.js";
 import { clearGameTimer } from "./clock.service.js";
-import { debitTournamentEntry, creditTournamentReturn } from "./wallet.service.js";
+import {
+  debitTournamentEntry,
+  creditTournamentReturn,
+} from "./wallet.service.js";
 import { getIo } from "../sockets/io.js";
 
 const generateCode = customAlphabet("ABCDEFGHJKMNPQRSTUVWXYZ23456789", 6);
@@ -38,7 +51,9 @@ async function uniqueCode(): Promise<string> {
     const existing = await Tournament.exists({ code });
     if (!existing) return code;
   }
-  throw ApiError.internal("Could not generate a unique tournament code, please retry");
+  throw ApiError.internal(
+    "Could not generate a unique tournament code, please retry",
+  );
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -56,12 +71,19 @@ function nextPowerOfTwo(n: number): number {
   return p;
 }
 
-function findPlayer(tournament: ITournament, userId: any): ITournamentPlayer | undefined {
+function findPlayer(
+  tournament: ITournament,
+  userId: any,
+): ITournamentPlayer | undefined {
   const id = userId?.toString();
   return tournament.players.find((p) => p.user.toString() === id);
 }
 
-function emptyPairing(index: number, player1: any, player2: any | null): ITournamentPairing {
+function emptyPairing(
+  index: number,
+  player1: any,
+  player2: any | null,
+): ITournamentPairing {
   return {
     index,
     player1,
@@ -100,20 +122,38 @@ export async function createTournament(
 ): Promise<ITournament> {
   const bounds = FORMAT_BOUNDS[input.format];
   if (!bounds) throw ApiError.badRequest("Unknown tournament format");
-  if (input.name.trim().length < 3) throw ApiError.badRequest("Give your tournament a name (at least 3 characters)");
+  if (input.name.trim().length < 3)
+    throw ApiError.badRequest(
+      "Give your tournament a name (at least 3 characters)",
+    );
   if (input.maxPlayers < bounds.min || input.maxPlayers > bounds.max) {
-    throw ApiError.badRequest(`A ${input.format} tournament supports between ${bounds.min} and ${bounds.max} players`);
+    throw ApiError.badRequest(
+      `A ${input.format} tournament supports between ${bounds.min} and ${bounds.max} players`,
+    );
   }
-  if (input.baseMinutes !== null && (input.baseMinutes < 1 || input.baseMinutes > 180)) {
-    throw ApiError.badRequest("Base time must be between 1 and 180 minutes (or unlimited)");
+  if (
+    input.baseMinutes !== null &&
+    (input.baseMinutes < 1 || input.baseMinutes > 180)
+  ) {
+    throw ApiError.badRequest(
+      "Base time must be between 1 and 180 minutes (or unlimited)",
+    );
   }
   if (input.incrementSeconds < 0 || input.incrementSeconds > 60) {
     throw ApiError.badRequest("Increment must be between 0 and 60 seconds");
   }
-  if (input.format === "swiss" && (!input.swissRounds || input.swissRounds < 3 || input.swissRounds > 15)) {
-    throw ApiError.badRequest("Choose between 3 and 15 rounds for a swiss tournament");
+  if (
+    input.format === "swiss" &&
+    (!input.swissRounds || input.swissRounds < 3 || input.swissRounds > 15)
+  ) {
+    throw ApiError.badRequest(
+      "Choose between 3 and 15 rounds for a swiss tournament",
+    );
   }
-  if (input.wagerMode === "entry_fee" && (input.wagerTokens <= 0 || input.wagerTokens > MAX_WAGER_TOKENS)) {
+  if (
+    input.wagerMode === "entry_fee" &&
+    (input.wagerTokens <= 0 || input.wagerTokens > MAX_WAGER_TOKENS)
+  ) {
     throw ApiError.badRequest("Enter a valid entry fee");
   }
 
@@ -160,16 +200,25 @@ export async function createTournament(
   return tournament;
 }
 
-export async function joinTournament(tournamentId: string, userId: string, username: string): Promise<ITournament> {
+export async function joinTournament(
+  tournamentId: string,
+  userId: string,
+  username: string,
+): Promise<ITournament> {
   const tournament = await Tournament.findById(tournamentId);
   if (!tournament) throw ApiError.notFound("Tournament not found");
-  if (tournament.status !== "pending") throw ApiError.conflict("This tournament has already started");
-  if (findPlayer(tournament, userId)) throw ApiError.badRequest("You've already joined this tournament");
-  if (tournament.players.length >= tournament.maxPlayers) throw ApiError.conflict("This tournament is full");
+  if (tournament.status !== "pending")
+    throw ApiError.conflict("This tournament has already started");
+  if (findPlayer(tournament, userId))
+    throw ApiError.badRequest("You've already joined this tournament");
+  if (tournament.players.length >= tournament.maxPlayers)
+    throw ApiError.conflict("This tournament is full");
 
   if (tournament.wagerMode === "entry_fee" && tournament.wagerTokens > 0) {
     await debitTournamentEntry(userId, tournament.id, tournament.wagerTokens);
   }
+  const timestamp = Date.now();
+  const dateObject = new Date(timestamp);
 
   tournament.players.push({
     user: userId as any,
@@ -181,6 +230,7 @@ export async function joinTournament(tournamentId: string, userId: string, usern
     eliminatedRound: null,
     hadBye: false,
     withdrawn: false,
+    joinedAt: dateObject,
   });
   await tournament.save();
   return tournament;
@@ -190,17 +240,30 @@ export async function joinTournament(tournamentId: string, userId: string, usern
  *  backing out of an already-active event. If the creator leaves, the next
  *  earliest-joined player inherits the "creator" powers (start/cancel) rather
  *  than orphaning the tournament. */
-export async function leaveTournament(tournamentId: string, userId: string): Promise<ITournament> {
+export async function leaveTournament(
+  tournamentId: string,
+  userId: string,
+): Promise<ITournament> {
   const tournament = await Tournament.findById(tournamentId);
   if (!tournament) throw ApiError.notFound("Tournament not found");
-  if (tournament.status !== "pending") throw ApiError.conflict("The tournament has already started — use withdraw instead");
+  if (tournament.status !== "pending")
+    throw ApiError.conflict(
+      "The tournament has already started — use withdraw instead",
+    );
   const player = findPlayer(tournament, userId);
   if (!player) throw ApiError.badRequest("You're not in this tournament");
 
-  tournament.players = tournament.players.filter((p: ITournamentPlayer) => p.user.toString() !== userId);
+  tournament.players = tournament.players.filter(
+    (p: ITournamentPlayer) => p.user.toString() !== userId,
+  );
 
   if (tournament.wagerMode === "entry_fee" && tournament.wagerTokens > 0) {
-    await creditTournamentReturn(userId, tournament.id, tournament.wagerTokens, "tournament_refund");
+    await creditTournamentReturn(
+      userId,
+      tournament.id,
+      tournament.wagerTokens,
+      "tournament_refund",
+    );
   }
 
   if (tournament.players.length === 0) {
@@ -212,16 +275,26 @@ export async function leaveTournament(tournamentId: string, userId: string): Pro
   return tournament;
 }
 
-export async function cancelTournament(tournamentId: string, requesterId: string): Promise<ITournament> {
+export async function cancelTournament(
+  tournamentId: string,
+  requesterId: string,
+): Promise<ITournament> {
   const tournament = await Tournament.findById(tournamentId);
   if (!tournament) throw ApiError.notFound("Tournament not found");
-  if (tournament.createdBy.toString() !== requesterId) throw ApiError.forbidden("Only the organizer can cancel this");
-  if (tournament.status !== "pending") throw ApiError.conflict("This tournament has already started");
+  if (tournament.createdBy.toString() !== requesterId)
+    throw ApiError.forbidden("Only the organizer can cancel this");
+  if (tournament.status !== "pending")
+    throw ApiError.conflict("This tournament has already started");
 
   if (tournament.wagerMode === "entry_fee" && tournament.wagerTokens > 0) {
     await Promise.all(
       tournament.players.map((p: ITournamentPlayer) =>
-        creditTournamentReturn(p.user.toString(), tournament.id, tournament.wagerTokens, "tournament_refund"),
+        creditTournamentReturn(
+          p.user.toString(),
+          tournament.id,
+          tournament.wagerTokens,
+          "tournament_refund",
+        ),
       ),
     );
   }
@@ -241,7 +314,10 @@ export async function cancelTournament(tournamentId: string, requesterId: string
  *  same as everywhere else in this codebase, so this swap mainly keeps the
  *  bookkeeping honest about who's "home" rather than guaranteeing a literal
  *  color alternation. */
-function circleMethodSchedule(playerIds: string[], doubled: boolean): [string, string | null][][] {
+function circleMethodSchedule(
+  playerIds: string[],
+  doubled: boolean,
+): [string, string | null][][] {
   const ids: (string | null)[] = [...playerIds];
   if (ids.length % 2 === 1) ids.push(null);
   const n = ids.length;
@@ -266,7 +342,9 @@ function circleMethodSchedule(playerIds: string[], doubled: boolean): [string, s
   }
 
   if (!doubled) return rounds;
-  const reversed = rounds.map((round) => round.map(([a, b]) => [b ?? a, b ? a : null] as [string, string | null]));
+  const reversed = rounds.map((round) =>
+    round.map(([a, b]) => [b ?? a, b ? a : null] as [string, string | null]),
+  );
   return [...rounds, ...reversed];
 }
 
@@ -296,7 +374,10 @@ function buildKnockoutRound0(playerIds: any[]): ITournamentRound {
  *  fair and rematch-free for reasonably sized fields, and never stalls —
  *  if literally everyone remaining has already played everyone else, it
  *  falls back to allowing a rematch rather than leaving someone unpaired. */
-function buildSwissRound(tournament: ITournament, roundIndex: number): ITournamentRound {
+function buildSwissRound(
+  tournament: ITournament,
+  roundIndex: number,
+): ITournamentRound {
   const active = tournament.players.filter((p) => !p.withdrawn);
   const priorOpponents = new Map<string, Set<string>>();
   for (const round of tournament.rounds) {
@@ -311,7 +392,9 @@ function buildSwissRound(tournament: ITournament, roundIndex: number): ITourname
     }
   }
 
-  const sorted = [...active].sort((a, b) => b.points - a.points || Math.random() - 0.5);
+  const sorted = [...active].sort(
+    (a, b) => b.points - a.points || Math.random() - 0.5,
+  );
 
   let byePlayer: ITournamentPlayer | null = null;
   if (sorted.length % 2 === 1) {
@@ -331,33 +414,46 @@ function buildSwissRound(tournament: ITournament, roundIndex: number): ITourname
   const pairs: [ITournamentPlayer, ITournamentPlayer][] = [];
   while (remaining.length > 0) {
     const a = remaining.shift()!;
-    let idx = remaining.findIndex((b) => !priorOpponents.get(a.user.toString())?.has(b.user.toString()));
+    let idx = remaining.findIndex(
+      (b) => !priorOpponents.get(a.user.toString())?.has(b.user.toString()),
+    );
     if (idx === -1) idx = 0;
     const b = remaining.splice(idx, 1)[0];
     pairs.push([a, b]);
   }
 
-  const pairings: ITournamentPairing[] = pairs.map(([a, b], i) => emptyPairing(i, a.user, b.user));
-  if (byePlayer) pairings.push(emptyPairing(pairings.length, byePlayer.user, null));
+  const pairings: ITournamentPairing[] = pairs.map(([a, b], i) =>
+    emptyPairing(i, a.user, b.user),
+  );
+  if (byePlayer)
+    pairings.push(emptyPairing(pairings.length, byePlayer.user, null));
 
   return { index: roundIndex, status: "pending", pairings };
 }
 
 // --- Starting the event / activating a round ------------------------------
 
-export async function startTournament(tournamentId: string, requesterId: string): Promise<ITournament> {
+export async function startTournament(
+  tournamentId: string,
+  requesterId: string,
+): Promise<ITournament> {
   const tournament = await Tournament.findById(tournamentId);
   if (!tournament) throw ApiError.notFound("Tournament not found");
-  if (tournament.createdBy.toString() !== requesterId) throw ApiError.forbidden("Only the organizer can start this");
-  if (tournament.status !== "pending") throw ApiError.conflict("This tournament has already started");
+  if (tournament.createdBy.toString() !== requesterId)
+    throw ApiError.forbidden("Only the organizer can start this");
+  if (tournament.status !== "pending")
+    throw ApiError.conflict("This tournament has already started");
   if (tournament.players.length < tournament.minPlayers) {
-    throw ApiError.badRequest(`Needs at least ${tournament.minPlayers} players to start`);
+    throw ApiError.badRequest(
+      `Needs at least ${tournament.minPlayers} players to start`,
+    );
   }
 
   tournament.status = "active";
   tournament.startedAt = new Date();
   if (tournament.wagerMode === "entry_fee") {
-    tournament.prizePoolTokens = tournament.wagerTokens * tournament.players.length;
+    tournament.prizePoolTokens =
+      tournament.wagerTokens * tournament.players.length;
   }
 
   const playerIds = tournament.players.map((p: ITournamentPlayer) => p.user);
@@ -390,12 +486,18 @@ export async function startTournament(tournamentId: string, requesterId: string)
  *  legs), and immediately resolves any bye as a full point with no game
  *  needed. If every pairing in the round happens to be a bye, the round
  *  completes itself right away and cascades into the next one. */
-async function activateRound(tournament: ITournament, roundIndex: number): Promise<void> {
+async function activateRound(
+  tournament: ITournament,
+  roundIndex: number,
+): Promise<void> {
   const round = tournament.rounds[roundIndex];
   round.status = "active";
   round.startedAt = new Date();
 
-  const timeControl: TimeControlInput = { baseMinutes: tournament.baseMinutes, incrementSeconds: tournament.incrementSeconds };
+  const timeControl: TimeControlInput = {
+    baseMinutes: tournament.baseMinutes,
+    incrementSeconds: tournament.incrementSeconds,
+  };
 
   for (const pairing of round.pairings) {
     if (pairing.player2 === null) {
@@ -404,12 +506,20 @@ async function activateRound(tournament: ITournament, roundIndex: number): Promi
       pairing.endReason = "bye";
       const p1 = findPlayer(tournament, pairing.player1);
       if (p1) p1.hadBye = true;
-      applyPairingScore(tournament, pairing, "p1", { p1: false, p2: false }, roundIndex);
+      applyPairingScore(
+        tournament,
+        pairing,
+        "p1",
+        { p1: false, p2: false },
+        roundIndex,
+      );
       continue;
     }
 
     const [whiteId, blackId] =
-      Math.random() < 0.5 ? [pairing.player1.toString(), pairing.player2.toString()] : [pairing.player2.toString(), pairing.player1.toString()];
+      Math.random() < 0.5
+        ? [pairing.player1.toString(), pairing.player2.toString()]
+        : [pairing.player2.toString(), pairing.player1.toString()];
     const game = await createDirectGame(
       whiteId,
       blackId,
@@ -502,7 +612,10 @@ export function rankPlayers(tournament: ITournament): ITournamentPlayer[] {
 
 // --- Round completion / advancement -----------------------------------------
 
-async function maybeCompleteRound(tournament: ITournament, roundIndex: number): Promise<void> {
+async function maybeCompleteRound(
+  tournament: ITournament,
+  roundIndex: number,
+): Promise<void> {
   const round = tournament.rounds[roundIndex];
   if (round.status === "finished") return;
   if (round.pairings.some((p) => p.status !== "finished")) return;
@@ -513,10 +626,15 @@ async function maybeCompleteRound(tournament: ITournament, roundIndex: number): 
   await advanceAfterRound(tournament, roundIndex);
 }
 
-async function advanceAfterRound(tournament: ITournament, roundIndex: number): Promise<void> {
+async function advanceAfterRound(
+  tournament: ITournament,
+  roundIndex: number,
+): Promise<void> {
   if (tournament.format === "normal") {
     const round = tournament.rounds[roundIndex];
-    const winners = round.pairings.map((p) => (p.result === "p1" ? p.player1 : p.player2!));
+    const winners = round.pairings.map((p) =>
+      p.result === "p1" ? p.player1 : p.player2!,
+    );
     if (winners.length === 1) {
       await finishTournament(tournament, winners[0].toString());
       return;
@@ -525,7 +643,11 @@ async function advanceAfterRound(tournament: ITournament, roundIndex: number): P
     for (let i = 0; i < winners.length; i += 2) {
       nextPairings.push(emptyPairing(i / 2, winners[i], winners[i + 1]));
     }
-    tournament.rounds.push({ index: roundIndex + 1, status: "pending", pairings: nextPairings });
+    tournament.rounds.push({
+      index: roundIndex + 1,
+      status: "pending",
+      pairings: nextPairings,
+    });
     tournament.currentRoundIndex = roundIndex + 1;
     await tournament.save();
     await activateRound(tournament, roundIndex + 1);
@@ -555,7 +677,10 @@ async function advanceAfterRound(tournament: ITournament, roundIndex: number): P
   }
 }
 
-async function finishTournament(tournament: ITournament, explicitKnockoutWinner?: string): Promise<void> {
+async function finishTournament(
+  tournament: ITournament,
+  explicitKnockoutWinner?: string,
+): Promise<void> {
   tournament.status = "finished";
   tournament.endedAt = new Date();
 
@@ -564,7 +689,11 @@ async function finishTournament(tournament: ITournament, explicitKnockoutWinner?
     const finalRound = tournament.rounds[tournament.rounds.length - 1];
     const finalPairing = finalRound.pairings[0];
     if (finalPairing?.player2) {
-      tournament.runnerUp = (finalPairing.result === "p1" ? finalPairing.player2 : finalPairing.player1) as any;
+      tournament.runnerUp = (
+        finalPairing.result === "p1"
+          ? finalPairing.player2
+          : finalPairing.player1
+      ) as any;
     }
   } else {
     const ranked = rankPlayers(tournament);
@@ -578,7 +707,8 @@ async function finishTournament(tournament: ITournament, explicitKnockoutWinner?
 }
 
 async function distributePrize(tournament: ITournament): Promise<void> {
-  if (tournament.wagerMode !== "entry_fee" || tournament.prizePoolTokens <= 0) return;
+  if (tournament.wagerMode !== "entry_fee" || tournament.prizePoolTokens <= 0)
+    return;
 
   const claimed = await Tournament.findOneAndUpdate(
     { _id: tournament.id, prizeSettled: false },
@@ -590,7 +720,12 @@ async function distributePrize(tournament: ITournament): Promise<void> {
 
   if (tournament.format === "normal") {
     if (tournament.winner) {
-      await creditTournamentReturn(tournament.winner.toString(), tournament.id, pool, "tournament_payout");
+      await creditTournamentReturn(
+        tournament.winner.toString(),
+        tournament.id,
+        pool,
+        "tournament_payout",
+      );
     }
     return;
   }
@@ -598,21 +733,49 @@ async function distributePrize(tournament: ITournament): Promise<void> {
   const ranked = rankPlayers(tournament);
   if (ranked.length === 0) return;
   if (ranked.length <= 2) {
-    await creditTournamentReturn(ranked[0].user.toString(), tournament.id, pool, "tournament_payout");
+    await creditTournamentReturn(
+      ranked[0].user.toString(),
+      tournament.id,
+      pool,
+      "tournament_payout",
+    );
     return;
   }
 
   const firstShare = Math.floor(pool * 0.5);
   const secondShare = Math.floor(pool * 0.3);
   const thirdShare = pool - firstShare - secondShare; // remainder soaks up rounding
-  await creditTournamentReturn(ranked[0].user.toString(), tournament.id, firstShare, "tournament_payout", "1");
-  await creditTournamentReturn(ranked[1].user.toString(), tournament.id, secondShare, "tournament_payout", "2");
-  await creditTournamentReturn(ranked[2].user.toString(), tournament.id, thirdShare, "tournament_payout", "3");
+  await creditTournamentReturn(
+    ranked[0].user.toString(),
+    tournament.id,
+    firstShare,
+    "tournament_payout",
+    "1",
+  );
+  await creditTournamentReturn(
+    ranked[1].user.toString(),
+    tournament.id,
+    secondShare,
+    "tournament_payout",
+    "2",
+  );
+  await creditTournamentReturn(
+    ranked[2].user.toString(),
+    tournament.id,
+    thirdShare,
+    "tournament_payout",
+    "3",
+  );
 }
 
-function broadcastUpdate(tournament: ITournament, event: "tournament:update" | "tournament:finished" = "tournament:update") {
+function broadcastUpdate(
+  tournament: ITournament,
+  event: "tournament:update" | "tournament:finished" = "tournament:update",
+) {
   try {
-    getIo().to(`tournament:${tournament.id}`).emit(event, { tournamentId: tournament.id, code: tournament.code });
+    getIo()
+      .to(`tournament:${tournament.id}`)
+      .emit(event, { tournamentId: tournament.id, code: tournament.code });
   } catch {
     // Socket.IO not initialized (script/test context) — state is still
     // correctly persisted; clients pick it up on next fetch/reconnect.
@@ -646,7 +809,9 @@ export async function advanceTournamentIfPairing(
     let berserk = { p1: false, p2: false };
 
     if (pairing.gameId) {
-      const gameDoc = await Game.findById(pairing.gameId).select("white black berserk").lean();
+      const gameDoc = await Game.findById(pairing.gameId)
+        .select("white black berserk")
+        .lean();
       if (!gameDoc) throw ApiError.internal("Pairing game record missing");
       const whiteIsP1 = gameDoc.white.toString() === pairing.player1.toString();
       if (gameResult === "draw") resultP = "draw";
@@ -662,7 +827,11 @@ export async function advanceTournamentIfPairing(
     // decisive mechanism available here (no rematch/playoff games in scope),
     // so a drawn knockout pairing is broken by a coin flip. Documented
     // simplification, not a FIDE tiebreak.
-    if (tournament.format === "normal" && pairing.player2 && resultP === "draw") {
+    if (
+      tournament.format === "normal" &&
+      pairing.player2 &&
+      resultP === "draw"
+    ) {
       resultP = Math.random() < 0.5 ? "p1" : "p2";
       endReason = `${endReason}_coinflip`;
     }
@@ -686,22 +855,40 @@ export async function advanceTournamentIfPairing(
 
 // --- Berserk -----------------------------------------------------------------
 
-export async function berserkInTournamentGame(gameId: string, userId: string): Promise<"white" | "black"> {
-  const gameDoc = await Game.findById(gameId).select("tournamentId roundIndex pairingIndex").lean();
-  if (!gameDoc?.tournamentId || gameDoc.roundIndex === undefined || gameDoc.pairingIndex === undefined) {
+export async function berserkInTournamentGame(
+  gameId: string,
+  userId: string,
+): Promise<"white" | "black"> {
+  const gameDoc = await Game.findById(gameId)
+    .select("tournamentId roundIndex pairingIndex")
+    .lean();
+  if (
+    !gameDoc?.tournamentId ||
+    gameDoc.roundIndex === undefined ||
+    gameDoc.pairingIndex === undefined
+  ) {
     throw new BerserkNotAllowedError("This isn't a tournament game");
   }
-  const tournament = await Tournament.findById(gameDoc.tournamentId).select("berserkAllowed rounds");
+  const tournament = await Tournament.findById(gameDoc.tournamentId).select(
+    "berserkAllowed rounds",
+  );
   if (!tournament) throw ApiError.notFound("Tournament not found");
-  if (!tournament.berserkAllowed) throw new BerserkNotAllowedError("Berserking is turned off for this tournament");
+  if (!tournament.berserkAllowed)
+    throw new BerserkNotAllowedError(
+      "Berserking is turned off for this tournament",
+    );
 
   // The authoritative flag scoring reads from lives on the Game document
   // (set just below). The mirrored flag on the pairing is only so the
   // tournament view can show a live "berserked" badge before the game ends.
-  const pairing = tournament.rounds[gameDoc.roundIndex]?.pairings[gameDoc.pairingIndex];
+  const pairing =
+    tournament.rounds[gameDoc.roundIndex]?.pairings[gameDoc.pairingIndex];
 
   const { side } = await applyBerserk(gameId, userId);
-  await Game.updateOne({ _id: gameId }, { $set: { [`berserk.${side}`]: true } });
+  await Game.updateOne(
+    { _id: gameId },
+    { $set: { [`berserk.${side}`]: true } },
+  );
 
   if (pairing) {
     const isP1 = pairing.player1.toString() === userId;
@@ -721,10 +908,14 @@ export async function berserkInTournamentGame(gameId: string, userId: string): P
  *  (same tokens-neutral treatment as a resignation — there's no per-game
  *  wager inside a tournament to settle). They're excluded from all future
  *  pairing generation via the `withdrawn` flag. */
-export async function withdrawFromTournament(tournamentId: string, userId: string): Promise<ITournament> {
+export async function withdrawFromTournament(
+  tournamentId: string,
+  userId: string,
+): Promise<ITournament> {
   const tournament = await Tournament.findById(tournamentId);
   if (!tournament) throw ApiError.notFound("Tournament not found");
-  if (tournament.status !== "active") throw ApiError.conflict("This tournament isn't currently active");
+  if (tournament.status !== "active")
+    throw ApiError.conflict("This tournament isn't currently active");
   const player = findPlayer(tournament, userId);
   if (!player) throw ApiError.badRequest("You're not in this tournament");
   if (player.withdrawn) return tournament;
@@ -733,7 +924,9 @@ export async function withdrawFromTournament(tournamentId: string, userId: strin
 
   const round = tournament.rounds[tournament.currentRoundIndex];
   const pairing = round?.pairings.find(
-    (p) => p.status === "active" && (p.player1.toString() === userId || p.player2?.toString() === userId),
+    (p) =>
+      p.status === "active" &&
+      (p.player1.toString() === userId || p.player2?.toString() === userId),
   );
 
   if (pairing?.gameId) {
@@ -743,10 +936,20 @@ export async function withdrawFromTournament(tournamentId: string, userId: strin
       clearGameTimer(gameId);
       const winnerColor = liveState.whiteId === userId ? "black" : "white";
       const finalState = await endGame(gameId, winnerColor, "withdrawn");
-      await finalizeGame(gameId, finalState.fen, "finished", winnerColor, "withdrawn");
+      await finalizeGame(
+        gameId,
+        finalState.fen,
+        "finished",
+        winnerColor,
+        "withdrawn",
+      );
       await deleteLiveState(gameId);
       try {
-        getIo().to(`game:${gameId}`).emit("game:over", { gameId, result: winnerColor, reason: "withdrawn" });
+        getIo().to(`game:${gameId}`).emit("game:over", {
+          gameId,
+          result: winnerColor,
+          reason: "withdrawn",
+        });
       } catch {
         // Socket.IO not initialized — safe to ignore.
       }
@@ -756,8 +959,14 @@ export async function withdrawFromTournament(tournamentId: string, userId: strin
   await tournament.save();
 
   if (pairing) {
-    await advanceTournamentIfPairing(tournament.id, tournament.currentRoundIndex, pairing.index, "draw", "withdrawn").catch(
-      (err) => console.error("advanceTournamentIfPairing after withdrawal failed:", err),
+    await advanceTournamentIfPairing(
+      tournament.id,
+      tournament.currentRoundIndex,
+      pairing.index,
+      "draw",
+      "withdrawn",
+    ).catch((err) =>
+      console.error("advanceTournamentIfPairing after withdrawal failed:", err),
     );
   }
 
@@ -776,7 +985,9 @@ export async function getTournamentByCode(codeOrId: string) {
   return tournament;
 }
 
-export async function listTournaments(status?: "pending" | "active" | "finished") {
+export async function listTournaments(
+  status?: "pending" | "active" | "finished",
+) {
   return Tournament.find(status ? { status } : { status: { $ne: "cancelled" } })
     .sort({ createdAt: -1 })
     .limit(50)
