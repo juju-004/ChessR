@@ -119,6 +119,9 @@
   --glass-shadow: rgba(0, 0, 0, 0.45);
 }
 
+html {
+  overflow-x: hidden !important;
+}
 body {
   font-family: "Poppins", sans-serif;
 }
