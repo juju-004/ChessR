@@ -27,18 +27,20 @@ import {
   ShieldAlert,
   MessageSquare,
   Share2,
+  ChevronUp,
 } from "lucide-react";
 import { ChessBoard } from "../components/ChessBoard.js";
 import { PromotionPicker } from "../components/PromotionPicker.js";
-import {
-  PlayerPanelRow,
-  PlayerPanelFlank,
-  panelMaterial,
-} from "../components/PlayerPanels.js";
-import { FloatingActionButton } from "../components/FloatingActionButton.js";
+import { PlayerPanelRow, panelMaterial } from "../components/PlayerPanels.js";
 import { GameOverModal } from "../components/GameOverModal.js";
 import { CageMatchScoreboard } from "../components/CageMatchScoreboard.js";
-import { Card, Button, Badge, Spinner } from "../components/ui/index.js";
+import {
+  Card,
+  Button,
+  Badge,
+  Spinner,
+  Dropdown,
+} from "../components/ui/index.js";
 import { springSnappy } from "../lib/motion.js";
 import {
   computeDests,
@@ -849,12 +851,30 @@ export function Game() {
 
   const moveListEntries =
     moves.length === 0 ? null : (
-      <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-sm text-base-content/80 sm:grid-cols-3 md:grid-cols-2">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-sm text-base-content/80">
         {moves.map((m) => (
           <div key={m.moveNumber}>
             <span className="text-base-content/40">{m.moveNumber}.</span>{" "}
             {m.san}
           </div>
+        ))}
+      </div>
+    );
+
+  // Phone-only: the same move log as a single horizontally-scrolling row of
+  // move "pills" instead of the vertical two-column list used from md up —
+  // there's no room for a tall list once the board takes the full width.
+  const moveStripEntries =
+    moves.length === 0 ? null : (
+      <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+        {moves.map((m) => (
+          <span
+            key={m.moveNumber}
+            className="shrink-0 whitespace-nowrap rounded-lg bg-base-300/60 px-2 py-1 font-mono text-xs text-base-content/80"
+          >
+            <span className="text-base-content/40">{m.moveNumber}.</span>{" "}
+            {m.san}
+          </span>
         ))}
       </div>
     );
@@ -890,43 +910,27 @@ export function Game() {
     </>
   );
 
-  return (
-    <div className="mx-auto flex h-[calc(100vh)]  max-w-6xl flex-col gap-2 px-4 pb-2 sm:px-0 md:h-[calc(100dvh-7rem)] md:gap-3">
-      {/* Header — code, badges, connection status. Always visible, never
-       *  scrolls with the rest of the page. */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-lg font-bold text-base-content">
-            Game{" "}
-            <span className="font-normal text-base-content/40">· {code}</span>
-          </h1>
-          <motion.button
-            type="button"
-            onClick={handleShareGame}
-            whileTap={{ scale: 0.9 }}
-            transition={springSnappy}
-            className={
-              "glass relative flex h-9 w-9 items-center justify-center rounded-full text-base-content/80 hover:text-base-content"
-            }
-          >
-            <Share2 className="size-4" />
-          </motion.button>
-          {badges}
-        </div>
-        <span className="flex items-center gap-1.5 text-xs font-medium text-base-content/60">
-          {!gameOver && (
-            <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-          )}
-          {gameOver
-            ? `Game over — ${describeResult(gameOver.result)} (${gameOver.reason.replace(/_/g, " ")})`
-            : connStatus}
-        </span>
-      </div>
+  // Resign/draw/abort — the trio of "give up on the game" actions. Rendered
+  // as plain inline Buttons in the right panel from md up, and collapsed
+  // into a single dropup trigger (via the Dropdown primitive, side="top")
+  // on phone where there's no right panel to put them in.
+  const actionItems = isPlayer && status === "active"
+    ? moves.length < 2
+      ? [{ label: "Abort", icon: Ban, onClick: handleAbort, danger: true }]
+      : [
+          { label: "Offer draw", icon: Handshake, onClick: handleOfferDraw },
+          { label: "Resign", icon: Flag, onClick: handleResign, danger: true },
+        ]
+    : [];
 
-      {/* Banners — cage scoreboard, pause state, disconnects, the waiting-
-       *  for-opponent notice, extra tournament/cage actions. All shrink-0
-       *  (they add height when present rather than eating into the fixed
-       *  board/panels area below). */}
+  return (
+    <div className="relative mx-auto flex max-w-6xl flex-col gap-2 px-4 pb-2 sm:px-0 md:h-[calc(100dvh-7rem)] md:gap-3">
+      {/* Cage scoreboard, pause state, the waiting-for-opponent notice, and
+       *  extra tournament/cage actions — untouched from before, still one
+       *  shrink-0 stack above everything else on every breakpoint. The old
+       *  disconnect banner used to live in here too; it's now pulled out
+       *  and rendered as an absolute, centered overlay below (see there for
+       *  why), so it doesn't shift this stack's height around. */}
       <div className="shrink-0 space-y-2">
         {!settings.zenMode && gameMeta?.cageMatchId && (
           <CageMatchScoreboard
@@ -940,33 +944,6 @@ export function Game() {
             <Pause className="h-4 w-4" /> This leg is paused
             {isPlayer ? "" : " by the players"}.
           </div>
-        )}
-
-        {disconnectBanner && (
-          <Card variant="solid" className="border-red-900/50 bg-red-950/20">
-            <p className="mb-2 flex items-center gap-1.5 text-sm text-red-300">
-              <ShieldAlert className="h-4 w-4 shrink-0" />{" "}
-              {disconnectBanner.message}
-            </p>
-            {disconnectBanner.claimable && (
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="danger"
-                  onClick={() => handleClaim("win")}
-                >
-                  Claim victory
-                </Button>
-                <Button
-                  size="sm"
-                  variant="glass"
-                  onClick={() => handleClaim("draw")}
-                >
-                  Claim draw
-                </Button>
-              </div>
-            )}
-          </Card>
         )}
 
         {isPlayer && status === "waiting" && (
@@ -1047,47 +1024,142 @@ export function Game() {
         )}
       </div>
 
-      {/* Main content: move list (left, desktop) / board (center) / panels
-       *  + chat (right, desktop). On mobile this collapses to a single
-       *  column — move-list bubble on top, board with panels flanking it,
-       *  chat moved into a bottom-sheet instead. */}
-      <div className=" bg-red-500 min-h-0 flex-1  gap-2 flex flex-col justify-center items-start md:gap-3">
-        {/* Move list — desktop: tall card in the left column. */}
-        {/* {!settings.zenMode && (
-          <Card variant="solid" className="hidden min-h-0 flex-col md:flex">
-            <h2 className="mb-2 shrink-0 text-base font-semibold text-base-content">
-              Moves
-            </h2>
-            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-              {moveListEntries ?? (
-                <p className="text-sm text-base-content/50">No moves yet.</p>
+      {/* Opponent-disconnect banner — absolute + centered over the page
+       *  instead of sitting in the banner stack, so a disconnect/reconnect
+       *  never shifts the board or panels around beneath it. */}
+      <AnimatePresence>
+        {disconnectBanner && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={springSnappy}
+            className="absolute inset-x-0 top-2 z-30 mx-auto w-[min(92vw,26rem)]"
+          >
+            <Card
+              variant="strong"
+              className="border-red-900/50 bg-red-950/30 shadow-xl"
+            >
+              <p className="mb-2 flex items-center gap-1.5 text-sm text-red-300">
+                <ShieldAlert className="h-4 w-4 shrink-0" />{" "}
+                {disconnectBanner.message}
+              </p>
+              {disconnectBanner.claimable && (
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    onClick={() => handleClaim("win")}
+                  >
+                    Claim victory
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="glass"
+                    onClick={() => handleClaim("draw")}
+                  >
+                    Claim draw
+                  </Button>
+                </div>
+              )}
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Main layout — a plain top-to-bottom stack on phone (details, board,
+       *  panels flanking it top/bottom), becoming a CSS grid from md up
+       *  (see .game-grid in index.css): a 2-column board/right-panel grid
+       *  with the details+moves block spanning full width above it on
+       *  tablet, and a 3-column details/board/right-panel grid on desktop,
+       *  where the board's grid column is the widest of the three so it
+       *  reads as visually larger than the side panels. */}
+      <div className="game-grid min-h-0 flex-1">
+        {/* Game details — code, share, chat trigger (phone only — tablet's
+         *  version of this button lives in the right panel), badges,
+         *  status, and the move list. Left column on desktop; a full-width
+         *  strip above the board/panel row on tablet and phone. */}
+        <Card
+          variant="solid"
+          className="game-area-leftinfo flex shrink-0 flex-col gap-3 lg:h-full lg:min-h-0"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-lg font-bold text-base-content">
+                Game{" "}
+                <span className="font-normal text-base-content/40">
+                  · {code}
+                </span>
+              </h1>
+              <motion.button
+                type="button"
+                onClick={handleShareGame}
+                whileTap={{ scale: 0.9 }}
+                transition={springSnappy}
+                className="glass relative flex h-9 w-9 items-center justify-center rounded-full text-base-content/80 hover:text-base-content"
+              >
+                <Share2 className="size-4" />
+              </motion.button>
+              {showChat && (
+                <motion.button
+                  type="button"
+                  onClick={() => setChatSheetOpen(true)}
+                  whileTap={{ scale: 0.9 }}
+                  transition={springSnappy}
+                  className="glass relative flex h-9 w-9 items-center justify-center rounded-full text-base-content/80 hover:text-base-content md:hidden"
+                  title="Spectator chat"
+                >
+                  <MessageSquare className="size-4" />
+                </motion.button>
               )}
             </div>
-          </Card>
-        )} */}
+            <span className="flex items-center gap-1.5 text-xs font-medium text-base-content/60">
+              {!gameOver && (
+                <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+              )}
+              {gameOver
+                ? `Game over — ${describeResult(gameOver.result)} (${gameOver.reason.replace(/_/g, " ")})`
+                : connStatus}
+            </span>
+          </div>
 
-        {/* Move list — mobile: full-width scrollable bubble at the top. */}
-        {/* {!settings.zenMode && (
-          <Card variant="solid" className="flex max-h-28 shrink-0 flex-col md:hidden">
-            <h2 className="mb-1 shrink-0 text-xs font-semibold uppercase tracking-wide text-base-content/50">
-              Moves
-            </h2>
-            <div className="min-h-0 overflow-y-auto">
-              {moveListEntries ?? <p className="text-sm text-base-content/50">No moves yet.</p>}
+          {badges.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">{badges}</div>
+          )}
+
+          {!settings.zenMode && (
+            <div className="min-h-0 lg:flex lg:flex-1 lg:flex-col">
+              <h2 className="mb-1 shrink-0 text-xs font-semibold uppercase tracking-wide text-base-content/50">
+                Moves
+              </h2>
+              {/* Vertical list — tablet & desktop. */}
+              <div className="hidden min-h-0 overflow-y-auto pr-1 md:block md:max-h-48 lg:max-h-none lg:flex-1">
+                {moveListEntries ?? (
+                  <p className="text-sm text-base-content/50">No moves yet.</p>
+                )}
+              </div>
+              {/* Horizontal scrollable strip — phone only. */}
+              <div className="md:hidden">
+                {moveStripEntries ?? (
+                  <p className="text-sm text-base-content/50">No moves yet.</p>
+                )}
+              </div>
             </div>
-          </Card>
-        )} */}
+          )}
+        </Card>
 
-        {/* Board, flanked by the player panels on mobile only. The middle
-         *  wrapper (ref'd for measurement) always stretches to fill its
-         *  cell — the mobile flex row's remaining width, or the desktop
-         *  grid column — so boardSize above reflects genuinely available
-         *  space either way. */}
-        <div className="flex w-7xl bg-blue-700 flex-1 p-3.5 items-center justify-center gap-2 md:contents">
-          <PlayerPanelFlank {...opponentPanelData} className="md:hidden" />
+        {/* Opponent panel — phone only, sits directly above the board. */}
+        <div className="game-area-toppanel md:hidden">
+          <PlayerPanelRow {...opponentPanelData} />
+        </div>
 
+        {/* The board itself — centered in its grid cell, sized to fill
+         *  whichever of width/height is the binding constraint (full width
+         *  on phone; the grid row's height from md up, where the row is
+         *  fixed to the viewport). */}
+        <div className="game-area-board flex min-h-0 min-w-0 flex-1 items-center justify-center">
           <div
-            className={`relative w-full aspect-square flex-1 shrink-0 overflow-hidden rounded-2xl shadow-lg board-theme-${settings.boardTheme} piece-theme-${settings.pieceTheme}`}
+            className={`relative aspect-square w-full max-w-full overflow-hidden rounded-2xl shadow-lg md:h-full md:w-auto board-theme-${settings.boardTheme} piece-theme-${settings.pieceTheme}`}
           >
             <ChessBoard
               fen={fen}
@@ -1106,78 +1178,99 @@ export function Game() {
             />
             {promoPending && <PromotionPicker onPick={handlePromotionPick} />}
           </div>
-
-          <PlayerPanelFlank {...myPanelData} className="md:hidden" />
         </div>
 
-        {/* Player panels + spectator chat — desktop only, right column. */}
-        <div className="hidden min-h-0 flex-col gap-3 md:flex">
+        {/* My panel — phone only, sits directly below the board. */}
+        <div className="game-area-bottompanel md:hidden">
+          <PlayerPanelRow {...myPanelData} />
+        </div>
+
+        {/* Right panel — tablet & desktop. Player panels, then spectator
+         *  chat (a trigger button that opens the modal on tablet; the full
+         *  inline card from lg up), then the resign/draw/abort actions
+         *  pinned to the bottom via mt-auto. */}
+        <div className="game-area-rightpanel min-h-0 flex-col gap-3">
           <Card variant="solid" className="shrink-0 space-y-2">
             <PlayerPanelRow {...opponentPanelData} />
             <PlayerPanelRow {...myPanelData} />
           </Card>
 
           {showChat && (
-            <Card variant="solid" className="flex min-h-0 flex-1 flex-col">
-              <h2 className="mb-1 flex shrink-0 items-center gap-1.5 text-base font-semibold text-base-content">
+            <>
+              <Button
+                variant="glass"
+                size="md"
+                onClick={() => setChatSheetOpen(true)}
+                className="shrink-0 lg:hidden"
+              >
                 <MessageSquare className="h-4 w-4" /> Spectator chat
-              </h2>
-              <p className="mb-2 shrink-0 text-xs text-base-content/50">
-                Only visible to spectators, not the players. Not saved —
-                refreshing clears it.
-              </p>
-              {chatBody}
-            </Card>
+              </Button>
+              <Card
+                variant="solid"
+                className="hidden min-h-0 flex-1 flex-col lg:flex"
+              >
+                <h2 className="mb-1 flex shrink-0 items-center gap-1.5 text-base font-semibold text-base-content">
+                  <MessageSquare className="h-4 w-4" /> Spectator chat
+                </h2>
+                <p className="mb-2 shrink-0 text-xs text-base-content/50">
+                  Only visible to spectators, not the players. Not saved —
+                  refreshing clears it.
+                </p>
+                {chatBody}
+              </Card>
+            </>
+          )}
+
+          {actionItems.length > 0 && (
+            <div className="mt-auto flex shrink-0 flex-col gap-2 pt-2">
+              {actionItems.map((item) => (
+                <Button
+                  key={item.label}
+                  variant={item.danger ? "danger" : "glass"}
+                  onClick={item.onClick}
+                >
+                  <item.icon className="h-4 w-4" /> {item.label}
+                </Button>
+              ))}
+            </div>
           )}
         </div>
       </div>
 
-      {/* Floating action bubbles — offer draw / abort / resign (and, on
-       *  mobile, the spectator-chat trigger). Fixed to the viewport rather
-       *  than living in the page flow, per the "end of the page" spot on
-       *  every device; sits above the mobile bottom dock. */}
-      <div
-        className="fixed inset-x-0 z-30 flex justify-center gap-2 md:bottom-6"
-        style={{ bottom: "calc(4.75rem + env(safe-area-inset-bottom))" }}
-      >
-        {isPlayer &&
-          status === "active" &&
-          (moves.length < 2 ? (
-            <FloatingActionButton
-              icon={Ban}
-              label="Abort"
-              onClick={handleAbort}
-            />
-          ) : (
-            <>
-              <FloatingActionButton
-                icon={Handshake}
-                label="Draw"
-                onClick={handleOfferDraw}
-              />
-              <FloatingActionButton
-                icon={Flag}
-                label="Resign"
-                onClick={handleResign}
-                variant="danger"
-              />
-            </>
-          ))}
-        {showChat && (
-          <FloatingActionButton
-            icon={MessageSquare}
-            label="Chat"
-            onClick={() => setChatSheetOpen(true)}
-            className="md:hidden"
+      {/* Actions dropup — phone only. Resign/draw/abort collapse into a
+       *  single "Actions" trigger that opens upward, fixed above the
+       *  bottom-of-screen safe area, since there's no right panel on phone
+       *  to hold them as standalone buttons. */}
+      {actionItems.length > 0 && (
+        <div
+          className="fixed inset-x-0 z-30 flex justify-center md:hidden"
+          style={{ bottom: "calc(1rem + env(safe-area-inset-bottom))" }}
+        >
+          <Dropdown
+            side="top"
+            align="end"
+            trigger={
+              <Button variant="glass" size="md" className="shadow-lg">
+                <ChevronUp className="h-4 w-4" /> Actions
+              </Button>
+            }
+            items={actionItems.map((item) => ({
+              label: item.label,
+              icon: item.icon,
+              onClick: item.onClick,
+              danger: item.danger,
+            }))}
           />
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Spectator chat — mobile bottom sheet. */}
+      {/* Spectator chat modal — shared by tablet and phone (desktop shows
+       *  the chat inline in the right panel instead, so this never opens
+       *  there since its trigger buttons are hidden from lg up). */}
       <AnimatePresence>
         {showChat && chatSheetOpen && (
           <motion.div
-            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
+            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
             onClick={() => setChatSheetOpen(false)}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

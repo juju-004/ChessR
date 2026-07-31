@@ -249,3 +249,56 @@ body {
   );
 }
 */
+
+/* Game page layout — the pairing of "which area sits next to which"
+   genuinely changes shape between phone/tablet/desktop (a top strip becomes
+   a left column, side flanks become a right column, etc), not just a size
+   tweak, so it's expressed as one authored grid with named areas per
+   breakpoint rather than a pile of Tailwind order/width utilities. Below
+   md it's just a plain top-to-bottom flex stack in DOM order (details,
+   board, panels); at md it becomes a 2-column grid (board + right panel)
+   with the details/moves block spanning full-width above; at lg it becomes
+   the 3-column details/board/panel layout. */
+.game-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+}
+.game-grid .game-area-rightpanel {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .game-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+      "leftinfo leftinfo"
+      "board rightpanel";
+    gap: 0.875rem;
+  }
+  .game-grid .game-area-leftinfo {
+    grid-area: leftinfo;
+  }
+  .game-grid .game-area-board {
+    grid-area: board;
+  }
+  .game-grid .game-area-rightpanel {
+    grid-area: rightpanel;
+    display: flex;
+  }
+  .game-grid .game-area-toppanel,
+  .game-grid .game-area-bottompanel {
+    display: none;
+  }
+}
+
+@media (min-width: 1024px) {
+  .game-grid {
+    grid-template-columns: 260px minmax(0, 1fr) 320px;
+    grid-template-rows: 1fr;
+    grid-template-areas: "leftinfo board rightpanel";
+  }
+}

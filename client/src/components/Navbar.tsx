@@ -1,10 +1,10 @@
-import { Link } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext.js';
-import { MyGamesMenu } from './MyGamesMenu.js';
-import { ConnectionStatus } from './ConnectionStatus.js';
-import { InstallAppButton } from './InstallAppButton.js';
-import { AccountMenu } from './AccountMenu.js';
-import { ThemeToggle } from './ui/ThemeToggle.js';
+import { Link } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext.js";
+import { MyGamesMenu } from "./MyGamesMenu.js";
+import { ConnectionStatus } from "./ConnectionStatus.js";
+import { InstallAppButton } from "./InstallAppButton.js";
+import { AccountMenu } from "./AccountMenu.js";
+import { ThemeToggle } from "./ui/ThemeToggle.js";
 
 /**
  * Not a bar — a row of independent floating glass bubbles. Each piece
@@ -22,8 +22,7 @@ export function Navbar() {
         to="/"
         className="glass mr-auto flex h-9 items-center gap-2 rounded-full px-4 font-bold text-base-content hover:bg-white/10"
       >
-        <span className="text-base leading-none">♟</span>
-        <span className="hidden sm:inline">Chess App</span>
+        <img src="/logo.png" className="w-22" alt="App Logo" />
       </Link>
 
       {isAuthed && <MyGamesMenu />}
