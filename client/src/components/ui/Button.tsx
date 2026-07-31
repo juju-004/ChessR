@@ -14,12 +14,16 @@ export type ButtonVariant =
   | "danger";
 export type ButtonSize = "sm" | "md" | "lg" | "icon";
 
-export interface ButtonProps extends Omit<HTMLMotionProps<"button">, "ref"> {
+export interface ButtonProps extends Omit<
+  HTMLMotionProps<"button">,
+  "ref" | "children"
+> {
   variant?: ButtonVariant;
   size?: ButtonSize;
   /** Shows a spinner and disables the button — for an in-flight async action. */
   loading?: boolean;
   fullWidth?: boolean;
+  children?: React.ReactNode;
 }
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
@@ -44,14 +48,6 @@ const SIZE_CLASSES: Record<ButtonSize, string> = {
   icon: "h-10 w-10 rounded-xl",
 };
 
-/**
- * The one button component for the app. Press/hover feedback is a
- * transform-only `scale` (GPU-accelerated, see @/lib/motion.ts) — the only
- * non-transform transition here is the `hover:brightness-110`/background
- * swap, which is a plain CSS `:hover` transition on a small element and
- * cheap enough not to need the same GPU-only discipline as the JS-driven
- * motion.
- */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   function Button(
     {
