@@ -1,7 +1,16 @@
 import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { LayoutDashboard, Search, Users, Swords, Trophy, Settings, MoreHorizontal, type LucideIcon } from "lucide-react";
+import {
+  LayoutDashboard,
+  Search,
+  Users,
+  Swords,
+  Trophy,
+  Settings,
+  MoreHorizontal,
+  type LucideIcon,
+} from "lucide-react";
 import { useAuth } from "../contexts/AuthContext.js";
 import { cn } from "../lib/cn.js";
 import { springSnappy } from "../lib/motion.js";
@@ -92,7 +101,9 @@ export function Sidebar() {
 function MobileDock() {
   const { pathname } = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
-  const isMoreActive = MOBILE_MORE_ITEMS.some((item) => pathname.startsWith(item.to));
+  const isMoreActive = MOBILE_MORE_ITEMS.some((item) =>
+    pathname.startsWith(item.to),
+  );
 
   return (
     <>
@@ -101,7 +112,7 @@ function MobileDock() {
           <>
             {/* Click-away backdrop — invisible, just here to close the dropup. */}
             <motion.div
-              className="fixed inset-0 z-30 md:hidden"
+              className="fixe inset-0 z-30 md:hidden"
               onClick={() => setMoreOpen(false)}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -126,10 +137,10 @@ function MobileDock() {
                     onClick={() => setMoreOpen(false)}
                     className={({ isActive }) =>
                       cn(
-                        "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+                        "flex items-center  gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
                         isActive
                           ? "gradient-brand text-white"
-                          : "text-base-content/70 hover:bg-white/10 hover:text-base-content",
+                          : "text-base-content/70 hover:bg-base-content/5 hover:text-base-content",
                       )
                     }
                   >
@@ -146,16 +157,25 @@ function MobileDock() {
       <nav
         aria-label="Primary"
         className="glass-strong fixed inset-x-3 bottom-3 z-40 flex items-center justify-around rounded-2xl p-1.5 md:hidden"
-        style={{ paddingBottom: "calc(0.375rem + env(safe-area-inset-bottom))" }}
+        style={{
+          paddingBottom: "calc(0.375rem + env(safe-area-inset-bottom))",
+        }}
       >
         {MOBILE_PRIMARY_ITEMS.map((item) => (
-          <SidebarLink key={item.to} item={item} layoutId="sidebar-mobile-active" orientation="horizontal" />
+          <SidebarLink
+            key={item.to}
+            item={item}
+            layoutId="sidebar-mobile-active"
+            orientation="horizontal"
+          />
         ))}
         <button
           onClick={() => setMoreOpen((v) => !v)}
           className={cn(
-            "relative flex flex-col items-center gap-0.5 rounded-xl px-2.5 py-1.5 text-[11px] font-medium transition-colors",
-            moreOpen || isMoreActive ? "text-white" : "text-base-content/60 hover:text-base-content",
+            "relative flex flex-1 flex-col items-center gap-0.5 rounded-xl px-2.5 py-1.5 text-[11px] font-medium transition-colors",
+            moreOpen || isMoreActive
+              ? "text-white"
+              : "text-base-content/60 hover:text-base-content",
           )}
         >
           {(moreOpen || isMoreActive) && (
@@ -192,11 +212,16 @@ function SidebarLink({
       end={item.end}
       className={({ isActive }) =>
         cn(
-          "relative flex items-center gap-2.5 rounded-xl text-sm font-medium transition-colors",
+          "relative flex flex-1 items-center gap-2.5 rounded-xl text-sm font-medium transition-colors",
           orientation === "vertical"
-            ? cn("px-3 py-2.5", collapsible && "justify-center group-hover:justify-start")
+            ? cn(
+                "px-3 py-2.5",
+                collapsible && "justify-center group-hover:justify-start",
+              )
             : "flex-col gap-0.5 px-2.5 py-1.5 text-[11px]",
-          isActive ? "text-white" : "text-base-content/60 hover:text-base-content",
+          isActive
+            ? "text-white"
+            : "text-base-content/60 hover:text-base-content",
         )
       }
     >
@@ -209,7 +234,14 @@ function SidebarLink({
               className="absolute inset-0 -z-10 rounded-xl gradient-brand"
             />
           )}
-          <Icon className={orientation === "vertical" ? "h-4 w-4 shrink-0" : "h-5 w-5 shrink-0"} strokeWidth={2} />
+          <Icon
+            className={
+              orientation === "vertical"
+                ? "h-4 w-4 shrink-0"
+                : "h-5 w-5 shrink-0"
+            }
+            strokeWidth={2}
+          />
           <span
             className={
               orientation === "horizontal"
@@ -224,7 +256,7 @@ function SidebarLink({
                     // it to nothing; the hover state then grows both the
                     // available width and the opacity together.
                     collapsible &&
-                      "max-w-0 overflow-hidden opacity-0 transition-[max-width,opacity] duration-200 group-hover:max-w-[9rem] group-hover:opacity-100 group-hover:delay-75",
+                      "max-w-0 overflow-hidden opacity-0 transition-[max-width,opacity] duration-200 group-hover:max-w-36 group-hover:opacity-100 group-hover:delay-75",
                   )
             }
           >

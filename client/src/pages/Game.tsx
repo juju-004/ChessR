@@ -901,7 +901,7 @@ export function Game() {
           onChange={(e) => setChatInput(e.target.value)}
           maxLength={300}
           placeholder="Say something…"
-          className="h-10 flex-1 rounded-lg border border-base-300 bg-base-100/60 px-3 text-sm text-base-content backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-(--primary)"
+          className="h-10 flex-1 rounded-lg border border-base-300 bg-base-200 px-3 text-sm text-base-content focus:outline-none focus:ring-2 focus:ring-(--primary)"
         />
         <Button type="submit" size="md">
           Send
@@ -914,17 +914,23 @@ export function Game() {
   // as plain inline Buttons in the right panel from md up, and collapsed
   // into a single dropup trigger (via the Dropdown primitive, side="top")
   // on phone where there's no right panel to put them in.
-  const actionItems = isPlayer && status === "active"
-    ? moves.length < 2
-      ? [{ label: "Abort", icon: Ban, onClick: handleAbort, danger: true }]
-      : [
-          { label: "Offer draw", icon: Handshake, onClick: handleOfferDraw },
-          { label: "Resign", icon: Flag, onClick: handleResign, danger: true },
-        ]
-    : [];
+  const actionItems =
+    isPlayer && status === "active"
+      ? moves.length < 2
+        ? [{ label: "Abort", icon: Ban, onClick: handleAbort, danger: true }]
+        : [
+            { label: "Offer draw", icon: Handshake, onClick: handleOfferDraw },
+            {
+              label: "Resign",
+              icon: Flag,
+              onClick: handleResign,
+              danger: true,
+            },
+          ]
+      : [];
 
   return (
-    <div className="relative mx-auto flex max-w-6xl flex-col gap-2 px-4 pb-2 sm:px-0 md:h-[calc(100dvh-7rem)] md:gap-3">
+    <div className="relative mx-auto flex max-w-6xl flex-col gap-2 pb-2 sm:px-0 md:h-[calc(100dvh-7rem)] md:gap-3">
       {/* Cage scoreboard, pause state, the waiting-for-opponent notice, and
        *  extra tournament/cage actions — untouched from before, still one
        *  shrink-0 stack above everything else on every breakpoint. The old
@@ -947,7 +953,7 @@ export function Game() {
         )}
 
         {isPlayer && status === "waiting" && (
-          <div className="flex items-center gap-3 rounded-xl border border-base-300 bg-base-100/60 px-3 py-2.5">
+          <div className="flex absolute z-50 md:left-1/2 md:-translate-x-1/2 items-center gap-3 rounded-xl border border-base-300 glass px-3 py-2.5">
             <p className="flex-1 text-sm text-base-content/60">
               Waiting for an opponent to join…
             </p>
@@ -1270,7 +1276,7 @@ export function Game() {
       <AnimatePresence>
         {showChat && chatSheetOpen && (
           <motion.div
-            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+            className="fixed inset-0 z-40 bg-black/60 lg:hidden"
             onClick={() => setChatSheetOpen(false)}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

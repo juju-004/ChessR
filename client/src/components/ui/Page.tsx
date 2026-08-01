@@ -29,7 +29,14 @@ export interface PageProps {
  *     ...page content...
  *   </Page>
  */
-export function Page({ children, title, description, back, actions, className }: PageProps) {
+export function Page({
+  children,
+  title,
+  description,
+  back,
+  actions,
+  className,
+}: PageProps) {
   const navigate = useNavigate();
 
   function handleBack() {
@@ -44,7 +51,10 @@ export function Page({ children, title, description, back, actions, className }:
       initial="hidden"
       animate="visible"
       variants={fadeInUp}
-      className={cn("mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 md:px-8 md:py-10", className)}
+      className={cn(
+        "mx-auto w-full max-w-5xl px-1 py-6 sm:px-6 md:px-8 md:py-10",
+        className,
+      )}
     >
       {hasHeader && (
         <header className="mb-6 flex items-start justify-between gap-4">
@@ -64,12 +74,22 @@ export function Page({ children, title, description, back, actions, className }:
             )}
             {(title || description) && (
               <div>
-                {title && <h1 className="text-xl font-bold text-base-content md:text-2xl">{title}</h1>}
-                {description && <p className="mt-1 text-sm text-base-content/60">{description}</p>}
+                {title && (
+                  <h1 className="text-xl font-bold text-base-content md:text-2xl">
+                    {title}
+                  </h1>
+                )}
+                {description && (
+                  <p className="mt-1 text-sm text-base-content/60">
+                    {description}
+                  </p>
+                )}
               </div>
             )}
           </div>
-          {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+          {actions && (
+            <div className="flex shrink-0 items-center gap-2">{actions}</div>
+          )}
         </header>
       )}
       {children}

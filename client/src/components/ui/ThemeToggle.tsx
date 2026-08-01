@@ -16,7 +16,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       whileTap={{ scale: 0.9 }}
       transition={springSnappy}
       className={cn(
-        "glass relative flex h-9 w-9 items-center justify-center rounded-full text-base-content/80 hover:text-base-content",
+        "glass relative md:flex h-9 w-9 items-center justify-center hidden rounded-full text-base-content/80 hover:text-base-content",
         className,
       )}
     >

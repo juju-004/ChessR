@@ -7,6 +7,7 @@ export interface DropdownItem {
   label: string;
   icon?: LucideIcon;
   onClick: () => void;
+  className?: string;
   danger?: boolean;
   disabled?: boolean;
 }
@@ -21,11 +22,22 @@ export interface DropdownProps {
 /** A menu of clickable items in a Popover — closes itself after any item is
  *  clicked. For anything richer than a flat action list (a form, a custom
  *  layout), reach for <Popover> directly instead. */
-export function Dropdown({ trigger, items, align = "end", side = "bottom" }: DropdownProps) {
+export function Dropdown({
+  trigger,
+  items,
+  align = "end",
+  side = "bottom",
+}: DropdownProps) {
   const [open, setOpen] = useState(false);
 
   return (
-    <Popover trigger={trigger} open={open} onOpenChange={setOpen} align={align} side={side}>
+    <Popover
+      trigger={trigger}
+      open={open}
+      onOpenChange={setOpen}
+      align={align}
+      side={side}
+    >
       <div role="menu" className="flex flex-col">
         {items.map((item, i) => {
           const Icon = item.icon;
@@ -44,6 +56,7 @@ export function Dropdown({ trigger, items, align = "end", side = "bottom" }: Dro
                 item.danger
                   ? "text-red-500 hover:bg-red-500/10"
                   : "text-base-content hover:bg-black/5 dark:hover:bg-white/10",
+                item.className,
               )}
             >
               {Icon && <Icon className="h-4 w-4 shrink-0" />}

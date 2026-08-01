@@ -11,7 +11,7 @@ interface FloatingActionButtonProps {
 }
 
 const VARIANT_CLASSES: Record<NonNullable<FloatingActionButtonProps['variant']>, string> = {
-  default: 'glass-strong text-base-content hover:bg-white/10',
+  default: 'glass-strong text-base-content hover:bg-base-content/5',
   danger: 'bg-red-600/90 text-white shadow-lg shadow-red-900/30 hover:bg-red-500',
   warning: 'bg-amber-600/90 text-white shadow-lg shadow-amber-900/30 hover:bg-amber-500',
 };
@@ -27,7 +27,7 @@ export function FloatingActionButton({ icon: Icon, label, onClick, disabled, var
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        'flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold shadow-lg backdrop-blur-md transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+        'flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold shadow-lg transition-colors disabled:cursor-not-allowed disabled:opacity-40',
         VARIANT_CLASSES[variant],
         className,
       )}

@@ -96,7 +96,7 @@ export function Dashboard() {
                 Withdraw
               </Button>
             </Link>
-            <Link to="/wallet/transactions">
+            <Link className="hidden sm:flex" to="/wallet/transactions">
               <Button variant="glass" size="sm">
                 History
               </Button>
@@ -172,8 +172,8 @@ export function Dashboard() {
               onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
               className="uppercase"
             />
-            <Button variant="glass" onClick={handleJoinByCode}>
-              Go to game
+            <Button className="flex" variant="glass" onClick={handleJoinByCode}>
+              Join
             </Button>
           </CardContent>
         </Card>

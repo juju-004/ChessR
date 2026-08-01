@@ -15,9 +15,10 @@ export interface ModalProps {
 
 /**
  * Portal-rendered so it always sits above everything regardless of where
- * it's mounted, with a blurred backdrop and a glass content panel. Backdrop
- * and content each animate on their own opacity/scale/y — no layout-
- * affecting properties, per @/lib/motion.ts.
+ * it's mounted, with a solid darkened backdrop and an elevated content
+ * panel (no backdrop-filter — see the .glass comment in index.css).
+ * Backdrop and content each animate on their own opacity/scale/y — no
+ * layout-affecting properties, per @/lib/motion.ts.
  */
 export function Modal({ open, onClose, title, children, className }: ModalProps) {
   return createPortal(
@@ -30,7 +31,7 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
             exit="exit"
             variants={modalBackdrop}
             onClick={onClose}
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/60"
           />
           <motion.div
             initial="hidden"
