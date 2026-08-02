@@ -15,7 +15,7 @@ export interface DropdownItem {
 export interface DropdownProps {
   trigger: ReactNode;
   items: DropdownItem[];
-  align?: "start" | "end";
+  align?: "start" | "end" | "center";
   side?: "bottom" | "top";
 }
 

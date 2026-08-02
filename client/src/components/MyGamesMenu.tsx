@@ -14,21 +14,7 @@ import { motion } from "framer-motion";
 import { pressable } from "@/lib/motion.js";
 import { cn } from "@/lib/cn.js";
 import { Popover } from "./ui/Popover.js";
-
-/** Games icon — a simple pawn glyph keeps this visually distinct from the
- *  wallet balance pill and the profile/friends text links either side of it. */
-function PawnIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-      aria-hidden="true"
-    >
-      <path d="M12 2a3 3 0 0 0-1.8 5.4c-1.6.9-2.7 2.6-2.7 4.6 0 1.3.5 2.5 1.3 3.4C7.5 16.3 6.5 18 6.5 20v.5a.5.5 0 0 0 .5.5h10a.5.5 0 0 0 .5-.5V20c0-2-1-3.7-2.3-4.6.8-.9 1.3-2.1 1.3-3.4 0-2-1.1-3.7-2.7-4.6A3 3 0 0 0 12 2Z" />
-    </svg>
-  );
-}
+import { Gamepad2 } from "lucide-react";
 
 interface MyGamesMenuProps {
   className?: string;
@@ -77,135 +63,135 @@ export function MyGamesMenu({ className }: MyGamesMenuProps) {
           className="glass flex h-9 w-9 items-center justify-center rounded-full text-base-content/80 hover:text-base-content"
           {...pressable}
         >
-          <PawnIcon className="h-4 w-4" />
+          <Gamepad2 className="h-4 w-4" />
         </motion.button>
       }
     >
       <div className="-m-1.5">
-      <div className="border-b border-base-300 px-3 py-2 text-sm font-semibold text-base-content">
-        Your games
-      </div>
+        <div className="border-b border-base-300 px-3 py-2 text-sm font-semibold text-base-content">
+          Your games
+        </div>
 
-      {error && <p className="p-3 text-sm text-red-400">{error}</p>}
+        {error && <p className="p-3 text-sm text-red-400">{error}</p>}
 
-      {!error && loading && games === null && (
-        <p className="p-3 text-sm text-base-content/60">Loading…</p>
-      )}
-
-      {!error &&
-        games &&
-        cageMatches &&
-        games.filter((g) => !g.cageMatchId).length === 0 &&
-        cageMatches.length === 0 && (
-          <p className="p-3 text-sm text-base-content/60">
-            No active games. Head to the dashboard to start one.
-          </p>
+        {!error && loading && games === null && (
+          <p className="p-3 text-sm text-base-content/60">Loading…</p>
         )}
 
-      <div className="max-h-96 overflow-y-auto">
-        {cageMatches && cageMatches.length > 0 && (
-          <div className="border-b border-base-300 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-purple-400">
-            Cage matches
-          </div>
-        )}
-        {cageMatches?.map((m) => {
-          const iAmP1 = m.player1._id === user?.id;
-          const opponent = iAmP1 ? m.player2 : m.player1;
-          const standings = computeCageStandings(m);
-          const myScore = iAmP1 ? standings.p1Score : standings.p2Score;
-          const oppScore = iAmP1 ? standings.p2Score : standings.p1Score;
-          const activeLeg = m.legs.find((l) => l.status === "active");
-          const pausedLeg = m.legs.find((l) => l.status === "paused");
-
-          return (
-            <button
-              key={m._id}
-              onClick={() => {
-                setOpen(false);
-                const leg = activeLeg ?? pausedLeg;
-                navigate(
-                  leg?.joinCode
-                    ? `/game/${leg.joinCode}`
-                    : `/cage/${m.matchCode}`,
-                );
-              }}
-              className="flex w-full items-center justify-between gap-2 border-b border-base-300 bg-purple-500/5 px-3 py-2 text-left last:border-none hover:bg-purple-500/10"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm text-base-content">
-                  🥊 vs {opponent.username} · {myScore}–{oppScore}
-                </p>
-                <p className="truncate text-xs text-base-content/50">
-                  Leg {m.currentLegIndex + 1}/{m.legs.length}
-                </p>
-              </div>
-              {activeLeg && (
-                <span className="shrink-0 rounded bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-bold text-blue-500">
-                  In progress
-                </span>
-              )}
-              {!activeLeg && pausedLeg && (
-                <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-500">
-                  Paused
-                </span>
-              )}
-            </button>
-          );
-        })}
-
-        {cageMatches &&
-          cageMatches.length > 0 &&
+        {!error &&
           games &&
-          games.filter((g) => !g.cageMatchId).length > 0 && (
-            <div className="border-b border-base-300 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-base-content/50">
-              Single games
-            </div>
+          cageMatches &&
+          games.filter((g) => !g.cageMatchId).length === 0 &&
+          cageMatches.length === 0 && (
+            <p className="p-3 text-sm text-base-content/60">
+              No active games. Head to the dashboard to start one.
+            </p>
           )}
 
-        {games
-          ?.filter((g) => !g.cageMatchId)
-          .map((g) => {
-            const myColor = g.white._id === user?.id ? "white" : "black";
-            const opponent = myColor === "white" ? g.black : g.white;
-            const waiting = g.status === "waiting";
-            const isMyTurn =
-              !waiting && turnColor(new Chess(g.fen)) === myColor;
+        <div className="max-h-96 overflow-y-auto">
+          {cageMatches && cageMatches.length > 0 && (
+            <div className="border-b border-base-300 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-purple-400">
+              Cage matches
+            </div>
+          )}
+          {cageMatches?.map((m) => {
+            const iAmP1 = m.player1._id === user?.id;
+            const opponent = iAmP1 ? m.player2 : m.player1;
+            const standings = computeCageStandings(m);
+            const myScore = iAmP1 ? standings.p1Score : standings.p2Score;
+            const oppScore = iAmP1 ? standings.p2Score : standings.p1Score;
+            const activeLeg = m.legs.find((l) => l.status === "active");
+            const pausedLeg = m.legs.find((l) => l.status === "paused");
 
             return (
               <button
-                key={g._id}
+                key={m._id}
                 onClick={() => {
                   setOpen(false);
-                  navigate(`/game/${g.joinCode}`);
+                  const leg = activeLeg ?? pausedLeg;
+                  navigate(
+                    leg?.joinCode
+                      ? `/game/${leg.joinCode}`
+                      : `/cage/${m.matchCode}`,
+                  );
                 }}
-                className="flex w-full items-center justify-between gap-2 border-b border-base-300 px-3 py-2 text-left last:border-none hover:bg-base-200"
+                className="flex w-full items-center justify-between gap-2 border-b border-base-300 bg-purple-500/5 px-3 py-2 text-left last:border-none hover:bg-purple-500/10"
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm text-base-content">
-                    {waiting
-                      ? "Waiting for opponent…"
-                      : `vs ${opponent?.username ?? "?"}`}
+                    🥊 vs {opponent.username} · {myScore}–{oppScore}
                   </p>
                   <p className="truncate text-xs text-base-content/50">
-                    {formatTimeControl(g.timeControl)}
-                    {g.variant === "chess960" ? " · Chess960" : ""}
-                    {g.wagerTokens > 0 ? ` · ${g.wagerTokens} R wager` : ""}
+                    Leg {m.currentLegIndex + 1}/{m.legs.length}
                   </p>
                 </div>
-                {isMyTurn && (
-                  <span className="shrink-0 rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-bold text-red-500">
-                    Your move
+                {activeLeg && (
+                  <span className="shrink-0 rounded bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-bold text-blue-500">
+                    In progress
                   </span>
                 )}
-                {waiting && (
-                  <span className="shrink-0 rounded bg-base-300 px-1.5 py-0.5 text-[10px] font-bold text-base-content/80">
-                    Waiting
+                {!activeLeg && pausedLeg && (
+                  <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-500">
+                    Paused
                   </span>
                 )}
               </button>
             );
           })}
-      </div>
+
+          {cageMatches &&
+            cageMatches.length > 0 &&
+            games &&
+            games.filter((g) => !g.cageMatchId).length > 0 && (
+              <div className="border-b border-base-300 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-base-content/50">
+                Single games
+              </div>
+            )}
+
+          {games
+            ?.filter((g) => !g.cageMatchId)
+            .map((g) => {
+              const myColor = g.white._id === user?.id ? "white" : "black";
+              const opponent = myColor === "white" ? g.black : g.white;
+              const waiting = g.status === "waiting";
+              const isMyTurn =
+                !waiting && turnColor(new Chess(g.fen)) === myColor;
+
+              return (
+                <button
+                  key={g._id}
+                  onClick={() => {
+                    setOpen(false);
+                    navigate(`/game/${g.joinCode}`);
+                  }}
+                  className="flex w-full items-center justify-between gap-2 border-b border-base-300 px-3 py-2 text-left last:border-none hover:bg-base-200"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm text-base-content">
+                      {waiting
+                        ? "Waiting for opponent…"
+                        : `vs ${opponent?.username ?? "?"}`}
+                    </p>
+                    <p className="truncate text-xs text-base-content/50">
+                      {formatTimeControl(g.timeControl)}
+                      {g.variant === "chess960" ? " · Chess960" : ""}
+                      {g.wagerTokens > 0 ? ` · ${g.wagerTokens} R wager` : ""}
+                    </p>
+                  </div>
+                  {isMyTurn && (
+                    <span className="shrink-0 rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-bold text-red-500">
+                      Your move
+                    </span>
+                  )}
+                  {waiting && (
+                    <span className="shrink-0 rounded bg-base-300 px-1.5 py-0.5 text-[10px] font-bold text-base-content/80">
+                      Waiting
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+        </div>
       </div>
     </Popover>
   );

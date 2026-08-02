@@ -20,15 +20,18 @@
 // Socket.IO connection only ever lives on one process at a time, so there's
 // nothing to share across processes here.
 
-const HEARTBEAT_INTERVAL_MS = 4000;
-const EMA_ALPHA = 0.3; // weight given to each new sample
+const HEARTBEAT_INTERVAL_MS = 2000;
+const EMA_ALPHA = 0.4; // weight given to each new sample
 const DEFAULT_LATENCY_MS = 100; // reasonable round-trip assumption before the first pong lands
-export const LAG_COMPENSATION_CAP_MS = 300;
+export const LAG_COMPENSATION_CAP_MS = 1000;
 
 const latencyBySocket = new Map<string, number>();
 const heartbeatTimers = new Map<string, ReturnType<typeof setInterval>>();
 
-export function startLatencyHeartbeat(emitPing: () => void, socketId: string): void {
+export function startLatencyHeartbeat(
+  emitPing: () => void,
+  socketId: string,
+): void {
   stopLatencyHeartbeat(socketId); // guard against double-registration
   emitPing(); // one immediately, rather than waiting a full interval for the first sample
   const timer = setInterval(emitPing, HEARTBEAT_INTERVAL_MS);
@@ -44,14 +47,21 @@ export function stopLatencyHeartbeat(socketId: string): void {
 
 /** Call when a `latency:pong` reply comes back, with the round-trip time
  *  (now - the timestamp originally sent in the ping). */
-export function recordLatencySample(socketId: string, roundTripMs: number): void {
+export function recordLatencySample(
+  socketId: string,
+  roundTripMs: number,
+): void {
   // Guard against a clearly-bogus sample (clock skew, a tab that was
   // backgrounded and threw off timings, etc.) rather than letting it wreck
   // the average for the rest of the game.
-  if (!Number.isFinite(roundTripMs) || roundTripMs < 0 || roundTripMs > 10_000) return;
+  if (!Number.isFinite(roundTripMs) || roundTripMs < 0 || roundTripMs > 10_000)
+    return;
 
   const prev = latencyBySocket.get(socketId) ?? roundTripMs;
-  latencyBySocket.set(socketId, prev * (1 - EMA_ALPHA) + roundTripMs * EMA_ALPHA);
+  latencyBySocket.set(
+    socketId,
+    prev * (1 - EMA_ALPHA) + roundTripMs * EMA_ALPHA,
+  );
 }
 
 /** The capped compensation to subtract from a move's charged elapsed time.

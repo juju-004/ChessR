@@ -93,6 +93,8 @@ async function endGameAndBroadcast(
     result,
     reason: endReason,
     wagerSettlement,
+    whiteRemainingMs: finalState.whiteRemainingMs,
+    blackRemainingMs: finalState.blackRemainingMs,
   });
   finalizeGame(gameId, finalState.fen, 'finished', result, endReason).catch((err) =>
     console.error('finalizeGame failed:', err),
@@ -236,11 +238,20 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       if (!parsed.success) return emitError(socket, 'Invalid join payload');
       const { gameId } = parsed.data;
 
-      const game = await Game.findById(gameId).lean();
+      const game = await Game.findById(gameId).populate('white', 'username').populate('black', 'username').lean();
       if (!game) return emitError(socket, 'Game not found');
 
-      const isWhite = game.white.toString() === userId;
-      const isBlack = game.black?.toString() === userId;
+      // `white`/`black` may or may not be populated depending on the query
+      // above, so this normalizes either shape (raw ObjectId or populated
+      // `{ _id, username }`) down to a comparable id string.
+      const idOf = (v: unknown): string | undefined => {
+        if (!v) return undefined;
+        const obj = v as { _id?: unknown };
+        return (obj._id ?? v)!.toString();
+      };
+
+      const isWhite = idOf(game.white) === userId;
+      const isBlack = idOf(game.black) === userId;
       const role: 'white' | 'black' | 'spectator' = isWhite ? 'white' : isBlack ? 'black' : 'spectator';
 
       await socket.join(gameRoom(gameId));
@@ -265,8 +276,8 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       // this is what drives the connection dot next to each player's name.
       const roomSockets = await io.in(gameRoom(gameId)).fetchSockets();
       const connectedUserIds = new Set(roomSockets.map((s) => (s.data as AuthedSocketData).userId));
-      const whiteConnected = connectedUserIds.has(game.white.toString());
-      const blackConnected = game.black ? connectedUserIds.has(game.black.toString()) : false;
+      const whiteConnected = connectedUserIds.has(idOf(game.white)!);
+      const blackConnected = game.black ? connectedUserIds.has(idOf(game.black)!) : false;
 
       // Cheap self-healing measure: (re)scheduling on every join/reconnect
       // means the timer recovers on its own the moment anyone next touches

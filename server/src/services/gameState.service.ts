@@ -357,7 +357,30 @@ export async function endGame(
   const state = await getLiveState(gameId);
   if (!state) throw ApiError.notFound('Game is not active');
 
-  const newState: LiveGameState = { ...state, status: 'finished', result, endReason };
+  // Bank the real elapsed time on whoever's clock was actually running,
+  // same as pauseLiveClock does — without this, whiteRemainingMs/
+  // blackRemainingMs are left at whatever they were as of the *previous*
+  // move (e.g. still showing 3s left on a timeout), and since the client
+  // only ever ticks those down live while the game is active, the instant
+  // status flips to 'finished' the displayed clock snaps back up to that
+  // stale pre-timeout number instead of resting at 0.
+  let whiteRemainingMs = state.whiteRemainingMs;
+  let blackRemainingMs = state.blackRemainingMs;
+  if (state.status === 'active' && !state.paused && state.timeControl.baseMs !== null && state.moveCount >= 2) {
+    const elapsed = Date.now() - state.turnStartedAtMs;
+    const sideToMove = getSideToMove(state.fen);
+    if (sideToMove === 'white') whiteRemainingMs = Math.max(0, (whiteRemainingMs ?? 0) - elapsed);
+    else blackRemainingMs = Math.max(0, (blackRemainingMs ?? 0) - elapsed);
+  }
+
+  const newState: LiveGameState = {
+    ...state,
+    status: 'finished',
+    result,
+    endReason,
+    whiteRemainingMs,
+    blackRemainingMs,
+  };
   await redis.set(stateKey(gameId), JSON.stringify(newState), 'EX', 300);
   return newState;
 }

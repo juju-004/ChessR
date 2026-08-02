@@ -1,6 +1,5 @@
-import { useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import {
   LayoutDashboard,
   Search,
@@ -8,12 +7,13 @@ import {
   Swords,
   Trophy,
   Settings,
-  MoreHorizontal,
+  Menu,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext.js";
 import { cn } from "../lib/cn.js";
 import { springSnappy } from "../lib/motion.js";
+import { Dropdown, type DropdownItem } from "./ui/Dropdown.js";
 
 interface NavItem {
   to: string;
@@ -34,20 +34,15 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
-// Only this many fit comfortably in the mobile dock before it gets cramped —
-// the rest live behind "More".
-const MOBILE_PRIMARY_COUNT = 3;
-const MOBILE_PRIMARY_ITEMS = NAV_ITEMS.slice(0, MOBILE_PRIMARY_COUNT);
-const MOBILE_MORE_ITEMS = NAV_ITEMS.slice(MOBILE_PRIMARY_COUNT);
-
 /**
  * One component, two responsive presentations — a vertical glass rail on
- * desktop (md and up), a fixed glass dock pinned to the bottom of the
- * screen on mobile. Both variants are always in the DOM (Tailwind's
+ * desktop (md and up), a floating action button pinned to the bottom
+ * center of the screen on mobile that opens the same nav items as a
+ * dropdown menu. Both variants are always in the DOM (Tailwind's
  * `hidden md:flex` / `flex md:hidden` toggles which one actually renders),
- * so each gets its own `layoutId` for the active-item indicator — sharing
- * one between them would make framer-motion try to animate between two
- * differently-shaped layouts the instant the breakpoint changes.
+ * so the desktop rail's active-item indicator keeps its own `layoutId` —
+ * the mobile menu doesn't need one since it isn't a persistent row of
+ * targets the highlight has to travel between.
  */
 export function Sidebar() {
   const { isAuthed } = useAuth();
@@ -73,7 +68,7 @@ export function Sidebar() {
       <nav
         aria-label="Primary"
         className={cn(
-          "group glass sticky top-20 hidden h-fit shrink-0 flex-col gap-1 self-start overflow-hidden rounded-2xl p-3 md:flex",
+          "group glass z-40 sticky top-20 hidden h-fit shrink-0 flex-col gap-1 self-start overflow-hidden rounded-2xl p-3 md:flex",
           collapsible
             ? "w-16 transition-[width] duration-200 ease-out hover:w-56 hover:shadow-xl"
             : "w-56",
@@ -90,106 +85,52 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* Mobile: fixed bottom dock, overlays the page — main content gets
-       *  matching bottom padding in App.tsx so the dock never covers the
-       *  last bit of scrollable content. */}
-      <MobileDock />
+      {/* Mobile: a single floating action button pinned to the bottom
+       *  center, opening the nav as a dropdown — main content gets matching
+       *  bottom padding in App.tsx so the FAB never sits over the last bit
+       *  of scrollable content. */}
+      <MobileNavFab />
     </>
   );
 }
 
-function MobileDock() {
+function MobileNavFab() {
   const { pathname } = useLocation();
-  const [moreOpen, setMoreOpen] = useState(false);
-  const isMoreActive = MOBILE_MORE_ITEMS.some((item) =>
-    pathname.startsWith(item.to),
-  );
+  const navigate = useNavigate();
+
+  const items: DropdownItem[] = NAV_ITEMS.map((item) => {
+    const isActive = item.end
+      ? pathname === item.to
+      : pathname.startsWith(item.to);
+    return {
+      label: item.label,
+      icon: item.icon,
+      onClick: () => navigate(item.to),
+      className: isActive
+        ? "text-primary bg-base-200 font-semibold"
+        : undefined,
+    };
+  });
 
   return (
-    <>
-      <AnimatePresence>
-        {moreOpen && (
-          <>
-            {/* Click-away backdrop — invisible, just here to close the dropup. */}
-            <motion.div
-              className="fixe inset-0 z-30 md:hidden"
-              onClick={() => setMoreOpen(false)}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.12 }}
-            />
-            <motion.div
-              className="glass-strong fixed inset-x-3 z-40 flex flex-col gap-1 rounded-2xl p-1.5 md:hidden"
-              style={{ bottom: "calc(4.75rem + env(safe-area-inset-bottom))" }}
-              initial={{ opacity: 0, y: 8, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 8, scale: 0.97 }}
-              transition={springSnappy}
-            >
-              {MOBILE_MORE_ITEMS.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    end={item.end}
-                    onClick={() => setMoreOpen(false)}
-                    className={({ isActive }) =>
-                      cn(
-                        "flex items-center  gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
-                        isActive
-                          ? "gradient-brand text-white"
-                          : "text-base-content/70 hover:bg-base-content/5 hover:text-base-content",
-                      )
-                    }
-                  >
-                    <Icon className="h-4 w-4 shrink-0" strokeWidth={2} />
-                    {item.label}
-                  </NavLink>
-                );
-              })}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
-      <nav
-        aria-label="Primary"
-        className="glass-strong fixed inset-x-3 bottom-3 z-40 flex items-center justify-around rounded-2xl p-1.5 md:hidden"
-        style={{
-          paddingBottom: "calc(0.375rem + env(safe-area-inset-bottom))",
-        }}
-      >
-        {MOBILE_PRIMARY_ITEMS.map((item) => (
-          <SidebarLink
-            key={item.to}
-            item={item}
-            layoutId="sidebar-mobile-active"
-            orientation="horizontal"
-          />
-        ))}
-        <button
-          onClick={() => setMoreOpen((v) => !v)}
-          className={cn(
-            "relative flex flex-1 flex-col items-center gap-0.5 rounded-xl px-2.5 py-1.5 text-[11px] font-medium transition-colors",
-            moreOpen || isMoreActive
-              ? "text-white"
-              : "text-base-content/60 hover:text-base-content",
-          )}
-        >
-          {(moreOpen || isMoreActive) && (
-            <motion.span
-              layoutId="sidebar-mobile-active"
-              transition={springSnappy}
-              className="absolute inset-0 -z-10 rounded-xl gradient-brand"
-            />
-          )}
-          <MoreHorizontal className="h-5 w-5 shrink-0" strokeWidth={2} />
-          <span className="leading-none">More</span>
-        </button>
-      </nav>
-    </>
+    <div
+      className="fixed left-4 z-40 md:hidden"
+      style={{ bottom: "calc(1rem + env(safe-area-inset-bottom))" }}
+    >
+      <Dropdown
+        trigger={
+          <button
+            aria-label="Open navigation menu"
+            className="glass-strong flex h-14 w-14 items-center justify-center rounded-full text-base-content shadow-xl transition-colors hover:bg-base-content/5"
+          >
+            <Menu className="h-6 w-6" strokeWidth={2} />
+          </button>
+        }
+        items={items}
+        align="start"
+        side="top"
+      />
+    </div>
   );
 }
 

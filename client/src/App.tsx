@@ -78,9 +78,9 @@ function AppShell() {
       <GlobalListeners />
       <div className="flex items-start gap-4 px-4 md:px-6">
         <Sidebar />
-        {/* pb-24 clears the fixed mobile dock (see Sidebar.tsx); md:pb-12
-         *  drops back to a normal bottom gap once the dock is hidden. */}
-        <main className="min-w-0 flex-1 pb-24 md:pb-12">
+        {/* pb-20 clears the fixed mobile nav FAB (see Sidebar.tsx); md:pb-12
+         *  drops back to a normal bottom gap once the FAB is hidden. */}
+        <main className="min-w-0 flex-1 pb-20 md:pb-12">
           <Routes>
             <Route
               path="/"

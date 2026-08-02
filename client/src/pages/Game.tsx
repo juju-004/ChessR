@@ -27,7 +27,10 @@ import {
   ShieldAlert,
   MessageSquare,
   Share2,
-  ChevronUp,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  FlipVertical2,
 } from "lucide-react";
 import { ChessBoard } from "../components/ChessBoard.js";
 import { PromotionPicker } from "../components/PromotionPicker.js";
@@ -39,7 +42,7 @@ import {
   Button,
   Badge,
   Spinner,
-  Dropdown,
+  Tooltip,
 } from "../components/ui/index.js";
 import { springSnappy } from "../lib/motion.js";
 import {
@@ -49,6 +52,7 @@ import {
   computePremoveDests,
   addChess960CastlingDests,
   computeMaterialDiff,
+  computeLowTimeThresholdMs,
   turnColor,
 } from "../chessUtils.js";
 import { refreshBalance } from "../api/walletStore.js";
@@ -58,6 +62,7 @@ import {
   playCheckSound,
   playGameStartSound,
   playGameOverSound,
+  playLowTimeSound,
   setSoundEnabled,
 } from "../sounds.js";
 import { copyToClipboard } from "@/lib/utils.js";
@@ -70,6 +75,7 @@ interface GameMeta {
   white: { _id: string; username: string } | null;
   black: { _id: string; username: string } | null;
   status: "waiting" | "active" | "finished" | "aborted";
+  timeControl: { baseSeconds: number | null; incrementSeconds: number };
   wagerTokens?: number;
   cageMatchId?: string | null;
   legIndex?: number | null;
@@ -99,6 +105,18 @@ export function Game() {
   }, [settings.soundEnabled]);
 
   const [gameMeta, setGameMeta] = useState<GameMeta | null>(null);
+  // Mirrors gameMeta for the socket-wiring effect below, which needs to
+  // read a couple of gameMeta's fields (player ids, cageMatchId) inside
+  // long-lived socket callbacks without taking a dependency on the
+  // `gameMeta` object itself — that object gets a new reference on every
+  // game:sync (its white/black usernames get refreshed there), and the
+  // socket effect tearing itself down and reconnecting on every sync is
+  // exactly the "toggling between Connecting… and Waiting for opponent…"
+  // loop this avoids.
+  const gameMetaRef = useRef<GameMeta | null>(null);
+  useEffect(() => {
+    gameMetaRef.current = gameMeta;
+  }, [gameMeta]);
   const [mode, setMode] = useState<"loading" | "need-join" | "board">(
     "loading",
   );
@@ -106,6 +124,8 @@ export function Game() {
 
   const [role, setRole] = useState<Role>("spectator");
   const roleRef = useRef<Role>("spectator");
+  const moveListScrollRef = useRef<HTMLDivElement | null>(null);
+  const moveStripScrollRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<
     "waiting" | "active" | "finished" | "aborted"
   >("active");
@@ -149,6 +169,16 @@ export function Game() {
     { username: string; message: string; at: number }[]
   >([]);
   const [chatInput, setChatInput] = useState("");
+  // Board flip is purely a local viewing preference — it doesn't touch
+  // `myColor`/server state at all, just which edge of the board the local
+  // player's pieces render on.
+  const [boardFlipped, setBoardFlipped] = useState(false);
+  // Move browsing: null means "tracking the live position" (the normal
+  // state). A number is the ply being viewed (0 = starting position, 1 =
+  // after white's 1st move, etc). Prev/Next walk this back and forth;
+  // Next snaps back to `null` once it reaches the live ply so newly
+  // arriving moves resume being followed automatically.
+  const [viewPly, setViewPly] = useState<number | null>(null);
   // Spectator chat lives in a bottom-sheet modal on mobile (there's no
   // room for a persistent chat card next to a board that has to fit the
   // viewport) instead of always-visible inline like on desktop.
@@ -184,12 +214,47 @@ export function Game() {
     [chess, myColor],
   );
 
+  // Prev/Next move browsing replays the move list from the game's actual
+  // starting position (important for Chess960, where that isn't the
+  // standard start) rather than trying to derive positions from `fen`
+  // (the live position), which would be the wrong direction to walk
+  // backwards from. `chess` above is deliberately left alone — dests/
+  // premoveDests/turnColor everywhere else must keep reflecting the real,
+  // live position even while the board is visually showing history.
+  const historyFens = useMemo(() => {
+    try {
+      const replay = new Chess(gameMeta?.initialFen);
+      const fens = [replay.fen()];
+      for (const m of moves) {
+        replay.move(m.san);
+        fens.push(replay.fen());
+      }
+      return fens;
+    } catch {
+      // Shouldn't happen — the move list came from the server — but a
+      // broken replay should degrade to "always show the live position"
+      // rather than crash the page.
+      return null;
+    }
+  }, [gameMeta?.initialFen, moves]);
+
+  const liveViewPly = moves.length;
+  const isViewingHistory =
+    viewPly !== null && viewPly < liveViewPly && historyFens !== null;
+  const displayFen =
+    isViewingHistory && historyFens ? historyFens[viewPly!] : fen;
+  const displayLastMove = isViewingHistory
+    ? viewPly! > 0
+      ? ([moves[viewPly! - 1].from, moves[viewPly! - 1].to] as [string, string])
+      : undefined
+    : lastMove;
+
   // Forces a re-render every 100ms while a clock is actually running, so
   // the live "remaining time minus elapsed-since-turn-started" figures
   // below stay ticking smoothly. Declared as a hook up here (unconditional,
   // before the early returns below) for the same reason dests/premoveDests
   // are — see the big comment above them.
-  const [, forceClockTick] = useState(0);
+  const [clockTick, forceClockTick] = useState(0);
   const clockRunning = status === "active" && moves.length >= 2;
   useEffect(() => {
     if (!clockRunning) return;
@@ -199,6 +264,62 @@ export function Game() {
     );
     return () => window.clearInterval(interval);
   }, [clockRunning]);
+
+  // Scaled to the time control (see computeLowTimeThresholdMs) — a flat
+  // "10 seconds left" doesn't mean the same thing in bullet vs. classical.
+  const lowTimeThresholdMs = useMemo(
+    () => computeLowTimeThresholdMs(gameMeta?.timeControl.baseSeconds ?? null),
+    [gameMeta?.timeControl.baseSeconds],
+  );
+
+  // Fires the low-time sound once the moment MY clock first drops under
+  // the threshold, then rearms if it climbs back above it (e.g. an
+  // increment) so a second low-time stretch can warn again. Depends on
+  // clockTick — not just whiteRemainingMs/blackRemainingMs/turnStartedAtMs
+  // — because those three only change on server round-trips (the start of
+  // each move), while the actual threshold crossing usually happens mid-
+  // turn, purely from wall-clock time passing between ticks.
+  const lowTimeWarnedRef = useRef(false);
+  useEffect(() => {
+    if (!clockRunning || !myColor || lowTimeThresholdMs <= 0) return;
+    const remainingMs =
+      myColor === "white" ? whiteRemainingMs : blackRemainingMs;
+    if (remainingMs === null) return;
+    const isMyTurn = turnColor(chess) === myColor;
+    const liveMs = isMyTurn
+      ? remainingMs - (Date.now() - turnStartedAtMs)
+      : remainingMs;
+    if (liveMs > 0 && liveMs <= lowTimeThresholdMs) {
+      if (!lowTimeWarnedRef.current) {
+        lowTimeWarnedRef.current = true;
+        playLowTimeSound();
+      }
+    } else if (liveMs > lowTimeThresholdMs) {
+      lowTimeWarnedRef.current = false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    clockTick,
+    clockRunning,
+    myColor,
+    whiteRemainingMs,
+    blackRemainingMs,
+    turnStartedAtMs,
+    lowTimeThresholdMs,
+    chess,
+  ]);
+
+  // Smooth-scrolls the move list/strip to the newest move whenever one is
+  // added — but only while live (not while someone's browsing back through
+  // history via Prev/click, which would otherwise get yanked away from
+  // whatever position they're looking at).
+  useEffect(() => {
+    if (viewPly !== null) return;
+    const list = moveListScrollRef.current;
+    if (list) list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
+    const strip = moveStripScrollRef.current;
+    if (strip) strip.scrollTo({ left: strip.scrollWidth, behavior: "smooth" });
+  }, [moves.length, viewPly]);
 
   // The board's allotted space can be either width- or height-bound
   // depending on viewport shape (a tall phone vs. a wide desktop window),
@@ -211,6 +332,8 @@ export function Game() {
     let cancelled = false;
     setMode("loading");
     setLoadError("");
+    setViewPly(null);
+    setBoardFlipped(false);
 
     getGameByCode(code)
       .then(({ game }) => {
@@ -306,6 +429,14 @@ export function Game() {
       setPausedLeg(!!payload.paused);
       setWhiteBerserk(!!payload.berserk?.white);
       setBlackBerserk(!!payload.berserk?.black);
+      // The initial REST fetch runs before an opponent has necessarily
+      // joined, so gameMeta.black can still be null at that point — this
+      // is what actually keeps the player panels current once someone
+      // does join (or on any later resync/reconnect), instead of being
+      // stuck showing the "Black"/"White" placeholder forever.
+      setGameMeta((prev) =>
+        prev ? { ...prev, white: payload.white, black: payload.black } : prev,
+      );
       const gameIsOver =
         payload.status === "finished" || payload.status === "aborted";
       setGameOver(
@@ -356,6 +487,8 @@ export function Game() {
         potTokens: number;
         winnerId: string | null;
       } | null;
+      whiteRemainingMs?: number | null;
+      blackRemainingMs?: number | null;
     }) {
       setStatus(payload.reason === "aborted_no_moves" ? "aborted" : "finished");
       setGameOver(payload);
@@ -363,6 +496,15 @@ export function Game() {
       clearDisconnectCountdown();
       setDisconnectBanner(null);
       playGameOverSound();
+      // The clock display only ticks down live via elapsed-time math while
+      // the game is active — once status flips to finished that stops, so
+      // without this it would snap back to whatever whiteRemainingMs/
+      // blackRemainingMs were as of the *previous* move (e.g. a stale ~3s)
+      // instead of resting at the actual final time (0 for a timeout).
+      if (payload.whiteRemainingMs !== undefined)
+        setWhiteRemainingMs(payload.whiteRemainingMs);
+      if (payload.blackRemainingMs !== undefined)
+        setBlackRemainingMs(payload.blackRemainingMs);
 
       // A wager payout/refund (or the stake being locked away in the first
       // place) changes the R token balance — refresh the shared store so the
@@ -377,8 +519,10 @@ export function Game() {
     }
 
     function markConnection(userId: string, connected: boolean) {
-      if (gameMeta?.white?._id === userId) setWhiteConnected(connected);
-      if (gameMeta?.black?._id === userId) setBlackConnected(connected);
+      if (gameMetaRef.current?.white?._id === userId)
+        setWhiteConnected(connected);
+      if (gameMetaRef.current?.black?._id === userId)
+        setBlackConnected(connected);
     }
 
     function onOpponentConnected(payload: { userId: string }) {
@@ -487,22 +631,22 @@ export function Game() {
     }
 
     function onPauseRequestSent(payload: { matchId: string }) {
-      if (payload.matchId !== gameMeta?.cageMatchId) return;
+      if (payload.matchId !== gameMetaRef.current?.cageMatchId) return;
       setPauseRequestSent(true);
     }
 
     function onPauseDeclinedLocal(payload: { matchId: string }) {
-      if (payload.matchId !== gameMeta?.cageMatchId) return;
+      if (payload.matchId !== gameMetaRef.current?.cageMatchId) return;
       setPauseRequestSent(false);
     }
 
     function onResumeRequestSent(payload: { matchId: string }) {
-      if (payload.matchId !== gameMeta?.cageMatchId) return;
+      if (payload.matchId !== gameMetaRef.current?.cageMatchId) return;
       setResumeRequestSent(true);
     }
 
     function onResumeDeclinedLocal(payload: { matchId: string }) {
-      if (payload.matchId !== gameMeta?.cageMatchId) return;
+      if (payload.matchId !== gameMetaRef.current?.cageMatchId) return;
       setResumeRequestSent(false);
     }
 
@@ -554,7 +698,7 @@ export function Game() {
       socket.off("cage:resume_request_sent", onResumeRequestSent);
       socket.off("cage:resume_declined", onResumeDeclinedLocal);
     };
-  }, [mode, socket, gameMeta, notify]);
+  }, [mode, socket, gameMeta?._id, notify]);
 
   const handleUserMove = useCallback(
     (orig: string, dest: string) => {
@@ -699,6 +843,33 @@ export function Game() {
     }, 2000);
   };
 
+  function handleFlipBoard() {
+    setBoardFlipped((f) => !f);
+  }
+
+  /** Jumps straight to the position right after a given move (`ply` is
+   *  1-indexed, matching `moveNumber`). Selecting the current last move
+   *  snaps back to `null` (live) rather than an equal-but-distinct ply
+   *  number, so it behaves identically to Next walking off the end. */
+  function handleSelectMove(ply: number) {
+    setViewPly(ply >= liveViewPly ? null : ply);
+  }
+
+  function handlePrevMove() {
+    setViewPly((p) => {
+      const current = p ?? liveViewPly;
+      return Math.max(0, current - 1);
+    });
+  }
+
+  function handleNextMove() {
+    setViewPly((p) => {
+      if (p === null) return null; // already live
+      const next = p + 1;
+      return next >= liveViewPly ? null : next; // snap back to live at the end
+    });
+  }
+
   function handleSendChat(e: FormEvent) {
     e.preventDefault();
     if (!socket || !gameMeta || !chatInput.trim()) return;
@@ -831,6 +1002,7 @@ export function Game() {
     connected: whiteConnected,
     liveMs: liveWhiteMs,
     clockKnown,
+    lowTimeThresholdMs,
     ...whiteMaterial,
   };
   const blackPanelData = {
@@ -839,6 +1011,7 @@ export function Game() {
     connected: blackConnected,
     liveMs: liveBlackMs,
     clockKnown,
+    lowTimeThresholdMs,
     ...blackMaterial,
   };
   // The panel matching my seat renders closest to me — bottom on desktop,
@@ -849,15 +1022,34 @@ export function Game() {
 
   const showChat = !settings.zenMode && role === "spectator";
 
+  // Which ply is "selected" right now — the one being browsed, or the
+  // live move if nothing's being browsed. Drives the highlight below.
+  const currentPly = viewPly ?? liveViewPly;
+
   const moveListEntries =
     moves.length === 0 ? null : (
-      <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-sm text-base-content/80">
-        {moves.map((m) => (
-          <div key={m.moveNumber}>
-            <span className="text-base-content/40">{m.moveNumber}.</span>{" "}
-            {m.san}
-          </div>
-        ))}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 font-mono text-sm text-base-content/80">
+        {moves.map((m) => {
+          const isWhiteMove = m.moveNumber % 2 === 1;
+          const active = m.moveNumber === currentPly;
+          return (
+            <button
+              key={m.moveNumber}
+              type="button"
+              onClick={() => handleSelectMove(m.moveNumber)}
+              className={`rounded px-1 py-0.5 text-left transition-colors hover:bg-base-300/60 ${
+                active ? "bg-(--primary)/15 font-semibold text-(--primary)" : ""
+              }`}
+            >
+              {isWhiteMove && (
+                <span className="text-base-content/40">
+                  {Math.ceil(m.moveNumber / 2)}.{" "}
+                </span>
+              )}
+              {m.san}
+            </button>
+          );
+        })}
       </div>
     );
 
@@ -866,16 +1058,33 @@ export function Game() {
   // there's no room for a tall list once the board takes the full width.
   const moveStripEntries =
     moves.length === 0 ? null : (
-      <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-        {moves.map((m) => (
-          <span
-            key={m.moveNumber}
-            className="shrink-0 whitespace-nowrap rounded-lg bg-base-300/60 px-2 py-1 font-mono text-xs text-base-content/80"
-          >
-            <span className="text-base-content/40">{m.moveNumber}.</span>{" "}
-            {m.san}
-          </span>
-        ))}
+      <div
+        ref={moveStripScrollRef}
+        className="flex gap-1.5 overflow-x-auto pb-0.5"
+      >
+        {moves.map((m) => {
+          const isWhiteMove = m.moveNumber % 2 === 1;
+          const active = m.moveNumber === currentPly;
+          return (
+            <button
+              key={m.moveNumber}
+              type="button"
+              onClick={() => handleSelectMove(m.moveNumber)}
+              className={`shrink-0 whitespace-nowrap rounded-lg px-2 py-1 font-mono text-xs transition-colors ${
+                active
+                  ? "bg-(--primary)/20 font-semibold text-(--primary)"
+                  : "bg-base-300/60 text-base-content/80"
+              }`}
+            >
+              {isWhiteMove && (
+                <span className="text-base-content/40">
+                  {Math.ceil(m.moveNumber / 2)}.{" "}
+                </span>
+              )}
+              {m.san}
+            </button>
+          );
+        })}
       </div>
     );
 
@@ -914,8 +1123,41 @@ export function Game() {
   // as plain inline Buttons in the right panel from md up, and collapsed
   // into a single dropup trigger (via the Dropdown primitive, side="top")
   // on phone where there's no right panel to put them in.
-  const actionItems =
-    isPlayer && status === "active"
+  //
+  // Once the game's over and its modal has been dismissed, that space is
+  // reused for a single "Rematch" entry that just reopens GameOverModal —
+  // it's the only place with the actual offer-rematch button (and its
+  // "offer sent" disabled state), so this doesn't duplicate that logic,
+  // it just gets the modal back on screen. Mutually exclusive with the
+  // trio above: status can't be "active" once gameOver is set.
+  const canReopenRematch =
+    !!gameOver &&
+    gameOverModalDismissed &&
+    isPlayer &&
+    gameOver.reason !== "aborted_no_moves" &&
+    gameOver.reason !== "cage_forfeit";
+  const actionItems = [
+    {
+      label: boardFlipped ? "Unflip board" : "Flip board",
+      icon: FlipVertical2,
+      onClick: handleFlipBoard,
+      danger: false,
+    },
+    {
+      label: "Previous move",
+      icon: ChevronLeft,
+      onClick: handlePrevMove,
+      danger: false,
+      disabled: liveViewPly === 0 || viewPly === 0,
+    },
+    {
+      label: "Next move",
+      icon: ChevronRight,
+      onClick: handleNextMove,
+      danger: false,
+      disabled: viewPly === null,
+    },
+    ...(isPlayer && status === "active"
       ? moves.length < 2
         ? [{ label: "Abort", icon: Ban, onClick: handleAbort, danger: true }]
         : [
@@ -927,44 +1169,33 @@ export function Game() {
               danger: true,
             },
           ]
-      : [];
+      : []),
+    ...(canReopenRematch
+      ? [
+          {
+            label: "Rematch",
+            icon: RefreshCw,
+            onClick: () => setGameOverModalDismissed(false),
+            danger: false,
+          },
+        ]
+      : []),
+  ];
 
   return (
-    <div className="relative mx-auto flex max-w-6xl flex-col gap-2 pb-2 sm:px-0 md:h-[calc(100dvh-7rem)] md:gap-3">
-      {/* Cage scoreboard, pause state, the waiting-for-opponent notice, and
-       *  extra tournament/cage actions — untouched from before, still one
-       *  shrink-0 stack above everything else on every breakpoint. The old
-       *  disconnect banner used to live in here too; it's now pulled out
-       *  and rendered as an absolute, centered overlay below (see there for
-       *  why), so it doesn't shift this stack's height around. */}
+    <div className="relative mx-auto min-h-[calc(100dvh-7rem)] flex max-w-6xl flex-col justify-center gap-2 pb-2 md:h-[calc(100dvh-7rem)] md:gap-3">
+      {/* Cage scoreboard + standalone action buttons (berserk, request
+       *  pause, forfeit) — persistent controls a player deliberately
+       *  reaches for, not transient alerts, so these stay in normal flow.
+       *  Every actual *notification* (paused/waiting/error/disconnect) has
+       *  been pulled out into the absolute overlay stack below instead —
+       *  see the comment there for why. */}
       <div className="shrink-0 space-y-2">
         {!settings.zenMode && gameMeta?.cageMatchId && (
           <CageMatchScoreboard
             cageMatchId={gameMeta.cageMatchId}
             legIndex={gameMeta.legIndex ?? 0}
           />
-        )}
-
-        {pausedLeg && !gameOver && (
-          <div className="flex items-center justify-center gap-1.5 rounded-xl border border-amber-800/40 bg-amber-950/20 p-2.5 text-center text-sm text-amber-300">
-            <Pause className="h-4 w-4" /> This leg is paused
-            {isPlayer ? "" : " by the players"}.
-          </div>
-        )}
-
-        {isPlayer && status === "waiting" && (
-          <div className="flex absolute z-50 md:left-1/2 md:-translate-x-1/2 items-center gap-3 rounded-xl border border-base-300 glass px-3 py-2.5">
-            <p className="flex-1 text-sm text-base-content/60">
-              Waiting for an opponent to join…
-            </p>
-            <Button variant="glass" size="sm" onClick={handleCancelWaitingGame}>
-              <Ban className="h-4 w-4" /> Cancel game
-            </Button>
-          </div>
-        )}
-
-        {moveError && (
-          <p className="text-center text-sm text-red-400">{moveError}</p>
         )}
 
         {isPlayer &&
@@ -999,26 +1230,6 @@ export function Game() {
             </Button>
           )}
 
-        {isPlayer && gameMeta?.cageMatchId && pausedLeg && (
-          <Card
-            variant="solid"
-            className="border-amber-800/40 bg-amber-950/20 text-sm text-amber-300"
-          >
-            <p className="mb-2 flex items-center gap-1.5 font-semibold">
-              <Pause className="h-4 w-4" /> This leg is paused.
-            </p>
-            <Button
-              size="sm"
-              disabled={resumeRequestSent}
-              onClick={handleResumeRequest}
-              className="bg-amber-700 text-white shadow-none hover:bg-amber-600 hover:brightness-100"
-            >
-              <Play className="h-4 w-4" />
-              {resumeRequestSent ? "Resume request sent…" : "Request resume"}
-            </Button>
-          </Card>
-        )}
-
         {isPlayer && gameMeta?.cageMatchId && (
           <Button
             size="sm"
@@ -1030,48 +1241,137 @@ export function Game() {
         )}
       </div>
 
-      {/* Opponent-disconnect banner — absolute + centered over the page
-       *  instead of sitting in the banner stack, so a disconnect/reconnect
-       *  never shifts the board or panels around beneath it. */}
-      <AnimatePresence>
-        {disconnectBanner && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={springSnappy}
-            className="absolute inset-x-0 top-2 z-30 mx-auto w-[min(92vw,26rem)]"
-          >
-            <Card
-              variant="strong"
-              className="border-red-900/50 bg-red-950/30 shadow-xl"
+      {/* Notification overlay stack — leg-paused notice, waiting-for-
+       *  opponent, move errors, the paused-leg resume card, and the
+       *  opponent-disconnect banner. All absolute + centered over the page
+       *  instead of sitting inline above the board, so any one of them
+       *  popping in or out mid-game never shifts the board or panels
+       *  beneath it. Stacked in one flex column (rather than each doing
+       *  its own absolute math like the old disconnect-only version) so
+       *  multiple notifications showing at once — say a move error right
+       *  as the opponent disconnects — line up instead of overlapping.
+       *  The wrapper is pointer-events-none so empty space over the board
+       *  stays clickable/draggable; each banner opts back into
+       *  pointer-events-auto for its own buttons. */}
+      <div className="pointer-events-none absolute inset-x-0 top-2 z-30 mx-auto flex w-[min(92vw,26rem)] flex-col items-stretch gap-2">
+        <AnimatePresence>
+          {pausedLeg && !gameOver && (
+            <motion.div
+              key="paused-banner"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={springSnappy}
+              className="pointer-events-auto flex items-center justify-center gap-1.5 rounded-xl border border-amber-500/30 bg-base-200 p-2.5 text-center text-sm text-amber-500 shadow-lg"
             >
-              <p className="mb-2 flex items-center gap-1.5 text-sm text-red-300">
-                <ShieldAlert className="h-4 w-4 shrink-0" />{" "}
-                {disconnectBanner.message}
+              <Pause className="h-4 w-4" /> This leg is paused
+              {isPlayer ? "" : " by the players"}.
+            </motion.div>
+          )}
+
+          {isPlayer && status === "waiting" && (
+            <motion.div
+              key="waiting-banner"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={springSnappy}
+              className="pointer-events-auto flex items-center gap-3 rounded-xl border border-base-300 bg-base-100 px-3 py-2.5 shadow-lg"
+            >
+              <p className="flex-1 text-sm text-base-content/60">
+                Waiting for an opponent to join…
               </p>
-              {disconnectBanner.claimable && (
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    onClick={() => handleClaim("win")}
-                  >
-                    Claim victory
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="glass"
-                    onClick={() => handleClaim("draw")}
-                  >
-                    Claim draw
-                  </Button>
-                </div>
-              )}
-            </Card>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <Button
+                variant="glass"
+                size="sm"
+                onClick={handleCancelWaitingGame}
+              >
+                <Ban className="h-4 w-4" /> Cancel game
+              </Button>
+            </motion.div>
+          )}
+
+          {moveError && (
+            <motion.p
+              key="move-error"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={springSnappy}
+              className="pointer-events-auto rounded-xl bg-base-100 px-3 py-2 text-center text-sm text-red-400 shadow-lg"
+            >
+              {moveError}
+            </motion.p>
+          )}
+
+          {isPlayer && gameMeta?.cageMatchId && pausedLeg && (
+            <motion.div
+              key="paused-card"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={springSnappy}
+              className="pointer-events-auto"
+            >
+              <Card
+                variant="strong"
+                className="border-amber-500/30 text-sm text-amber-500 shadow-xl"
+              >
+                <p className="mb-2 flex items-center gap-1.5 font-semibold">
+                  <Pause className="h-4 w-4" /> This leg is paused.
+                </p>
+                <Button
+                  size="sm"
+                  disabled={resumeRequestSent}
+                  onClick={handleResumeRequest}
+                  className="bg-amber-700 text-white shadow-none hover:bg-amber-600 hover:brightness-100"
+                >
+                  <Play className="h-4 w-4" />
+                  {resumeRequestSent
+                    ? "Resume request sent…"
+                    : "Request resume"}
+                </Button>
+              </Card>
+            </motion.div>
+          )}
+
+          {disconnectBanner && (
+            <motion.div
+              key="disconnect-banner"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={springSnappy}
+              className="pointer-events-auto"
+            >
+              <Card variant="strong" className="border-red-900/50 shadow-xl">
+                <p className="mb-2 flex items-center gap-1.5 text-sm text-red-300">
+                  <ShieldAlert className="h-4 w-4 shrink-0" />{" "}
+                  {disconnectBanner.message}
+                </p>
+                {disconnectBanner.claimable && (
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      onClick={() => handleClaim("win")}
+                    >
+                      Claim victory
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="glass"
+                      onClick={() => handleClaim("draw")}
+                    >
+                      Claim draw
+                    </Button>
+                  </div>
+                )}
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
       {/* Main layout — a plain top-to-bottom stack on phone (details, board,
        *  panels flanking it top/bottom), becoming a CSS grid from md up
@@ -1085,98 +1385,106 @@ export function Game() {
          *  version of this button lives in the right panel), badges,
          *  status, and the move list. Left column on desktop; a full-width
          *  strip above the board/panel row on tablet and phone. */}
-        <Card
-          variant="solid"
-          className="game-area-leftinfo flex shrink-0 flex-col gap-3 lg:h-full lg:min-h-0"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-lg font-bold text-base-content">
-                Game{" "}
-                <span className="font-normal text-base-content/40">
-                  · {code}
-                </span>
-              </h1>
-              <motion.button
-                type="button"
-                onClick={handleShareGame}
-                whileTap={{ scale: 0.9 }}
-                transition={springSnappy}
-                className="glass relative flex h-9 w-9 items-center justify-center rounded-full text-base-content/80 hover:text-base-content"
-              >
-                <Share2 className="size-4" />
-              </motion.button>
-              {showChat && (
+        <div className="game-area-leftinfo flex shrink-0 flex-col justify-center gap-3 lg:h-full lg:min-h-0">
+          <Card variant="solid">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-base font-bold text-base-content">
+                  Game{" "}
+                  <span className="font-normal text-base-content/40">
+                    · {code}
+                  </span>
+                </h1>
                 <motion.button
                   type="button"
-                  onClick={() => setChatSheetOpen(true)}
+                  onClick={handleShareGame}
                   whileTap={{ scale: 0.9 }}
                   transition={springSnappy}
-                  className="glass relative flex h-9 w-9 items-center justify-center rounded-full text-base-content/80 hover:text-base-content md:hidden"
-                  title="Spectator chat"
+                  className="glass relative flex size-7 items-center justify-center rounded-full text-base-content/80 hover:text-base-content"
                 >
-                  <MessageSquare className="size-4" />
+                  <Share2 className="size-4" />
                 </motion.button>
-              )}
-            </div>
-            <span className="flex items-center gap-1.5 text-xs font-medium text-base-content/60">
-              {!gameOver && (
-                <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-              )}
-              {gameOver
-                ? `Game over — ${describeResult(gameOver.result)} (${gameOver.reason.replace(/_/g, " ")})`
-                : connStatus}
-            </span>
-          </div>
-
-          {badges.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2">{badges}</div>
-          )}
-
-          {!settings.zenMode && (
-            <div className="min-h-0 lg:flex lg:flex-1 lg:flex-col">
-              <h2 className="mb-1 shrink-0 text-xs font-semibold uppercase tracking-wide text-base-content/50">
-                Moves
-              </h2>
-              {/* Vertical list — tablet & desktop. */}
-              <div className="hidden min-h-0 overflow-y-auto pr-1 md:block md:max-h-48 lg:max-h-none lg:flex-1">
-                {moveListEntries ?? (
-                  <p className="text-sm text-base-content/50">No moves yet.</p>
+                {badges.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {badges}
+                  </div>
+                )}
+                {showChat && (
+                  <motion.button
+                    type="button"
+                    onClick={() => setChatSheetOpen(true)}
+                    whileTap={{ scale: 0.9 }}
+                    transition={springSnappy}
+                    className="glass relative flex h-9 w-9 items-center justify-center rounded-full text-base-content/80 hover:text-base-content md:hidden"
+                    title="Spectator chat"
+                  >
+                    <MessageSquare className="size-4" />
+                  </motion.button>
                 )}
               </div>
-              {/* Horizontal scrollable strip — phone only. */}
-              <div className="md:hidden">
-                {moveStripEntries ?? (
-                  <p className="text-sm text-base-content/50">No moves yet.</p>
+              <span className="flex items-center mb-4 gap-1.5 text-xs font-medium text-base-content/60">
+                {!gameOver && (
+                  <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
                 )}
-              </div>
+                {gameOver
+                  ? `Game over — ${describeResult(gameOver.result)} (${gameOver.reason.replace(/_/g, " ")})`
+                  : connStatus}
+              </span>
             </div>
-          )}
-        </Card>
+
+            {!settings.zenMode && (
+              <div className="min-h-0 lg:flex lg:flex-col">
+                {/* Vertical list — tablet & desktop. */}
+                <h2 className="hidden lg:flex mt-3 text-base-content/40 text-sm font-semibold">
+                  Moves
+                </h2>
+                <div
+                  ref={moveListScrollRef}
+                  className="hidden min-h-0 overflow-y-auto max-h-40 mb-1 pr-1 lg:block lg:flex-1"
+                >
+                  {moveListEntries ?? <></>}
+                </div>
+                {/* Horizontal scrollable strip — phone only. */}
+                <div className="lg:hidden">{moveStripEntries ?? <></>}</div>
+              </div>
+            )}
+          </Card>
+        </div>
 
         {/* Opponent panel — phone only, sits directly above the board. */}
-        <div className="game-area-toppanel md:hidden">
-          <PlayerPanelRow {...opponentPanelData} />
-        </div>
 
         {/* The board itself — centered in its grid cell, sized to fill
          *  whichever of width/height is the binding constraint (full width
          *  on phone; the grid row's height from md up, where the row is
          *  fixed to the viewport). */}
-        <div className="game-area-board flex min-h-0 min-w-0 flex-1 items-center justify-center">
+        <div className="game-area-board flex flex-col min-h-0 min-w-0 flex-1 items-center justify-center">
+          <div className="game-area-toppanel md:hidden w-[95%]">
+            <PlayerPanelRow {...opponentPanelData} />
+          </div>
           <div
-            className={`relative aspect-square w-full max-w-full overflow-hidden rounded-2xl shadow-lg md:h-full md:w-auto board-theme-${settings.boardTheme} piece-theme-${settings.pieceTheme}`}
+            className={`relative aspect-square w-full min-w-60 min-h-60 max-w-full md:h-auto md:max-h-full md:w-full overflow-hidden rounded-2xl shadow-lg board-theme-${settings.boardTheme} piece-theme-${settings.pieceTheme}`}
           >
             <ChessBoard
-              fen={fen}
-              orientation={myColor ?? "white"}
-              viewOnly={!isPlayer || status !== "active" || pausedLeg}
+              fen={displayFen}
+              orientation={
+                boardFlipped
+                  ? myColor === "black"
+                    ? "white"
+                    : "black"
+                  : (myColor ?? "white")
+              }
+              viewOnly={
+                !isPlayer ||
+                status !== "active" ||
+                pausedLeg ||
+                isViewingHistory
+              }
               turnColor={chess.turn() === "w" ? "white" : "black"}
               movableColor={myColor}
               dests={dests}
               premoveDests={premoveDests}
               inCheck={inCheck}
-              lastMove={lastMove}
+              lastMove={displayLastMove}
               onUserMove={handleUserMove}
               animationEnabled={settings.pieceAnimation}
               showCoordinates={settings.showCoordinates}
@@ -1184,91 +1492,89 @@ export function Game() {
             />
             {promoPending && <PromotionPicker onPick={handlePromotionPick} />}
           </div>
+          <div className="game-area-bottompanel md:hidden w-[95%]">
+            <PlayerPanelRow {...myPanelData} />
+          </div>
         </div>
 
         {/* My panel — phone only, sits directly below the board. */}
-        <div className="game-area-bottompanel md:hidden">
-          <PlayerPanelRow {...myPanelData} />
-        </div>
 
         {/* Right panel — tablet & desktop. Player panels, then spectator
          *  chat (a trigger button that opens the modal on tablet; the full
          *  inline card from lg up), then the resign/draw/abort actions
          *  pinned to the bottom via mt-auto. */}
-        <div className="game-area-rightpanel min-h-0 flex-col gap-3">
-          <Card variant="solid" className="shrink-0 space-y-2">
-            <PlayerPanelRow {...opponentPanelData} />
-            <PlayerPanelRow {...myPanelData} />
-          </Card>
+        <div className="game-area-rightpanel justify-center min-h-0 flex-col gap-3">
+          <div>
+            <Card variant="solid" className="shrink-0 space-y-2">
+              <PlayerPanelRow {...opponentPanelData} />
 
-          {showChat && (
-            <>
-              <Button
-                variant="glass"
-                size="md"
-                onClick={() => setChatSheetOpen(true)}
-                className="shrink-0 lg:hidden"
-              >
-                <MessageSquare className="h-4 w-4" /> Spectator chat
-              </Button>
-              <Card
-                variant="solid"
-                className="hidden min-h-0 flex-1 flex-col lg:flex"
-              >
-                <h2 className="mb-1 flex shrink-0 items-center gap-1.5 text-base font-semibold text-base-content">
+              <PlayerPanelRow {...myPanelData} />
+            </Card>
+
+            {showChat && (
+              <>
+                <Button
+                  variant="glass"
+                  size="md"
+                  onClick={() => setChatSheetOpen(true)}
+                  className="shrink-0 lg:hidden"
+                >
                   <MessageSquare className="h-4 w-4" /> Spectator chat
-                </h2>
-                <p className="mb-2 shrink-0 text-xs text-base-content/50">
-                  Only visible to spectators, not the players. Not saved —
-                  refreshing clears it.
-                </p>
-                {chatBody}
-              </Card>
-            </>
-          )}
+                </Button>
+                <Card
+                  variant="solid"
+                  className="hidden min-h-0 flex-1 flex-col lg:flex"
+                >
+                  <h2 className="mb-1 flex shrink-0 items-center gap-1.5 text-base font-semibold text-base-content">
+                    <MessageSquare className="h-4 w-4" /> Spectator chat
+                  </h2>
+                  <p className="mb-2 shrink-0 text-xs text-base-content/50">
+                    Only visible to spectators, not the players. Not saved —
+                    refreshing clears it.
+                  </p>
+                  {chatBody}
+                </Card>
+              </>
+            )}
 
-          {actionItems.length > 0 && (
-            <div className="mt-auto flex shrink-0 flex-col gap-2 pt-2">
-              {actionItems.map((item) => (
+            {actionItems.length > 0 && (
+              <div className="mt-auto hidden md:flex justify-center shrink-0 gap-2 pt-2">
+                {actionItems.map((item) => (
+                  <Tooltip content={item.label}>
+                    <Button
+                      key={item.label}
+                      variant={item.danger ? "danger" : "glass"}
+                      onClick={item.onClick}
+                      disabled={item.disabled}
+                    >
+                      <item.icon className="h-4 w-4" />
+                    </Button>
+                  </Tooltip>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div>
+        {actionItems.length > 0 && (
+          <div className="md:hidden flex justify-center gap-2 pt-2">
+            {actionItems.map((item) => (
+              <Tooltip content={item.label}>
                 <Button
                   key={item.label}
                   variant={item.danger ? "danger" : "glass"}
                   onClick={item.onClick}
+                  disabled={item.disabled}
                 >
-                  <item.icon className="h-4 w-4" /> {item.label}
+                  <item.icon className="h-4 w-4" />
                 </Button>
-              ))}
-            </div>
-          )}
-        </div>
+              </Tooltip>
+            ))}
+          </div>
+        )}
       </div>
-
-      {/* Actions dropup — phone only. Resign/draw/abort collapse into a
-       *  single "Actions" trigger that opens upward, fixed above the
-       *  bottom-of-screen safe area, since there's no right panel on phone
-       *  to hold them as standalone buttons. */}
-      {actionItems.length > 0 && (
-        <div
-          className="fixed inset-x-0 z-30 flex justify-center md:hidden"
-          style={{ bottom: "calc(1rem + env(safe-area-inset-bottom))" }}
-        >
-          <Dropdown
-            side="top"
-            align="end"
-            trigger={
-              <Button variant="glass" size="md" className="shadow-lg">
-                <ChevronUp className="h-4 w-4" /> Actions
-              </Button>
-            }
-            items={actionItems.map((item) => ({
-              label: item.label,
-              icon: item.icon,
-              onClick: item.onClick,
-              danger: item.danger,
-            }))}
-          />
-        </div>
-      )}
 
       {/* Spectator chat modal — shared by tablet and phone (desktop shows
        *  the chat inline in the right panel instead, so this never opens

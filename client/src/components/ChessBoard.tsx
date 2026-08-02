@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { Chessground } from '@lichess-org/chessground';
 import { Key } from '@lichess-org/chessground/types';
 
@@ -48,13 +48,41 @@ export function ChessBoard({
   showCoordinates = true,
   showLegalMoves = true,
 }: ChessBoardProps) {
+  const outerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const groundRef = useRef<CgApi | null>(null);
   const onUserMoveRef = useRef(onUserMove);
   onUserMoveRef.current = onUserMove;
 
+  // Chessground lays out its 8x8 grid from this container's raw pixel
+  // size. The parent boxes this in with fluid CSS (aspect-square, flex,
+  // %-based widths) rather than a fixed pixel size, so the measured width
+  // is essentially never an exact multiple of 8 — each square works out
+  // to something like 54.625px. The square/piece grid itself gets pixel-
+  // snapped internally, but the rank/file coordinate labels are drawn
+  // with independent CSS percentages, so the two drift apart by a
+  // fraction of a pixel per square — small on square one, visibly off by
+  // the far edge of the board. That's the "board numbers always tend to
+  // be misaligned" bug. Snapping the mounted box down to the nearest
+  // multiple of 8 makes every square (and therefore every coordinate
+  // label) land on a whole pixel, so nothing can drift.
+  const [boardSize, setBoardSize] = useState(0);
   useLayoutEffect(() => {
-    if (!containerRef.current) return;
+    const outer = outerRef.current;
+    if (!outer) return;
+    function measure() {
+      const box = outer!.getBoundingClientRect();
+      const side = Math.floor(Math.min(box.width, box.height) / 8) * 8;
+      setBoardSize(side);
+    }
+    measure();
+    const resizeObserver = new ResizeObserver(measure);
+    resizeObserver.observe(outer);
+    return () => resizeObserver.disconnect();
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!containerRef.current || boardSize === 0) return;
     const config: CgConfig = {
       fen,
       orientation,
@@ -98,8 +126,13 @@ export function ChessBoard({
     // .set() call. The board's first render always happens before we know
     // whether the user is a player (that arrives via game:sync moments later),
     // so viewOnly starts true and must trigger a full rebuild when it flips.
+    // `boardSize === 0` gates the very first (unmeasured) pass so chessground
+    // never constructs against a 0x0 box; `boardSize > 0` (not the numeric
+    // value itself) is what's actually in the deps array so later resizes
+    // — handled by the redrawAll effect below — don't tear down and rebuild
+    // the whole instance.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewOnly]);
+  }, [viewOnly, boardSize > 0]);
 
   useLayoutEffect(() => {
     groundRef.current?.set({
@@ -140,5 +173,22 @@ export function ChessBoard({
     showLegalMoves,
   ]);
 
-  return <div ref={containerRef} className="cg-wrap" />;
+  // The board resized (window resize, sidebar collapse/expand, orientation
+  // change) without changing viewOnly, so the construction effect above
+  // won't rebuild — tell the already-live instance to recompute its bounds
+  // against the container's new (still multiple-of-8) pixel size instead.
+  useLayoutEffect(() => {
+    if (boardSize === 0) return;
+    (groundRef.current as any)?.redrawAll?.();
+  }, [boardSize]);
+
+  return (
+    <div ref={outerRef} className="flex h-full w-full items-center justify-center">
+      <div
+        ref={containerRef}
+        className="cg-wrap"
+        style={{ width: boardSize || '100%', height: boardSize || '100%' }}
+      />
+    </div>
+  );
 }

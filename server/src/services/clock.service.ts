@@ -25,6 +25,16 @@ export function clearGameTimer(gameId: string): void {
  *  No-ops entirely during the idle phase (before both sides have made their
  *  first move) since the real clock isn't running yet — see
  *  gameState.service.ts's computeTimeoutWinner/finalizeMove. */
+// A last-second move sent right as the clock reads 0:00 still has to travel
+// over the network before the server can apply it — this is the grace
+// window between "the clock's raw duration has elapsed" and "actually check
+// & declare the timeout", so that move isn't unfairly pre-empted by the
+// flag-fall timer. It only needs to cover one leg of network transit plus
+// Node's own setTimeout scheduling jitter, not a full round trip, so it can
+// stay small — a large buffer here just reads as a delay before the loser
+// gets declared.
+const FLAG_FALL_GRACE_MS = 250;
+
 export async function scheduleGameTimer(gameId: string): Promise<void> {
   clearGameTimer(gameId);
 
@@ -55,7 +65,7 @@ export async function scheduleGameTimer(gameId: string): Promise<void> {
     if (!fresh) return;
     const winner = computeTimeoutWinner(fresh);
     if (winner && timeoutHandler) await timeoutHandler(gameId, winner);
-  }, remaining + 1500);
+  }, remaining + FLAG_FALL_GRACE_MS);
 
   timers.set(gameId, timer);
 }

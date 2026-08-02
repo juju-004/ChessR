@@ -285,7 +285,15 @@ body {
 @media (min-width: 768px) {
   .game-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 300px;
+    justify-content: center;
+    /* Board width is now the authored, fixed value per breakpoint — it's
+       the anchor dimension. The right panel is the one that flexes: its
+       track has no fr unit, so during grid's "maximize tracks" step it
+       absorbs whatever space is left over in the row (since the board's
+       track has no room left to grow), up to the max in its minmax() —
+       that max is the panel's expansion cap. Below its cap it still
+       won't go under its min, so it can't get crushed either. */
+    grid-template-columns: 440px minmax(220px, 340px);
     grid-template-rows: auto minmax(0, 1fr);
     grid-template-areas:
       "leftinfo leftinfo"
@@ -310,7 +318,7 @@ body {
 
 @media (min-width: 1024px) {
   .game-grid {
-    grid-template-columns: 260px minmax(0, 1fr) 320px;
+    grid-template-columns: 220px 520px minmax(240px, 360px);
     grid-template-rows: 1fr;
     grid-template-areas: "leftinfo board rightpanel";
   }

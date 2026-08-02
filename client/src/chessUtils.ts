@@ -20,21 +20,48 @@ export function turnColor(chess: Chess): 'white' | 'black' {
   return chess.turn() === 'w' ? 'white' : 'black';
 }
 
+/** Fixed cutoff for switching the clock display into deciseconds — this one
+ *  is intentionally NOT time-control-scaled (unlike LOW_TIME threshold
+ *  below): the point of showing tenths is purely "the flag is about to
+ *  fall", which is the same visual moment regardless of whether this was a
+ *  1-minute or 30-minute game. */
+const DECISECONDS_DISPLAY_MS = 10_000;
+
 /**
- * Always renders as MM:SS:D (minutes : seconds : tenths-of-a-second), e.g.
- * "05:30:0" or, right at the buzzer, "00:00:0" — previously this only showed
- * minutes:seconds and (via Math.floor on whole seconds) visually got stuck
- * on "0:01" for the better part of a second before the flag actually fell,
- * making it look like the clock never really reached zero. Carrying the
- * deciseconds through at all times fixes that and matches what's asked for.
+ * "MM:SS" normally; switches to "MM:SS:D" (tenths of a second) once under
+ * DECISECONDS_DISPLAY_MS remain, e.g. "05:30" most of the game, "00:07:4"
+ * right at the end — so the last few seconds read as smoothly counting
+ * down to zero instead of visibly freezing on a whole second for however
+ * much of it is left.
  */
-export function formatClock(ms: number, _precise = false): string {
+export function formatClock(ms: number): string {
   const clamped = Math.max(0, ms);
   const totalDeciseconds = Math.floor(clamped / 100);
   const minutes = Math.floor(totalDeciseconds / 600);
   const seconds = Math.floor(totalDeciseconds / 10) % 60;
-  const deciseconds = totalDeciseconds % 10;
-  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}:${deciseconds}`;
+  const mm = minutes.toString().padStart(2, '0');
+  const ss = seconds.toString().padStart(2, '0');
+  if (clamped < DECISECONDS_DISPLAY_MS) {
+    const deciseconds = totalDeciseconds % 10;
+    return `${mm}:${ss}:${deciseconds}`;
+  }
+  return `${mm}:${ss}`;
+}
+
+/**
+ * The "you're running low" threshold used for both the red clock styling
+ * and the low-time warning sound — scaled to the time control instead of a
+ * single flat number, since 10 seconds left means something very different
+ * in a 1-minute bullet game vs. a 30-minute classical one. Defined as 5% of
+ * the starting time, floored at 5s (so even bullet games get *some*
+ * warning) and capped at 60s (so classical games aren't warned a full
+ * minute out, before it's actually urgent). `null` (unlimited time control)
+ * returns 0, meaning "never low" — there's no flag to worry about.
+ */
+export function computeLowTimeThresholdMs(baseSeconds: number | null): number {
+  if (baseSeconds === null || baseSeconds <= 0) return 0;
+  const thresholdSeconds = Math.min(60, Math.max(5, baseSeconds * 0.05));
+  return thresholdSeconds * 1000;
 }
 
 /** Whether the side to move is currently in check. */
@@ -57,6 +84,14 @@ export interface MaterialDiff {
   /** Pieces missing from white's side, i.e. captured BY black — shown on
    *  black's panel. */
   capturedByBlack: CapturedPieceCount[];
+  /** Net, already-cancelled per-type imbalance — e.g. if white has
+   *  captured 2 pawns and black has captured 1, this is 1 pawn for white,
+   *  not 2. This (not the raw capturedByWhite/Black above) is what a
+   *  material-diff display should actually render as piece icons, same
+   *  as lichess/chess.com: a pair of same-type captures on both sides
+   *  cancels out rather than showing on both trays. */
+  netCapturedByWhite: CapturedPieceCount[];
+  netCapturedByBlack: CapturedPieceCount[];
   /** Standard point value of white's remaining pieces minus black's.
    *  Positive → white is ahead by that many points, negative → black is. */
   advantage: number;
@@ -112,6 +147,8 @@ export function computeMaterialDiff(fen: string): MaterialDiff {
 
   const capturedByWhite: CapturedPieceCount[] = [];
   const capturedByBlack: CapturedPieceCount[] = [];
+  const netCapturedByWhite: CapturedPieceCount[] = [];
+  const netCapturedByBlack: CapturedPieceCount[] = [];
   let whiteValue = 0;
   let blackValue = 0;
 
@@ -123,9 +160,19 @@ export function computeMaterialDiff(fen: string): MaterialDiff {
     const missingFromWhite = MATERIAL_START_COUNTS[type] - whiteCounts[type];
     if (missingFromBlack > 0) capturedByWhite.push({ type, count: missingFromBlack });
     if (missingFromWhite > 0) capturedByBlack.push({ type, count: missingFromWhite });
+
+    const net = missingFromBlack - missingFromWhite;
+    if (net > 0) netCapturedByWhite.push({ type, count: net });
+    else if (net < 0) netCapturedByBlack.push({ type, count: -net });
   }
 
-  return { capturedByWhite, capturedByBlack, advantage: whiteValue - blackValue };
+  return {
+    capturedByWhite,
+    capturedByBlack,
+    netCapturedByWhite,
+    netCapturedByBlack,
+    advantage: whiteValue - blackValue,
+  };
 }
 // =============== END MATERIAL DIFF ================
 

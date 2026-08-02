@@ -93,6 +93,18 @@ export function playGameStartSound() {
   ]);
 }
 
+/** A sharp double-beep — the clock just crossed into "you're running low"
+ *  territory. Deliberately higher-pitched and more clipped than the check
+ *  alert so it reads as "look at the clock" rather than "look at the
+ *  board". Fires once per crossing (see the ref-guarded effect in
+ *  Game.tsx), not on every tick while time stays low. */
+export function playLowTimeSound() {
+  playTones([
+    { freq: 1046, startOffset: 0, duration: 0.08, type: 'square', gain: 0.16 },
+    { freq: 1046, startOffset: 0.12, duration: 0.08, type: 'square', gain: 0.16 },
+  ]);
+}
+
 /** A descending chime when a game ends (win, loss, draw, abort — same cue). */
 export function playGameOverSound() {
   playTones([
