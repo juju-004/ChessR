@@ -7,12 +7,12 @@ import {
   Swords,
   Trophy,
   Settings,
-  Menu,
   type LucideIcon,
+  TableOfContents,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext.js";
 import { cn } from "../lib/cn.js";
-import { springSnappy } from "../lib/motion.js";
+import { pressable, springSnappy } from "../lib/motion.js";
 import { Dropdown, type DropdownItem } from "./ui/Dropdown.js";
 
 interface NavItem {
@@ -119,12 +119,13 @@ function MobileNavFab() {
     >
       <Dropdown
         trigger={
-          <button
+          <motion.button
+            {...pressable}
             aria-label="Open navigation menu"
-            className="glass-strong flex h-14 w-14 items-center justify-center rounded-full text-base-content shadow-xl transition-colors hover:bg-base-content/5"
+            className="glass-strong flex h-12 w-12 items-center justify-center rounded-full text-base-content shadow-xl transition-colors hover:bg-base-content/5"
           >
-            <Menu className="h-6 w-6" strokeWidth={2} />
-          </button>
+            <TableOfContents className="h-5 w-5" strokeWidth={3} />
+          </motion.button>
         }
         items={items}
         align="start"

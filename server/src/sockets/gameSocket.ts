@@ -109,9 +109,7 @@ async function endGameAndBroadcast(
 // leg starts automatically, or the whole match concludes (including any
 // winner-takes-all payout). Looked up fresh from Mongo rather than threaded
 // through every call site, since the overwhelming majority of games have
-// nothing to do with a cage match. A no-moves abort has no real winner, so
-// it's reported as a draw for leg-scoring purposes — the per-leg wager (if
-// any) is still refunded rather than paid out, via refundWagerBothSides.
+// nothing to do with a cage match.
 async function advanceCageMatchIfLeg(
   gameId: string,
   result: 'white' | 'black' | 'draw',
@@ -198,6 +196,10 @@ async function handlePotentialDisconnect(io: Server, gameId: string, userId: str
   if (!state || state.status !== 'active') return;
   const isPlayer = state.whiteId === userId || state.blackId === userId;
   if (!isPlayer) return; // spectators leaving is a non-event
+  // Idle-phase abandonment already has its own escape hatch — Abort for a
+  // normal game, Pause for a cage match leg — so the claim-after-disconnect
+  // flow only kicks in once the game is actually underway.
+  if (state.moveCount < 2) return;
 
   setTimeout(async () => {
     try {
@@ -206,6 +208,7 @@ async function handlePotentialDisconnect(io: Server, gameId: string, userId: str
 
       const freshState = await getLiveState(gameId);
       if (!freshState || freshState.status !== 'active') return;
+      if (freshState.moveCount < 2) return;
 
       const expiresAt = Date.now() + DISCONNECT_GRACE_MS;
       pendingDisconnects.set(gameId, { disconnectedUserId: userId, expiresAt });
@@ -500,6 +503,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       const game = await Game.findById(gameId).lean();
       if (!game) return emitError(socket, 'Game not found');
       if (game.status !== 'finished') return emitError(socket, 'Game has not finished yet');
+      if (game.cageMatchId) return emitError(socket, 'Cage match games cannot be rematched');
 
       const isWhite = game.white.toString() === userId;
       const isBlack = game.black?.toString() === userId;
@@ -579,13 +583,21 @@ export function registerGameHandlers(io: Server, socket: Socket) {
   // Lets either player back out cleanly before the game has really started —
   // deliberately separate from resign: no winner is recorded, and it never
   // shows up in either player's W/L/D stats or game history (those only count
-  // status: 'finished' games).
+  // status: 'finished' games). Cage match legs and tournament pairings don't
+  // get this — a cage leg has "pause" as its idle-phase escape hatch instead,
+  // and a tournament pairing has neither, since walking away from a bracket
+  // game shouldn't be this cheap.
   socket.on(
     'game:abort',
     safeHandler(socket, async (raw: unknown) => {
       const parsed = abortSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid payload');
       const { gameId } = parsed.data;
+
+      const game = await Game.findById(gameId).select('cageMatchId tournamentId').lean();
+      if (!game) return emitError(socket, 'Game not found');
+      if (game.cageMatchId) return emitError(socket, 'Cage match legs can only be paused, not aborted');
+      if (game.tournamentId) return emitError(socket, 'Tournament games cannot be aborted');
 
       const state = await getLiveState(gameId);
       if (!state) return emitError(socket, 'Game is not active');
@@ -605,8 +617,6 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       await deleteLiveState(gameId);
 
       io.to(gameRoom(gameId)).emit('game:over', { gameId, result: null, reason: 'aborted_no_moves' });
-
-      await advanceCageMatchIfLeg(gameId, 'draw', 'aborted_no_moves');
     }),
   );
 

@@ -25,6 +25,15 @@ import { advanceTournamentIfPairing } from "./tournament.service.js";
 
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
+// A normal game (not a cage match leg, not a tournament pairing) that's sat
+// in the idle phase — active, but neither side has made their first move —
+// for this long gets auto-cancelled by the reconciliation sweep below.
+// Cage match legs have their own no-show forfeit timer, and tournament
+// pairings are intentionally left out of scope here (walking away from a
+// bracket game isn't something either safety net should do quietly on a
+// player's behalf), so only plain games get this treatment.
+const IDLE_PHASE_ABANDON_MS = 5 * 60 * 1000;
+
 const generateCode = customAlphabet("ABCDEFGHJKMNPQRSTUVWXYZ23456789", 6);
 
 async function uniqueJoinCode(): Promise<string> {
@@ -428,11 +437,13 @@ export async function reconcileActiveGames(): Promise<{
   resumed: number;
   timedOut: number;
   aborted: number;
+  idleCancelled: number;
 }> {
   const activeGames = await Game.find({ status: "active" }).lean();
   let resumed = 0;
   let timedOut = 0;
   let aborted = 0;
+  let idleCancelled = 0;
 
   for (const g of activeGames) {
     const gameId = g._id.toString();
@@ -464,6 +475,23 @@ export async function reconcileActiveGames(): Promise<{
         );
       }
       aborted++;
+      continue;
+    }
+
+    if (
+      !g.cageMatchId &&
+      !g.tournamentId &&
+      liveState.moveCount < 2 &&
+      g.startedAt &&
+      Date.now() - g.startedAt.getTime() > IDLE_PHASE_ABANDON_MS
+    ) {
+      await finalizeGame(gameId, liveState.fen, "aborted", null, "idle_timeout");
+      await refundWagerBothSides(gameId, liveState.whiteId, liveState.blackId, liveState.wagerTokens).catch(
+        (err) => console.error("refundWagerBothSides failed during idle reconciliation:", err),
+      );
+      await deleteLiveState(gameId);
+      getIo().to(`game:${gameId}`).emit("game:over", { gameId, result: null, reason: "idle_timeout" });
+      idleCancelled++;
       continue;
     }
 
@@ -506,5 +534,5 @@ export async function reconcileActiveGames(): Promise<{
     resumed++;
   }
 
-  return { resumed, timedOut, aborted };
+  return { resumed, timedOut, aborted, idleCancelled };
 }

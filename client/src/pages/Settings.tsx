@@ -32,23 +32,32 @@ const PIECE_THEMES: {
   value: PieceTheme;
   label: string;
   description: string;
+  available: boolean;
 }[] = [
   {
     value: "classic",
     label: "Classic",
-    description: "The default cburnett set, untouched.",
+    description: "The cburnett set.",
+    available: true,
   },
   {
     value: "mono",
     label: "Monochrome",
-    description: "Grayscale, high-contrast silhouettes.",
+    description: "The alpha set — flat, minimalist silhouettes.",
+    available: true,
   },
   {
     value: "contrast",
     label: "High contrast",
-    description: "Punchier colors and edges.",
+    description: "The maestro set — bold, blocky, high-contrast pieces.",
+    available: true,
   },
-  { value: "wood", label: "Wood", description: "A warm, sepia-toned finish." },
+  {
+    value: "wood",
+    label: "Wood",
+    description: "The merida set — warm-toned, classic tournament style.",
+    available: true,
+  },
 ];
 
 export function Settings() {
@@ -134,15 +143,25 @@ export function Settings() {
               <CardTitle>Piece theme</CardTitle>
             </CardHeader>
             <CardContent>
+              <p className="mb-3 text-xs text-base-content/50">
+                Each option is real, distinct piece artwork — cburnett,
+                alpha, maestro, and merida — not a color filter over the
+                same shapes.
+              </p>
               <div className="flex flex-wrap gap-2">
                 {PIECE_THEMES.map((t) => (
                   <button
                     key={t.value}
-                    onClick={() => updateSetting("pieceTheme", t.value)}
+                    onClick={() =>
+                      t.available && updateSetting("pieceTheme", t.value)
+                    }
+                    disabled={!t.available}
                     className={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
-                      settings.pieceTheme === t.value
-                        ? "border-(--primary) bg-(--primary)/10 text-(--primary)"
-                        : "border-base-300 bg-base-100 text-base-content/80 hover:border-base-content/30"
+                      !t.available
+                        ? "cursor-not-allowed border-base-300 bg-base-100 text-base-content/30"
+                        : settings.pieceTheme === t.value
+                          ? "border-(--primary) bg-(--primary)/10 text-(--primary)"
+                          : "border-base-300 bg-base-100 text-base-content/80 hover:border-base-content/30"
                     }`}
                   >
                     <div className="font-medium">{t.label}</div>

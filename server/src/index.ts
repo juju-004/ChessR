@@ -19,10 +19,10 @@ async function main() {
   // prod after a deploy or crash). Then keep sweeping periodically as a
   // general safety net.
   reconcileActiveGames()
-    .then(({ resumed, timedOut, aborted }) => {
-      if (resumed || timedOut || aborted) {
+    .then(({ resumed, timedOut, aborted, idleCancelled }) => {
+      if (resumed || timedOut || aborted || idleCancelled) {
         console.log(
-          `♟️  Reconciled active games on boot: ${resumed} resumed, ${timedOut} timed out, ${aborted} aborted (no live state).`,
+          `♟️  Reconciled active games on boot: ${resumed} resumed, ${timedOut} timed out, ${aborted} aborted (no live state), ${idleCancelled} cancelled (idle too long).`,
         );
       }
     })

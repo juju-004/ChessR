@@ -1,7 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useNotify } from "../contexts/NotificationContext.js";
+import { useAuth } from "../contexts/AuthContext.js";
+import { getCageMatchByCode, type CageMatch } from "../api/cageMatches.js";
+import { CageMatchOverModal } from "./CageMatchOverModal.js";
 
 /**
  * Cross-page real-time notifications: incoming friend challenges and rematch
@@ -12,6 +15,8 @@ export function GlobalListeners() {
   const socket = useSocket();
   const navigate = useNavigate();
   const { notify } = useNotify();
+  const { user } = useAuth();
+  const [cageMatchOver, setCageMatchOver] = useState<CageMatch | null>(null);
 
   useEffect(() => {
     if (!socket) return;
@@ -162,16 +167,13 @@ export function GlobalListeners() {
       );
     }
 
-    function onCageMatchOver(payload: { matchCode: string; matchEndReason?: string | null }) {
-      const message =
-        payload.matchEndReason === "no_show_forfeit"
-          ? "A cage match you're in just ended — someone didn't move in time at the start of a leg."
-          : "A cage match you're in has finished.";
-      notify(
-        message,
-        [{ label: "View result", onClick: () => navigate(`/cage/${payload.matchCode}`) }],
-        20_000,
-      );
+    function onCageMatchOver(payload: { matchCode: string }) {
+      getCageMatchByCode(payload.matchCode)
+        .then(({ match }) => setCageMatchOver(match))
+        .catch(() => {
+          /* If the fetch fails, the match page itself is still reachable
+             directly — no popup is better than a broken one. */
+        });
     }
 
     function onPauseRequested(payload: { matchId: string; matchCode: string }) {
@@ -262,6 +264,21 @@ export function GlobalListeners() {
       socket.off("cage:resume_declined", onResumeDeclined);
     };
   }, [socket, navigate, notify]);
+
+  if (cageMatchOver) {
+    return (
+      <CageMatchOverModal
+        match={cageMatchOver}
+        myUserId={user?.id}
+        onViewResult={() => {
+          const code = cageMatchOver.matchCode;
+          setCageMatchOver(null);
+          navigate(`/cage/${code}`);
+        }}
+        onClose={() => setCageMatchOver(null)}
+      />
+    );
+  }
 
   return null;
 }

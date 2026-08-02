@@ -124,6 +124,10 @@ export function Game() {
 
   const [role, setRole] = useState<Role>("spectator");
   const roleRef = useRef<Role>("spectator");
+  // `game:over` and `cage:match_over` can arrive in either order when the
+  // final leg of a cage match finishes (see onCageMatchOverOnThisLeg below)
+  // — this makes the "skip the per-leg modal" decision order-independent.
+  const cageMatchOverRef = useRef(false);
   const moveListScrollRef = useRef<HTMLDivElement | null>(null);
   const moveStripScrollRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<
@@ -376,6 +380,7 @@ export function Game() {
     if (mode !== "board" || !socket || !gameMeta) return;
     const gameId = gameMeta._id;
     setConnStatus("Connecting…");
+    cageMatchOverRef.current = false;
 
     // Hoisted so it can be cleared from onOpponentReconnected, onOver, and the
     // effect cleanup — not just left to self-terminate. Previously this lived
@@ -490,9 +495,14 @@ export function Game() {
       whiteRemainingMs?: number | null;
       blackRemainingMs?: number | null;
     }) {
-      setStatus(payload.reason === "aborted_no_moves" ? "aborted" : "finished");
+      setStatus(
+        payload.reason === "aborted_no_moves" ||
+          payload.reason === "idle_timeout"
+          ? "aborted"
+          : "finished",
+      );
       setGameOver(payload);
-      setGameOverModalDismissed(false);
+      setGameOverModalDismissed(cageMatchOverRef.current);
       clearDisconnectCountdown();
       setDisconnectBanner(null);
       playGameOverSound();
@@ -650,6 +660,20 @@ export function Game() {
       setResumeRequestSent(false);
     }
 
+    // The last leg of a cage match finishing fires both this game's
+    // `game:over` (which would normally pop the per-leg GameOverModal) AND
+    // the global `cage:match_over` (which pops CageMatchOverModal via
+    // GlobalListeners) at essentially the same moment. Showing both stacked
+    // is confusing, so once the whole match is over, the per-leg modal steps
+    // aside and lets the match-level popup be the single source of truth —
+    // regardless of which of the two events this client happens to process
+    // first.
+    function onCageMatchOverOnThisLeg(payload: { matchId: string }) {
+      if (payload.matchId !== gameMetaRef.current?.cageMatchId) return;
+      cageMatchOverRef.current = true;
+      setGameOverModalDismissed(true);
+    }
+
     socket.on("connect_error", onConnectError);
     socket.on("connect", joinRoom);
     socket.on("game:sync", onSync);
@@ -670,6 +694,7 @@ export function Game() {
     socket.on("cage:pause_declined", onPauseDeclinedLocal);
     socket.on("cage:resume_request_sent", onResumeRequestSent);
     socket.on("cage:resume_declined", onResumeDeclinedLocal);
+    socket.on("cage:match_over", onCageMatchOverOnThisLeg);
 
     // Covers the common case where the socket is already connected by the
     // time this effect runs (normal navigation to the page).
@@ -697,6 +722,7 @@ export function Game() {
       socket.off("cage:pause_declined", onPauseDeclinedLocal);
       socket.off("cage:resume_request_sent", onResumeRequestSent);
       socket.off("cage:resume_declined", onResumeDeclinedLocal);
+      socket.off("cage:match_over", onCageMatchOverOnThisLeg);
     };
   }, [mode, socket, gameMeta?._id, notify]);
 
@@ -1119,22 +1145,56 @@ export function Game() {
     </>
   );
 
-  // Resign/draw/abort — the trio of "give up on the game" actions. Rendered
-  // as plain inline Buttons in the right panel from md up, and collapsed
-  // into a single dropup trigger (via the Dropdown primitive, side="top")
-  // on phone where there's no right panel to put them in.
+  const chatHeader = (
+    <>
+      <div className="mb-2 flex shrink-0 items-center justify-between">
+        <h2 className="flex items-center gap-1.5 text-base font-semibold text-base-content">
+          <MessageSquare className="h-4 w-4" /> Spectator chat
+        </h2>
+        <button
+          onClick={() => setChatSheetOpen(false)}
+          aria-label="Close"
+          className="text-base-content/50 hover:text-base-content/80"
+        >
+          ✕
+        </button>
+      </div>
+      <p className="mb-2 shrink-0 text-xs text-base-content/50">
+        Only visible to spectators, not the players. Not saved — refreshing
+        clears it.
+      </p>
+    </>
+  );
+
+  // Resign/draw/abort — the trio of "give up on the game" actions. Abort is
+  // only for normal games during the idle phase (before either side has
+  // moved), mirroring the lichess-style abort window — cage match legs get
+  // "pause" as their idle-phase escape hatch instead (see below), and
+  // tournament pairings get neither, so walking away from a bracket game
+  // isn't this cheap. Resign/offer-draw only become available once the idle
+  // phase ends (both sides have moved at least once) — before that there's
+  // nothing to resign from yet, hence the Abort branch is mutually exclusive
+  // with them. Rendered as plain inline Buttons in the right panel from md
+  // up, and collapsed into a single dropup trigger (via the Dropdown
+  // primitive, side="top") on phone where there's no right panel to put
+  // them in.
   //
   // Once the game's over and its modal has been dismissed, that space is
   // reused for a single "Rematch" entry that just reopens GameOverModal —
   // it's the only place with the actual offer-rematch button (and its
   // "offer sent" disabled state), so this doesn't duplicate that logic,
   // it just gets the modal back on screen. Mutually exclusive with the
-  // trio above: status can't be "active" once gameOver is set.
+  // trio above: status can't be "active" once gameOver is set. Cage match
+  // legs never offer a rematch — the series has its own next-leg/forfeit
+  // flow instead.
+  const isIdlePhase = moves.length < 2;
   const canReopenRematch =
     !!gameOver &&
     gameOverModalDismissed &&
     isPlayer &&
+    !gameMeta?.cageMatchId &&
     gameOver.reason !== "aborted_no_moves" &&
+    gameOver.reason !== "idle_timeout" &&
     gameOver.reason !== "cage_forfeit";
   const actionItems = [
     {
@@ -1157,18 +1217,58 @@ export function Game() {
       danger: false,
       disabled: viewPly === null,
     },
-    ...(isPlayer && status === "active"
-      ? moves.length < 2
-        ? [{ label: "Abort", icon: Ban, onClick: handleAbort, danger: true }]
-        : [
-            { label: "Offer draw", icon: Handshake, onClick: handleOfferDraw },
-            {
-              label: "Resign",
-              icon: Flag,
-              onClick: handleResign,
-              danger: true,
-            },
-          ]
+    ...(isPlayer && status === "active" && !isIdlePhase
+      ? [
+          { label: "Offer draw", icon: Handshake, onClick: handleOfferDraw },
+          {
+            label: "Resign",
+            icon: Flag,
+            onClick: handleResign,
+            danger: true,
+          },
+        ]
+      : []),
+    ...(isPlayer &&
+    status === "active" &&
+    isIdlePhase &&
+    !gameMeta?.cageMatchId &&
+    !gameMeta?.tournamentId
+      ? [{ label: "Abort", icon: Ban, onClick: handleAbort, danger: true }]
+      : []),
+    ...(isPlayer &&
+    gameMeta?.cageMatchId &&
+    status === "active" &&
+    isIdlePhase &&
+    !pausedLeg
+      ? [
+          {
+            label: pauseRequestSent ? "Pause request sent…" : "Request pause",
+            icon: Pause,
+            onClick: handlePauseRequest,
+            danger: false,
+            disabled: pauseRequestSent,
+          },
+        ]
+      : []),
+    ...(isPlayer && gameMeta?.cageMatchId
+      ? [
+          {
+            label: "Forfeit entire cage match",
+            icon: Ban,
+            onClick: handleForfeitCageMatch,
+            danger: true,
+          },
+        ]
+      : []),
+    ...(showChat
+      ? [
+          {
+            label: "Spectator chat",
+            icon: MessageSquare,
+            onClick: () => setChatSheetOpen(true),
+            danger: false,
+          },
+        ]
       : []),
     ...(canReopenRematch
       ? [
@@ -1184,20 +1284,14 @@ export function Game() {
 
   return (
     <div className="relative mx-auto min-h-[calc(100dvh-7rem)] flex max-w-6xl flex-col justify-center gap-2 pb-2 md:h-[calc(100dvh-7rem)] md:gap-3">
-      {/* Cage scoreboard + standalone action buttons (berserk, request
-       *  pause, forfeit) — persistent controls a player deliberately
-       *  reaches for, not transient alerts, so these stay in normal flow.
+      {/* Standalone berserk CTA — a persistent control a player deliberately
+       *  reaches for, not a transient alert, so it stays in normal flow.
        *  Every actual *notification* (paused/waiting/error/disconnect) has
        *  been pulled out into the absolute overlay stack below instead —
-       *  see the comment there for why. */}
+       *  see the comment there for why. The cage match scoreboard and its
+       *  pause-request/forfeit actions live near the bottom action buttons
+       *  instead — see the game-area-rightpanel and mobile action row below. */}
       <div className="shrink-0 space-y-2">
-        {!settings.zenMode && gameMeta?.cageMatchId && (
-          <CageMatchScoreboard
-            cageMatchId={gameMeta.cageMatchId}
-            legIndex={gameMeta.legIndex ?? 0}
-          />
-        )}
-
         {isPlayer &&
           status === "active" &&
           gameMeta?.tournamentId &&
@@ -1213,32 +1307,6 @@ export function Game() {
               bonus point
             </Button>
           )}
-
-        {isPlayer &&
-          gameMeta?.cageMatchId &&
-          status === "active" &&
-          moves.length < 2 &&
-          !pausedLeg && (
-            <Button
-              size="sm"
-              disabled={pauseRequestSent}
-              onClick={handlePauseRequest}
-              className="border border-amber-800 bg-amber-950/30 text-amber-300 shadow-none hover:bg-amber-950/50 hover:brightness-100"
-            >
-              <Pause className="h-4 w-4" />
-              {pauseRequestSent ? "Pause request sent…" : "Request pause"}
-            </Button>
-          )}
-
-        {isPlayer && gameMeta?.cageMatchId && (
-          <Button
-            size="sm"
-            onClick={handleForfeitCageMatch}
-            className="border border-red-900 bg-red-950/30 text-red-300 shadow-none hover:bg-red-950/50 hover:brightness-100"
-          >
-            Forfeit entire cage match
-          </Button>
-        )}
       </div>
 
       {/* Notification overlay stack — leg-paused notice, waiting-for-
@@ -1266,28 +1334,6 @@ export function Game() {
             >
               <Pause className="h-4 w-4" /> This leg is paused
               {isPlayer ? "" : " by the players"}.
-            </motion.div>
-          )}
-
-          {isPlayer && status === "waiting" && (
-            <motion.div
-              key="waiting-banner"
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={springSnappy}
-              className="pointer-events-auto flex items-center gap-3 rounded-xl border border-base-300 bg-base-100 px-3 py-2.5 shadow-lg"
-            >
-              <p className="flex-1 text-sm text-base-content/60">
-                Waiting for an opponent to join…
-              </p>
-              <Button
-                variant="glass"
-                size="sm"
-                onClick={handleCancelWaitingGame}
-              >
-                <Ban className="h-4 w-4" /> Cancel game
-              </Button>
             </motion.div>
           )}
 
@@ -1335,7 +1381,7 @@ export function Game() {
             </motion.div>
           )}
 
-          {disconnectBanner && (
+          {disconnectBanner && !isIdlePhase && (
             <motion.div
               key="disconnect-banner"
               initial={{ opacity: 0, y: -8 }}
@@ -1381,10 +1427,10 @@ export function Game() {
        *  where the board's grid column is the widest of the three so it
        *  reads as visually larger than the side panels. */}
       <div className="game-grid min-h-0 flex-1">
-        {/* Game details — code, share, chat trigger (phone only — tablet's
-         *  version of this button lives in the right panel), badges,
-         *  status, and the move list. Left column on desktop; a full-width
-         *  strip above the board/panel row on tablet and phone. */}
+        {/* Game details — code, share, badges, status, and the move list.
+         *  (Spectator chat's trigger now lives in the action button row.)
+         *  Left column on desktop; a full-width strip above the board/panel
+         *  row on tablet and phone. */}
         <div className="game-area-leftinfo flex shrink-0 flex-col justify-center gap-3 lg:h-full lg:min-h-0">
           <Card variant="solid">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1408,18 +1454,6 @@ export function Game() {
                   <div className="flex flex-wrap items-center gap-2">
                     {badges}
                   </div>
-                )}
-                {showChat && (
-                  <motion.button
-                    type="button"
-                    onClick={() => setChatSheetOpen(true)}
-                    whileTap={{ scale: 0.9 }}
-                    transition={springSnappy}
-                    className="glass relative flex h-9 w-9 items-center justify-center rounded-full text-base-content/80 hover:text-base-content md:hidden"
-                    title="Spectator chat"
-                  >
-                    <MessageSquare className="size-4" />
-                  </motion.button>
                 )}
               </div>
               <span className="flex items-center mb-4 gap-1.5 text-xs font-medium text-base-content/60">
@@ -1457,7 +1491,7 @@ export function Game() {
          *  whichever of width/height is the binding constraint (full width
          *  on phone; the grid row's height from md up, where the row is
          *  fixed to the viewport). */}
-        <div className="game-area-board flex flex-col min-h-0 min-w-0 flex-1 items-center justify-center">
+        <div className="game-area-board relative flex flex-col min-h-0 min-w-0 flex-1 items-center justify-center">
           <div className="game-area-toppanel md:hidden w-[95%]">
             <PlayerPanelRow {...opponentPanelData} />
           </div>
@@ -1495,14 +1529,39 @@ export function Game() {
           <div className="game-area-bottompanel md:hidden w-[95%]">
             <PlayerPanelRow {...myPanelData} />
           </div>
+          {isPlayer && status === "waiting" && (
+            <div className="pointer-events-none absolute bg-base-200/30 inset-0 justify-center items-center top-2 z-30 mx-auto flex">
+              <motion.div
+                key="waiting-banner"
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={springSnappy}
+                className="pointer-events-auto flex items-center gap-3 rounded-xl border border-base-300 bg-base-100 px-3 py-2.5 shadow-lg"
+              >
+                <p className="flex-1 text-sm text-base-content/60">
+                  Waiting for an opponent to join…
+                </p>
+                <Button
+                  variant="glass"
+                  size="sm"
+                  onClick={handleCancelWaitingGame}
+                >
+                  <Ban className="h-4 w-4" /> Cancel game
+                </Button>
+              </motion.div>
+            </div>
+          )}
         </div>
 
         {/* My panel — phone only, sits directly below the board. */}
 
-        {/* Right panel — tablet & desktop. Player panels, then spectator
-         *  chat (a trigger button that opens the modal on tablet; the full
-         *  inline card from lg up), then the resign/draw/abort actions
-         *  pinned to the bottom via mt-auto. */}
+        {/* Right panel — tablet & desktop. Player panels, the cage match
+         *  scoreboard (if any), then the action buttons (flip/prev/next,
+         *  resign/draw/cage-match, spectator chat trigger) pinned to the
+         *  bottom via mt-auto. Spectator chat itself opens as a right-side
+         *  drawer from here, or a bottom sheet on phone — see the drawer
+         *  markup near the end of the component. */}
         <div className="game-area-rightpanel justify-center min-h-0 flex-col gap-3">
           <div>
             <Card variant="solid" className="shrink-0 space-y-2">
@@ -1511,34 +1570,21 @@ export function Game() {
               <PlayerPanelRow {...myPanelData} />
             </Card>
 
-            {showChat && (
-              <>
-                <Button
-                  variant="glass"
-                  size="md"
-                  onClick={() => setChatSheetOpen(true)}
-                  className="shrink-0 lg:hidden"
-                >
-                  <MessageSquare className="h-4 w-4" /> Spectator chat
-                </Button>
-                <Card
-                  variant="solid"
-                  className="hidden min-h-0 flex-1 flex-col lg:flex"
-                >
-                  <h2 className="mb-1 flex shrink-0 items-center gap-1.5 text-base font-semibold text-base-content">
-                    <MessageSquare className="h-4 w-4" /> Spectator chat
-                  </h2>
-                  <p className="mb-2 shrink-0 text-xs text-base-content/50">
-                    Only visible to spectators, not the players. Not saved —
-                    refreshing clears it.
-                  </p>
-                  {chatBody}
-                </Card>
-              </>
+            {!settings.zenMode && gameMeta?.cageMatchId && (
+              <div className="mt-auto hidden md:block pt-2">
+                <CageMatchScoreboard
+                  cageMatchId={gameMeta.cageMatchId}
+                  legIndex={gameMeta.legIndex ?? 0}
+                />
+              </div>
             )}
 
             {actionItems.length > 0 && (
-              <div className="mt-auto hidden md:flex justify-center shrink-0 gap-2 pt-2">
+              <div
+                className={`hidden md:flex flex-wrap justify-center shrink-0 gap-2 pt-2 ${
+                  !settings.zenMode && gameMeta?.cageMatchId ? "" : "mt-auto"
+                }`}
+              >
                 {actionItems.map((item) => (
                   <Tooltip content={item.label}>
                     <Button
@@ -1558,8 +1604,17 @@ export function Game() {
       </div>
 
       <div>
+        {!settings.zenMode && gameMeta?.cageMatchId && (
+          <div className="md:hidden pt-2">
+            <CageMatchScoreboard
+              cageMatchId={gameMeta.cageMatchId}
+              legIndex={gameMeta.legIndex ?? 0}
+            />
+          </div>
+        )}
+
         {actionItems.length > 0 && (
-          <div className="md:hidden flex justify-center gap-2 pt-2">
+          <div className="md:hidden flex flex-wrap justify-center gap-2 pt-2">
             {actionItems.map((item) => (
               <Tooltip content={item.label}>
                 <Button
@@ -1576,21 +1631,25 @@ export function Game() {
         )}
       </div>
 
-      {/* Spectator chat modal — shared by tablet and phone (desktop shows
-       *  the chat inline in the right panel instead, so this never opens
-       *  there since its trigger buttons are hidden from lg up). */}
+      {/* Spectator chat — a bottom sheet on phone, a right-side drawer from
+       *  md up. Both variants share one backdrop and one open/close state;
+       *  only one of the two panel variants is ever visible at a given
+       *  breakpoint (the other stays mounted but hidden via Tailwind's
+       *  responsive display classes), so there's no per-breakpoint branching
+       *  in JS — just CSS deciding which one shows. */}
       <AnimatePresence>
         {showChat && chatSheetOpen && (
           <motion.div
-            className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+            className="fixed inset-0 z-40 bg-black/60"
             onClick={() => setChatSheetOpen(false)}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
           >
+            {/* Bottom sheet — phone only. */}
             <motion.div
-              className="glass-strong absolute inset-x-0 bottom-0 flex max-h-[70vh] flex-col rounded-t-2xl p-4"
+              className="glass-strong absolute inset-x-0 bottom-0 flex max-h-[70vh] flex-col rounded-t-2xl p-4 md:hidden"
               style={{
                 paddingBottom: "calc(1rem + env(safe-area-inset-bottom))",
               }}
@@ -1600,22 +1659,23 @@ export function Game() {
               exit={{ y: "100%" }}
               transition={springSnappy}
             >
-              <div className="mb-2 flex shrink-0 items-center justify-between">
-                <h2 className="flex items-center gap-1.5 text-base font-semibold text-base-content">
-                  <MessageSquare className="h-4 w-4" /> Spectator chat
-                </h2>
-                <button
-                  onClick={() => setChatSheetOpen(false)}
-                  aria-label="Close"
-                  className="text-base-content/50 hover:text-base-content/80"
-                >
-                  ✕
-                </button>
-              </div>
-              <p className="mb-2 shrink-0 text-xs text-base-content/50">
-                Only visible to spectators, not the players. Not saved —
-                refreshing clears it.
-              </p>
+              {chatHeader}
+              {chatBody}
+            </motion.div>
+
+            {/* Right-side drawer — tablet & desktop. */}
+            <motion.div
+              className="glass-strong absolute inset-y-0 right-0 hidden w-full max-w-sm flex-col p-4 md:flex"
+              style={{
+                paddingTop: "calc(1rem + env(safe-area-inset-top))",
+              }}
+              onClick={(e) => e.stopPropagation()}
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={springSnappy}
+            >
+              {chatHeader}
               {chatBody}
             </motion.div>
           </motion.div>
@@ -1630,7 +1690,9 @@ export function Game() {
           isPlayer={isPlayer}
           canRematch={
             isPlayer &&
+            !gameMeta?.cageMatchId &&
             gameOver.reason !== "aborted_no_moves" &&
+            gameOver.reason !== "idle_timeout" &&
             gameOver.reason !== "cage_forfeit"
           }
           rematchState={rematchState}

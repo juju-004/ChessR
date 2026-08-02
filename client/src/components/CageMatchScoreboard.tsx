@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSocket } from '../contexts/SocketContext.js';
+import { Card } from './ui/index.js';
 import { getCageMatchByCode, computeCageStandings, type CageMatch, type CageLeg } from '../api/cageMatches.js';
 
 interface Props {
@@ -8,12 +9,14 @@ interface Props {
   legIndex: number;
 }
 
+// Mirrors the LEG_STATUS_DOT palette on the full cage match page so the two
+// scoreboards read as the same UI element.
 const PIP_COLOR: Record<CageLeg['status'], string> = {
-  finished: 'bg-base-300',
+  finished: 'bg-green-600',
   active: 'bg-blue-500',
   paused: 'bg-amber-500',
   pending: 'bg-base-300',
-  skipped: 'bg-base-200',
+  skipped: 'bg-base-300',
 };
 
 function pipTitle(leg: CageLeg, p1Name: string, p2Name: string): string {
@@ -81,18 +84,18 @@ export function CageMatchScoreboard({ cageMatchId, legIndex }: Props) {
   const p2Name = match.player2.username;
 
   return (
-    <div className="mb-3 rounded-xl border border-(--secondary)/30 bg-(--secondary)/10 px-3 py-2.5">
-      <div className="flex items-center justify-between">
+    <Card variant="solid" className="shrink-0">
+      <div className="flex items-center justify-between gap-2 rounded-lg bg-base-100/60 px-3 py-2">
         <div className="text-sm font-semibold text-base-content">
           <span className={standings.p1Score >= standings.p2Score ? 'text-base-content' : 'text-base-content/50'}>
             {p1Name} {standings.p1Score}
           </span>
-          <span className="mx-1.5 text-(--secondary)">–</span>
+          <span className="mx-1.5 text-base-content/40">–</span>
           <span className={standings.p2Score >= standings.p1Score ? 'text-base-content' : 'text-base-content/50'}>
             {standings.p2Score} {p2Name}
           </span>
         </div>
-        <Link to={`/cage/${match.matchCode}`} className="text-xs font-medium text-(--secondary) hover:brightness-110">
+        <Link to={`/cage/${match.matchCode}`} className="text-xs font-medium text-(--primary) hover:brightness-110">
           Full match →
         </Link>
       </div>
@@ -115,6 +118,6 @@ export function CageMatchScoreboard({ cageMatchId, legIndex }: Props) {
         </span>
         <span>{legsLeft} to play</span>
       </div>
-    </div>
+    </Card>
   );
 }
