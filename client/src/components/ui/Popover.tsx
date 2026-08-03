@@ -1,11 +1,4 @@
-import {
-  useLayoutEffect,
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { useLayoutEffect, useEffect, useRef, useState, type CSSProperties, type ReactNode, memo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/cn.js";
 import { scaleIn } from "@/lib/motion.js";
@@ -43,7 +36,7 @@ const HIDDEN_STYLE: CSSProperties = { position: "fixed", top: 0, left: 0, visibi
  * ResizeObserver keeps it clamped even if the panel's own content
  * changes size after opening (e.g. a list that loads in async).
  */
-export function Popover({
+export const Popover = memo(function Popover({
   trigger,
   children,
   align = "start",
@@ -166,4 +159,4 @@ export function Popover({
       </AnimatePresence>
     </div>
   );
-}
+})

@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { type ReactNode, memo } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
@@ -20,7 +20,7 @@ export interface ModalProps {
  * Backdrop and content each animate on their own opacity/scale/y — no
  * layout-affecting properties, per @/lib/motion.ts.
  */
-export function Modal({ open, onClose, title, children, className }: ModalProps) {
+export const Modal = memo(function Modal({ open, onClose, title, children, className }: ModalProps) {
   return createPortal(
     <AnimatePresence>
       {open && (
@@ -62,4 +62,4 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
     </AnimatePresence>,
     document.body,
   );
-}
+})

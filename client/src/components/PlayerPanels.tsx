@@ -1,3 +1,4 @@
+import { useEffect, useState, memo } from "react";
 import {
   formatClock,
   type CapturedPieceCount,
@@ -28,7 +29,12 @@ export interface PanelData {
   username: string;
   isTurn: boolean;
   connected: boolean;
-  liveMs: number | null;
+  /** Server-confirmed remaining time as of `turnStartedAtMs` — NOT a live
+   *  value. `ClockBadge` below derives the live countdown itself. */
+  baseRemainingMs: number | null;
+  turnStartedAtMs: number;
+  /** True only while this side's clock is actively counting down. */
+  isTicking: boolean;
   clockKnown: boolean;
   /** From computeLowTimeThresholdMs — 0 means "never low" (unlimited time). */
   lowTimeThresholdMs: number;
@@ -105,25 +111,93 @@ function MaterialBadge({
   );
 }
 
-/** Wide horizontal row — avatar, name + captured tray, clock, all in a
- *  line. Used for the desktop sidebar where there's room to spare. */
-export function PlayerPanelRow({
-  username,
+function computeLiveMs(
+  baseRemainingMs: number | null,
+  turnStartedAtMs: number,
+  isTicking: boolean,
+): number | null {
+  if (baseRemainingMs === null) return null;
+  return isTicking ? baseRemainingMs - (Date.now() - turnStartedAtMs) : baseRemainingMs;
+}
+
+/**
+ * The actual ticking countdown badge, split out into its own component so
+ * its 100ms re-render (while `isTicking`) is scoped to just this small
+ * node instead of the whole game page.
+ *
+ * This used to be a value (`liveMs`) computed in Game.tsx's render body
+ * from a page-level 100ms `setInterval` — which meant every clock tick
+ * re-rendered the entire page (board, sidebar, any open modal) 10x/sec.
+ * On low-end devices that main-thread churn was enough to visibly stutter
+ * unrelated things like a modal's entrance animation. Moving the tick
+ * down here means a running clock only ever re-renders this badge.
+ */
+function ClockBadge({
+  baseRemainingMs,
+  turnStartedAtMs,
+  isTicking,
   isTurn,
-  connected,
-  liveMs,
   clockKnown,
   lowTimeThresholdMs,
-  pieceDiff,
-  glyphs,
-  advantage,
-}: PanelData) {
+  size = "md",
+}: {
+  baseRemainingMs: number | null;
+  turnStartedAtMs: number;
+  isTicking: boolean;
+  isTurn: boolean;
+  clockKnown: boolean;
+  lowTimeThresholdMs: number;
+  size?: "md" | "sm";
+}) {
+  const [, forceTick] = useState(0);
+
+  useEffect(() => {
+    if (!isTicking) return;
+    const interval = window.setInterval(() => forceTick((n) => n + 1), 100);
+    return () => window.clearInterval(interval);
+  }, [isTicking]);
+
+  const liveMs = computeLiveMs(baseRemainingMs, turnStartedAtMs, isTicking);
   const isLow =
     clockKnown &&
     liveMs !== null &&
     liveMs > 0 &&
     lowTimeThresholdMs > 0 &&
     liveMs < lowTimeThresholdMs;
+
+  return (
+    <div
+      className={cn(
+        size === "sm"
+          ? "rounded-md px-1.5 py-1 font-mono text-xs font-bold tabular-nums"
+          : "shrink-0 rounded-lg px-2.5 py-1 text-right font-mono text-sm font-bold tabular-nums",
+        isLow
+          ? "animate-pulse bg-red-500/15 text-red-500"
+          : isTurn
+            ? "bg-white/20 text-white"
+            : "bg-base-300/60 text-base-content/80",
+      )}
+    >
+      {clockKnown ? formatClock(liveMs ?? 0) : "∞"}
+    </div>
+  );
+}
+
+/** Wide horizontal row — avatar, name + captured tray, clock, all in a
+ *  line. Used for the desktop sidebar where there's room to spare. */
+export const PlayerPanelRow = memo(function PlayerPanelRow({
+  username,
+  isTurn,
+  connected,
+  baseRemainingMs,
+  turnStartedAtMs,
+  isTicking,
+  clockKnown,
+  lowTimeThresholdMs,
+  pieceDiff,
+  glyphs,
+  advantage,
+}: PanelData) {
   return (
     <div
       className={cn(
@@ -153,30 +227,28 @@ export function PlayerPanelRow({
           advantage={advantage}
         />
       </div>
-      <div
-        className={cn(
-          "shrink-0 rounded-lg px-2.5 py-1 text-right font-mono text-sm font-bold tabular-nums",
-          isLow
-            ? "animate-pulse bg-red-500/15 text-red-500"
-            : isTurn
-              ? "bg-white/20 text-white"
-              : "bg-base-300/60 text-base-content/80",
-        )}
-      >
-        {clockKnown ? formatClock(liveMs ?? 0) : "∞"}
-      </div>
+      <ClockBadge
+        baseRemainingMs={baseRemainingMs}
+        turnStartedAtMs={turnStartedAtMs}
+        isTicking={isTicking}
+        isTurn={isTurn}
+        clockKnown={clockKnown}
+        lowTimeThresholdMs={lowTimeThresholdMs}
+      />
     </div>
   );
-}
+});
 
 /** Narrow vertical column — avatar/name/clock/captures stacked. Used to
  *  flank the board on mobile, where there's height (alongside the board)
  *  but very little width to work with. */
-export function PlayerPanelFlank({
+export const PlayerPanelFlank = memo(function PlayerPanelFlank({
   username,
   isTurn,
   connected,
-  liveMs,
+  baseRemainingMs,
+  turnStartedAtMs,
+  isTicking,
   clockKnown,
   lowTimeThresholdMs,
   pieceDiff,
@@ -184,12 +256,6 @@ export function PlayerPanelFlank({
   advantage,
   className,
 }: PanelData & { className?: string }) {
-  const isLow =
-    clockKnown &&
-    liveMs !== null &&
-    liveMs > 0 &&
-    lowTimeThresholdMs > 0 &&
-    liveMs < lowTimeThresholdMs;
   return (
     <div
       className={cn(
@@ -213,18 +279,15 @@ export function PlayerPanelFlank({
       >
         {username}
       </p>
-      <div
-        className={cn(
-          "rounded-md px-1.5 py-1 font-mono text-xs font-bold tabular-nums",
-          isLow
-            ? "animate-pulse bg-red-500/15 text-red-500"
-            : isTurn
-              ? "bg-white/20 text-white"
-              : "bg-base-300/60 text-base-content/80",
-        )}
-      >
-        {clockKnown ? formatClock(liveMs ?? 0) : "∞"}
-      </div>
+      <ClockBadge
+        baseRemainingMs={baseRemainingMs}
+        turnStartedAtMs={turnStartedAtMs}
+        isTicking={isTicking}
+        isTurn={isTurn}
+        clockKnown={clockKnown}
+        lowTimeThresholdMs={lowTimeThresholdMs}
+        size="sm"
+      />
       <MaterialBadge
         pieceDiff={pieceDiff}
         glyphs={glyphs}
@@ -233,4 +296,4 @@ export function PlayerPanelFlank({
       />
     </div>
   );
-}
+});

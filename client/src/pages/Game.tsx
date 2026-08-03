@@ -24,7 +24,6 @@ import {
   Ban,
   Pause,
   Play,
-  ShieldAlert,
   MessageSquare,
   Share2,
   ChevronLeft,
@@ -33,6 +32,7 @@ import {
   FlipVertical2,
 } from "lucide-react";
 import { ChessBoard } from "../components/ChessBoard.js";
+import { DisconnectBanner } from "../components/DisconnectBanner.js";
 import { PromotionPicker } from "../components/PromotionPicker.js";
 import { PlayerPanelRow, panelMaterial } from "../components/PlayerPanels.js";
 import { GameOverModal } from "../components/GameOverModal.js";
@@ -158,10 +158,11 @@ export function Game() {
     orig: string;
     dest: string;
   } | null>(null);
-  const [disconnectBanner, setDisconnectBanner] = useState<{
-    message: string;
-    claimable: boolean;
-  } | null>(null);
+  // Just the expiry timestamp — DisconnectBanner (a separate component)
+  // derives the countdown text/claimable state itself and owns its own
+  // 500ms tick, so this state only ever changes on actual socket events,
+  // never on a timer. See DisconnectBanner.tsx for why that matters.
+  const [disconnectExpiresAt, setDisconnectExpiresAt] = useState<number | null>(null);
   const [rematchState, setRematchState] = useState<"idle" | "offered">("idle");
   const [pausedLeg, setPausedLeg] = useState(false);
   const [whiteBerserk, setWhiteBerserk] = useState(false);
@@ -253,21 +254,7 @@ export function Game() {
       : undefined
     : lastMove;
 
-  // Forces a re-render every 100ms while a clock is actually running, so
-  // the live "remaining time minus elapsed-since-turn-started" figures
-  // below stay ticking smoothly. Declared as a hook up here (unconditional,
-  // before the early returns below) for the same reason dests/premoveDests
-  // are — see the big comment above them.
-  const [clockTick, forceClockTick] = useState(0);
   const clockRunning = status === "active" && moves.length >= 2;
-  useEffect(() => {
-    if (!clockRunning) return;
-    const interval = window.setInterval(
-      () => forceClockTick((n) => n + 1),
-      100,
-    );
-    return () => window.clearInterval(interval);
-  }, [clockRunning]);
 
   // Scaled to the time control (see computeLowTimeThresholdMs) — a flat
   // "10 seconds left" doesn't mean the same thing in bullet vs. classical.
@@ -278,32 +265,40 @@ export function Game() {
 
   // Fires the low-time sound once the moment MY clock first drops under
   // the threshold, then rearms if it climbs back above it (e.g. an
-  // increment) so a second low-time stretch can warn again. Depends on
-  // clockTick — not just whiteRemainingMs/blackRemainingMs/turnStartedAtMs
-  // — because those three only change on server round-trips (the start of
-  // each move), while the actual threshold crossing usually happens mid-
-  // turn, purely from wall-clock time passing between ticks.
+  // increment) so a second low-time stretch can warn again.
+  //
+  // This runs its own 100ms `setInterval` rather than depending on a
+  // shared page-level "tick" state — it only ever calls playLowTimeSound()
+  // as a side effect, never setState, so it can't cascade into a re-render
+  // of the whole page the way the old `clockTick` state used to (that was
+  // the actual cause of animation jank on low-end devices: the whole Game
+  // page re-rendering 10x/sec while any clock was running).
   const lowTimeWarnedRef = useRef(false);
   useEffect(() => {
     if (!clockRunning || !myColor || lowTimeThresholdMs <= 0) return;
-    const remainingMs =
-      myColor === "white" ? whiteRemainingMs : blackRemainingMs;
-    if (remainingMs === null) return;
-    const isMyTurn = turnColor(chess) === myColor;
-    const liveMs = isMyTurn
-      ? remainingMs - (Date.now() - turnStartedAtMs)
-      : remainingMs;
-    if (liveMs > 0 && liveMs <= lowTimeThresholdMs) {
-      if (!lowTimeWarnedRef.current) {
-        lowTimeWarnedRef.current = true;
-        playLowTimeSound();
+
+    function check() {
+      const remainingMs =
+        myColor === "white" ? whiteRemainingMs : blackRemainingMs;
+      if (remainingMs === null) return;
+      const isMyTurn = turnColor(chess) === myColor;
+      const liveMs = isMyTurn
+        ? remainingMs - (Date.now() - turnStartedAtMs)
+        : remainingMs;
+      if (liveMs > 0 && liveMs <= lowTimeThresholdMs) {
+        if (!lowTimeWarnedRef.current) {
+          lowTimeWarnedRef.current = true;
+          playLowTimeSound();
+        }
+      } else if (liveMs > lowTimeThresholdMs) {
+        lowTimeWarnedRef.current = false;
       }
-    } else if (liveMs > lowTimeThresholdMs) {
-      lowTimeWarnedRef.current = false;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    check();
+    const interval = window.setInterval(check, 100);
+    return () => window.clearInterval(interval);
   }, [
-    clockTick,
     clockRunning,
     myColor,
     whiteRemainingMs,
@@ -381,19 +376,6 @@ export function Game() {
     const gameId = gameMeta._id;
     setConnStatus("Connecting…");
     cageMatchOverRef.current = false;
-
-    // Hoisted so it can be cleared from onOpponentReconnected, onOver, and the
-    // effect cleanup — not just left to self-terminate. Previously this lived
-    // only inside onOpponentDisconnected's closure, which meant reconnecting
-    // cleared the *displayed* banner via state but left the interval running,
-    // and it would just set the banner right back on its next 500ms tick.
-    let disconnectCountdownInterval: number | undefined;
-    function clearDisconnectCountdown() {
-      if (disconnectCountdownInterval !== undefined) {
-        window.clearInterval(disconnectCountdownInterval);
-        disconnectCountdownInterval = undefined;
-      }
-    }
 
     function deriveLastMove(
       moveList: MoveLogEntry[],
@@ -503,8 +485,7 @@ export function Game() {
       );
       setGameOver(payload);
       setGameOverModalDismissed(cageMatchOverRef.current);
-      clearDisconnectCountdown();
-      setDisconnectBanner(null);
+      setDisconnectExpiresAt(null);
       playGameOverSound();
       // The clock display only ticks down live via elapsed-time math while
       // the game is active — once status flips to finished that stops, so
@@ -569,36 +550,19 @@ export function Game() {
       markConnection(payload.userId, false);
       if (roleRef.current === "spectator") return; // claiming isn't a spectator's call to make
 
-      clearDisconnectCountdown(); // defensive — shouldn't already be one running, but don't stack if so
-      const expiresAt = Date.now() + payload.graceMs;
-      const tick = () => {
-        const remaining = Math.max(0, expiresAt - Date.now());
-        setDisconnectBanner({
-          message:
-            remaining > 0
-              ? `Opponent disconnected. You can claim the game in ${Math.ceil(remaining / 1000)}s if they don't return.`
-              : "Opponent has not reconnected — you can claim this game now.",
-          claimable: remaining <= 0,
-        });
-        if (remaining <= 0) clearDisconnectCountdown();
-      };
-      tick();
-      disconnectCountdownInterval = window.setInterval(tick, 500);
+      setDisconnectExpiresAt(Date.now() + payload.graceMs);
     }
 
     function onClaimAvailable() {
       if (roleRef.current === "spectator") return;
-      clearDisconnectCountdown();
-      setDisconnectBanner({
-        message: "Opponent has not reconnected — you can claim this game now.",
-        claimable: true,
-      });
+      // Already-past timestamp — DisconnectBanner treats that as
+      // immediately claimable, same as when the countdown reaches zero.
+      setDisconnectExpiresAt(Date.now());
     }
 
     function onOpponentReconnected(payload: { userId: string }) {
       markConnection(payload.userId, true);
-      clearDisconnectCountdown();
-      setDisconnectBanner(null);
+      setDisconnectExpiresAt(null);
     }
 
     function onDrawOffered() {
@@ -701,7 +665,6 @@ export function Game() {
     if (socket.connected) joinRoom();
 
     return () => {
-      clearDisconnectCountdown();
       socket.off("connect_error", onConnectError);
       socket.off("connect", joinRoom);
       socket.off("game:sync", onSync);
@@ -1008,15 +971,6 @@ export function Game() {
   // actually rendered, so there's exactly one ticking source of truth. ---
   const sideToMove = turnColor(chess);
   const clockKnown = whiteRemainingMs !== null && blackRemainingMs !== null;
-  const elapsedMs = clockRunning ? Date.now() - turnStartedAtMs : 0;
-  const liveWhiteMs =
-    clockKnown && sideToMove === "white"
-      ? (whiteRemainingMs as number) - elapsedMs
-      : whiteRemainingMs;
-  const liveBlackMs =
-    clockKnown && sideToMove === "black"
-      ? (blackRemainingMs as number) - elapsedMs
-      : blackRemainingMs;
   const material = computeMaterialDiff(fen);
   const whiteMaterial = panelMaterial("white", material);
   const blackMaterial = panelMaterial("black", material);
@@ -1026,7 +980,9 @@ export function Game() {
     username: gameMeta?.white?.username ?? "White",
     isTurn: isActiveGame && sideToMove === "white",
     connected: whiteConnected,
-    liveMs: liveWhiteMs,
+    baseRemainingMs: whiteRemainingMs,
+    turnStartedAtMs,
+    isTicking: clockRunning && sideToMove === "white",
     clockKnown,
     lowTimeThresholdMs,
     ...whiteMaterial,
@@ -1035,7 +991,9 @@ export function Game() {
     username: gameMeta?.black?.username ?? "Black",
     isTurn: isActiveGame && sideToMove === "black",
     connected: blackConnected,
-    liveMs: liveBlackMs,
+    baseRemainingMs: blackRemainingMs,
+    turnStartedAtMs,
+    isTicking: clockRunning && sideToMove === "black",
     clockKnown,
     lowTimeThresholdMs,
     ...blackMaterial,
@@ -1381,40 +1339,8 @@ export function Game() {
             </motion.div>
           )}
 
-          {disconnectBanner && !isIdlePhase && (
-            <motion.div
-              key="disconnect-banner"
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={springSnappy}
-              className="pointer-events-auto"
-            >
-              <Card variant="strong" className="border-red-900/50 shadow-xl">
-                <p className="mb-2 flex items-center gap-1.5 text-sm text-red-300">
-                  <ShieldAlert className="h-4 w-4 shrink-0" />{" "}
-                  {disconnectBanner.message}
-                </p>
-                {disconnectBanner.claimable && (
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      onClick={() => handleClaim("win")}
-                    >
-                      Claim victory
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="glass"
-                      onClick={() => handleClaim("draw")}
-                    >
-                      Claim draw
-                    </Button>
-                  </div>
-                )}
-              </Card>
-            </motion.div>
+          {disconnectExpiresAt !== null && !isIdlePhase && (
+            <DisconnectBanner expiresAt={disconnectExpiresAt} onClaim={handleClaim} />
           )}
         </AnimatePresence>
       </div>

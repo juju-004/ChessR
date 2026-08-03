@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Trophy, Frown, Handshake, Ban } from "lucide-react";
 import { Card, Button } from "./ui/index.js";
 
@@ -25,7 +26,7 @@ function reasonText(reason: string): string {
   return reason.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
 }
 
-export function GameOverModal({
+export const GameOverModal = memo(function GameOverModal({
   result,
   reason,
   myColor,
@@ -119,4 +120,4 @@ export function GameOverModal({
       </Card>
     </div>
   );
-}
+})

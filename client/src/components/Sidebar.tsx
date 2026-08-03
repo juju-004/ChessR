@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -44,7 +45,7 @@ const NAV_ITEMS: NavItem[] = [
  * the mobile menu doesn't need one since it isn't a persistent row of
  * targets the highlight has to travel between.
  */
-export function Sidebar() {
+export const Sidebar = memo(function Sidebar() {
   const { isAuthed } = useAuth();
   const { pathname } = useLocation();
   if (!isAuthed) return null;
@@ -92,7 +93,7 @@ export function Sidebar() {
       <MobileNavFab />
     </>
   );
-}
+})
 
 function MobileNavFab() {
   const { pathname } = useLocation();

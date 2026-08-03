@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 export type BoardTheme = 'brown' | 'green' | 'blue' | 'gray' | 'purple';
 export type PieceTheme = 'classic' | 'mono' | 'contrast' | 'wood';
@@ -65,8 +65,18 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setSettings(DEFAULT_SETTINGS);
   }
 
+  // settings gets a brand-new object on every update anyway, so the
+  // useMemo here isn't about that — it's about *not* creating yet another
+  // new value object (and re-rendering every useSettings() consumer)
+  // whenever SettingsProvider re-renders for a reason that has nothing to
+  // do with settings at all.
+  const value = useMemo<SettingsContextValue>(
+    () => ({ settings, updateSetting, resetSettings }),
+    [settings],
+  );
+
   return (
-    <SettingsContext.Provider value={{ settings, updateSetting, resetSettings }}>
+    <SettingsContext.Provider value={value}>
       {children}
     </SettingsContext.Provider>
   );

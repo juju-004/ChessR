@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState, memo } from "react";
 import { Chessground } from '@lichess-org/chessground';
 import { Key } from '@lichess-org/chessground/types';
 
@@ -33,7 +33,7 @@ export interface ChessBoardProps {
   showLegalMoves?: boolean;
 }
 
-export function ChessBoard({
+export const ChessBoard = memo(function ChessBoard({
   fen,
   orientation,
   viewOnly,
@@ -191,4 +191,4 @@ export function ChessBoard({
       />
     </div>
   );
-}
+})

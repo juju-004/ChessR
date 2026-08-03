@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, type ReactNode, memo } from "react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn.js";
 import { Popover } from "./Popover.js";
@@ -22,7 +22,7 @@ export interface DropdownProps {
 /** A menu of clickable items in a Popover — closes itself after any item is
  *  clicked. For anything richer than a flat action list (a form, a custom
  *  layout), reach for <Popover> directly instead. */
-export function Dropdown({
+export const Dropdown = memo(function Dropdown({
   trigger,
   items,
   align = "end",
@@ -67,4 +67,4 @@ export function Dropdown({
       </div>
     </Popover>
   );
-}
+})

@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
@@ -137,8 +138,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     [dismiss],
   );
 
+  // notify/dismiss are already stable (useCallback), so this object never
+  // changes identity across re-renders — every useNotify() consumer app-
+  // wide is fully insulated from this provider's own toast-list re-renders.
+  const value = useMemo(() => ({ notify, dismiss }), [notify, dismiss]);
+
   return (
-    <NotificationContext.Provider value={{ notify, dismiss }}>
+    <NotificationContext.Provider value={value}>
       {children}
       <div className="fixed top-4 right-4 z-1000 flex w-80 max-w-[90vw] flex-col gap-2">
         <AnimatePresence>

@@ -25,7 +25,7 @@ export const getPlans = asyncHandler(async (_req, res) => {
 });
 
 export const getBalance = asyncHandler(async (req: AuthedRequest, res) => {
-  const user = await User.findById(req.user!.id).select('tokenBalance');
+  const user = await User.findById(req.user!.id).select('tokenBalance').lean();
   if (!user) throw ApiError.notFound('User not found');
   res.json({ tokenBalance: user.tokenBalance });
 });
@@ -50,7 +50,7 @@ export const verifyPurchase = asyncHandler(async (req: AuthedRequest, res) => {
   if (!transaction) throw ApiError.notFound('Transaction not found');
   if (transaction.user.toString() !== req.user!.id) throw ApiError.forbidden();
 
-  const user = await User.findById(req.user!.id).select('tokenBalance');
+  const user = await User.findById(req.user!.id).select('tokenBalance').lean();
   res.json({ status: transaction.status, tokenBalance: user?.tokenBalance ?? 0 });
 });
 

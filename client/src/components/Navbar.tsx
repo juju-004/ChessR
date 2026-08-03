@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext.js";
 import { MyGamesMenu } from "./MyGamesMenu.js";
@@ -13,7 +14,7 @@ import { ThemeToggle } from "./ui/ThemeToggle.js";
  * showing through the gaps between them, rather than one continuous
  * navbar strip.
  */
-export function Navbar() {
+export const Navbar = memo(function Navbar() {
   const { isAuthed } = useAuth();
 
   return isAuthed ? (
@@ -34,4 +35,4 @@ export function Navbar() {
   ) : (
     <></>
   );
-}
+})

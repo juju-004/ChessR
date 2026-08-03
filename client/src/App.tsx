@@ -5,7 +5,7 @@ import {
   Navigate,
   useParams,
 } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { AuthProvider } from "./contexts/AuthContext.js";
 import { SocketProvider } from "./contexts/SocketContext.js";
 import { NotificationProvider } from "./contexts/NotificationContext.js";
@@ -17,24 +17,76 @@ import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { Navbar } from "./components/Navbar.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { ProtectedRoute } from "./components/ProtectedRoute.js";
+import { PageLoader } from "./components/PageLoader.js";
 import { tryRestoreSession } from "./api/auth.js";
-import { SignIn } from "./pages/SignIn.js";
-import { SignUp } from "./pages/SignUp.js";
-import { Dashboard } from "./pages/Dashboard.js";
-import { ProfileSearch } from "./pages/ProfileSearch.js";
-import { Profile } from "./pages/Profile.js";
-import { Friends } from "./pages/Friends.js";
-import { Game } from "./pages/Game.js";
-import { GameReplay } from "./pages/GameReplay.js";
-import { CageMatches } from "./pages/CageMatches.js";
-import { CageMatchDetail } from "./pages/CageMatchDetail.js";
-import { Tournaments } from "./pages/Tournaments.js";
-import { TournamentDetail } from "./pages/TournamentDetail.js";
-import { NotFound } from "./pages/NotFound.js";
-import { BuyTokens } from "./pages/BuyTokens.js";
-import { Transactions } from "./pages/Transactions.js";
-import { Withdraw } from "./pages/Withdraw.js";
-import { Settings } from "./pages/Settings.js";
+
+// Every route below is code-split via React.lazy() instead of a top-level
+// import — each page (and whatever it alone depends on) ships as its own
+// chunk, fetched only when that route is actually visited, rather than all
+// of them being bundled into the one script the browser has to download,
+// parse, and execute before anything renders. This matters most for
+// /game and /replay specifically: chessground + chess.js are sizeable,
+// and previously every visitor paid for that JS on first load even if
+// they never played a game. On a low-end device, JS parse/execute time
+// (not just download time) is a real cost, so shrinking the initial
+// bundle helps first paint everywhere, not just on those two routes.
+const SignIn = lazy(() =>
+  import("./pages/SignIn.js").then((m) => ({ default: m.SignIn })),
+);
+const SignUp = lazy(() =>
+  import("./pages/SignUp.js").then((m) => ({ default: m.SignUp })),
+);
+const Dashboard = lazy(() =>
+  import("./pages/Dashboard.js").then((m) => ({ default: m.Dashboard })),
+);
+const ProfileSearch = lazy(() =>
+  import("./pages/ProfileSearch.js").then((m) => ({
+    default: m.ProfileSearch,
+  })),
+);
+const Profile = lazy(() =>
+  import("./pages/Profile.js").then((m) => ({ default: m.Profile })),
+);
+const Friends = lazy(() =>
+  import("./pages/Friends.js").then((m) => ({ default: m.Friends })),
+);
+const Game = lazy(() =>
+  import("./pages/Game.js").then((m) => ({ default: m.Game })),
+);
+const GameReplay = lazy(() =>
+  import("./pages/GameReplay.js").then((m) => ({ default: m.GameReplay })),
+);
+const CageMatches = lazy(() =>
+  import("./pages/CageMatches.js").then((m) => ({ default: m.CageMatches })),
+);
+const CageMatchDetail = lazy(() =>
+  import("./pages/CageMatchDetail.js").then((m) => ({
+    default: m.CageMatchDetail,
+  })),
+);
+const Tournaments = lazy(() =>
+  import("./pages/Tournaments.js").then((m) => ({ default: m.Tournaments })),
+);
+const TournamentDetail = lazy(() =>
+  import("./pages/TournamentDetail.js").then((m) => ({
+    default: m.TournamentDetail,
+  })),
+);
+const NotFound = lazy(() =>
+  import("./pages/NotFound.js").then((m) => ({ default: m.NotFound })),
+);
+const BuyTokens = lazy(() =>
+  import("./pages/BuyTokens.js").then((m) => ({ default: m.BuyTokens })),
+);
+const Transactions = lazy(() =>
+  import("./pages/Transactions.js").then((m) => ({ default: m.Transactions })),
+);
+const Withdraw = lazy(() =>
+  import("./pages/Withdraw.js").then((m) => ({ default: m.Withdraw })),
+);
+const Settings = lazy(() =>
+  import("./pages/Settings.js").then((m) => ({ default: m.Settings })),
+);
 
 // Rematching (or navigating directly between two different game codes) keeps
 // the same route element mounted — without a key tied to the code, stale
@@ -81,125 +133,127 @@ function AppShell() {
         {/* pb-20 clears the fixed mobile nav FAB (see Sidebar.tsx); md:pb-12
          *  drops back to a normal bottom gap once the FAB is hidden. */}
         <main className="min-w-0 flex-1 pb-20 md:pb-12">
-          <Routes>
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <Dashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route path="/signin" element={<SignIn />} />
-            <Route path="/signup" element={<SignUp />} />
-            {/* Old bookmarks/links to /dashboard keep working — / is the dashboard now. */}
-            <Route path="/dashboard" element={<Navigate to="/" replace />} />
-            <Route
-              path="/find"
-              element={
-                <ProtectedRoute>
-                  <ProfileSearch />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/profile/:username"
-              element={
-                <ProtectedRoute>
-                  <Profile />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/friends"
-              element={
-                <ProtectedRoute>
-                  <Friends />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/game/:code"
-              element={
-                <ProtectedRoute>
-                  <GameRoute />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/replay/:code"
-              element={
-                <ProtectedRoute>
-                  <GameReplayRoute />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/cage"
-              element={
-                <ProtectedRoute>
-                  <CageMatches />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/cage/:code"
-              element={
-                <ProtectedRoute>
-                  <CageMatchDetailRoute />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/tournaments"
-              element={
-                <ProtectedRoute>
-                  <Tournaments />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/tournaments/:code"
-              element={
-                <ProtectedRoute>
-                  <TournamentDetailRoute />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/wallet/buy"
-              element={
-                <ProtectedRoute>
-                  <BuyTokens />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/wallet/transactions"
-              element={
-                <ProtectedRoute>
-                  <Transactions />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/wallet/withdraw"
-              element={
-                <ProtectedRoute>
-                  <Withdraw />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/settings"
-              element={
-                <ProtectedRoute>
-                  <Settings />
-                </ProtectedRoute>
-              }
-            />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="/signin" element={<SignIn />} />
+              <Route path="/signup" element={<SignUp />} />
+              {/* Old bookmarks/links to /dashboard keep working — / is the dashboard now. */}
+              <Route path="/dashboard" element={<Navigate to="/" replace />} />
+              <Route
+                path="/find"
+                element={
+                  <ProtectedRoute>
+                    <ProfileSearch />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/profile/:username"
+                element={
+                  <ProtectedRoute>
+                    <Profile />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/friends"
+                element={
+                  <ProtectedRoute>
+                    <Friends />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/game/:code"
+                element={
+                  <ProtectedRoute>
+                    <GameRoute />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/replay/:code"
+                element={
+                  <ProtectedRoute>
+                    <GameReplayRoute />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/cage"
+                element={
+                  <ProtectedRoute>
+                    <CageMatches />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/cage/:code"
+                element={
+                  <ProtectedRoute>
+                    <CageMatchDetailRoute />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/tournaments"
+                element={
+                  <ProtectedRoute>
+                    <Tournaments />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/tournaments/:code"
+                element={
+                  <ProtectedRoute>
+                    <TournamentDetailRoute />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/wallet/buy"
+                element={
+                  <ProtectedRoute>
+                    <BuyTokens />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/wallet/transactions"
+                element={
+                  <ProtectedRoute>
+                    <Transactions />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/wallet/withdraw"
+                element={
+                  <ProtectedRoute>
+                    <Withdraw />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  <ProtectedRoute>
+                    <Settings />
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
         </main>
       </div>
     </BrowserRouter>

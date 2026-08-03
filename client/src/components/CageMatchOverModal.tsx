@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Trophy, Frown, Handshake } from 'lucide-react';
 import { Card, Button } from './ui/index.js';
 import { computeCageStandings, type CageMatch } from '../api/cageMatches.js';
@@ -15,7 +16,7 @@ function reasonText(reason: CageMatch['matchEndReason']): string {
   return 'All legs complete.';
 }
 
-export function CageMatchOverModal({ match, myUserId, onViewResult, onClose }: CageMatchOverModalProps) {
+export const CageMatchOverModal = memo(function CageMatchOverModal({ match, myUserId, onViewResult, onClose }: CageMatchOverModalProps) {
   const iAmP1 = match.player1._id === myUserId;
   const me = iAmP1 ? match.player1 : match.player2;
   const opponent = iAmP1 ? match.player2 : match.player1;
@@ -101,4 +102,4 @@ export function CageMatchOverModal({ match, myUserId, onViewResult, onClose }: C
       </Card>
     </div>
   );
-}
+})

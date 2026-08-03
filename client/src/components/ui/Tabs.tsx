@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/cn.js";
 import { springSnappy } from "@/lib/motion.js";
@@ -25,7 +26,7 @@ export interface TabsProps {
  * (translate + scale), so it stays on the GPU-only rule from
  * @/lib/motion.ts despite appearing to resize.
  */
-export function Tabs({ items, value, onChange, className, layoutId = "tabs-indicator" }: TabsProps) {
+export const Tabs = memo(function Tabs({ items, value, onChange, className, layoutId = "tabs-indicator" }: TabsProps) {
   return (
     <div className={cn("glass inline-flex gap-1 rounded-xl p-1", className)}>
       {items.map((item) => {
@@ -52,4 +53,4 @@ export function Tabs({ items, value, onChange, className, layoutId = "tabs-indic
       })}
     </div>
   );
-}
+})

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, memo } from "react";
 import { useSocket } from "../contexts/SocketContext.js";
 import { Tooltip } from "./ui/Tooltip.js";
 
@@ -22,7 +22,7 @@ function label(state: ConnState, latencyMs: number | null): string {
   return latencyMs === null ? "Connected" : `${latencyMs}ms`;
 }
 
-export function ConnectionStatus() {
+export const ConnectionStatus = memo(function ConnectionStatus() {
   const socket = useSocket();
   const [state, setState] = useState<ConnState>("connecting");
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
@@ -120,4 +120,4 @@ export function ConnectionStatus() {
       </span>
     </Tooltip>
   );
-}
+})
