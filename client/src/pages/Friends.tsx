@@ -175,7 +175,7 @@ export function Friends() {
           </Select>
 
           <Input
-            label="R token wager (per player)"
+            label="R Coin wager (per player)"
             type="number"
             className="mb-3.5"
             min={0}

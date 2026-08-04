@@ -5,9 +5,10 @@ import { useTokenBalance } from "../hooks/useTokenBalance.js";
 import { logout } from "../api/auth.js";
 import { Avatar } from "./ui/Avatar.js";
 import { Dropdown, type DropdownItem } from "./ui/Dropdown.js";
+import { RCoin } from "./ui/RCoin.js";
 import { useTheme } from "@/contexts/ThemeContext.js";
 
-/** Everything account-related — token balance, profile link, username,
+/** Everything account-related — R Coin balance, profile link, username,
  *  logout — collapsed into a single pill in the navbar. The
  *  balance stays visible at a glance on the trigger itself; the rest lives
  *  behind the dropdown. */
@@ -32,7 +33,7 @@ export function AccountMenu() {
       onClick: () => navigate(`/profile/${user.username}`),
     },
     {
-      label: "Buy tokens",
+      label: "Buy R Coins",
       icon: Coins,
       onClick: () => navigate("/wallet/buy"),
     },
@@ -53,7 +54,7 @@ export function AccountMenu() {
           <Avatar username={user.username} size="xs" />
           <span className="hidden sm:inline">{user.username}</span>
           <span className="items-center gap-1 flex  rounded-full bg-(--primary)/15 px-2 py-0.5 text-xs font-semibold text-(--primary) sm:flex">
-            <Coins className="h-3 w-3" />
+            <RCoin size={12} />
             {balance ?? "…"}
           </span>
           <ChevronDown className="h-3.5 sm:flex hidden w-3.5 text-base-content/50" />

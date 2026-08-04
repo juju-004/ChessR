@@ -37,6 +37,22 @@ export function Tooltip({ content, children, side = "top", className }: TooltipP
       onMouseLeave={() => setOpen(false)}
       onFocus={() => setOpen(true)}
       onBlur={() => setOpen(false)}
+      onClick={() => {
+        // On touch devices there's no mouseleave to close this — tapping
+        // the trigger fires onFocus (opening it) same as a real focus, but
+        // then nothing ever blurs it since focus just stays put after a
+        // tap, so it was sitting there forever until something else on the
+        // page happened to steal focus. Closing on every click covers
+        // touch taps; blurring the element too stops focus from
+        // immediately reopening it via a lingering :focus state.
+        setOpen(false);
+        if (
+          document.activeElement instanceof HTMLElement &&
+          document.activeElement !== document.body
+        ) {
+          document.activeElement.blur();
+        }
+      }}
     >
       {children}
       <AnimatePresence>

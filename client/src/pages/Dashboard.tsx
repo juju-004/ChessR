@@ -21,6 +21,7 @@ import {
   Input,
   Button,
   Badge,
+  RCoin,
 } from "../components/ui/index.js";
 
 export function Dashboard() {
@@ -81,11 +82,14 @@ export function Dashboard() {
     <Page title={`Welcome, ${user?.username ?? ""}`}>
       <div className="space-y-4">
         <Card className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-(--primary)">R Token Balance</p>
-            <p className="text-2xl font-bold text-base-content">
-              {balance ?? "…"}
-            </p>
+          <div className="flex items-center gap-3">
+            <RCoin size={34} />
+            <div>
+              <p className="text-sm text-(--primary)">R Coin Balance</p>
+              <p className="text-2xl font-bold text-base-content">
+                {balance ?? "…"}
+              </p>
+            </div>
           </div>
           <div className="flex gap-2">
             <Link to="/wallet/buy">
@@ -138,7 +142,7 @@ export function Dashboard() {
             </Select>
 
             <Input
-              label="R token wager (per player)"
+              label="R Coin wager (per player)"
               type="number"
               min={0}
               step={1}
@@ -147,7 +151,7 @@ export function Dashboard() {
               placeholder="0 for a free game"
               hint={
                 wagerTokens > 0
-                  ? `You'll stake ${wagerTokens} R tokens now. Winner takes the full ${wagerTokens * 2}.`
+                  ? `You'll stake ${wagerTokens} R Coins now. Winner takes the full ${wagerTokens * 2}.`
                   : "Leave at 0 to play for free."
               }
             />

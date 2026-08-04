@@ -375,8 +375,8 @@ export function CageMatches() {
                 onChange={(e) => setWagerInput(e.target.value)}
                 placeholder={
                   wagerMode === "per_leg"
-                    ? "R tokens per leg"
-                    : "Total R tokens for the whole match"
+                    ? "R Coins per leg"
+                    : "Total R Coins for the whole match"
                 }
               />
             )}

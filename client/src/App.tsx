@@ -47,6 +47,7 @@ const BuyTokens = lazy(() => import("./pages/BuyTokens.js").then((m) => ({ defau
 const Transactions = lazy(() => import("./pages/Transactions.js").then((m) => ({ default: m.Transactions })));
 const Withdraw = lazy(() => import("./pages/Withdraw.js").then((m) => ({ default: m.Withdraw })));
 const Settings = lazy(() => import("./pages/Settings.js").then((m) => ({ default: m.Settings })));
+const WalletLayout = lazy(() => import("./components/WalletLayout.js").then((m) => ({ default: m.WalletLayout })));
 
 // Rematching (or navigating directly between two different game codes) keeps
 // the same route element mounted — without a key tied to the code, stale
@@ -180,29 +181,17 @@ function AppShell() {
               }
             />
             <Route
-              path="/wallet/buy"
+              path="/wallet"
               element={
                 <ProtectedRoute>
-                  <BuyTokens />
+                  <WalletLayout />
                 </ProtectedRoute>
               }
-            />
-            <Route
-              path="/wallet/transactions"
-              element={
-                <ProtectedRoute>
-                  <Transactions />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/wallet/withdraw"
-              element={
-                <ProtectedRoute>
-                  <Withdraw />
-                </ProtectedRoute>
-              }
-            />
+            >
+              <Route path="buy" element={<BuyTokens />} />
+              <Route path="transactions" element={<Transactions />} />
+              <Route path="withdraw" element={<Withdraw />} />
+            </Route>
             <Route
               path="/settings"
               element={

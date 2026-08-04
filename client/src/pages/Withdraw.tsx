@@ -1,25 +1,39 @@
-import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { getPlans, getBanks, resolveAccount, withdraw, type Bank } from '../api/wallet.js';
-import { ApiRequestError } from '../api/http.js';
-import { useTokenBalance } from '../hooks/useTokenBalance.js';
+import { useEffect, useState } from "react";
+import { CheckCircle2, Landmark, XCircle } from "lucide-react";
+import {
+  getPlans,
+  getBanks,
+  resolveAccount,
+  withdraw,
+  type Bank,
+} from "../api/wallet.js";
+import { ApiRequestError } from "../api/http.js";
+import { useTokenBalance } from "../hooks/useTokenBalance.js";
+import {
+  Page,
+  Card,
+  Button,
+  Input,
+  Select,
+  Spinner,
+  RCoin,
+} from "@/components/ui/index.js";
 
 export function Withdraw() {
-  const navigate = useNavigate();
   const { balance, refresh: refreshBalance } = useTokenBalance();
   const [nairaPerToken, setNairaPerToken] = useState(0);
   const [minTokens, setMinTokens] = useState(0);
   const [banks, setBanks] = useState<Bank[]>([]);
 
-  const [tokens, setTokens] = useState('');
-  const [bankCode, setBankCode] = useState('');
-  const [accountNumber, setAccountNumber] = useState('');
-  const [accountName, setAccountName] = useState('');
+  const [tokens, setTokens] = useState("");
+  const [bankCode, setBankCode] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [accountName, setAccountName] = useState("");
   const [resolving, setResolving] = useState(false);
-  const [resolveError, setResolveError] = useState('');
+  const [resolveError, setResolveError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
+  const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   useEffect(() => {
     getPlans().then((res) => {
@@ -31,15 +45,21 @@ export function Withdraw() {
 
   // Debounced account resolution — fires once both fields look complete.
   useEffect(() => {
-    setAccountName('');
-    setResolveError('');
+    setAccountName("");
+    setResolveError("");
     if (accountNumber.length !== 10 || !bankCode) return;
 
     setResolving(true);
     const timer = setTimeout(() => {
       resolveAccount(accountNumber, bankCode)
         .then((res) => setAccountName(res.account_name))
-        .catch((err) => setResolveError(err instanceof ApiRequestError ? err.message : 'Could not resolve account'))
+        .catch((err) =>
+          setResolveError(
+            err instanceof ApiRequestError
+              ? err.message
+              : "Could not resolve account",
+          ),
+        )
         .finally(() => setResolving(false));
     }, 400);
 
@@ -57,68 +77,67 @@ export function Withdraw() {
     !submitting;
 
   async function handleSubmit() {
-    setError('');
-    setSuccessMessage('');
+    setError("");
+    setSuccessMessage("");
     setSubmitting(true);
     try {
-      const result = await withdraw({ tokens: tokensNum, accountNumber, bankCode, accountName });
+      const result = await withdraw({
+        tokens: tokensNum,
+        accountNumber,
+        bankCode,
+        accountName,
+      });
       setSuccessMessage(
-        result.status === 'success'
+        result.status === "success"
           ? `Withdrawal of ₦${result.amountNaira.toLocaleString()} sent.`
           : `Withdrawal submitted and is being processed (status: ${result.status}).`,
       );
-      setTokens('');
-      setAccountNumber('');
-      setBankCode('');
-      setAccountName('');
+      setTokens("");
+      setAccountNumber("");
+      setBankCode("");
+      setAccountName("");
       await refreshBalance();
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : 'Withdrawal failed');
+      setError(
+        err instanceof ApiRequestError ? err.message : "Withdrawal failed",
+      );
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <div className="mx-auto mt-6 max-w-2xl space-y-4">
-      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-base-content">Withdraw</h1>
-          <div className="flex gap-3 text-sm">
-            <Link to="/wallet/buy" className="text-blue-400 hover:underline">
-              Buy tokens
-            </Link>
-            <Link to="/wallet/transactions" className="text-blue-400 hover:underline">
-              Transactions
-            </Link>
-          </div>
-        </div>
-
-        <p className="mb-1 text-sm text-base-content/60">
-          Balance: <span className="font-semibold text-base-content">{balance ?? '…'}</span> tokens
-        </p>
+    <Page
+      title="Withdraw"
+      description="Cash out R Coins to your bank account."
+      back="/"
+      bare
+    >
+      <Card variant="solid" className="w-full space-y-3">
         <p className="mb-4 text-xs text-base-content/50">
-          Rate: ₦{nairaPerToken} per token · Minimum withdrawal: {minTokens} tokens
+          Rate: ₦{nairaPerToken} per R Coin · Minimum withdrawal: {minTokens} R
+          Coins
         </p>
 
-        <label className="mb-1 block text-sm text-base-content/60">Tokens to withdraw</label>
-        <input
+        <Input
+          label="R Coins to withdraw"
           type="number"
           min={minTokens}
           max={balance ?? undefined}
           value={tokens}
           onChange={(e) => setTokens(e.target.value)}
-          className="mb-1 w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content"
+          leadingIcon={<RCoin size={16} />}
+          hint={
+            tokensNum > 0 ? `≈ ₦${estimatedNaira.toLocaleString()}` : undefined
+          }
+          className="mb-3.5"
         />
-        {tokensNum > 0 && (
-          <p className="mb-3 text-xs text-base-content/50">≈ ₦{estimatedNaira.toLocaleString()}</p>
-        )}
 
-        <label className="mb-1 block text-sm text-base-content/60">Bank</label>
-        <select
+        <Select
+          label="Bank"
           value={bankCode}
           onChange={(e) => setBankCode(e.target.value)}
-          className="mb-3 w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content"
+          className="mb-3.5"
         >
           <option value="">Select a bank…</option>
           {banks.map((b) => (
@@ -126,39 +145,52 @@ export function Withdraw() {
               {b.name}
             </option>
           ))}
-        </select>
+        </Select>
 
-        <label className="mb-1 block text-sm text-base-content/60">Account number</label>
-        <input
+        <Input
+          label="Account number"
           type="text"
           inputMode="numeric"
           maxLength={10}
           value={accountNumber}
-          onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ''))}
-          className="mb-1 w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content"
+          onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ""))}
+          leadingIcon={<Landmark className="h-4 w-4" />}
+          trailingIcon={resolving ? <Spinner size="sm" /> : undefined}
+          error={resolveError || undefined}
+          hint={
+            !resolveError && accountName ? undefined : "10-digit account number"
+          }
+          className="mb-1"
         />
-        {resolving && <p className="mb-3 text-xs text-base-content/50">Resolving account…</p>}
-        {resolveError && <p className="mb-3 text-xs text-red-400">{resolveError}</p>}
-        {accountName && <p className="mb-3 text-sm text-green-400">✓ {accountName}</p>}
+        {accountName && (
+          <p className="mb-3.5 flex items-center gap-1.5 text-sm text-green-400">
+            <CheckCircle2 className="h-4 w-4" /> {accountName}
+          </p>
+        )}
 
-        {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
-        {successMessage && <p className="mb-3 text-sm text-green-400">{successMessage}</p>}
+        {error && (
+          <div className="mb-3.5 flex items-start gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-3.5 py-2.5 text-sm text-red-400">
+            <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>{error}</p>
+          </div>
+        )}
+        {successMessage && (
+          <div className="mb-3.5 flex items-start gap-2 rounded-xl border border-green-500/25 bg-green-500/10 px-3.5 py-2.5 text-sm text-green-400">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>{successMessage}</p>
+          </div>
+        )}
 
-        <button
+        <Button
           onClick={handleSubmit}
           disabled={!canSubmit}
-          className="w-full rounded-md bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500 disabled:opacity-40"
+          loading={submitting}
+          fullWidth
+          className="mt-4"
         >
-          {submitting ? 'Processing…' : 'Withdraw'}
-        </button>
-
-        <button
-          onClick={() => navigate('/')}
-          className="mt-4 block text-sm text-base-content/60 hover:text-base-content"
-        >
-          ← Back to dashboard
-        </button>
-      </div>
-    </div>
+          {submitting ? "Processing…" : "Withdraw"}
+        </Button>
+      </Card>
+    </Page>
   );
 }

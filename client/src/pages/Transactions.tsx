@@ -1,23 +1,52 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { getTransactions, type Transaction } from '../api/wallet.js';
+import { useEffect, useState } from "react";
+import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  ChevronLeft,
+  ChevronRight,
+  Receipt,
+  RotateCcw,
+  Swords,
+  Trophy,
+  type LucideIcon,
+} from "lucide-react";
+import { getTransactions, type Transaction } from "../api/wallet.js";
+import {
+  Page,
+  Card,
+  Badge,
+  type BadgeVariant,
+  Button,
+  Spinner,
+  Stagger,
+  StaggerItem,
+  RCoin,
+} from "@/components/ui/index.js";
 
-const statusColors: Record<Transaction['status'], string> = {
-  success: 'text-green-400',
-  pending: 'text-amber-400',
-  failed: 'text-red-400',
+const statusVariant: Record<Transaction["status"], BadgeVariant> = {
+  success: "success",
+  pending: "warning",
+  failed: "error",
 };
 
-const typeLabels: Record<Transaction['type'], string> = {
-  purchase: 'Purchase',
-  withdrawal: 'Withdrawal',
-  wager_stake: 'Wager staked',
-  wager_payout: 'Wager won',
-  wager_refund: 'Wager refunded',
+const typeLabels: Record<Transaction["type"], string> = {
+  purchase: "Purchase",
+  withdrawal: "Withdrawal",
+  wager_stake: "Wager staked",
+  wager_payout: "Wager won",
+  wager_refund: "Wager refunded",
 };
 
-function isMoneyMovement(type: Transaction['type']): boolean {
-  return type === 'purchase' || type === 'withdrawal';
+const typeIcons: Record<Transaction["type"], LucideIcon> = {
+  purchase: ArrowDownToLine,
+  withdrawal: ArrowUpFromLine,
+  wager_stake: Swords,
+  wager_payout: Trophy,
+  wager_refund: RotateCcw,
+};
+
+function isMoneyMovement(type: Transaction["type"]): boolean {
+  return type === "purchase" || type === "withdrawal";
 }
 
 export function Transactions() {
@@ -36,67 +65,94 @@ export function Transactions() {
   }, [page]);
 
   return (
-    <div className="mx-auto mt-6 max-w-2xl space-y-4">
-      <div className="rounded-lg border border-base-300 bg-base-200 p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-base-content">Transactions</h1>
-          <div className="flex gap-3 text-sm">
-            <Link to="/wallet/buy" className="text-blue-400 hover:underline">
-              Buy tokens
-            </Link>
-            <Link to="/wallet/withdraw" className="text-blue-400 hover:underline">
-              Withdraw
-            </Link>
-          </div>
+    <Page
+      title="Transactions"
+      description="Every purchase, withdrawal, and wager on your account."
+      back="/"
+      bare
+    >
+      {loading && (
+        <div className="flex justify-center py-16">
+          <Spinner />
         </div>
+      )}
 
-        {loading && <p className="text-sm text-base-content/60">Loading…</p>}
-        {!loading && transactions.length === 0 && (
-          <p className="text-sm text-base-content/60">No transactions yet.</p>
-        )}
-
-        {transactions.map((t) => (
-          <div key={t._id} className="flex items-center justify-between border-b border-base-300 py-2 text-sm last:border-none">
-            <div>
-              <p className="text-base-content">
-                {typeLabels[t.type]} · {t.tokens} tokens
-              </p>
-              <p className="text-xs text-base-content/50">
-                {isMoneyMovement(t.type)
-                  ? `₦${(t.amountKobo / 100).toLocaleString()} · `
-                  : ''}
-                {new Date(t.createdAt).toLocaleString()}
-              </p>
-              {t.status === 'failed' && t.failureReason && (
-                <p className="text-xs text-red-400">{t.failureReason}</p>
-              )}
-            </div>
-            <span className={`font-semibold uppercase ${statusColors[t.status]}`}>{t.status}</span>
+      {!loading && transactions.length === 0 && (
+        <Card variant="solid">
+          <div className="flex flex-col items-center gap-2 py-8 text-center">
+            <Receipt className="h-8 w-8 text-base-content/30" />
+            <p className="text-sm text-base-content/60">No transactions yet.</p>
           </div>
-        ))}
+        </Card>
+      )}
 
-        {totalPages > 1 && (
-          <div className="mt-3 flex items-center justify-center gap-3 text-sm">
-            <button
-              disabled={page <= 1}
-              onClick={() => setPage((p) => p - 1)}
-              className="rounded-md bg-base-300 px-3 py-1 text-base-content disabled:opacity-30"
-            >
-              Prev
-            </button>
-            <span className="text-base-content/60">
-              Page {page} of {totalPages}
-            </span>
-            <button
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-              className="rounded-md bg-base-300 px-3 py-1 text-base-content disabled:opacity-30"
-            >
-              Next
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
+      {!loading && transactions.length > 0 && (
+        <Stagger className="space-y-2">
+          {transactions.map((t) => {
+            const Icon = typeIcons[t.type];
+            return (
+              <StaggerItem key={t._id}>
+                <Card variant="solid" className="flex items-center gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-(--primary)/12 text-(--primary)">
+                    {Icon ? <Icon className="h-4 w-4" /> : <></>}
+                  </span>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="flex items-center gap-1.5 text-sm font-medium text-base-content">
+                      {typeLabels[t.type]}
+                      <span className="inline-flex items-center gap-1 text-xs font-normal text-base-content/50">
+                        · <RCoin size={12} /> {t.tokens}
+                      </span>
+                    </p>
+                    <p className="truncate text-xs text-base-content/50">
+                      {isMoneyMovement(t.type)
+                        ? `₦${(t.amountKobo / 100).toLocaleString()} · `
+                        : ""}
+                      {new Date(t.createdAt).toLocaleString()}
+                    </p>
+                    {t.status === "failed" && t.failureReason && (
+                      <p className="mt-0.5 text-xs text-red-400">
+                        {t.failureReason}
+                      </p>
+                    )}
+                  </div>
+
+                  <Badge
+                    variant={statusVariant[t.status]}
+                    className="uppercase"
+                  >
+                    {t.status}
+                  </Badge>
+                </Card>
+              </StaggerItem>
+            );
+          })}
+        </Stagger>
+      )}
+
+      {totalPages > 1 && (
+        <div className="mt-5 flex items-center justify-center gap-3">
+          <Button
+            variant="glass"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => p - 1)}
+          >
+            <ChevronLeft className="h-4 w-4" /> Prev
+          </Button>
+          <span className="text-sm text-base-content/60">
+            Page {page} of {totalPages}
+          </span>
+          <Button
+            variant="glass"
+            size="sm"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+    </Page>
   );
 }

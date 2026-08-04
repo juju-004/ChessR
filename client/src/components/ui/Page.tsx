@@ -17,6 +17,12 @@ export interface PageProps {
   /** Right-aligned header content — a primary action button, a badge, etc. */
   actions?: ReactNode;
   className?: string;
+  /** Skips the default `mx-auto max-w-5xl px-* py-*` outer container —
+   *  for a page rendered inside a parent that already provides that
+   *  chrome (e.g. a layout route wrapping several sibling pages), so
+   *  the two don't stack and double the width constraint/padding. The
+   *  header + fade-in mount animation still apply. */
+  bare?: boolean;
 }
 
 /**
@@ -36,6 +42,7 @@ export function Page({
   back,
   actions,
   className,
+  bare = false,
 }: PageProps) {
   const navigate = useNavigate();
 
@@ -52,7 +59,9 @@ export function Page({
       animate="visible"
       variants={fadeInUp}
       className={cn(
-        "mx-auto w-full max-w-5xl px-1 py-6 sm:px-6 md:px-8 md:py-10",
+        bare
+          ? "w-full"
+          : "mx-auto w-full max-w-5xl px-1 py-6 sm:px-6 md:px-8 md:py-10",
         className,
       )}
     >

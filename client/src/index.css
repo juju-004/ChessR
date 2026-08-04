@@ -208,6 +208,23 @@ body {
   display: block;
 }
 
+/* Chessground draws the rank/file coordinate labels at a small fixed
+   font-size (a handful of CSS px). Mobile Safari/Chrome's automatic text
+   inflation ("text size adjust") — the feature that boosts small text so
+   pinch-zoomed-out pages stay legible — kicks in specifically for text
+   that small, and does so per-element rather than uniformly, so each
+   coordinate label gets inflated by a slightly different amount depending
+   on its surrounding layout. That's what makes them look randomly
+   "scattered" on phone while sitting perfectly on desktop, where that
+   inflation behavior doesn't apply at all. Opting the whole board out of
+   it makes every label render at its actual authored size, so they line
+   up with the squares exactly the same way on every device. */
+.cg-wrap,
+.cg-wrap * {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 /* Board themes — real square colors, not a color-shifted copy of the brown
    texture. `cg-board`'s own default rule (from the imported
    chessground.brown.css) sets `background-color: #f0d9b5` plus a tiny

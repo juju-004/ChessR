@@ -46,12 +46,12 @@ export const GameOverModal = memo(function GameOverModal({
   const wagerText = (() => {
     if (!isPlayer || !wagerSettlement || wagerSettlement.wagerTokens <= 0) return null;
     if (wagerSettlement.winnerId === null) {
-      return `Draw — your ${wagerSettlement.wagerTokens} R token stake was refunded.`;
+      return `Draw — your ${wagerSettlement.wagerTokens} R Coin stake was refunded.`;
     }
     if (wagerSettlement.winnerId === myUserId) {
-      return `You won ${wagerSettlement.potTokens} R tokens!`;
+      return `You won ${wagerSettlement.potTokens} R Coins!`;
     }
-    return `You lost your ${wagerSettlement.wagerTokens} R token stake.`;
+    return `You lost your ${wagerSettlement.wagerTokens} R Coin stake.`;
   })();
 
   return (

@@ -500,7 +500,7 @@ export function Game() {
         setBlackRemainingMs(payload.blackRemainingMs);
 
       // A wager payout/refund (or the stake being locked away in the first
-      // place) changes the R token balance — refresh the shared store so the
+      // place) changes the R Coin balance — refresh the shared store so the
       // navbar badge and dashboard update without needing a reload.
       if (payload.wagerSettlement && payload.wagerSettlement.wagerTokens > 0) {
         refreshBalance().catch(() => {});
@@ -778,7 +778,7 @@ export function Game() {
     const ok = await confirmDialog({
       title: "Cancel this game?",
       description: gameMeta.wagerTokens
-        ? `Your ${gameMeta.wagerTokens} R token stake will be refunded.`
+        ? `Your ${gameMeta.wagerTokens} R Coin stake will be refunded.`
         : "You can create a new one any time.",
       variant: "danger",
       confirmLabel: "Cancel game",
@@ -914,7 +914,7 @@ export function Game() {
               className="mb-4 border-amber-900/40 bg-amber-950/20 text-left text-sm text-amber-300"
             >
               This is a wagered game — joining will stake{" "}
-              <strong>{gameMeta.wagerTokens} R tokens</strong> from your
+              <strong>{gameMeta.wagerTokens} R Coins</strong> from your
               balance. The winner takes the full {gameMeta.wagerTokens * 2}.
             </Card>
           )}
@@ -1246,31 +1246,6 @@ export function Game() {
 
   return (
     <div className="relative mx-auto min-h-[calc(100dvh-7rem)] flex max-w-6xl flex-col justify-center gap-2 pb-2 md:h-[calc(100dvh-7rem)] md:gap-3">
-      {/* Standalone berserk CTA — a persistent control a player deliberately
-       *  reaches for, not a transient alert, so it stays in normal flow.
-       *  Every actual *notification* (paused/waiting/error/disconnect) has
-       *  been pulled out into the absolute overlay stack below instead —
-       *  see the comment there for why. The cage match scoreboard and its
-       *  pause-request/forfeit actions live near the bottom action buttons
-       *  instead — see the game-area-rightpanel and mobile action row below. */}
-      <div className="shrink-0 space-y-2">
-        {isPlayer &&
-          status === "active" &&
-          gameMeta?.tournamentId &&
-          myColor &&
-          !(myColor === "white" ? whiteBerserk : blackBerserk) &&
-          (myColor === "white" ? moves.length === 0 : moves.length <= 1) && (
-            <Button
-              size="sm"
-              onClick={handleBerserk}
-              className="border border-red-800 bg-red-950/30 text-red-300 shadow-none hover:bg-red-950/50 hover:brightness-100"
-            >
-              <Swords className="h-4 w-4" /> Berserk — halve your clock for a
-              bonus point
-            </Button>
-          )}
-      </div>
-
       {/* Notification overlay stack — leg-paused notice, waiting-for-
        *  opponent, move errors, the paused-leg resume card, and the
        *  opponent-disconnect banner. All absolute + centered over the page
@@ -1411,8 +1386,16 @@ export function Game() {
                 >
                   {moveListEntries ?? <></>}
                 </div>
-                {/* Horizontal scrollable strip — phone only. */}
-                <div className="lg:hidden">{moveStripEntries ?? <></>}</div>
+                {/* Horizontal scrollable strip — phone only. Reserves its
+                 *  row height (min-h) even while empty (moves.length === 0)
+                 *  so the very first move played doesn't pop this strip
+                 *  into existence and shove the board down beneath the
+                 *  player's finger mid-interaction — that reflow was the
+                 *  cause of the "misclicks right after the first move" bug
+                 *  on phone/tablet. */}
+                <div className="lg:hidden min-h-[28px]">
+                  {moveStripEntries}
+                </div>
               </div>
             )}
           </Card>
@@ -1429,7 +1412,17 @@ export function Game() {
             <PlayerPanelRow {...opponentPanelData} />
           </div>
           <div
-            className={`relative aspect-square w-full min-w-60 min-h-60 max-w-full md:h-auto md:max-h-full md:w-full overflow-hidden rounded-2xl shadow-lg board-theme-${settings.boardTheme} piece-theme-${settings.pieceTheme}`}
+            // -mx-4 + w-[calc(100%+2rem)] below md deliberately break this
+            // element (only this element — not the panels above/below it,
+            // not the rest of the page) out of the App shell's `px-4` so
+            // the board can span the full viewport width on phone. 2rem
+            // matches px-4's 1rem-per-side padding exactly; if that
+            // padding value in App.tsx ever changes, this needs to match.
+            // From md up the shell switches to px-6 but the board is no
+            // longer full-bleed at that breakpoint anyway (it's a fixed
+            // px size inside the grid), so md:mx-0 md:w-full just resets
+            // back to normal in-flow sizing instead of trying to track it.
+            className={`relative aspect-square min-w-60 min-h-60 max-w-full -mx-4 w-[calc(100%+2rem)] md:mx-0 md:h-auto md:max-h-full md:w-full overflow-hidden rounded-2xl shadow-lg board-theme-${settings.boardTheme} piece-theme-${settings.pieceTheme}`}
           >
             <ChessBoard
               fen={displayFen}
@@ -1537,6 +1530,30 @@ export function Game() {
       </div>
 
       <div>
+        {/* Standalone berserk CTA — a persistent control a player
+         *  deliberately reaches for, not a transient alert, so it lives in
+         *  normal flow rather than the notification overlay stack above.
+         *  Moved down here (bottom of the page) instead of above the
+         *  board, out of the way of the board/panels the player is
+         *  actually looking at during the opening moves. */}
+        {isPlayer &&
+          status === "active" &&
+          gameMeta?.tournamentId &&
+          myColor &&
+          !(myColor === "white" ? whiteBerserk : blackBerserk) &&
+          (myColor === "white" ? moves.length === 0 : moves.length <= 1) && (
+            <div className="flex justify-center pt-2">
+              <Button
+                size="sm"
+                onClick={handleBerserk}
+                className="border border-red-800 bg-red-950/30 text-red-300 shadow-none hover:bg-red-950/50 hover:brightness-100"
+              >
+                <Swords className="h-4 w-4" /> Berserk — halve your clock for
+                a bonus point
+              </Button>
+            </div>
+          )}
+
         {!settings.zenMode && gameMeta?.cageMatchId && (
           <div className="md:hidden pt-2">
             <CageMatchScoreboard

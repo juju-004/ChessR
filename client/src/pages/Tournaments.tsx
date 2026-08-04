@@ -311,7 +311,7 @@ export function Tournaments() {
               {wagerMode === "entry_fee" && (
                 <div className="w-36">
                   <Input
-                    label="Entry fee (R tokens)"
+                    label="Entry fee (R Coins)"
                     type="number"
                     min={1}
                     value={wagerInput}
