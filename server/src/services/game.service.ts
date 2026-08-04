@@ -34,6 +34,35 @@ const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 // player's behalf), so only plain games get this treatment.
 const IDLE_PHASE_ABANDON_MS = 5 * 60 * 1000;
 
+// Safety limit — a user can't be tied up in more than this many games at
+// once. Counts anything they're a player in that's still 'waiting' (their
+// own open table) or 'active' (in progress), including cage-match legs and
+// tournament pairings.
+//
+// Deliberately NOT enforced inside createDirectGame itself, since that
+// function is also how cage matches and tournaments advance a player into
+// their next scheduled game — those must never be blocked by this. Instead
+// every user-initiated entry point (createOpenGame, joinOpenGame, challenge
+// acceptance, rematch acceptance) calls assertUnderActiveGameLimit
+// explicitly before creating anything.
+export const MAX_ACTIVE_GAMES_PER_USER = 3;
+
+export async function countActiveGamesForUser(userId: string): Promise<number> {
+  return Game.countDocuments({
+    status: { $in: ["waiting", "active"] },
+    $or: [{ white: userId }, { black: userId }],
+  });
+}
+
+export async function assertUnderActiveGameLimit(userId: string): Promise<void> {
+  const count = await countActiveGamesForUser(userId);
+  if (count >= MAX_ACTIVE_GAMES_PER_USER) {
+    throw ApiError.conflict(
+      `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before starting another.`,
+    );
+  }
+}
+
 const generateCode = customAlphabet("ABCDEFGHJKMNPQRSTUVWXYZ23456789", 6);
 
 async function uniqueJoinCode(): Promise<string> {
@@ -66,6 +95,8 @@ export async function createOpenGame(
   isPrivate = false,
   wagerTokens = 0,
 ): Promise<IGame> {
+  await assertUnderActiveGameLimit(hostUserId);
+
   const joinCode = await uniqueJoinCode();
   const startingFen =
     variant === "chess960" ? generateChess960Fen() : STARTING_FEN;
@@ -138,6 +169,7 @@ export async function joinOpenGame(
   if (game.white.toString() === joiningUserId) {
     throw ApiError.badRequest("You can't join your own game");
   }
+  await assertUnderActiveGameLimit(joiningUserId);
 
   // Match the host's stake before anything else changes — if the joiner
   // can't cover it, the game stays exactly as it was (still waiting, host's
@@ -265,8 +297,8 @@ export async function listMyActiveGames(userId: string) {
   })
     .sort({ startedAt: -1, createdAt: -1 })
     .limit(50)
-    .populate("white", "username")
-    .populate("black", "username")
+    .populate("white", "username avatarGradient")
+    .populate("black", "username avatarGradient")
     .lean();
 }
 
@@ -288,8 +320,8 @@ export async function listFriendsActiveGames(userId: string) {
   })
     .sort({ startedAt: -1 })
     .limit(50)
-    .populate("white", "username")
-    .populate("black", "username")
+    .populate("white", "username avatarGradient")
+    .populate("black", "username avatarGradient")
     .lean();
 }
 
@@ -311,14 +343,14 @@ export async function listOpenGames(excludeUserId?: string) {
   })
     .sort({ createdAt: -1 })
     .limit(50)
-    .populate("white", "username")
+    .populate("white", "username avatarGradient")
     .lean();
 }
 
 export async function getGameByCode(code: string) {
   const game = await Game.findOne({ joinCode: code.toUpperCase() })
-    .populate("white", "username")
-    .populate("black", "username")
+    .populate("white", "username avatarGradient")
+    .populate("black", "username avatarGradient")
     .lean();
   if (!game) throw ApiError.notFound("No game found with that code");
   return game;

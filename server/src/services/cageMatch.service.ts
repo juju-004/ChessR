@@ -725,8 +725,8 @@ export async function getCageMatchByCode(codeOrId: string) {
     ? { $or: [{ matchCode: codeOrId }, { _id: codeOrId }] }
     : { matchCode: codeOrId };
   const match = await CageMatch.findOne(query)
-    .populate("player1", "username")
-    .populate("player2", "username")
+    .populate("player1", "username avatarGradient")
+    .populate("player2", "username avatarGradient")
     .lean();
   if (!match) throw ApiError.notFound("Cage match not found");
   return match;
@@ -736,7 +736,7 @@ export async function listMyCageMatches(userId: string) {
   return CageMatch.find({ $or: [{ player1: userId }, { player2: userId }] })
     .sort({ createdAt: -1 })
     .limit(50)
-    .populate("player1", "username")
-    .populate("player2", "username")
+    .populate("player1", "username avatarGradient")
+    .populate("player2", "username avatarGradient")
     .lean();
 }

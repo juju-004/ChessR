@@ -9,6 +9,12 @@ export interface IUser extends Document {
   tokenBalance: number;
   friends: Types.ObjectId[];
   avatarUrl?: string;
+  /** Preset id from the client's avatarGradients.ts list — validated against
+   *  that same allow-list server-side (see user.controller.ts) so this can
+   *  never end up holding an arbitrary/unstyled string. */
+  avatarGradient?: string;
+  /** Short freeform profile blurb, shown under the username. */
+  bio?: string;
   tokenVersion: number;
   createdAt: Date;
   updatedAt: Date;
@@ -32,6 +38,8 @@ const userSchema = new Schema<IUser>(
     tokenBalance: { type: Number, default: 0, min: 0 },
     friends: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     avatarUrl: { type: String },
+    avatarGradient: { type: String },
+    bio: { type: String, maxlength: 160, trim: true },
     // Bumped on password change / "log out everywhere" to invalidate all
     // outstanding refresh tokens without needing a server-side blacklist.
     tokenVersion: { type: Number, default: 0 },

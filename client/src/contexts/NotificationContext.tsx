@@ -26,6 +26,11 @@ export interface NotifyAction {
 
 interface NotifyItem {
   id: string;
+  /** When provided, a later notify() call with the same key replaces this
+   *  toast in place instead of stacking a new one alongside it — e.g. the
+   *  same person challenging you three times in a row should update one
+   *  toast, not pile up three. */
+  key?: string;
   message: string;
   actions: NotifyAction[];
   /** How long (ms) before this toast dismisses itself — omit for one that
@@ -34,11 +39,20 @@ interface NotifyItem {
   autoDismissMs?: number;
 }
 
+// Hard ceiling on simultaneously visible toasts. A burst of notifications
+// (a buggy client retrying, or someone spamming challenges/invites) would
+// otherwise stack indefinitely in the fixed top-right column — on a phone,
+// where each toast is up to 90vw wide, that's enough to cover the entire
+// screen. Once this cap is hit, the oldest toast is dropped to make room
+// for the new one.
+const MAX_VISIBLE_TOASTS = 4;
+
 interface NotificationContextValue {
   notify: (
     message: string,
     actions?: NotifyAction[],
     autoDismissMs?: number,
+    key?: string,
   ) => string;
   dismiss: (id: string) => void;
 }
@@ -129,9 +143,26 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const notify = useCallback(
-    (message: string, actions: NotifyAction[] = [], autoDismissMs?: number) => {
+    (
+      message: string,
+      actions: NotifyAction[] = [],
+      autoDismissMs?: number,
+      key?: string,
+    ) => {
       const id = crypto.randomUUID();
-      setItems((prev) => [...prev, { id, message, actions, autoDismissMs }]);
+      setItems((prev) => {
+        // A toast sharing `key` with an existing one replaces it in place
+        // (same visual slot, fresh message/timer) instead of stacking —
+        // this is what stops "challenged you" x5 from a spammy sender
+        // turning into five separate toasts.
+        const withoutSameKey = key ? prev.filter((i) => i.key !== key) : prev;
+        const next = [...withoutSameKey, { id, key, message, actions, autoDismissMs }];
+        // Oldest-first eviction once over the cap — a burst of distinct
+        // notifications still can't grow the stack without bound.
+        return next.length > MAX_VISIBLE_TOASTS
+          ? next.slice(next.length - MAX_VISIBLE_TOASTS)
+          : next;
+      });
       if (autoDismissMs) setTimeout(() => dismiss(id), autoDismissMs);
       return id;
     },

@@ -13,10 +13,14 @@ import {
   getCageMatchByCode,
   type CageLegInput,
 } from '../services/cageMatch.service.js';
+import { assertUnderActiveGameLimit, countActiveGamesForUser, MAX_ACTIVE_GAMES_PER_USER } from '../services/game.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
 const CAGE_INVITE_TTL_SECONDS = 90;
 const inviteKey = (id: string) => `cageInvite:${id}`;
+// Same anti-spam pattern as challengeSocket.ts's pendingPairKey — blocks a
+// second cage:send to the same person while one's still unanswered.
+const pendingInvitePairKey = (fromId: string, toId: string) => `cageInvite:pending:${fromId}:${toId}`;
 
 // Pause/resume requests are short-lived, Redis-backed, and keyed by match —
 // same pattern as a normal challenge invite, just scoped to a specific match
@@ -110,6 +114,19 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
         return emitError(socket, "You don't have enough R tokens for that wager");
       }
 
+      const myActiveCount = await countActiveGamesForUser(userId);
+      if (myActiveCount >= MAX_ACTIVE_GAMES_PER_USER) {
+        return emitError(
+          socket,
+          `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before starting a cage match.`,
+        );
+      }
+
+      const alreadyPending = await redis.exists(pendingInvitePairKey(userId, toUserId));
+      if (alreadyPending) {
+        return emitError(socket, 'You already have a pending cage match invite to that player.');
+      }
+
       const inviteId = nanoid();
       await redis.set(
         inviteKey(inviteId),
@@ -117,6 +134,7 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
         'EX',
         CAGE_INVITE_TTL_SECONDS,
       );
+      await redis.set(pendingInvitePairKey(userId, toUserId), inviteId, 'EX', CAGE_INVITE_TTL_SECONDS);
 
       io.to(`user:${toUserId}`).emit('cage:received', {
         inviteId,
@@ -155,9 +173,29 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
       if (toId !== userId) return emitError(socket, 'This invite is not addressed to you');
 
       await redis.del(inviteKey(inviteId));
+      await redis.del(pendingInvitePairKey(fromId, toId));
 
       if (!accept) {
         io.to(`user:${fromId}`).emit('cage:declined', { inviteId, by: userId });
+        return;
+      }
+
+      try {
+        await assertUnderActiveGameLimit(fromId);
+      } catch {
+        const message = `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before accepting.`;
+        emitError(socket, 'That player already has too many active games to start another right now.');
+        io.to(`user:${fromId}`).emit('cage:error', { message });
+        return;
+      }
+      try {
+        await assertUnderActiveGameLimit(toId);
+      } catch {
+        const message = `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before accepting.`;
+        emitError(socket, message);
+        io.to(`user:${fromId}`).emit('cage:error', {
+          message: 'That player already has too many active games to accept right now.',
+        });
         return;
       }
 
@@ -192,6 +230,7 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
       const { fromId, toId } = JSON.parse(stored) as { fromId: string; toId: string };
       if (fromId !== userId) return;
       await redis.del(inviteKey(parsed.data.inviteId));
+      await redis.del(pendingInvitePairKey(fromId, toId));
       io.to(`user:${toId}`).emit('cage:cancelled', { inviteId: parsed.data.inviteId });
     }),
   );

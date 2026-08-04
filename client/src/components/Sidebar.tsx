@@ -54,7 +54,8 @@ export const Sidebar = memo(function Sidebar() {
   // the game page gets the icon-only collapse-on-hover treatment — every
   // other page keeps the rail fully expanded (labels always visible, no
   // hover behavior at all).
-  const collapsible = pathname.startsWith("/game/");
+  const collapsible =
+    pathname.startsWith("/game/") || pathname.startsWith("/replay/");
 
   return (
     <>
@@ -93,7 +94,7 @@ export const Sidebar = memo(function Sidebar() {
       <MobileNavFab />
     </>
   );
-})
+});
 
 function MobileNavFab() {
   const { pathname } = useLocation();

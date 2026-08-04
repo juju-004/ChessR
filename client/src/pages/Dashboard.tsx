@@ -215,7 +215,7 @@ export function Dashboard() {
                         {g.black.username}
                       </Link>
                       <span className="ml-2 text-base-content/50">
-                        · move {g.moves.length} · {toMove} to move ·{" "}
+                        · move {Math.ceil(g.moves.length / 2)} · {toMove} to move ·{" "}
                         {formatTimeControl(g.timeControl)}
                       </span>
                       {g.wagerTokens > 0 && (

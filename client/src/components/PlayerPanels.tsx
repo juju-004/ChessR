@@ -27,6 +27,7 @@ const WHITE_GLYPH: Record<CapturedPieceCount["type"], string> = {
 
 export interface PanelData {
   username: string;
+  avatarGradient?: string | null;
   isTurn: boolean;
   connected: boolean;
   /** Server-confirmed remaining time as of `turnStartedAtMs` — NOT a live
@@ -187,6 +188,7 @@ function ClockBadge({
  *  line. Used for the desktop sidebar where there's room to spare. */
 export const PlayerPanelRow = memo(function PlayerPanelRow({
   username,
+  avatarGradient,
   isTurn,
   connected,
   baseRemainingMs,
@@ -209,6 +211,7 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
     >
       <Avatar
         username={username}
+        gradient={avatarGradient}
         size="sm"
         status={connected ? "online" : "offline"}
       />
@@ -244,6 +247,7 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
  *  but very little width to work with. */
 export const PlayerPanelFlank = memo(function PlayerPanelFlank({
   username,
+  avatarGradient,
   isTurn,
   connected,
   baseRemainingMs,
@@ -268,6 +272,7 @@ export const PlayerPanelFlank = memo(function PlayerPanelFlank({
     >
       <Avatar
         username={username}
+        gradient={avatarGradient}
         size="sm"
         status={connected ? "online" : "offline"}
       />

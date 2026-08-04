@@ -87,7 +87,7 @@ export const respondToFriendRequest = asyncHandler(async (req: AuthedRequest, re
 
 export const listFriends = asyncHandler(async (req: AuthedRequest, res) => {
   const user = await User.findById(req.user!.id)
-    .populate('friends', 'username avatarUrl')
+    .populate('friends', 'username avatarUrl avatarGradient')
     .lean();
   if (!user) throw ApiError.notFound('User not found');
 
@@ -106,7 +106,7 @@ export const listFriends = asyncHandler(async (req: AuthedRequest, res) => {
 
 export const listIncomingRequests = asyncHandler(async (req: AuthedRequest, res) => {
   const requests = await FriendRequest.find({ to: req.user!.id, status: 'pending' })
-    .populate('from', 'username avatarUrl')
+    .populate('from', 'username avatarUrl avatarGradient')
     .lean();
   res.json({ requests });
 });

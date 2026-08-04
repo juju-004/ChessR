@@ -4,12 +4,18 @@ import mongoose from 'mongoose';
 import { nanoid } from 'nanoid';
 import { redis } from '../config/redis.js';
 import { User } from '../models/User.js';
-import { createDirectGame } from '../services/game.service.js';
+import { createDirectGame, assertUnderActiveGameLimit, countActiveGamesForUser, MAX_ACTIVE_GAMES_PER_USER } from '../services/game.service.js';
 import { isUserOnline } from '../services/presence.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
 const CHALLENGE_TTL_SECONDS = 60;
 const challengeKey = (id: string) => `challenge:${id}`;
+// Tracks "userId already has an unanswered challenge out to this specific
+// person" — same TTL as the challenge itself. Blocks challenge:send from
+// firing again for the same pair while one's still pending, which is what
+// actually stops a repeated-challenge spam burst at the source, rather than
+// just hiding the resulting notifications on the receiving end.
+const pendingPairKey = (fromId: string, toId: string) => `challenge:pending:${fromId}:${toId}`;
 
 const MAX_WAGER_TOKENS = 100_000;
 
@@ -67,6 +73,25 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
         return emitError(socket, "You don't have enough R tokens for that wager");
       }
 
+      // Same soft-check pattern for the active-game cap — the authoritative
+      // check happens again for both sides at acceptance time.
+      const myActiveCount = await countActiveGamesForUser(userId);
+      if (myActiveCount >= MAX_ACTIVE_GAMES_PER_USER) {
+        return emitError(
+          socket,
+          `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before challenging someone else.`,
+        );
+      }
+
+      // Stops a repeated-challenge spam burst at the source: while an
+      // unanswered challenge to this same person is still outstanding,
+      // reject another one instead of piling up a fresh `challenge:received`
+      // notification on their end every time this fires.
+      const alreadyPending = await redis.exists(pendingPairKey(userId, toUserId));
+      if (alreadyPending) {
+        return emitError(socket, "You already have a pending challenge to that player.");
+      }
+
       const challengeId = nanoid();
       await redis.set(
         challengeKey(challengeId),
@@ -74,6 +99,7 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
         'EX',
         CHALLENGE_TTL_SECONDS,
       );
+      await redis.set(pendingPairKey(userId, toUserId), challengeId, 'EX', CHALLENGE_TTL_SECONDS);
 
       io.to(`user:${toUserId}`).emit('challenge:received', {
         challengeId,
@@ -109,9 +135,31 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
       if (toId !== userId) return emitError(socket, 'This challenge is not addressed to you');
 
       await redis.del(challengeKey(challengeId));
+      await redis.del(pendingPairKey(fromId, toId));
 
       if (!accept) {
         io.to(`user:${fromId}`).emit('challenge:declined', { challengeId, by: userId });
+        return;
+      }
+
+      // Authoritative re-check for both sides — either could have hit the
+      // cap in the time between the challenge being sent and answered.
+      try {
+        await assertUnderActiveGameLimit(fromId);
+      } catch {
+        const message = `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before accepting.`;
+        emitError(socket, 'That player already has too many active games to start another right now.');
+        io.to(`user:${fromId}`).emit('challenge:error', { message });
+        return;
+      }
+      try {
+        await assertUnderActiveGameLimit(toId);
+      } catch {
+        const message = `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before accepting.`;
+        emitError(socket, message);
+        io.to(`user:${fromId}`).emit('challenge:error', {
+          message: 'That player already has too many active games to accept right now.',
+        });
         return;
       }
 
@@ -161,6 +209,7 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
       const { fromId, toId } = JSON.parse(stored) as { fromId: string; toId: string };
       if (fromId !== userId) return;
       await redis.del(challengeKey(parsed.data.challengeId));
+      await redis.del(pendingPairKey(fromId, toId));
       io.to(`user:${toId}`).emit('challenge:cancelled', { challengeId: parsed.data.challengeId });
     }),
   );

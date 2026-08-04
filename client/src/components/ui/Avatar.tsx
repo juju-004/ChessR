@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { cn } from "@/lib/cn.js";
+import { avatarGradientStyle } from "@/lib/avatarGradients.js";
 
 export interface AvatarProps {
   src?: string | null;
@@ -7,6 +8,10 @@ export interface AvatarProps {
   size?: "xs" | "sm" | "md" | "lg";
   /** Small colored dot in the corner — typically online/offline presence. */
   status?: "online" | "offline" | null;
+  /** Preset id from avatarGradients.ts. Omit (or "brand") for the default
+   *  look — falls back to the existing .gradient-brand class so old data
+   *  without this field renders exactly as it always did. */
+  gradient?: string | null;
   className?: string;
 }
 
@@ -21,14 +26,17 @@ function initialsOf(username: string): string {
   return username.slice(0, 2).toUpperCase();
 }
 
-export function Avatar({ src, username, size = "md", status = null, className }: AvatarProps) {
+export function Avatar({ src, username, size = "md", status = null, gradient, className }: AvatarProps) {
   const [imgFailed, setImgFailed] = useState(false);
+  const customStyle = avatarGradientStyle(gradient);
 
   return (
     <span className={cn("relative inline-flex shrink-0", className)}>
       <span
+        style={customStyle}
         className={cn(
-          "flex items-center justify-center overflow-hidden rounded-full font-semibold text-white select-none gradient-brand",
+          "flex items-center justify-center overflow-hidden rounded-full font-semibold text-white select-none",
+          !customStyle && "gradient-brand",
           SIZE_CLASSES[size],
         )}
       >

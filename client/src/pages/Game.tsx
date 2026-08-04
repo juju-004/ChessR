@@ -72,8 +72,8 @@ interface GameMeta {
   joinCode: string;
   variant: "standard" | "chess960";
   initialFen: string;
-  white: { _id: string; username: string } | null;
-  black: { _id: string; username: string } | null;
+  white: { _id: string; username: string; avatarGradient?: any } | null;
+  black: { _id: string; username: string; avatarGradient?: any } | null;
   status: "waiting" | "active" | "finished" | "aborted";
   timeControl: { baseSeconds: number | null; incrementSeconds: number };
   wagerTokens?: number;
@@ -162,7 +162,9 @@ export function Game() {
   // derives the countdown text/claimable state itself and owns its own
   // 500ms tick, so this state only ever changes on actual socket events,
   // never on a timer. See DisconnectBanner.tsx for why that matters.
-  const [disconnectExpiresAt, setDisconnectExpiresAt] = useState<number | null>(null);
+  const [disconnectExpiresAt, setDisconnectExpiresAt] = useState<number | null>(
+    null,
+  );
   const [rematchState, setRematchState] = useState<"idle" | "offered">("idle");
   const [pausedLeg, setPausedLeg] = useState(false);
   const [whiteBerserk, setWhiteBerserk] = useState(false);
@@ -978,6 +980,7 @@ export function Game() {
 
   const whitePanelData = {
     username: gameMeta?.white?.username ?? "White",
+    avatarGradient: gameMeta?.white?.avatarGradient,
     isTurn: isActiveGame && sideToMove === "white",
     connected: whiteConnected,
     baseRemainingMs: whiteRemainingMs,
@@ -989,6 +992,7 @@ export function Game() {
   };
   const blackPanelData = {
     username: gameMeta?.black?.username ?? "Black",
+    avatarGradient: gameMeta?.black?.avatarGradient,
     isTurn: isActiveGame && sideToMove === "black",
     connected: blackConnected,
     baseRemainingMs: blackRemainingMs,
@@ -1340,7 +1344,10 @@ export function Game() {
           )}
 
           {disconnectExpiresAt !== null && !isIdlePhase && (
-            <DisconnectBanner expiresAt={disconnectExpiresAt} onClaim={handleClaim} />
+            <DisconnectBanner
+              expiresAt={disconnectExpiresAt}
+              onClaim={handleClaim}
+            />
           )}
         </AnimatePresence>
       </div>

@@ -23,7 +23,7 @@ export function GlobalListeners() {
 
     function onChallengeReceived(payload: {
       challengeId: string;
-      from: { username: string };
+      from: { id: string; username: string };
       timeControl: { baseMinutes: number | null; incrementSeconds: number };
       wagerTokens?: number;
     }) {
@@ -56,6 +56,9 @@ export function GlobalListeners() {
           },
         ],
         60_000,
+        // Same sender challenging again (e.g. re-sending after the first one
+        // scrolled past) updates this one toast instead of stacking another.
+        `challenge:${payload.from.id}`,
       );
     }
 
@@ -112,7 +115,7 @@ export function GlobalListeners() {
 
     function onCageReceived(payload: {
       inviteId: string;
-      from: { username: string };
+      from: { id: string; username: string };
       legs: { baseMinutes: number | null; incrementSeconds: number; variant: string }[];
       wagerMode: string;
       wagerTokens?: number;
@@ -138,6 +141,7 @@ export function GlobalListeners() {
           },
         ],
         60_000,
+        `cage:${payload.from.id}`,
       );
     }
 

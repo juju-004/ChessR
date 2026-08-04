@@ -86,8 +86,8 @@ export const getOpenGames = asyncHandler(async (_req: AuthedRequest, res) => {
 export const getGame = asyncHandler(async (req, res) => {
   const { id } = idParamSchema.parse(req.params);
   const game = await Game.findById(id)
-    .populate("white", "username")
-    .populate("black", "username")
+    .populate("white", "username avatarGradient")
+    .populate("black", "username avatarGradient")
     .lean();
   if (!game) throw ApiError.notFound("Game not found");
   res.json({ game });

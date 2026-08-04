@@ -16,6 +16,8 @@ import {
   createDirectGame,
   settleWager,
   refundWagerBothSides,
+  assertUnderActiveGameLimit,
+  MAX_ACTIVE_GAMES_PER_USER,
 } from '../services/game.service.js';
 import { advanceCageMatchLeg, handleLegMoveForNoShow } from '../services/cageMatch.service.js';
 import { advanceTournamentIfPairing, berserkInTournamentGame } from '../services/tournament.service.js';
@@ -241,7 +243,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       if (!parsed.success) return emitError(socket, 'Invalid join payload');
       const { gameId } = parsed.data;
 
-      const game = await Game.findById(gameId).populate('white', 'username').populate('black', 'username').lean();
+      const game = await Game.findById(gameId).populate('white', 'username avatarGradient').populate('black', 'username avatarGradient').lean();
       if (!game) return emitError(socket, 'Game not found');
 
       // `white`/`black` may or may not be populated depending on the query
@@ -551,6 +553,28 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       // player isn't stuck playing white (or black) twice in a row.
       const newWhite = isWhite ? game.black!.toString() : game.white.toString();
       const newBlack = isWhite ? game.white.toString() : game.black!.toString();
+
+      try {
+        await assertUnderActiveGameLimit(pending.fromUserId);
+      } catch {
+        emitError(socket, 'Your opponent already has too many active games to start another right now.');
+        io.to(`user:${pending.fromUserId}`).emit('game:error', {
+          message: `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before starting a rematch.`,
+        });
+        return;
+      }
+      try {
+        await assertUnderActiveGameLimit(userId);
+      } catch {
+        emitError(
+          socket,
+          `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before accepting a rematch.`,
+        );
+        io.to(`user:${pending.fromUserId}`).emit('game:error', {
+          message: 'Your opponent already has too many active games to accept the rematch right now.',
+        });
+        return;
+      }
 
       let newGame;
       try {

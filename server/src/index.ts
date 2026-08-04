@@ -28,9 +28,15 @@ async function main() {
     })
     .catch((err) => console.error('reconcileActiveGames failed on boot:', err));
 
+  // Runs much more often than IDLE_PHASE_ABANDON_MS (5 min, in game.service.ts)
+  // on purpose — if this ran every 5 minutes too, a game that just missed one
+  // sweep could sit idle for close to double the intended threshold before
+  // getting caught. A 60s cadence bounds that worst case to ~1 extra minute
+  // instead, while still being cheap (Game.find({status:'active'}) over a
+  // realistic table size, once a minute).
   const reconcileInterval = setInterval(() => {
     reconcileActiveGames().catch((err) => console.error('periodic reconcileActiveGames failed:', err));
-  }, 5 * 60 * 1000);
+  }, 60 * 1000);
   reconcileInterval.unref();
 
   httpServer.listen(env.PORT, () => {

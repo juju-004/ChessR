@@ -43,7 +43,7 @@ export function ProfileSearch() {
           {results.map((u) => (
             <div key={u._id} className="flex items-center justify-between gap-3 py-2.5">
               <div className="flex min-w-0 items-center gap-2.5">
-                <Avatar username={u.username} size="sm" />
+                <Avatar username={u.username} size="sm" gradient={u.avatarGradient} />
                 <span className="truncate text-sm font-medium text-base-content">{u.username}</span>
               </div>
               <Link to={`/profile/${u.username}`}>
