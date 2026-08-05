@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { isLowEndDevice } from '../lib/deviceCapability.js';
 
 export type BoardTheme = 'brown' | 'green' | 'blue' | 'gray' | 'purple';
 export type PieceTheme = 'classic' | 'mono' | 'contrast' | 'wood';
@@ -13,6 +14,12 @@ export interface Settings {
   showLegalMoves: boolean;
   soundEnabled: boolean;
   confirmResign: boolean;
+  /** Swaps modal/popover/dropdown entrances from springy scale+opacity to
+   *  opacity-only near-instant transitions (see MotionConfigProvider). The
+   *  *static* default here is deliberately `false` — the real, device-aware
+   *  default is computed once in loadSettings() below and only falls back
+   *  to this constant in the (very unlikely) case that fails too. */
+  reduceMotion: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -25,6 +32,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showLegalMoves: true,
   soundEnabled: true,
   confirmResign: true,
+  reduceMotion: false,
 };
 
 const STORAGE_KEY = 'chess-app:settings';
@@ -32,7 +40,20 @@ const STORAGE_KEY = 'chess-app:settings';
 function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_SETTINGS;
+    // First-ever load on this browser: no stored prefs to merge over, so
+    // this is the one moment it's correct to pick reduceMotion's default
+    // from the device itself rather than from the static DEFAULT_SETTINGS
+    // constant. Wrapped in its own try — a throwing heuristic should never
+    // take the whole settings load down with it.
+    if (!raw) {
+      let autoReduceMotion = DEFAULT_SETTINGS.reduceMotion;
+      try {
+        autoReduceMotion = isLowEndDevice();
+      } catch {
+        // fall through to the static default
+      }
+      return { ...DEFAULT_SETTINGS, reduceMotion: autoReduceMotion };
+    }
     // Merge over defaults rather than trusting the stored blob outright, so
     // adding a new setting later doesn't leave existing users with `undefined`
     // for it until they happen to touch that particular control.

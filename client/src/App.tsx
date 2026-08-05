@@ -12,6 +12,7 @@ import { NotificationProvider } from "./contexts/NotificationContext.js";
 import { SettingsProvider } from "./contexts/SettingsContext.js";
 import { ThemeProvider } from "./contexts/ThemeContext.js";
 import { ConfirmProvider } from "./contexts/ConfirmContext.js";
+import { MotionConfigProvider } from "./components/MotionConfigProvider.js";
 import { GlobalListeners } from "./components/GlobalListeners.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { Navbar } from "./components/Navbar.js";
@@ -217,9 +218,15 @@ export function App() {
           <SocketProvider>
             <NotificationProvider>
               <SettingsProvider>
-                <ConfirmProvider>
-                  <AppShell />
-                </ConfirmProvider>
+                {/* Needs to sit inside SettingsProvider (reads reduceMotion)
+                 *  and outside everything that renders motion.* components
+                 *  — i.e. basically everything — so it wraps AppShell here
+                 *  rather than living any deeper. */}
+                <MotionConfigProvider>
+                  <ConfirmProvider>
+                    <AppShell />
+                  </ConfirmProvider>
+                </MotionConfigProvider>
               </SettingsProvider>
             </NotificationProvider>
           </SocketProvider>

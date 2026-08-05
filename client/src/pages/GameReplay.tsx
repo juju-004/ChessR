@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Share2, ChevronLeft, ChevronRight, FlipVertical2 } from "lucide-react";
 import { getGameByCode } from "../api/games.js";
 import { ApiRequestError } from "../api/http.js";
 import { ChessBoard } from "../components/ChessBoard.js";
+import { MoveList, MoveStrip } from "../components/MoveLog.js";
 import { PlayerPanelRow, panelMaterial } from "../components/PlayerPanels.js";
 import {
   Card,
@@ -138,44 +139,65 @@ export function GameReplay() {
       : "black"
     : (myColor ?? "white");
 
-  const material = computeMaterialDiff(displayFen);
-  const whiteMaterial = panelMaterial("white", material);
-  const blackMaterial = panelMaterial("black", material);
+  // Memoized on displayFen alone — computeMaterialDiff/panelMaterial return
+  // fresh objects every call, which would otherwise give whitePanelData/
+  // blackPanelData's own useMemo below a "changed" input on every render
+  // regardless of whether the displayed position actually moved.
+  const material = useMemo(() => computeMaterialDiff(displayFen), [displayFen]);
+  const whiteMaterial = useMemo(() => panelMaterial("white", material), [material]);
+  const blackMaterial = useMemo(() => panelMaterial("black", material), [material]);
 
   // Every field a PlayerPanel needs to *tick* is nulled out/false here —
   // there's no live clock in a replay, so ClockBadge just renders "∞"
   // instead of a time (clockKnown: false), same as an untimed game would.
-  const whitePanelData = {
-    username: game.white.username,
-    avatarGradient: game.white.avatarGradient,
-    isTurn: false,
-    connected: true,
-    baseRemainingMs: null,
-    turnStartedAtMs: 0,
-    isTicking: false,
-    clockKnown: false,
-    lowTimeThresholdMs: 0,
-    ...whiteMaterial,
-  };
-  const blackPanelData = {
-    username: game.black.username,
-    avatarGradient: game.black.avatarGradient,
-    isTurn: false,
-    connected: true,
-    baseRemainingMs: null,
-    turnStartedAtMs: 0,
-    isTicking: false,
-    clockKnown: false,
-    lowTimeThresholdMs: 0,
-    ...blackMaterial,
-  };
+  // Memoized so PlayerPanelRow's React.memo isn't defeated by a fresh object
+  // reference on every unrelated re-render (flip board, prev/next, etc).
+  const whitePanelData = useMemo(
+    () => ({
+      username: game.white.username,
+      avatarGradient: game.white.avatarGradient,
+      isTurn: false,
+      connected: true,
+      baseRemainingMs: null,
+      turnStartedAtMs: 0,
+      isTicking: false,
+      clockKnown: false,
+      lowTimeThresholdMs: 0,
+      ...whiteMaterial,
+    }),
+    [game.white.username, game.white.avatarGradient, whiteMaterial],
+  );
+  const blackPanelData = useMemo(
+    () => ({
+      username: game.black.username,
+      avatarGradient: game.black.avatarGradient,
+      isTurn: false,
+      connected: true,
+      baseRemainingMs: null,
+      turnStartedAtMs: 0,
+      isTicking: false,
+      clockKnown: false,
+      lowTimeThresholdMs: 0,
+      ...blackMaterial,
+    }),
+    [game.black.username, game.black.avatarGradient, blackMaterial],
+  );
   const myPanelData = myColor === "black" ? blackPanelData : whitePanelData;
   const opponentPanelData =
     myColor === "black" ? whitePanelData : blackPanelData;
 
-  function handleSelectPly(i: number) {
+  const handleSelectPly = useCallback((i: number) => {
     setPly(i);
-  }
+  }, []);
+  // MoveList/MoveStrip are shared with Game.tsx and key off a 1-indexed
+  // `moveNumber` (matching m.moveNumber on each move), whereas replay's
+  // `ply` is a 0-indexed array position with -1 meaning "before any move" —
+  // hence the +1/-1 conversions at the boundary here rather than changing
+  // either component's own indexing convention.
+  const handleSelectMoveNumber = useCallback(
+    (moveNumber: number) => handleSelectPly(moveNumber - 1),
+    [handleSelectPly],
+  );
   function handlePrev() {
     setPly((p) => Math.max(-1, p - 1));
   }
@@ -224,62 +246,21 @@ export function GameReplay() {
 
   const moveListEntries =
     game.moves.length === 0 ? null : (
-      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 font-mono text-sm text-base-content/80">
-        {game.moves.map((m, i) => {
-          const isWhiteMove = m.moveNumber % 2 === 1;
-          const active = i === ply;
-          return (
-            <button
-              key={m.moveNumber}
-              type="button"
-              onClick={() => handleSelectPly(i)}
-              className={`rounded px-1 py-0.5 text-left transition-colors hover:bg-base-300/60 ${
-                active ? "bg-(--primary)/15 font-semibold text-(--primary)" : ""
-              }`}
-            >
-              {isWhiteMove && (
-                <span className="text-base-content/40">
-                  {Math.ceil(m.moveNumber / 2)}.{" "}
-                </span>
-              )}
-              {m.san}
-            </button>
-          );
-        })}
-      </div>
+      <MoveList moves={game.moves} currentPly={ply + 1} onSelectMove={handleSelectMoveNumber} />
     );
-
   const moveStripEntries =
     game.moves.length === 0 ? null : (
-      <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-        {game.moves.map((m, i) => {
-          const isWhiteMove = m.moveNumber % 2 === 1;
-          const active = i === ply;
-          return (
-            <button
-              key={m.moveNumber}
-              type="button"
-              onClick={() => handleSelectPly(i)}
-              className={`shrink-0 whitespace-nowrap rounded-lg px-2 py-1 font-mono text-xs transition-colors ${
-                active
-                  ? "bg-(--primary)/20 font-semibold text-(--primary)"
-                  : "bg-base-300/60 text-base-content/80"
-              }`}
-            >
-              {isWhiteMove && (
-                <span className="text-base-content/40">
-                  {Math.ceil(m.moveNumber / 2)}.{" "}
-                </span>
-              )}
-              {m.san}
-            </button>
-          );
-        })}
-      </div>
+      <MoveStrip moves={game.moves} currentPly={ply + 1} onSelectMove={handleSelectMoveNumber} />
     );
 
   return (
-    <div className="mx-auto max-w-6xl min-h-[calc(100dvh-7rem)] flex flex-col justify-center px-3 py-3 md:px-4">
+    // No horizontal padding here below md — AppShell's own px-4 already insets
+    // the whole page; adding px-3 on top of that (the old value) was double
+    // padding the board along with everything else, which is exactly why it
+    // couldn't reach full viewport width like Game.tsx's board does. From md
+    // up the board is a fixed px size inside the grid anyway, so px-4 there
+    // is just normal breathing room for the rest of the layout, same as before.
+    <div className="mx-auto max-w-6xl min-h-[calc(100dvh-7rem)] flex flex-col justify-center py-3 md:px-4">
       <div className="game-grid">
         <div className="game-area-leftinfo flex shrink-0 flex-col justify-center gap-3 lg:h-full lg:min-h-0">
           <Card variant="solid">
@@ -335,7 +316,14 @@ export function GameReplay() {
             <PlayerPanelRow {...opponentPanelData} />
           </div>
           <div
-            className={`relative aspect-square w-full min-h-60 min-w-60 max-w-full overflow-hidden rounded-2xl shadow-lg md:h-auto md:max-h-full md:w-full board-theme-${settings.boardTheme} piece-theme-${settings.pieceTheme}`}
+            // Same full-bleed breakout as Game.tsx's board (see the comment
+            // there): -mx-4 + w-[calc(100%+2rem)] cancels out AppShell's
+            // px-4 (1rem/side) so the board alone spans the full viewport
+            // width on phone, without affecting the info card or panels
+            // around it. 2rem = 1rem-per-side; keep in sync if App.tsx's
+            // px-4 ever changes. md:mx-0 md:w-full resets to normal in-flow
+            // sizing once the board becomes a fixed px size in the grid.
+            className={`relative aspect-square min-h-60 min-w-60 max-w-full -mx-4 w-[calc(100%+2rem)] overflow-hidden rounded-2xl shadow-lg md:mx-0 md:h-auto md:max-h-full md:w-full board-theme-${settings.boardTheme} piece-theme-${settings.pieceTheme}`}
           >
             <ChessBoard
               fen={displayFen}

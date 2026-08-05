@@ -221,6 +221,13 @@ export function Settings() {
                 onChange={(v) => updateSetting("confirmResign", v)}
                 className="rounded-lg px-1 py-2 hover:bg-base-100"
               />
+              <Switch
+                label="Reduce motion"
+                description="Sharper, near-instant popovers/menus/modals instead of springy animations. Auto-enabled on lower-end devices — you can override it here."
+                checked={settings.reduceMotion}
+                onChange={(v) => updateSetting("reduceMotion", v)}
+                className="rounded-lg px-1 py-2 hover:bg-base-100"
+              />
             </CardContent>
           </Card>
 

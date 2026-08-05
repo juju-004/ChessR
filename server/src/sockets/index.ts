@@ -23,6 +23,15 @@ export function initSocketServer(httpServer: HttpServer): Server {
     pingInterval: 25000,
     pingTimeout: 20000,
     maxHttpBufferSize: 1e5, // 100KB — this app never needs large payloads
+    // engine.io defaults this to enabled, which negotiates permessage-deflate
+    // on every websocket connection and then runs zlib compress/decompress
+    // on every single frame. That trade only pays off for large, repetitive
+    // payloads — every message this server sends (a move, a clock tick, a
+    // ping) is a tiny, already-compact JSON object well under 1KB, so the
+    // per-message CPU cost of compressing/decompressing is pure added
+    // latency on the hottest path in the app (game:move) with no bandwidth
+    // win to show for it. Off entirely, every server instance.
+    perMessageDeflate: false,
   });
 
   // Lets Socket.IO fan events out across multiple Node processes/instances,

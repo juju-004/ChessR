@@ -32,6 +32,7 @@ import {
   FlipVertical2,
 } from "lucide-react";
 import { ChessBoard } from "../components/ChessBoard.js";
+import { MoveList, MoveStrip } from "../components/MoveLog.js";
 import { DisconnectBanner } from "../components/DisconnectBanner.js";
 import { PromotionPicker } from "../components/PromotionPicker.js";
 import { PlayerPanelRow, panelMaterial } from "../components/PlayerPanels.js";
@@ -228,19 +229,51 @@ export function Game() {
   // backwards from. `chess` above is deliberately left alone — dests/
   // premoveDests/turnColor everywhere else must keep reflecting the real,
   // live position even while the board is visually showing history.
+  // Incrementally extended, not fully replayed from scratch, on every move.
+  // A naive `useMemo` keyed on [initialFen, moves] still re-runs the whole
+  // replay any time the `moves` array gets a new reference — which is every
+  // single move, since onMove does `setMoves(prev => [...prev, entry])| —
+  // so a full from-scratch replay was chess.js-validating every move of the
+  // game over again on top of the one move that just landed. That's exactly
+  // the wrong moment to spend extra main-thread time: it's the same render
+  // where the board needs to update for the player who just moved. Since
+  // `moves` is appended immutably (the prefix keeps the same object
+  // references), the cache below can detect "just one new move got
+  // appended" via cheap reference equality and only replay that one move
+  // against the last cached fen — falling back to a full replay only when
+  // the prefix doesn't match (resync, rematch, a shorter/different moves
+  // array) or the variant's initial position changed.
+  const historyCacheRef = useRef<{
+    initialFen: string | undefined;
+    moves: MoveLogEntry[];
+    fens: string[];
+  } | null>(null);
   const historyFens = useMemo(() => {
     try {
-      const replay = new Chess(gameMeta?.initialFen);
-      const fens = [replay.fen()];
-      for (const m of moves) {
-        replay.move(m.san);
+      const cache = historyCacheRef.current;
+      const canExtend =
+        !!cache &&
+        cache.initialFen === gameMeta?.initialFen &&
+        moves.length >= cache.moves.length &&
+        cache.moves.every((m, i) => moves[i] === m);
+
+      const replay = new Chess(
+        canExtend ? cache!.fens[cache!.fens.length - 1] : gameMeta?.initialFen,
+      );
+      const fens = canExtend ? [...cache!.fens] : [replay.fen()];
+      const startIndex = canExtend ? cache!.moves.length : 0;
+      for (let i = startIndex; i < moves.length; i++) {
+        replay.move(moves[i].san);
         fens.push(replay.fen());
       }
+
+      historyCacheRef.current = { initialFen: gameMeta?.initialFen, moves, fens };
       return fens;
     } catch {
       // Shouldn't happen — the move list came from the server — but a
       // broken replay should degrade to "always show the live position"
       // rather than crash the page.
+      historyCacheRef.current = null;
       return null;
     }
   }, [gameMeta?.initialFen, moves]);
@@ -264,6 +297,95 @@ export function Game() {
     () => computeLowTimeThresholdMs(gameMeta?.timeControl.baseSeconds ?? null),
     [gameMeta?.timeControl.baseSeconds],
   );
+
+  // --- Live clocks + material diff, computed once and handed down to
+  // whichever panel presentation (row on desktop, flank on mobile) is
+  // actually rendered, so there's exactly one ticking source of truth. ---
+  // NOTE: this whole block — through opponentPanelData below — deliberately
+  // lives up here with the other unconditional hooks (dests/premoveDests/
+  // historyFens above) rather than down near where it's actually rendered.
+  // It contains useMemo calls, and there are three early `return`s for
+  // loadError/mode==="loading"/mode==="need-join" between here and there —
+  // hooks placed after those fire a different number of times depending on
+  // which branch a given render takes, which is exactly the
+  // "Rendered more hooks than during the previous render" crash. Same
+  // reasoning as the comment on dests/premoveDests above.
+  const sideToMove = turnColor(chess);
+  const clockKnown = whiteRemainingMs !== null && blackRemainingMs !== null;
+  // Memoized on `fen` alone: computeMaterialDiff/panelMaterial build fresh
+  // objects each call, which would otherwise hand whitePanelData/
+  // blackPanelData's own useMemo below a "changed" dependency on every
+  // render regardless of whether the position actually moved, defeating it.
+  const material = useMemo(() => computeMaterialDiff(fen), [fen]);
+  const whiteMaterial = useMemo(() => panelMaterial("white", material), [material]);
+  const blackMaterial = useMemo(() => panelMaterial("black", material), [material]);
+  const isActiveGame = status === "active";
+
+  // Memoized: PlayerPanelRow/PlayerPanelFlank are React.memo'd, but a plain
+  // object literal here would be a brand-new reference on every render of
+  // Game (which re-renders often — chat input, move errors, banners…),
+  // defeating that memo every single time regardless of whether any of
+  // these values actually changed. useMemo keeps the reference stable
+  // across renders where none of the listed dependencies moved.
+  const whitePanelData = useMemo(
+    () => ({
+      username: gameMeta?.white?.username ?? "White",
+      avatarGradient: gameMeta?.white?.avatarGradient,
+      isTurn: isActiveGame && sideToMove === "white",
+      connected: whiteConnected,
+      baseRemainingMs: whiteRemainingMs,
+      turnStartedAtMs,
+      isTicking: clockRunning && sideToMove === "white",
+      clockKnown,
+      lowTimeThresholdMs,
+      ...whiteMaterial,
+    }),
+    [
+      gameMeta?.white?.username,
+      gameMeta?.white?.avatarGradient,
+      isActiveGame,
+      sideToMove,
+      whiteConnected,
+      whiteRemainingMs,
+      turnStartedAtMs,
+      clockRunning,
+      clockKnown,
+      lowTimeThresholdMs,
+      whiteMaterial,
+    ],
+  );
+  const blackPanelData = useMemo(
+    () => ({
+      username: gameMeta?.black?.username ?? "Black",
+      avatarGradient: gameMeta?.black?.avatarGradient,
+      isTurn: isActiveGame && sideToMove === "black",
+      connected: blackConnected,
+      baseRemainingMs: blackRemainingMs,
+      turnStartedAtMs,
+      isTicking: clockRunning && sideToMove === "black",
+      clockKnown,
+      lowTimeThresholdMs,
+      ...blackMaterial,
+    }),
+    [
+      gameMeta?.black?.username,
+      gameMeta?.black?.avatarGradient,
+      isActiveGame,
+      sideToMove,
+      blackConnected,
+      blackRemainingMs,
+      turnStartedAtMs,
+      clockRunning,
+      clockKnown,
+      lowTimeThresholdMs,
+      blackMaterial,
+    ],
+  );
+  // The panel matching my seat renders closest to me — bottom on desktop,
+  // right-hand flank on mobile; the opponent's is the mirror of that.
+  const myPanelData = myColor === "black" ? blackPanelData : whitePanelData;
+  const opponentPanelData =
+    myColor === "black" ? whitePanelData : blackPanelData;
 
   // Fires the low-time sound once the moment MY clock first drops under
   // the threshold, then rearms if it climbs back above it (e.g. an
@@ -841,10 +963,19 @@ export function Game() {
   /** Jumps straight to the position right after a given move (`ply` is
    *  1-indexed, matching `moveNumber`). Selecting the current last move
    *  snaps back to `null` (live) rather than an equal-but-distinct ply
-   *  number, so it behaves identically to Next walking off the end. */
-  function handleSelectMove(ply: number) {
-    setViewPly(ply >= liveViewPly ? null : ply);
-  }
+   *  number, so it behaves identically to Next walking off the end.
+   *
+   *  useCallback (not a plain function) so MoveList/MoveStrip below — both
+   *  React.memo'd — get a stable prop reference across the page's many
+   *  unrelated re-renders (chat input, move errors, etc.) instead of
+   *  rebuilding their entire move-button list every time any of that state
+   *  changes. */
+  const handleSelectMove = useCallback(
+    (ply: number) => {
+      setViewPly(ply >= liveViewPly ? null : ply);
+    },
+    [liveViewPly],
+  );
 
   function handlePrevMove() {
     setViewPly((p) => {
@@ -914,8 +1045,8 @@ export function Game() {
               className="mb-4 border-amber-900/40 bg-amber-950/20 text-left text-sm text-amber-300"
             >
               This is a wagered game — joining will stake{" "}
-              <strong>{gameMeta.wagerTokens} R Coins</strong> from your
-              balance. The winner takes the full {gameMeta.wagerTokens * 2}.
+              <strong>{gameMeta.wagerTokens} R Coins</strong> from your balance.
+              The winner takes the full {gameMeta.wagerTokens * 2}.
             </Card>
           )}
           {loadError && (
@@ -968,112 +1099,28 @@ export function Game() {
       );
   }
 
-  // --- Live clocks + material diff, computed once and handed down to
-  // whichever panel presentation (row on desktop, flank on mobile) is
-  // actually rendered, so there's exactly one ticking source of truth. ---
-  const sideToMove = turnColor(chess);
-  const clockKnown = whiteRemainingMs !== null && blackRemainingMs !== null;
-  const material = computeMaterialDiff(fen);
-  const whiteMaterial = panelMaterial("white", material);
-  const blackMaterial = panelMaterial("black", material);
-  const isActiveGame = status === "active";
-
-  const whitePanelData = {
-    username: gameMeta?.white?.username ?? "White",
-    avatarGradient: gameMeta?.white?.avatarGradient,
-    isTurn: isActiveGame && sideToMove === "white",
-    connected: whiteConnected,
-    baseRemainingMs: whiteRemainingMs,
-    turnStartedAtMs,
-    isTicking: clockRunning && sideToMove === "white",
-    clockKnown,
-    lowTimeThresholdMs,
-    ...whiteMaterial,
-  };
-  const blackPanelData = {
-    username: gameMeta?.black?.username ?? "Black",
-    avatarGradient: gameMeta?.black?.avatarGradient,
-    isTurn: isActiveGame && sideToMove === "black",
-    connected: blackConnected,
-    baseRemainingMs: blackRemainingMs,
-    turnStartedAtMs,
-    isTicking: clockRunning && sideToMove === "black",
-    clockKnown,
-    lowTimeThresholdMs,
-    ...blackMaterial,
-  };
-  // The panel matching my seat renders closest to me — bottom on desktop,
-  // right-hand flank on mobile; the opponent's is the mirror of that.
-  const myPanelData = myColor === "black" ? blackPanelData : whitePanelData;
-  const opponentPanelData =
-    myColor === "black" ? whitePanelData : blackPanelData;
-
   const showChat = !settings.zenMode && role === "spectator";
 
   // Which ply is "selected" right now — the one being browsed, or the
   // live move if nothing's being browsed. Drives the highlight below.
   const currentPly = viewPly ?? liveViewPly;
 
+  // Rendered directly (not built as a JSX variable) further down — both are
+  // React.memo'd (see components/MoveLog.tsx) so they only actually re-render
+  // when `moves`/`currentPly`/`handleSelectMove` change, not on every one of
+  // the page's unrelated state updates.
   const moveListEntries =
     moves.length === 0 ? null : (
-      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 font-mono text-sm text-base-content/80">
-        {moves.map((m) => {
-          const isWhiteMove = m.moveNumber % 2 === 1;
-          const active = m.moveNumber === currentPly;
-          return (
-            <button
-              key={m.moveNumber}
-              type="button"
-              onClick={() => handleSelectMove(m.moveNumber)}
-              className={`rounded px-1 py-0.5 text-left transition-colors hover:bg-base-300/60 ${
-                active ? "bg-(--primary)/15 font-semibold text-(--primary)" : ""
-              }`}
-            >
-              {isWhiteMove && (
-                <span className="text-base-content/40">
-                  {Math.ceil(m.moveNumber / 2)}.{" "}
-                </span>
-              )}
-              {m.san}
-            </button>
-          );
-        })}
-      </div>
+      <MoveList moves={moves} currentPly={currentPly} onSelectMove={handleSelectMove} />
     );
-
-  // Phone-only: the same move log as a single horizontally-scrolling row of
-  // move "pills" instead of the vertical two-column list used from md up —
-  // there's no room for a tall list once the board takes the full width.
   const moveStripEntries =
     moves.length === 0 ? null : (
-      <div
-        ref={moveStripScrollRef}
-        className="flex gap-1.5 overflow-x-auto pb-0.5"
-      >
-        {moves.map((m) => {
-          const isWhiteMove = m.moveNumber % 2 === 1;
-          const active = m.moveNumber === currentPly;
-          return (
-            <button
-              key={m.moveNumber}
-              type="button"
-              onClick={() => handleSelectMove(m.moveNumber)}
-              className={`shrink-0 whitespace-nowrap rounded-lg px-2 py-1 font-mono text-xs transition-colors ${
-                active
-                  ? "bg-(--primary)/20 font-semibold text-(--primary)"
-                  : "bg-base-300/60 text-base-content/80"
-              }`}
-            >
-              {isWhiteMove && (
-                <span className="text-base-content/40">
-                  {Math.ceil(m.moveNumber / 2)}.{" "}
-                </span>
-              )}
-              {m.san}
-            </button>
-          );
-        })}
-      </div>
+      <MoveStrip
+        moves={moves}
+        currentPly={currentPly}
+        onSelectMove={handleSelectMove}
+        scrollRef={moveStripScrollRef}
+      />
     );
 
   const chatBody = (
@@ -1393,9 +1440,7 @@ export function Game() {
                  *  player's finger mid-interaction — that reflow was the
                  *  cause of the "misclicks right after the first move" bug
                  *  on phone/tablet. */}
-                <div className="lg:hidden min-h-[28px]">
-                  {moveStripEntries}
-                </div>
+                <div className="lg:hidden min-h-7">{moveStripEntries}</div>
               </div>
             )}
           </Card>
@@ -1548,8 +1593,8 @@ export function Game() {
                 onClick={handleBerserk}
                 className="border border-red-800 bg-red-950/30 text-red-300 shadow-none hover:bg-red-950/50 hover:brightness-100"
               >
-                <Swords className="h-4 w-4" /> Berserk — halve your clock for
-                a bonus point
+                <Swords className="h-4 w-4" /> Berserk — halve your clock for a
+                bonus point
               </Button>
             </div>
           )}
