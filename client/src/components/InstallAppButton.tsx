@@ -32,7 +32,7 @@ export function InstallAppButton({ compact = false }: { compact?: boolean }) {
     setShowIosSteps((v) => !v);
   }
 
-  const label = compact ? "Install app" : "Install Chess App";
+  const label = compact ? "Install app" : "Install Chess R";
 
   return (
     <div className={compact ? "sm:flex hidden" : "space-y-2"}>
@@ -60,7 +60,7 @@ export function InstallAppButton({ compact = false }: { compact?: boolean }) {
               <span className="text-base-content">Add to Home Screen</span>.
             </li>
             <li>
-              Tap <span className="text-base-content">Add</span> — Chess App
+              Tap <span className="text-base-content">Add</span> — Chess R
               will open full-screen, just like a normal app.
             </li>
           </ol>

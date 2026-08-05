@@ -6,6 +6,7 @@ import { logout } from "../api/auth.js";
 import { Avatar } from "./ui/Avatar.js";
 import { Dropdown, type DropdownItem } from "./ui/Dropdown.js";
 import { RCoin } from "./ui/RCoin.js";
+import { ConnectionStatus } from "./ConnectionStatus.js";
 import { useTheme } from "@/contexts/ThemeContext.js";
 
 /** Everything account-related — R Coin balance, profile link, username,
@@ -38,10 +39,10 @@ export function AccountMenu() {
       onClick: () => navigate("/wallet/buy"),
     },
     {
-      label: isDark ? "Dark" : "Light",
-      icon: isDark ? Moon : Sun,
+      label: isDark ? "Light theme" : "Dark theme",
+      icon: isDark ? Sun : Moon,
       onClick: toggleTheme,
-      className: "text-base-content/60 md:hidden",
+      className: "text-base-content/80 md:hidden",
     },
     { label: "Log out", icon: LogOut, danger: true, onClick: handleLogout },
   ];
@@ -49,6 +50,11 @@ export function AccountMenu() {
   return (
     <Dropdown
       align="end"
+      header={
+        <div className="mb-1 border-b border-base-content/10 pb-1 md:hidden">
+          <ConnectionStatus variant="row" />
+        </div>
+      }
       trigger={
         <button className="glass flex h-9 items-center gap-2 rounded-full py-1 pr-3 pl-1 text-sm font-medium text-base-content transition-colors hover:bg-base-content/5">
           <Avatar username={user.username} size="xs" />

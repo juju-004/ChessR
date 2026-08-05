@@ -267,7 +267,11 @@ export function Game() {
         fens.push(replay.fen());
       }
 
-      historyCacheRef.current = { initialFen: gameMeta?.initialFen, moves, fens };
+      historyCacheRef.current = {
+        initialFen: gameMeta?.initialFen,
+        moves,
+        fens,
+      };
       return fens;
     } catch {
       // Shouldn't happen — the move list came from the server — but a
@@ -317,8 +321,14 @@ export function Game() {
   // blackPanelData's own useMemo below a "changed" dependency on every
   // render regardless of whether the position actually moved, defeating it.
   const material = useMemo(() => computeMaterialDiff(fen), [fen]);
-  const whiteMaterial = useMemo(() => panelMaterial("white", material), [material]);
-  const blackMaterial = useMemo(() => panelMaterial("black", material), [material]);
+  const whiteMaterial = useMemo(
+    () => panelMaterial("white", material),
+    [material],
+  );
+  const blackMaterial = useMemo(
+    () => panelMaterial("black", material),
+    [material],
+  );
   const isActiveGame = status === "active";
 
   // Memoized: PlayerPanelRow/PlayerPanelFlank are React.memo'd, but a plain
@@ -1111,7 +1121,11 @@ export function Game() {
   // the page's unrelated state updates.
   const moveListEntries =
     moves.length === 0 ? null : (
-      <MoveList moves={moves} currentPly={currentPly} onSelectMove={handleSelectMove} />
+      <MoveList
+        moves={moves}
+        currentPly={currentPly}
+        onSelectMove={handleSelectMove}
+      />
     );
   const moveStripEntries =
     moves.length === 0 ? null : (
@@ -1386,7 +1400,7 @@ export function Game() {
          *  (Spectator chat's trigger now lives in the action button row.)
          *  Left column on desktop; a full-width strip above the board/panel
          *  row on tablet and phone. */}
-        <div className="game-area-leftinfo flex shrink-0 flex-col justify-center gap-3 lg:h-full lg:min-h-0">
+        <div className="game-area-leftinfo px-5 flex shrink-0 flex-col justify-center gap-3 lg:h-full lg:min-h-0">
           <Card variant="solid">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">

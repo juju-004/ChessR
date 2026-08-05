@@ -55,7 +55,10 @@ export function MyGamesMenu({ className }: MyGamesMenuProps) {
       // when this sits near the left of the navbar (the original bug) —
       // clamping to the viewport width keeps it fully on-screen no matter
       // where the trigger lands.
-      className={cn("w-72 max-w-[calc(100vw-2rem)] overflow-hidden", className)}
+      className={cn(
+        "w-64 sm:w72 max-w-[calc(100vw-2rem)] overflow-hidden",
+        className,
+      )}
       trigger={
         <motion.button
           aria-label="Your active games"

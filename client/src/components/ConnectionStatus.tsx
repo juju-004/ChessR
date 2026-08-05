@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, memo } from "react";
 import { useSocket } from "../contexts/SocketContext.js";
 import { Tooltip } from "./ui/Tooltip.js";
+import { cn } from "@/lib/cn.js";
 
 type ConnState = "connecting" | "connected" | "reconnecting" | "disconnected";
 
@@ -22,7 +23,18 @@ function label(state: ConnState, latencyMs: number | null): string {
   return latencyMs === null ? "Connected" : `${latencyMs}ms`;
 }
 
-export const ConnectionStatus = memo(function ConnectionStatus() {
+interface ConnectionStatusProps {
+  /** "pill" (default) is the glass pill used in the navbar. "row" is a
+   *  plain menu-item-style row, sized to slot into AccountMenu's dropdown
+   *  on mobile — no tooltip, label always visible. */
+  variant?: "pill" | "row";
+  className?: string;
+}
+
+export const ConnectionStatus = memo(function ConnectionStatus({
+  variant = "pill",
+  className,
+}: ConnectionStatusProps) {
   const socket = useSocket();
   const [state, setState] = useState<ConnState>("connecting");
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
@@ -92,6 +104,22 @@ export const ConnectionStatus = memo(function ConnectionStatus() {
     };
   }, [socket]);
 
+  if (variant === "row") {
+    return (
+      <div
+        className={cn(
+          "flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-base-content/60",
+          className,
+        )}
+      >
+        <span
+          className={`h-2 w-2 shrink-0 rounded-full ${dotColor(state, latencyMs)}`}
+        />
+        <span>{label(state, latencyMs)}</span>
+      </div>
+    );
+  }
+
   return (
     <Tooltip
       content={
@@ -106,7 +134,10 @@ export const ConnectionStatus = memo(function ConnectionStatus() {
       className="md:hidden"
     >
       <span
-        className="glass flex h-9 items-center gap-1.5 rounded-full px-3 text-xs text-base-content/70"
+        className={cn(
+          "glass flex h-9 items-center gap-1.5 rounded-full px-3 text-xs text-base-content/70",
+          className,
+        )}
         title={
           state === "connected"
             ? `Connected${latencyMs !== null ? ` · ${latencyMs}ms round trip` : ""}`
@@ -120,4 +151,4 @@ export const ConnectionStatus = memo(function ConnectionStatus() {
       </span>
     </Tooltip>
   );
-})
+});

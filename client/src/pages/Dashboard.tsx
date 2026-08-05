@@ -23,6 +23,7 @@ import {
   Badge,
   RCoin,
 } from "../components/ui/index.js";
+import { PageLoader } from "@/components/PageLoader.js";
 
 export function Dashboard() {
   const { user } = useAuth();
@@ -219,8 +220,8 @@ export function Dashboard() {
                         {g.black.username}
                       </Link>
                       <span className="ml-2 text-base-content/50">
-                        · move {Math.ceil(g.moves.length / 2)} · {toMove} to move ·{" "}
-                        {formatTimeControl(g.timeControl)}
+                        · move {Math.ceil(g.moves.length / 2)} · {toMove} to
+                        move · {formatTimeControl(g.timeControl)}
                       </span>
                       {g.wagerTokens > 0 && (
                         <Badge variant="warning" className="ml-2">

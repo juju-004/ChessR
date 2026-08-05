@@ -97,14 +97,14 @@ export function Settings() {
             <CardContent>
               {isInstalled ? (
                 <p className="text-sm text-green-500">
-                  ✓ Installed — you're already running Chess App standalone.
+                  ✓ Installed — you're already running Chess R standalone.
                 </p>
               ) : (
                 <>
                   <p className="mb-3 text-xs text-base-content/50">
-                    Install Chess App on this device for a full-screen,
-                    standalone experience — no browser tabs or address bar,
-                    launches from your home screen/app list like any other app.
+                    Install Chess R on this device for a full-screen, standalone
+                    experience — no browser tabs or address bar, launches from
+                    your home screen/app list like any other app.
                   </p>
                   <InstallAppButton />
                 </>
@@ -144,9 +144,8 @@ export function Settings() {
             </CardHeader>
             <CardContent>
               <p className="mb-3 text-xs text-base-content/50">
-                Each option is real, distinct piece artwork — cburnett,
-                alpha, maestro, and merida — not a color filter over the
-                same shapes.
+                Each option is real, distinct piece artwork — cburnett, alpha,
+                maestro, and merida — not a color filter over the same shapes.
               </p>
               <div className="flex flex-wrap gap-2">
                 {PIECE_THEMES.map((t) => (
@@ -220,12 +219,12 @@ export function Settings() {
                 checked={settings.confirmResign}
                 onChange={(v) => updateSetting("confirmResign", v)}
                 className="rounded-lg px-1 py-2 hover:bg-base-100"
-              />
+              />{" "}
               <Switch
-                label="Reduce motion"
-                description="Sharper, near-instant popovers/menus/modals instead of springy animations. Auto-enabled on lower-end devices — you can override it here."
-                checked={settings.reduceMotion}
-                onChange={(v) => updateSetting("reduceMotion", v)}
+                label="Zen mode"
+                description="Hides move list, chat, and extra badges during a game — just the board and clock."
+                checked={settings.zenMode}
+                onChange={(v) => updateSetting("zenMode", v)}
                 className="rounded-lg px-1 py-2 hover:bg-base-100"
               />
             </CardContent>
@@ -233,14 +232,14 @@ export function Settings() {
 
           <Card variant="solid">
             <CardHeader>
-              <CardTitle>Zen mode</CardTitle>
+              <CardTitle>App</CardTitle>
             </CardHeader>
             <CardContent>
               <Switch
-                label="Zen mode"
-                description="Hides move list, chat, and extra badges during a game — just the board and clock."
-                checked={settings.zenMode}
-                onChange={(v) => updateSetting("zenMode", v)}
+                label="Reduce motion"
+                description="Sharper, near-instant popovers/menus/modals instead of springy animations. Auto-enabled on lower-end devices — you can override it here."
+                checked={settings.reduceMotion}
+                onChange={(v) => updateSetting("reduceMotion", v)}
               />
             </CardContent>
           </Card>

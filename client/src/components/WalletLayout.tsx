@@ -22,7 +22,7 @@ import { WalletNav } from "./WalletNav.js";
 export function WalletLayout() {
   const location = useLocation();
   return (
-    <div className="mx-auto w-full max-w-5xl px-1 py-6 sm:px-6 md:px-8 md:py-10">
+    <div className="mx-auto w-full max-w-5xl px-5 py-6 sm:px-6 md:px-8 md:py-10">
       <WalletNav active={location.pathname} />
       <Outlet />
     </div>

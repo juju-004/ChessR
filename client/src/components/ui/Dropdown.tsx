@@ -17,6 +17,9 @@ export interface DropdownProps {
   items: DropdownItem[];
   align?: "start" | "end" | "center";
   side?: "bottom" | "top";
+  /** Optional non-interactive content rendered above the item list (e.g. a
+   *  status row) — doesn't close the dropdown or go through onClick. */
+  header?: ReactNode;
 }
 
 /** A menu of clickable items in a Popover — closes itself after any item is
@@ -27,6 +30,7 @@ export const Dropdown = memo(function Dropdown({
   items,
   align = "end",
   side = "bottom",
+  header,
 }: DropdownProps) {
   const [open, setOpen] = useState(false);
 
@@ -39,6 +43,7 @@ export const Dropdown = memo(function Dropdown({
       side={side}
     >
       <div role="menu" className="flex flex-col">
+        {header}
         {items.map((item, i) => {
           const Icon = item.icon;
           return (

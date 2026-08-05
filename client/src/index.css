@@ -180,19 +180,19 @@ body {
    app picks up the new look automatically. */
 .glass {
   background: var(--surface-bg);
-  border: 1px solid var(--surface-border);
-  box-shadow:
+  border: 0px solid var(--surface-border);
+  /* box-shadow:
     0 1px 2px var(--surface-shadow-color),
     0 8px 24px -8px var(--surface-shadow-color),
-    inset 0 1px 0 var(--surface-highlight);
+    inset 0 1px 0 var(--surface-highlight); */
 }
 .glass-strong {
   background: var(--surface-bg-strong);
   border: 1px solid var(--surface-border-strong);
-  box-shadow:
+  /* box-shadow:
     0 2px 4px var(--surface-shadow-color),
     0 16px 40px -12px var(--surface-shadow-color),
-    inset 0 1px 0 var(--surface-highlight);
+    inset 0 1px 0 var(--surface-highlight); */
 }
 
 @import "@lichess-org/chessground/assets/chessground.base.css";

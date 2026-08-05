@@ -27,7 +27,7 @@ export const Navbar = memo(function Navbar() {
       </Link>
 
       <MyGamesMenu />
-      <ConnectionStatus />
+      <ConnectionStatus className="hidden md:flex" />
       <InstallAppButton compact />
       <ThemeToggle />
       <AccountMenu />
