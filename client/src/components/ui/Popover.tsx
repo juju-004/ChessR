@@ -2,6 +2,7 @@ import { useLayoutEffect, useEffect, useRef, useState, type CSSProperties, type 
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/cn.js";
 import { scaleIn } from "@/lib/motion.js";
+import { useSettings } from "@/contexts/SettingsContext.js";
 
 export interface PopoverProps {
   /** The element that opens the popover on click. Rendered as-is — the
@@ -50,6 +51,7 @@ export const Popover = memo(function Popover({
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [style, setStyle] = useState<CSSProperties>(HIDDEN_STYLE);
+  const { settings } = useSettings();
 
   function setOpen(next: boolean) {
     onOpenChange?.(next);
@@ -127,36 +129,80 @@ export const Popover = memo(function Popover({
     reposition();
     const resizeObserver = new ResizeObserver(reposition);
     resizeObserver.observe(panel);
-    window.addEventListener("resize", reposition);
-    window.addEventListener("scroll", reposition, true);
+
+    // Scroll can fire dozens of times per second on a touch-scroll fling,
+    // and this handler was running synchronously on every single one of
+    // them: a layout-forcing getBoundingClientRect() read immediately
+    // followed by a React setState. Un-throttled and non-passive, that's
+    // the browser blocking the actual scroll from compositing until that
+    // JS finishes — real, measurable scroll jank, but *only* while a
+    // Popover/Dropdown happens to be open, which is why it wouldn't show
+    // up as constant lag. rAF-throttling collapses a whole flurry of
+    // scroll events into at most one reposition per animation frame, and
+    // `{ passive: true }` tells the browser up front that this handler
+    // will never call preventDefault(), so it doesn't have to wait on it
+    // before scrolling.
+    let rafId: number | null = null;
+    function onScrollOrResize() {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        reposition();
+      });
+    }
+    window.addEventListener("resize", onScrollOrResize, { passive: true });
+    window.addEventListener("scroll", onScrollOrResize, { capture: true, passive: true });
     return () => {
       resizeObserver.disconnect();
-      window.removeEventListener("resize", reposition);
-      window.removeEventListener("scroll", reposition, true);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      window.removeEventListener("resize", onScrollOrResize);
+      window.removeEventListener("scroll", onScrollOrResize, true);
     };
   }, [open, align, side]);
+
+  const panelStyle: CSSProperties = {
+    ...style,
+    transformOrigin: `${side === "bottom" ? "top" : "bottom"} ${align === "start" ? "left" : align === "end" ? "right" : "center"}`,
+  };
+  const panelClassName = cn("glass-strong z-50 min-w-40 rounded-xl p-1.5", className);
 
   return (
     <div ref={containerRef} className="relative inline-block">
       <span onClick={() => setOpen(!open)}>{trigger}</span>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            ref={panelRef}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-            variants={scaleIn}
-            style={{
-              ...style,
-              transformOrigin: `${side === "bottom" ? "top" : "bottom"} ${align === "start" ? "left" : align === "end" ? "right" : "center"}`,
-            }}
-            className={cn("glass-strong z-50 min-w-40 rounded-xl p-1.5", className)}
-          >
+      {settings.reduceMotion ? (
+        // Genuinely framer-motion-free, not just "animated instantly" —
+        // MotionConfig's reducedMotion="always" (see MotionConfigProvider)
+        // makes motion.div *resolve* its values instantly, but it's still a
+        // framer-motion component underneath: mount/unmount still goes
+        // through AnimatePresence's exit-animation bookkeeping, gesture/
+        // event listener setup, and JS-driven style application. That
+        // per-element overhead is real on a weak CPU even when nothing is
+        // visibly animating. A plain conditional <div> below has none of
+        // it — for someone who opted into (or was auto-detected into)
+        // reduced motion specifically because their device is struggling,
+        // that's the difference that actually matters, not the easing.
+        open && (
+          <div ref={panelRef} style={panelStyle} className={panelClassName}>
             {children}
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+        )
+      ) : (
+        <AnimatePresence>
+          {open && (
+            <motion.div
+              ref={panelRef}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+              variants={scaleIn}
+              style={panelStyle}
+              className={panelClassName}
+            >
+              {children}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
     </div>
   );
 })
