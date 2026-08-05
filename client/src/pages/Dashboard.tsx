@@ -23,7 +23,6 @@ import {
   Badge,
   RCoin,
 } from "../components/ui/index.js";
-import { PageLoader } from "@/components/PageLoader.js";
 
 export function Dashboard() {
   const { user } = useAuth();
