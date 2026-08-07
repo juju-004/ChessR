@@ -389,13 +389,6 @@ body {
   background-image: url("data:image/svg+xml;base64,PHN2ZyBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGZpbGwtcnVsZT0iZXZlbm9kZCIgaGVpZ2h0PSI1MG1tIiBpbWFnZS1yZW5kZXJpbmc9Im9wdGltaXplUXVhbGl0eSIgc2hhcGUtcmVuZGVyaW5nPSJnZW9tZXRyaWNQcmVjaXNpb24iIHRleHQtcmVuZGVyaW5nPSJnZW9tZXRyaWNQcmVjaXNpb24iIHZpZXdCb3g9IjAgMCA1MCA1MCIgd2lkdGg9IjUwbW0iIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGxpbmVhckdyYWRpZW50IGlkPSJhIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgeDE9IjIxLjM3NiIgeDI9Ijc3LjY0MSIgeTE9IjM3LjQ2OSIgeTI9IjM3LjQ2OSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjZmZmIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjZmZmIiBzdG9wLW9wYWNpdHk9IjAiLz48L2xpbmVhckdyYWRpZW50PjxwYXRoIGQ9Ik0yOC40MDggOS4yMmg0LjIxNlY1LjgyNWg2Ljc5OXY5LjI5NmwtNS41MDMgNC4yNDJ2MTEuODYybDQuMjE2IDQuMjE2djUuMDhoMy43OTN2NS45MjdIOC4wNzFWNDAuNTJoMy43OTN2LTUuMDhsNC4yNDItNC4yMTZWMTkuMzYzbC01LjUwNC00LjI0MlY1LjgyNWg2Ljc3NFY5LjIyaDQuMjQyVjUuODI1aDYuNzl6IiBmaWxsPSIjMWYxYTE3Ii8+PHBhdGggZD0iTTMzLjA3MyAxNy42NzhsMy4xNS0yLjU1N2gtMjIuNDJsMy4xNzUgMi41NTd6bTcuMTk3IDI0LjUyOEg5Ljc1NnYyLjU1N0g0MC4yN3ptLTMuODQ0LTUuMDU1SDEzLjZ2My4zN2gyMi44MjZ6bS00LjIxNy0xNy43ODhIMTcuODE2djExLjg2MmgxNC4zOTN6bTUuNTA0LTUuOTI3VjcuNTFoLTMuMzk1djMuMzk1aC03LjY0NlY3LjUxaC0zLjM0NHYzLjM5NWgtNy42MlY3LjUxaC0zLjM5NXY1LjkyNnptLTEuOTE0IDIyLjAwNWwtMi41NDgtMi41MzFIMTYuOGwtMi42IDIuNTMxeiIgZmlsbD0idXJsKCNhKSIvPjwvc3ZnPg==");
 }
 
-/* Check-square highlighting works out of the box once you pass a `check`
-   square into ChessBoard's config — chessground.base.css/brown.css already
-   style it with a default red radial gradient. To customize the color/look,
-   uncomment and adjust the rule below (selector confirmed via chessground's
-   own source; verify against your installed version's actual DOM/class names
-   in devtools if it doesn't apply). */
-/*
 .cg-wrap cg-board square.check {
   background: radial-gradient(
     ellipse at center,
@@ -404,12 +397,6 @@ body {
     rgba(169, 0, 0, 0) 80%
   );
 }
-*/
-
-/* .cg-wrap cg-container {
-  width: 100% !important;
-  height: 100% !important;
-} */
 
 /* Game page layout — the pairing of "which area sits next to which"
    genuinely changes shape between phone/tablet/desktop (a top strip becomes
@@ -434,13 +421,6 @@ body {
   .game-grid {
     display: grid;
     justify-content: center;
-    /* Board width is now the authored, fixed value per breakpoint — it's
-       the anchor dimension. The right panel is the one that flexes: its
-       track has no fr unit, so during grid's "maximize tracks" step it
-       absorbs whatever space is left over in the row (since the board's
-       track has no room left to grow), up to the max in its minmax() —
-       that max is the panel's expansion cap. Below its cap it still
-       won't go under its min, so it can't get crushed either. */
     grid-template-columns: 440px minmax(220px, 340px);
     grid-template-rows: auto minmax(0, 1fr);
     grid-template-areas:

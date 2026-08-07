@@ -1483,7 +1483,7 @@ export function Game() {
   const mobileOverflowItems = actionItems.filter((item) => !item.mobilePrimary);
 
   return (
-    <div className="relative mx-auto min-h-[calc(100dvh-7rem)] flex max-w-6xl flex-col justify-center gap-2 pb-20 md:h-[calc(100dvh-7rem)] md:gap-3 md:pb-2">
+    <div className="relative mx-auto min-h-[calc(100dvh-7rem)] flex max-w-6xl flex-col justify-center gap-2 pb-20 md:gap-3 md:pb-2">
       {/* Notification overlay stack — leg-paused notice, waiting-for-
        *  opponent, move errors, the paused-leg resume card, and the
        *  opponent-disconnect banner. All absolute + centered over the page
@@ -1577,7 +1577,7 @@ export function Game() {
          *  (Spectator chat's trigger now lives in the action button row.)
          *  Left column on desktop; a full-width strip above the board/panel
          *  row on tablet and phone. */}
-        <div className="game-area-leftinfo px-5 sm:px-0 flex shrink-0 flex-col justify-center gap-3 lg:h-full lg:min-h-0">
+        <div className="game-area-leftinfo sm:px-0 px-5 flex shrink-0 flex-col justify-center gap-3 lg:h-full lg:min-h-0">
           <Card variant="solid">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
@@ -1615,16 +1615,12 @@ export function Game() {
           </Card>
         </div>
 
-        {/* The board itself — centered in its grid cell, sized to fill
-         *  whichever of width/height is the binding constraint (full width
-         *  on phone; the grid row's height from md up, where the row is
-         *  fixed to the viewport). */}
-        <div className="game-area-board relative bg-red-700 flex flex-col min-h-0 min-w-0 items-center justify-center">
+        <div className="game-area-board relative flex flex-col flex-1 items-center justify-center">
           <div className="game-area-toppanel md:hidden w-[95%]">
             <PlayerPanelRow {...opponentPanelData} />
           </div>
           <div
-            className={`relative aspect-square min-w-60 min-h-60 max-w-full md:h-auto md:max-h-full md:w-full overflow-hidden rounded-2xl shadow-lg board-theme-${settings.boardTheme} piece-theme-${settings.pieceTheme}`}
+            className={`relative aspect-square w-full rounded-2xl flex items-center shadow- overflow-hidden board-theme-${settings.boardTheme} piece-theme-${settings.pieceTheme} justify-center bg-purple-700 `}
           >
             <ChessBoard
               fen={displayFen}
@@ -1652,34 +1648,34 @@ export function Game() {
               showCoordinates={settings.showCoordinates}
               showLegalMoves={settings.showLegalMoves}
             />
+            {isPlayer && status === "waiting" && (
+              <div className="pointer-events-none absolute bg-base-200/30 inset-0 px-3 justify-center items-center top-2 z-30 mx-auto flex">
+                <motion.div
+                  key="waiting-banner"
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={springSnappy}
+                  className="pointer-events-auto flex items-center gap-3 rounded-xl border border-base-300 bg-base-100 px-3 py-2.5 shadow-lg"
+                >
+                  <p className="flex-1 text-sm text-base-content/60">
+                    Waiting for an opponent to join…
+                  </p>
+                  <Button
+                    variant="glass"
+                    size="sm"
+                    onClick={handleCancelWaitingGame}
+                  >
+                    <Ban className="h-4 w-4" /> Cancel game
+                  </Button>
+                </motion.div>
+              </div>
+            )}
             {promoPending && <PromotionPicker onPick={handlePromotionPick} />}
           </div>
           <div className="game-area-bottompanel md:hidden w-[95%]">
             <PlayerPanelRow {...myPanelData} />
           </div>
-          {isPlayer && status === "waiting" && (
-            <div className="pointer-events-none absolute bg-base-200/30 inset-0 px-3 justify-center items-center top-2 z-30 mx-auto flex">
-              <motion.div
-                key="waiting-banner"
-                initial={{ opacity: 0, y: -8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={springSnappy}
-                className="pointer-events-auto flex items-center gap-3 rounded-xl border border-base-300 bg-base-100 px-3 py-2.5 shadow-lg"
-              >
-                <p className="flex-1 text-sm text-base-content/60">
-                  Waiting for an opponent to join…
-                </p>
-                <Button
-                  variant="glass"
-                  size="sm"
-                  onClick={handleCancelWaitingGame}
-                >
-                  <Ban className="h-4 w-4" /> Cancel game
-                </Button>
-              </motion.div>
-            </div>
-          )}
         </div>
 
         {/* Right panel — tablet & desktop. Player panels, the cage match

@@ -1,33 +1,21 @@
 import { useLayoutEffect, useRef, useState, memo } from "react";
-import { Chessground } from '@lichess-org/chessground';
-import { Key } from '@lichess-org/chessground/types';
+import { Chessground } from "@lichess-org/chessground";
+import { Key } from "@lichess-org/chessground/types";
 
 type CgApi = ReturnType<typeof Chessground>;
 type CgConfig = NonNullable<Parameters<typeof Chessground>[1]>;
 
 export interface ChessBoardProps {
   fen: string;
-  orientation: 'white' | 'black';
+  orientation: "white" | "black";
   viewOnly: boolean;
-  turnColor: 'white' | 'black';
-  movableColor?: 'white' | 'black';
+  turnColor: "white" | "black";
+  movableColor?: "white" | "black";
   dests: Map<string, string[]>;
-  /** Premove destinations, keyed by origin square — maps to chessground's
-   *  `premovable.customDests` (confirmed via source: same Map<Key,Key[]> shape
-   *  as movable.dests, despite some docs/forks describing a flat array). */
   premoveDests?: Map<string, string[]>;
-  /** Whether the side to move (turnColor) is currently in check. Chessground
-   *  resolves this to an actual king square internally using its own piece
-   *  data — it does NOT accept a square string here. */
   inCheck?: boolean;
-  /** [from, to] of the most recent move, or undefined if none yet. Passing this
-   *  through as a controlled prop on every update is what makes the last-move
-   *  highlight track the actual game state instead of getting stuck on whichever
-   *  square a player last dragged locally. */
   lastMove?: [string, string];
   onUserMove: (orig: string, dest: string) => void;
-  /** Settings-page toggles — all optional so existing callers keep working
-   *  with chessground's own sensible defaults. */
   animationEnabled?: boolean;
   showCoordinates?: boolean;
   showLegalMoves?: boolean;
@@ -48,54 +36,30 @@ export const ChessBoard = memo(function ChessBoard({
   showCoordinates = true,
   showLegalMoves = true,
 }: ChessBoardProps) {
-  const outerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const groundRef = useRef<CgApi | null>(null);
   const onUserMoveRef = useRef(onUserMove);
   onUserMoveRef.current = onUserMove;
 
-  // Chessground lays out its 8x8 grid from this container's raw pixel
-  // size. The parent boxes this in with fluid CSS (aspect-square, flex,
-  // %-based widths) rather than a fixed pixel size, so the measured width
-  // is essentially never an exact multiple of 8 — each square works out
-  // to something like 54.625px. The square/piece grid itself gets pixel-
-  // snapped internally, but the rank/file coordinate labels are drawn
-  // with independent CSS percentages, so the two drift apart by a
-  // fraction of a pixel per square — small on square one, visibly off by
-  // the far edge of the board. That's the "board numbers always tend to
-  // be misaligned" bug. Snapping the mounted box down to the nearest
-  // multiple of 8 makes every square (and therefore every coordinate
-  // label) land on a whole pixel, so nothing can drift.
+  // No separate wrapper div — this measures the caller's own parent
+  // element directly (e.g. Game.tsx's themed board container) via
+  // `containerRef.current.parentElement`. That parent is expected to be a
+  // true square (fixed via a non-conflicting CSS aspect-ratio — see
+  // Game.tsx) and a flex container with items-center/justify-center, so
+  // that cg-wrap gets centered inside it if its box is ever not perfectly
+  // square during a transient reflow.
   //
-  // That snapping only helps if the box we hand chessground is actually
-  // square, though. Internally, chessground sizes <cg-container> off
-  // <cg-wrap> (the element passed in here) via a pure-CSS percentage
-  // trick (cg-helper at 12.5%, cg-container at 800% of that) — it
-  // assumes cg-wrap is already square and doesn't independently check
-  // its two axes, so if cg-wrap itself is a rectangle, cg-container comes
-  // out square anyway (derived off one axis) while cg-wrap stays a
-  // rectangle around it — coordinates and squares end up sized off
-  // *different* boxes. That's the deformed-coordinates bug in its purest
-  // form: cg-wrap and cg-container disagreeing on the box entirely,
-  // rather than just drifting by fractional pixels.
-  //
-  // The outer wrapper (in Game.tsx) is itself sometimes non-square in
-  // practice — `aspect-square` combined with `w-full` + `md:max-h-full`
-  // is a known CSS trap: once max-height clips the aspect-ratio-derived
-  // height, the width doesn't shrink to match, so the box it hands us can
-  // come in wider than it is tall. `boardSize` below already corrects for
-  // that by measuring and snapping to `min(width, height)` — but only if
-  // we actually *use* boardSize. The previous version fell back to `100%`
-  // (of that same, possibly non-square, parent) whenever boardSize was
-  // still 0, which handed chessground the un-corrected rectangle straight
-  // through. Below, cg-wrap has no such fallback — it's always either 0
-  // (nothing mounted yet, invisible) or an exact N×N square.
+  // `boardSize` here is what keeps chessground's internal <cg-container>
+  // (sized off cg-wrap via a pure-CSS 12.5%/800% percentage trick) from
+  // drifting out of sync with cg-wrap itself: snapping to a multiple of 8
+  // means every square — and the coordinate labels drawn alongside them —
+  // lands on a whole pixel instead of drifting apart over the board.
   const [boardSize, setBoardSize] = useState(0);
   useLayoutEffect(() => {
-    const outer = outerRef.current;
-    if (!outer) return;
+    const parent = containerRef.current?.parentElement;
+    if (!parent) return;
     function measure() {
-      const box = outer!.getBoundingClientRect();
+      const box = parent!.getBoundingClientRect();
       const side = Math.floor(Math.min(box.width, box.height) / 8) * 8;
       // Ignore a transient zero/near-zero read (e.g. a reflow triggered
       // elsewhere on the page — a modal opening, a panel animating —
@@ -105,7 +69,7 @@ export const ChessBoard = memo(function ChessBoard({
     }
     measure();
     const resizeObserver = new ResizeObserver(measure);
-    resizeObserver.observe(outer);
+    resizeObserver.observe(parent);
     return () => resizeObserver.disconnect();
   }, []);
 
@@ -125,22 +89,15 @@ export const ChessBoard = memo(function ChessBoard({
         dests: dests as any,
         showDests: showLegalMoves,
         events: {
-          after: (orig: string, dest: string) => onUserMoveRef.current(orig, dest),
+          after: (orig: string, dest: string) =>
+            onUserMoveRef.current(orig, dest),
         },
       },
-      // ================= PREMOVE LOGIC =================
-      // This `premovable` block is what actually arms a premove on the board:
-      // chessground lets the player drag a piece even when it's not their
-      // turn, holds that move client-side, then auto-plays it (firing
-      // `movable.events.after` itself, same as a normal move) the instant
-      // the position updates to make it legal. `customDests` restricts which
-      // squares are offered, computed by computePremoveDests in chessUtils.ts.
       premovable: {
         enabled: !!movableColor,
         showDests: true,
         customDests: premoveDests as any,
       },
-      // =============== END PREMOVE LOGIC ================
       lastMove: lastMove as Key[] | undefined,
     };
     groundRef.current = Chessground(containerRef.current, config);
@@ -148,18 +105,6 @@ export const ChessBoard = memo(function ChessBoard({
       groundRef.current?.destroy();
       groundRef.current = null;
     };
-    // `viewOnly` is deliberately the only reactive dependency here: chessground's
-    // own docs state .set() accepts "all config options, except for viewOnly" —
-    // it's baked in at construction time and silently ignored on every later
-    // .set() call. The board's first render always happens before we know
-    // whether the user is a player (that arrives via game:sync moments later),
-    // so viewOnly starts true and must trigger a full rebuild when it flips.
-    // `boardSize === 0` gates the very first (unmeasured) pass so chessground
-    // never constructs against a 0x0 box; `boardSize > 0` (not the numeric
-    // value itself) is what's actually in the deps array so later resizes
-    // — handled by the redrawAll effect below — don't tear down and rebuild
-    // the whole instance.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewOnly, boardSize > 0]);
 
   useLayoutEffect(() => {
@@ -172,19 +117,14 @@ export const ChessBoard = memo(function ChessBoard({
       check: inCheck,
       coordinates: showCoordinates,
       animation: { enabled: animationEnabled, duration: 200 },
-      movable: { color: movableColor, dests: dests as any, showDests: showLegalMoves },
-      // PREMOVE LOGIC: keep the armed-premove config in sync on every re-render.
+      movable: {
+        color: movableColor,
+        dests: dests as any,
+        showDests: showLegalMoves,
+      },
       premovable: { enabled: !!movableColor, customDests: premoveDests as any },
     });
 
-    // PREMOVE LOGIC: chessground only *stores* a premove when you drag a
-    // piece out of turn (that's what arms the ghost piece/highlight) — it
-    // does not execute it on its own. `.playPremove()` must be called
-    // explicitly after every position update so it can (re)validate the
-    // queued premove against the fresh `movable.dests`/turnColor set just
-    // above, and fire `movable.events.after` (→ onUserMove) if it's still
-    // legal. This runs after every fen/turnColor change, i.e. after both the
-    // opponent's move and our own — it's a safe no-op when nothing is queued.
     groundRef.current?.playPremove();
   }, [
     fen,
@@ -211,12 +151,10 @@ export const ChessBoard = memo(function ChessBoard({
   }, [boardSize]);
 
   return (
-    <div ref={outerRef} className="flex h-full w-full items-center justify-center">
-      <div
-        ref={containerRef}
-        className="cg-wrap"
-        style={{ width: boardSize, height: boardSize }}
-      />
-    </div>
+    <div
+      ref={containerRef}
+      className="cg-wrap"
+      style={{ width: boardSize, height: boardSize }}
+    />
   );
-})
+});
