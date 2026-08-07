@@ -2,7 +2,6 @@ import { useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/cn.js";
 import { tweenFast } from "@/lib/motion.js";
-import { useSettings } from "@/contexts/SettingsContext.js";
 
 export interface TooltipProps {
   content: ReactNode;
@@ -26,13 +25,10 @@ const SIDE_OFFSET: Record<NonNullable<TooltipProps["side"]>, { y?: number; x?: n
 };
 
 /** Simple hover/focus tooltip — a small glass label, fades + nudges in on
- *  its offset axis only (still transform+opacity only). Skips framer-motion
- *  entirely (not just its animated values) when Settings.reduceMotion is
- *  on — see the matching comment in Popover.tsx. */
+ *  its offset axis only (still transform+opacity only). */
 export function Tooltip({ content, children, side = "top", className }: TooltipProps) {
   const [open, setOpen] = useState(false);
   const offset = SIDE_OFFSET[side];
-  const { settings } = useSettings();
 
   const tooltipClassName = cn(
     "glass-strong pointer-events-none absolute z-50 whitespace-nowrap rounded-lg px-2.5 py-1 text-xs font-medium text-base-content",
@@ -65,28 +61,20 @@ export function Tooltip({ content, children, side = "top", className }: TooltipP
       }}
     >
       {children}
-      {settings.reduceMotion ? (
-        open && (
-          <span role="tooltip" className={tooltipClassName}>
+      <AnimatePresence>
+        {open && (
+          <motion.span
+            role="tooltip"
+            initial={{ opacity: 0, ...offset }}
+            animate={{ opacity: 1, x: 0, y: 0 }}
+            exit={{ opacity: 0, ...offset }}
+            transition={tweenFast}
+            className={tooltipClassName}
+          >
             {content}
-          </span>
-        )
-      ) : (
-        <AnimatePresence>
-          {open && (
-            <motion.span
-              role="tooltip"
-              initial={{ opacity: 0, ...offset }}
-              animate={{ opacity: 1, x: 0, y: 0 }}
-              exit={{ opacity: 0, ...offset }}
-              transition={tweenFast}
-              className={tooltipClassName}
-            >
-              {content}
-            </motion.span>
-          )}
-        </AnimatePresence>
-      )}
+          </motion.span>
+        )}
+      </AnimatePresence>
     </span>
   );
 }

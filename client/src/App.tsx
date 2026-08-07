@@ -12,7 +12,6 @@ import { NotificationProvider } from "./contexts/NotificationContext.js";
 import { SettingsProvider } from "./contexts/SettingsContext.js";
 import { ThemeProvider } from "./contexts/ThemeContext.js";
 import { ConfirmProvider } from "./contexts/ConfirmContext.js";
-import { MotionConfigProvider } from "./components/MotionConfigProvider.js";
 import { GlobalListeners } from "./components/GlobalListeners.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { Navbar } from "./components/Navbar.js";
@@ -53,9 +52,6 @@ const Friends = lazy(() =>
 );
 const Game = lazy(() =>
   import("./pages/Game.js").then((m) => ({ default: m.Game })),
-);
-const GameReplay = lazy(() =>
-  import("./pages/GameReplay.js").then((m) => ({ default: m.GameReplay })),
 );
 const CageMatches = lazy(() =>
   import("./pages/CageMatches.js").then((m) => ({ default: m.CageMatches })),
@@ -103,9 +99,14 @@ function GameRoute() {
   return <Game key={code} />;
 }
 
-function GameReplayRoute() {
+// GameReplay is gone — Game.tsx now detects whether a game is still live
+// or already finished and renders accordingly, so /game/:code is a single
+// fixed URL for a game's whole lifetime, the same way lichess does it.
+// /replay/:code keeps working as a redirect so old bookmarks/shared links
+// don't break.
+function ReplayRedirect() {
   const { code } = useParams<{ code: string }>();
-  return <GameReplay key={code} />;
+  return <Navigate to={`/game/${code}`} replace />;
 }
 
 function CageMatchDetailRoute() {
@@ -136,9 +137,7 @@ function AppShell() {
       <GlobalListeners />
       <div className="flex items-start gap-4 md:px-2">
         <Sidebar />
-        {/* pb-20 clears the fixed mobile nav FAB (see Sidebar.tsx); md:pb-12
-         *  drops back to a normal bottom gap once the FAB is hidden. */}
-        <main className="min-w-0 flex-1 pb-20 md:pb-12">
+        <main className="min-w-0 flex-1 pb-6 md:pb-12">
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route
@@ -189,7 +188,7 @@ function AppShell() {
                 path="/replay/:code"
                 element={
                   <ProtectedRoute>
-                    <GameReplayRoute />
+                    <ReplayRedirect />
                   </ProtectedRoute>
                 }
               />
@@ -262,15 +261,9 @@ export function App() {
           <SocketProvider>
             <NotificationProvider>
               <SettingsProvider>
-                {/* Needs to sit inside SettingsProvider (reads reduceMotion)
-                 *  and outside everything that renders motion.* components
-                 *  — i.e. basically everything — so it wraps AppShell here
-                 *  rather than living any deeper. */}
-                <MotionConfigProvider>
-                  <ConfirmProvider>
-                    <AppShell />
-                  </ConfirmProvider>
-                </MotionConfigProvider>
+                <ConfirmProvider>
+                  <AppShell />
+                </ConfirmProvider>
               </SettingsProvider>
             </NotificationProvider>
           </SocketProvider>

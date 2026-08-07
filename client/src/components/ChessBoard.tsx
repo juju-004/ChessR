@@ -66,6 +66,30 @@ export const ChessBoard = memo(function ChessBoard({
   // be misaligned" bug. Snapping the mounted box down to the nearest
   // multiple of 8 makes every square (and therefore every coordinate
   // label) land on a whole pixel, so nothing can drift.
+  //
+  // That snapping only helps if the box we hand chessground is actually
+  // square, though. Internally, chessground sizes <cg-container> off
+  // <cg-wrap> (the element passed in here) via a pure-CSS percentage
+  // trick (cg-helper at 12.5%, cg-container at 800% of that) — it
+  // assumes cg-wrap is already square and doesn't independently check
+  // its two axes, so if cg-wrap itself is a rectangle, cg-container comes
+  // out square anyway (derived off one axis) while cg-wrap stays a
+  // rectangle around it — coordinates and squares end up sized off
+  // *different* boxes. That's the deformed-coordinates bug in its purest
+  // form: cg-wrap and cg-container disagreeing on the box entirely,
+  // rather than just drifting by fractional pixels.
+  //
+  // The outer wrapper (in Game.tsx) is itself sometimes non-square in
+  // practice — `aspect-square` combined with `w-full` + `md:max-h-full`
+  // is a known CSS trap: once max-height clips the aspect-ratio-derived
+  // height, the width doesn't shrink to match, so the box it hands us can
+  // come in wider than it is tall. `boardSize` below already corrects for
+  // that by measuring and snapping to `min(width, height)` — but only if
+  // we actually *use* boardSize. The previous version fell back to `100%`
+  // (of that same, possibly non-square, parent) whenever boardSize was
+  // still 0, which handed chessground the un-corrected rectangle straight
+  // through. Below, cg-wrap has no such fallback — it's always either 0
+  // (nothing mounted yet, invisible) or an exact N×N square.
   const [boardSize, setBoardSize] = useState(0);
   useLayoutEffect(() => {
     const outer = outerRef.current;
@@ -73,7 +97,11 @@ export const ChessBoard = memo(function ChessBoard({
     function measure() {
       const box = outer!.getBoundingClientRect();
       const side = Math.floor(Math.min(box.width, box.height) / 8) * 8;
-      setBoardSize(side);
+      // Ignore a transient zero/near-zero read (e.g. a reflow triggered
+      // elsewhere on the page — a modal opening, a panel animating —
+      // that briefly collapses this element's box) rather than tearing
+      // the board down to invisible and rebuilding it a frame later.
+      if (side > 0) setBoardSize(side);
     }
     measure();
     const resizeObserver = new ResizeObserver(measure);
@@ -187,7 +215,7 @@ export const ChessBoard = memo(function ChessBoard({
       <div
         ref={containerRef}
         className="cg-wrap"
-        style={{ width: boardSize || '100%', height: boardSize || '100%' }}
+        style={{ width: boardSize, height: boardSize }}
       />
     </div>
   );

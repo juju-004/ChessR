@@ -30,6 +30,7 @@ import {
   ChevronRight,
   RefreshCw,
   FlipVertical2,
+  MoreHorizontal,
 } from "lucide-react";
 import { ChessBoard } from "../components/ChessBoard.js";
 import { MoveList, MoveStrip } from "../components/MoveLog.js";
@@ -44,6 +45,7 @@ import {
   Badge,
   Spinner,
   Tooltip,
+  Dropdown,
 } from "../components/ui/index.js";
 import { springSnappy } from "../lib/motion.js";
 import {
@@ -92,6 +94,82 @@ interface MoveLogEntry {
 
 type Role = "white" | "black" | "spectator";
 
+/** A game is only ever "live" — i.e. worth opening a socket room for —
+ *  while it's waiting for an opponent or actually being played. Once it's
+ *  finished or aborted there's nothing left to sync in real time, so
+ *  those two statuses are the "stale" side of the fixed /game/:code URL:
+ *  same page, same layout, just filled in from the one-shot REST payload
+ *  instead of a socket connection. See the fetch effect below. */
+function isLiveStatus(status: GameMeta["status"]) {
+  return status === "waiting" || status === "active";
+}
+
+/** Picks the same check/capture/plain-move sound for a SAN string
+ *  regardless of where the move came from — a live game:move event or
+ *  just walking the move list during replay. Shared so the two call
+ *  sites can't quietly drift apart. */
+function playSoundForMove(san: string | undefined) {
+  if (!san) return;
+  if (san.includes("+") || san.includes("#")) playCheckSound();
+  else if (san.includes("x")) playCaptureSound();
+  else playMoveSound();
+}
+
+/** Press-and-hold auto-repeat for the prev/next move buttons — a single
+ *  tap fires `callback` once via onClick as normal; holding past an
+ *  initial pause starts firing it again on a timer that shortens each
+ *  rep (380ms → floor of 60ms), i.e. it accelerates the longer it's held,
+ *  the same feel as a held arrow key. A ref carries the latest `callback`
+ *  into the running timer so it keeps calling the freshest version even
+ *  though `callback` (handlePrevMove/handleNextMove) closes over state
+ *  that changes on every single rep. */
+function useHoldRepeat(callback: () => void) {
+  const callbackRef = useRef(callback);
+  callbackRef.current = callback;
+  const timeoutRef = useRef<number | null>(null);
+  const heldRef = useRef(false);
+
+  const stop = useCallback(() => {
+    if (timeoutRef.current !== null) {
+      window.clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+
+  const start = useCallback(() => {
+    heldRef.current = false;
+    let delay = 380;
+    const tick = () => {
+      heldRef.current = true;
+      callbackRef.current();
+      delay = Math.max(60, delay * 0.78);
+      timeoutRef.current = window.setTimeout(tick, delay);
+    };
+    timeoutRef.current = window.setTimeout(tick, delay);
+  }, []);
+
+  useEffect(() => stop, [stop]);
+
+  return {
+    onPointerDown: start,
+    onPointerUp: stop,
+    onPointerLeave: stop,
+    onPointerCancel: stop,
+    onClick: () => {
+      // A plain tap/click fires this before the 380ms repeat threshold, so
+      // heldRef is still false — handle it as a single, normal move. If we
+      // *did* end up repeating, the button's already been driven forward
+      // by the timer, so the click that follows release would otherwise
+      // double up as one extra, unwanted step.
+      if (heldRef.current) {
+        heldRef.current = false;
+        return;
+      }
+      callbackRef.current();
+    },
+  };
+}
+
 export function Game() {
   const { code = "" } = useParams<{ code: string }>();
   const { user } = useAuth();
@@ -122,6 +200,12 @@ export function Game() {
     "loading",
   );
   const [loadError, setLoadError] = useState("");
+  // Set once, from the initial REST fetch below, and never flipped back —
+  // a game that's live when this page loads stays on the socket-driven
+  // path for the rest of the session even if it finishes while open (the
+  // existing game:over handling already covers that). Only a *fresh* load
+  // of an already-finished game takes the stale path.
+  const [live, setLive] = useState(true);
 
   const [role, setRole] = useState<Role>("spectator");
   const roleRef = useRef<Role>("spectator");
@@ -473,11 +557,70 @@ export function Game() {
         if (cancelled) return;
         setGameMeta(game);
         const isWhite = game.white?._id === user?.id;
+        const isBlack = game.black?._id === user?.id;
+
         if (game.status === "waiting" && !isWhite) {
           setMode("need-join");
-        } else {
-          setMode("board");
+          setLive(true);
+          return;
         }
+        setMode("board");
+
+        if (isLiveStatus(game.status)) {
+          // Ongoing (or waiting-for-opponent, viewed by its creator) —
+          // the socket-wiring effect below takes it from here, same as
+          // it always has.
+          setLive(true);
+          return;
+        }
+
+        // Finished/aborted: a stale, one-shot render. No socket room is
+        // ever joined for it — everything the board/panels/move list
+        // need is filled in here, once, from the REST payload, the same
+        // fields a live game:sync would have set.
+        setLive(false);
+        const movesList: MoveLogEntry[] = game.moves ?? [];
+        setStatus(game.status);
+        setMoves(movesList);
+        const lastEntry = movesList[movesList.length - 1];
+        setLastMove(lastEntry ? [lastEntry.from, lastEntry.to] : undefined);
+        let finalFen: string = game.fen;
+        if (!finalFen) {
+          try {
+            const replay = new Chess(game.initialFen);
+            for (const m of movesList) replay.move(m.san);
+            finalFen = replay.fen();
+          } catch {
+            finalFen = game.initialFen;
+          }
+        }
+        setFen(finalFen);
+        setWhiteRemainingMs(game.whiteRemainingMs ?? null);
+        setBlackRemainingMs(game.blackRemainingMs ?? null);
+        setTurnStartedAtMs(Date.now());
+        setWhiteConnected(false);
+        setBlackConnected(false);
+        setPausedLeg(false);
+        setWhiteBerserk(!!game.berserk?.white);
+        setBlackBerserk(!!game.berserk?.black);
+        const viewerRole: Role = isWhite
+          ? "white"
+          : isBlack
+            ? "black"
+            : "spectator";
+        setRole(viewerRole);
+        roleRef.current = viewerRole;
+        setGameOver({
+          result: game.result ?? null,
+          reason: game.endReason ?? "unknown",
+          wagerSettlement: null,
+        });
+        // Don't auto-pop the modal for a game that's been over for a
+        // while — the inline "Game over — …" header line is enough, same
+        // as the old standalone replay page. Marking it dismissed here
+        // also unlocks the "Rematch" action item below, for games where
+        // that still makes sense.
+        setGameOverModalDismissed(true);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -506,7 +649,7 @@ export function Game() {
 
   // --- Socket wiring once we're ready to actually show a board ---------------
   useEffect(() => {
-    if (mode !== "board" || !socket || !gameMeta) return;
+    if (mode !== "board" || !socket || !gameMeta || !live) return;
     const gameId = gameMeta._id;
     setConnStatus("Connecting…");
     cageMatchOverRef.current = false;
@@ -594,10 +737,7 @@ export function Game() {
         },
       ]);
 
-      const san: string = payload.san ?? "";
-      if (san.includes("+") || san.includes("#")) playCheckSound();
-      else if (san.includes("x")) playCaptureSound();
-      else playMoveSound();
+      playSoundForMove(payload.san);
     }
 
     function onOver(payload: {
@@ -821,7 +961,7 @@ export function Game() {
       socket.off("cage:resume_declined", onResumeDeclinedLocal);
       socket.off("cage:match_over", onCageMatchOverOnThisLeg);
     };
-  }, [mode, socket, gameMeta?._id, notify]);
+  }, [mode, socket, gameMeta?._id, notify, live]);
 
   const handleUserMove = useCallback(
     (orig: string, dest: string) => {
@@ -974,33 +1114,47 @@ export function Game() {
    *  1-indexed, matching `moveNumber`). Selecting the current last move
    *  snaps back to `null` (live) rather than an equal-but-distinct ply
    *  number, so it behaves identically to Next walking off the end.
+   *  Also plays the same move/capture/check sound a live move would have
+   *  — landing on a ply plays the sound for the move that produced it, in
+   *  either direction, the same as clicking through a game on lichess.
+   *  No-ops (including no sound) if the requested ply is where the view
+   *  already is, so holding a button past the end of the list doesn't
+   *  spam a sound on every repeat tick.
    *
-   *  useCallback (not a plain function) so MoveList/MoveStrip below — both
-   *  React.memo'd — get a stable prop reference across the page's many
-   *  unrelated re-renders (chat input, move errors, etc.) instead of
-   *  rebuilding their entire move-button list every time any of that state
-   *  changes. */
-  const handleSelectMove = useCallback(
-    (ply: number) => {
-      setViewPly(ply >= liveViewPly ? null : ply);
+   *  useCallback so MoveList/MoveStrip below — both React.memo'd — get a
+   *  stable handleSelectMove reference across the page's many unrelated
+   *  re-renders (chat input, move errors, etc.) instead of rebuilding
+   *  their entire move-button list every time any of that state changes. */
+  const goToPly = useCallback(
+    (rawPly: number) => {
+      const currentPly = viewPly ?? liveViewPly;
+      const clamped = Math.max(0, Math.min(liveViewPly, rawPly));
+      if (clamped === currentPly) return;
+      setViewPly(clamped >= liveViewPly ? null : clamped);
+      if (clamped > 0) playSoundForMove(moves[clamped - 1]?.san);
     },
-    [liveViewPly],
+    [viewPly, liveViewPly, moves],
+  );
+
+  const handleSelectMove = useCallback(
+    (ply: number) => goToPly(ply),
+    [goToPly],
   );
 
   function handlePrevMove() {
-    setViewPly((p) => {
-      const current = p ?? liveViewPly;
-      return Math.max(0, current - 1);
-    });
+    goToPly((viewPly ?? liveViewPly) - 1);
   }
 
   function handleNextMove() {
-    setViewPly((p) => {
-      if (p === null) return null; // already live
-      const next = p + 1;
-      return next >= liveViewPly ? null : next; // snap back to live at the end
-    });
+    if (viewPly === null) return; // already live, nothing to advance to
+    goToPly(viewPly + 1);
   }
+
+  // Declared here (before the loadError/mode early returns below) rather
+  // than down by the buttons that use them, since hooks — useHoldRepeat
+  // included — have to run unconditionally on every render.
+  const prevHold = useHoldRepeat(handlePrevMove);
+  const nextHold = useHoldRepeat(handleNextMove);
 
   function handleSendChat(e: FormEvent) {
     e.preventDefault();
@@ -1109,7 +1263,7 @@ export function Game() {
       );
   }
 
-  const showChat = !settings.zenMode && role === "spectator";
+  const showChat = !settings.zenMode && role === "spectator" && live;
 
   // Which ply is "selected" right now — the one being browsed, or the
   // live move if nothing's being browsed. Drives the highlight below.
@@ -1219,26 +1373,31 @@ export function Game() {
     gameOver.reason !== "aborted_no_moves" &&
     gameOver.reason !== "idle_timeout" &&
     gameOver.reason !== "cage_forfeit";
-  const actionItems = [
+  const actionItems: any[] = [
     {
       label: boardFlipped ? "Unflip board" : "Flip board",
       icon: FlipVertical2,
       onClick: handleFlipBoard,
       danger: false,
+      mobilePrimary: true,
     },
     {
       label: "Previous move",
       icon: ChevronLeft,
+      id: "prev",
       onClick: handlePrevMove,
       danger: false,
       disabled: liveViewPly === 0 || viewPly === 0,
+      mobilePrimary: true,
     },
     {
       label: "Next move",
       icon: ChevronRight,
+      id: "next",
       onClick: handleNextMove,
       danger: false,
       disabled: viewPly === null,
+      mobilePrimary: true,
     },
     ...(isPlayer && status === "active" && !isIdlePhase
       ? [
@@ -1290,6 +1449,7 @@ export function Game() {
             icon: MessageSquare,
             onClick: () => setChatSheetOpen(true),
             danger: false,
+            mobilePrimary: true,
           },
         ]
       : []),
@@ -1304,9 +1464,26 @@ export function Game() {
         ]
       : []),
   ];
+  const shareItem = {
+    label: "Share game link",
+    icon: Share2,
+    onClick: handleShareGame,
+    danger: false,
+  };
+  // Mobile pill: Flip board, Share, Prev/Next move, and Spectator chat (when
+  // present) stay always visible — they're the ones reached for constantly
+  // mid-game. Everything else (resign/draw/abort/pause/forfeit/rematch)
+  // collapses into the "More" dropup so the pill doesn't sprawl across a
+  // phone screen. Desktop is untouched — it still renders the full
+  // actionItems list as-is in the right panel.
+  const mobilePrimaryItems = [
+    ...actionItems.filter((item) => item.mobilePrimary),
+    shareItem,
+  ];
+  const mobileOverflowItems = actionItems.filter((item) => !item.mobilePrimary);
 
   return (
-    <div className="relative mx-auto min-h-[calc(100dvh-7rem)] flex max-w-6xl flex-col justify-center gap-2 pb-2 md:h-[calc(100dvh-7rem)] md:gap-3">
+    <div className="relative mx-auto min-h-[calc(100dvh-7rem)] flex max-w-6xl flex-col justify-center gap-2 pb-20 md:h-[calc(100dvh-7rem)] md:gap-3 md:pb-2">
       {/* Notification overlay stack — leg-paused notice, waiting-for-
        *  opponent, move errors, the paused-leg resume card, and the
        *  opponent-disconnect banner. All absolute + centered over the page
@@ -1400,32 +1577,17 @@ export function Game() {
          *  (Spectator chat's trigger now lives in the action button row.)
          *  Left column on desktop; a full-width strip above the board/panel
          *  row on tablet and phone. */}
-        <div className="game-area-leftinfo px-5 flex shrink-0 flex-col justify-center gap-3 lg:h-full lg:min-h-0">
+        <div className="game-area-leftinfo px-5 sm:px-0 flex shrink-0 flex-col justify-center gap-3 lg:h-full lg:min-h-0">
           <Card variant="solid">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-base font-bold text-base-content">
-                  Game{" "}
-                  <span className="font-normal text-base-content/40">
-                    · {code}
-                  </span>
-                </h1>
-                <motion.button
-                  type="button"
-                  onClick={handleShareGame}
-                  whileTap={{ scale: 0.9 }}
-                  transition={springSnappy}
-                  className="glass relative flex size-7 items-center justify-center rounded-full text-base-content/80 hover:text-base-content"
-                >
-                  <Share2 className="size-4" />
-                </motion.button>
                 {badges.length > 0 && (
                   <div className="flex flex-wrap items-center gap-2">
                     {badges}
                   </div>
                 )}
               </div>
-              <span className="flex items-center mb-4 gap-1.5 text-xs font-medium text-base-content/60">
+              <span className="flex items-center gap-1.5 text-xs font-medium text-base-content/60">
                 {!gameOver && (
                   <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
                 )}
@@ -1447,41 +1609,22 @@ export function Game() {
                 >
                   {moveListEntries ?? <></>}
                 </div>
-                {/* Horizontal scrollable strip — phone only. Reserves its
-                 *  row height (min-h) even while empty (moves.length === 0)
-                 *  so the very first move played doesn't pop this strip
-                 *  into existence and shove the board down beneath the
-                 *  player's finger mid-interaction — that reflow was the
-                 *  cause of the "misclicks right after the first move" bug
-                 *  on phone/tablet. */}
                 <div className="lg:hidden min-h-7">{moveStripEntries}</div>
               </div>
             )}
           </Card>
         </div>
 
-        {/* Opponent panel — phone only, sits directly above the board. */}
-
         {/* The board itself — centered in its grid cell, sized to fill
          *  whichever of width/height is the binding constraint (full width
          *  on phone; the grid row's height from md up, where the row is
          *  fixed to the viewport). */}
-        <div className="game-area-board relative flex flex-col min-h-0 min-w-0 flex-1 items-center justify-center">
+        <div className="game-area-board relative bg-red-700 flex flex-col min-h-0 min-w-0 items-center justify-center">
           <div className="game-area-toppanel md:hidden w-[95%]">
             <PlayerPanelRow {...opponentPanelData} />
           </div>
           <div
-            // -mx-4 + w-[calc(100%+2rem)] below md deliberately break this
-            // element (only this element — not the panels above/below it,
-            // not the rest of the page) out of the App shell's `px-4` so
-            // the board can span the full viewport width on phone. 2rem
-            // matches px-4's 1rem-per-side padding exactly; if that
-            // padding value in App.tsx ever changes, this needs to match.
-            // From md up the shell switches to px-6 but the board is no
-            // longer full-bleed at that breakpoint anyway (it's a fixed
-            // px size inside the grid), so md:mx-0 md:w-full just resets
-            // back to normal in-flow sizing instead of trying to track it.
-            className={`relative aspect-square min-w-60 min-h-60 max-w-full -mx-4 w-[calc(100%+2rem)] md:mx-0 md:h-auto md:max-h-full md:w-full overflow-hidden rounded-2xl shadow-lg board-theme-${settings.boardTheme} piece-theme-${settings.pieceTheme}`}
+            className={`relative aspect-square min-w-60 min-h-60 max-w-full md:h-auto md:max-h-full md:w-full overflow-hidden rounded-2xl shadow-lg board-theme-${settings.boardTheme} piece-theme-${settings.pieceTheme}`}
           >
             <ChessBoard
               fen={displayFen}
@@ -1515,7 +1658,7 @@ export function Game() {
             <PlayerPanelRow {...myPanelData} />
           </div>
           {isPlayer && status === "waiting" && (
-            <div className="pointer-events-none absolute bg-base-200/30 inset-0 justify-center items-center top-2 z-30 mx-auto flex">
+            <div className="pointer-events-none absolute bg-base-200/30 inset-0 px-3 justify-center items-center top-2 z-30 mx-auto flex">
               <motion.div
                 key="waiting-banner"
                 initial={{ opacity: 0, y: -8 }}
@@ -1538,8 +1681,6 @@ export function Game() {
             </div>
           )}
         </div>
-
-        {/* My panel — phone only, sits directly below the board. */}
 
         {/* Right panel — tablet & desktop. Player panels, the cage match
          *  scoreboard (if any), then the action buttons (flip/prev/next,
@@ -1570,18 +1711,25 @@ export function Game() {
                   !settings.zenMode && gameMeta?.cageMatchId ? "" : "mt-auto"
                 }`}
               >
-                {actionItems.map((item) => (
-                  <Tooltip content={item.label}>
-                    <Button
-                      key={item.label}
-                      variant={item.danger ? "danger" : "glass"}
-                      onClick={item.onClick}
-                      disabled={item.disabled}
-                    >
-                      <item.icon className="h-4 w-4" />
-                    </Button>
-                  </Tooltip>
-                ))}
+                {actionItems.map((item) => {
+                  const hold =
+                    item.id === "prev"
+                      ? prevHold
+                      : item.id === "next"
+                        ? nextHold
+                        : null;
+                  return (
+                    <Tooltip key={item.label} content={item.label}>
+                      <Button
+                        variant={item.danger ? "danger" : "glass"}
+                        disabled={item.disabled}
+                        {...(hold ?? { onClick: item.onClick })}
+                      >
+                        <item.icon className="h-4 w-4" />
+                      </Button>
+                    </Tooltip>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1622,20 +1770,57 @@ export function Game() {
           </div>
         )}
 
-        {actionItems.length > 0 && (
-          <div className="md:hidden flex flex-wrap justify-center gap-2 pt-2">
-            {actionItems.map((item) => (
-              <Tooltip content={item.label}>
-                <Button
-                  key={item.label}
-                  variant={item.danger ? "danger" : "glass"}
-                  onClick={item.onClick}
-                  disabled={item.disabled}
-                >
-                  <item.icon className="h-4 w-4" />
-                </Button>
-              </Tooltip>
-            ))}
+        {/* Mobile action pill — fixed to the bottom of the screen instead of
+         *  sitting in normal flow, so it's always reachable without
+         *  scrolling. Only the items reached for constantly mid-game (flip
+         *  board, share link, spectator chat, prev/next move) stay always
+         *  visible; the rest (resign/draw/abort/pause/forfeit/rematch)
+         *  collapse into the "More" dropup via the Dropdown primitive so the
+         *  pill stays a fixed, compact size regardless of game state. */}
+        {mobilePrimaryItems.length > 0 && (
+          <div
+            className="md:hidden fixed inset-x-0 z-40 flex justify-center px-3"
+            style={{ bottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+          >
+            <div className="glass-strong flex items-center gap-1 rounded-full p-1.5">
+              {mobilePrimaryItems.map((item) => {
+                const hold =
+                  item.id === "prev"
+                    ? prevHold
+                    : item.id === "next"
+                      ? nextHold
+                      : null;
+                return (
+                  <Tooltip key={item.label} content={item.label}>
+                    <button
+                      type="button"
+                      aria-label={item.label}
+                      disabled={item.disabled}
+                      className="flex size-10 shrink-0 items-center justify-center rounded-full text-base-content/80 transition-colors hover:bg-base-content/10 hover:text-base-content disabled:opacity-40 disabled:pointer-events-none"
+                      {...(hold ?? { onClick: item.onClick })}
+                    >
+                      <item.icon className="h-4 w-4" />
+                    </button>
+                  </Tooltip>
+                );
+              })}
+              {mobileOverflowItems.length > 0 && (
+                <Dropdown
+                  trigger={
+                    <button
+                      type="button"
+                      aria-label="More actions"
+                      className="flex size-10 shrink-0 items-center justify-center rounded-full text-base-content/80 transition-colors hover:bg-base-content/10 hover:text-base-content"
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </button>
+                  }
+                  items={mobileOverflowItems}
+                  align="end"
+                  side="top"
+                />
+              )}
+            </div>
           </div>
         )}
       </div>

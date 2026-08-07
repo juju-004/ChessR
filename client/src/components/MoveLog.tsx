@@ -15,12 +15,12 @@ interface MoveLogProps {
 
 /** Vertical two-column move list — tablet & desktop.
  *
- *  Pulled out of Game.tsx/GameReplay.tsx (which were building this JSX
- *  inline on every render) and wrapped in React.memo. Both pages hold a lot
- *  of state that has nothing to do with the move list — chat input, move
- *  errors, rematch offers — and every one of those updates was rebuilding
- *  every move button in a potentially long game from scratch just because
- *  the parent re-rendered, not because `moves` actually changed. That's
+ *  Pulled out of Game.tsx (which was building this JSX inline on every
+ *  render) and wrapped in React.memo. The page holds a lot of state that
+ *  has nothing to do with the move list — chat input, move errors,
+ *  rematch offers — and every one of those updates was rebuilding every
+ *  move button in a potentially long game from scratch just because the
+ *  parent re-rendered, not because `moves` actually changed. That's
  *  wasted main-thread work at exactly the moment (mid-game, on a low-end
  *  phone) it's least affordable. */
 export const MoveList = memo(function MoveList({ moves, currentPly, onSelectMove }: MoveLogProps) {

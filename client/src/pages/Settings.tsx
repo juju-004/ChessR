@@ -230,19 +230,6 @@ export function Settings() {
             </CardContent>
           </Card>
 
-          <Card variant="solid">
-            <CardHeader>
-              <CardTitle>App</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Switch
-                label="Reduce motion"
-                description="Sharper, near-instant popovers/menus/modals instead of springy animations. Auto-enabled on lower-end devices — you can override it here."
-                checked={settings.reduceMotion}
-                onChange={(v) => updateSetting("reduceMotion", v)}
-              />
-            </CardContent>
-          </Card>
         </div>
 
         <Card variant="solid" className="h-fit">

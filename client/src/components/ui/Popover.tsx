@@ -2,7 +2,6 @@ import { useLayoutEffect, useEffect, useRef, useState, type CSSProperties, type 
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/cn.js";
 import { scaleIn } from "@/lib/motion.js";
-import { useSettings } from "@/contexts/SettingsContext.js";
 
 export interface PopoverProps {
   /** The element that opens the popover on click. Rendered as-is — the
@@ -51,7 +50,6 @@ export const Popover = memo(function Popover({
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [style, setStyle] = useState<CSSProperties>(HIDDEN_STYLE);
-  const { settings } = useSettings();
 
   function setOpen(next: boolean) {
     onOpenChange?.(next);
@@ -169,40 +167,21 @@ export const Popover = memo(function Popover({
   return (
     <div ref={containerRef} className="relative inline-block">
       <span onClick={() => setOpen(!open)}>{trigger}</span>
-      {settings.reduceMotion ? (
-        // Genuinely framer-motion-free, not just "animated instantly" —
-        // MotionConfig's reducedMotion="always" (see MotionConfigProvider)
-        // makes motion.div *resolve* its values instantly, but it's still a
-        // framer-motion component underneath: mount/unmount still goes
-        // through AnimatePresence's exit-animation bookkeeping, gesture/
-        // event listener setup, and JS-driven style application. That
-        // per-element overhead is real on a weak CPU even when nothing is
-        // visibly animating. A plain conditional <div> below has none of
-        // it — for someone who opted into (or was auto-detected into)
-        // reduced motion specifically because their device is struggling,
-        // that's the difference that actually matters, not the easing.
-        open && (
-          <div ref={panelRef} style={panelStyle} className={panelClassName}>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            ref={panelRef}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            variants={scaleIn}
+            style={panelStyle}
+            className={panelClassName}
+          >
             {children}
-          </div>
-        )
-      ) : (
-        <AnimatePresence>
-          {open && (
-            <motion.div
-              ref={panelRef}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              variants={scaleIn}
-              style={panelStyle}
-              className={panelClassName}
-            >
-              {children}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 })

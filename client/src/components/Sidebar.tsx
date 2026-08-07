@@ -36,14 +36,10 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 /**
- * One component, two responsive presentations — a vertical glass rail on
- * desktop (md and up), a floating action button pinned to the bottom
- * center of the screen on mobile that opens the same nav items as a
- * dropdown menu. Both variants are always in the DOM (Tailwind's
- * `hidden md:flex` / `flex md:hidden` toggles which one actually renders),
- * so the desktop rail's active-item indicator keeps its own `layoutId` —
- * the mobile menu doesn't need one since it isn't a persistent row of
- * targets the highlight has to travel between.
+ * The desktop-only vertical glass rail (md and up). The mobile equivalent
+ * — MobileNavTrigger, exported below — is rendered separately in
+ * Navbar.tsx beside the logo, not here, since it needs to live in the top
+ * nav row rather than float over the page.
  */
 export const Sidebar = memo(function Sidebar() {
   const { isAuthed } = useAuth();
@@ -54,49 +50,39 @@ export const Sidebar = memo(function Sidebar() {
   // the game page gets the icon-only collapse-on-hover treatment — every
   // other page keeps the rail fully expanded (labels always visible, no
   // hover behavior at all).
-  const collapsible =
-    pathname.startsWith("/game/") || pathname.startsWith("/replay/");
+  const collapsible = pathname.startsWith("/game/");
 
   return (
-    <>
-      {/* Desktop: vertical rail, flows alongside the page content. On the
-       *  game page it's collapsed to icon-only by default and expands on
-       *  hover; the width transition is a plain CSS `width` transition (not
-       *  framer-motion) — the one spot in this component that isn't
-       *  GPU-only, same tradeoff Button's hover:brightness makes: it's a
-       *  cheap, hover-only, non-JS-driven transition, not the continuous/
-       *  JS-driven kind @/lib/motion.ts's GPU-only rule actually guards
-       *  against. */}
-      <nav
-        aria-label="Primary"
-        className={cn(
-          "group glass z-40 sticky top-20 hidden h-fit shrink-0 flex-col gap-1 self-start overflow-hidden rounded-2xl p-3 md:flex",
-          collapsible
-            ? "w-16 transition-[width] duration-200 ease-out hover:w-56 hover:shadow-xl"
-            : "w-56",
-        )}
-      >
-        {NAV_ITEMS.map((item) => (
-          <SidebarLink
-            key={item.to}
-            item={item}
-            layoutId="sidebar-desktop-active"
-            orientation="vertical"
-            collapsible={collapsible}
-          />
-        ))}
-      </nav>
-
-      {/* Mobile: a single floating action button pinned to the bottom
-       *  center, opening the nav as a dropdown — main content gets matching
-       *  bottom padding in App.tsx so the FAB never sits over the last bit
-       *  of scrollable content. */}
-      <MobileNavFab />
-    </>
+    <nav
+      aria-label="Primary"
+      className={cn(
+        "group glass z-40 sticky top-20 hidden h-fit shrink-0 flex-col gap-1 self-start overflow-hidden rounded-2xl p-3 md:flex",
+        collapsible
+          ? "w-16 transition-[width] duration-200 ease-out hover:w-56 hover:shadow-xl"
+          : "w-56",
+      )}
+    >
+      {NAV_ITEMS.map((item) => (
+        <SidebarLink
+          key={item.to}
+          item={item}
+          layoutId="sidebar-desktop-active"
+          orientation="vertical"
+          collapsible={collapsible}
+        />
+      ))}
+    </nav>
   );
 });
 
-function MobileNavFab() {
+/**
+ * The nav items rendered as a Dropdown, for use beside the logo in
+ * Navbar.tsx on mobile (md:hidden is baked into the trigger button itself,
+ * so this can be dropped straight into the navbar without an extra
+ * wrapper). Opens downward (side="bottom") since it now lives at the top
+ * of the screen rather than the old fixed bottom-left FAB it replaced.
+ */
+export function MobileNavTrigger() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
 
@@ -115,25 +101,20 @@ function MobileNavFab() {
   });
 
   return (
-    <div
-      className="fixed left-4 z-40 md:hidden"
-      style={{ bottom: "calc(1rem + env(safe-area-inset-bottom))" }}
-    >
-      <Dropdown
-        trigger={
-          <motion.button
-            {...pressable}
-            aria-label="Open navigation menu"
-            className="glass-strong flex h-12 w-12 items-center justify-center rounded-full text-base-content shadow-xl transition-colors hover:bg-base-content/5"
-          >
-            <TableOfContents className="h-5 w-5" strokeWidth={3} />
-          </motion.button>
-        }
-        items={items}
-        align="start"
-        side="top"
-      />
-    </div>
+    <Dropdown
+      trigger={
+        <motion.button
+          {...pressable}
+          aria-label="Open navigation menu"
+          className="glass flex h-9 w-9 items-center justify-center rounded-full text-base-content transition-colors hover:bg-base-content/5 md:hidden"
+        >
+          <TableOfContents className="h-4 w-4" strokeWidth={3} />
+        </motion.button>
+      }
+      items={items}
+      align="start"
+      side="bottom"
+    />
   );
 }
 

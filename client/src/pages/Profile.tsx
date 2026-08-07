@@ -222,7 +222,7 @@ export function Profile() {
             {games.map((g) => (
               <Link
                 key={g.gameId}
-                to={`/replay/${g.joinCode}`}
+                to={`/game/${g.joinCode}`}
                 className="flex items-center justify-between gap-3 py-2.5 text-sm transition-colors hover:text-(--primary)"
               >
                 <div className="flex min-w-0 items-center gap-2.5">

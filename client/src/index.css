@@ -105,10 +105,9 @@
      measurable jank/battery cost on older/lower-end phones. */
   --surface-bg: #ffffff;
   --surface-bg-strong: #ffffff;
-  --surface-border: rgba(15, 23, 42, 0.08);
-  --surface-border-strong: rgba(15, 23, 42, 0.1);
+  --surface-border: rgba(15, 23, 42, 0.1);
+  --surface-border-strong: rgba(15, 23, 42, 0.13);
   --surface-highlight: rgba(255, 255, 255, 0.8);
-  --surface-shadow-color: rgba(30, 41, 59, 0.1);
 }
 
 [data-theme="dark"] {
@@ -122,7 +121,6 @@
   --surface-border: rgba(255, 255, 255, 0.07);
   --surface-border-strong: rgba(255, 255, 255, 0.09);
   --surface-highlight: rgba(255, 255, 255, 0.04);
-  --surface-shadow-color: rgba(0, 0, 0, 0.5);
 }
 
 html {
@@ -167,32 +165,42 @@ body {
 
 /* Elevated surface — the shared look for Card/Modal/Popover/glass Button
    variants etc. This used to be a translucent, blurred "liquid glass"
-   panel (backdrop-filter: blur+saturate). backdrop-filter forces the
-   browser to continuously re-composite everything behind the element,
-   which is cheap on a modern flagship but genuinely janky — dropped
-   frames, hot phone — on older/budget devices, especially over anything
-   that's animating (the exact spot these panels tend to sit). This
-   version keeps the same "distinct floating panel" visual language
-   (soft shadow, hairline border, subtle top highlight) but with a plain
-   opaque background, so there's nothing for the compositor to blur:
-   just a border + box-shadow, same cost as any other card. Class names
-   are kept as `.glass`/`.glass-strong` so every existing usage across the
-   app picks up the new look automatically. */
+   panel (backdrop-filter: blur+saturate), then a plain opaque panel with
+   a soft box-shadow. box-shadow turned out to have its own cost: any
+   blurred shadow forces the browser to rasterize a separate shadow layer
+   and keep recompositing it, and on low-end devices that's exactly what
+   was causing the laggy scroll/UI — the same class of problem as
+   backdrop-filter, just from a different property. This version drops
+   box-shadow entirely and fakes the same "distinct floating panel" read
+   with things that are cheap to paint:
+     - a real hairline border (already doing real elevation work, not
+       decorative)
+     - a background color that's a deliberate shade off the page
+       background (--surface-bg / --surface-bg-strong vs --color-base-100),
+       so the panel reads as "raised" from contrast alone
+     - a top-to-bottom gradient "sheen" baked into background-image
+       instead of an inset box-shadow — it's just part of the normal
+       background paint, computed once, no separate shadow layer to
+       recomposite on scroll.
+   Class names are kept as `.glass`/`.glass-strong` so every existing
+   usage across the app picks up the new look automatically. */
 .glass {
-  background: var(--surface-bg);
+  background-color: var(--surface-bg);
+  background-image: linear-gradient(
+    -50deg,
+    var(--surface-highlight) 0%,
+    transparent 42%
+  );
   border: 0px solid var(--surface-border);
-  /* box-shadow:
-    0 1px 2px var(--surface-shadow-color),
-    0 8px 24px -8px var(--surface-shadow-color),
-    inset 0 1px 0 var(--surface-highlight); */
 }
 .glass-strong {
-  background: var(--surface-bg-strong);
-  border: 1px solid var(--surface-border-strong);
-  /* box-shadow:
-    0 2px 4px var(--surface-shadow-color),
-    0 16px 40px -12px var(--surface-shadow-color),
-    inset 0 1px 0 var(--surface-highlight); */
+  background-color: var(--surface-bg-strong);
+  background-image: linear-gradient(
+    180deg,
+    var(--surface-highlight) 0%,
+    transparent 52%
+  );
+  border: 0px solid var(--surface-border-strong);
 }
 
 @import "@lichess-org/chessground/assets/chessground.base.css";
@@ -397,6 +405,11 @@ body {
   );
 }
 */
+
+/* .cg-wrap cg-container {
+  width: 100% !important;
+  height: 100% !important;
+} */
 
 /* Game page layout — the pairing of "which area sits next to which"
    genuinely changes shape between phone/tablet/desktop (a top strip becomes

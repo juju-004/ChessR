@@ -4,7 +4,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { cn } from "@/lib/cn.js";
 import { modalBackdrop, modalContent } from "@/lib/motion.js";
-import { useSettings } from "@/contexts/SettingsContext.js";
 
 export interface ModalProps {
   open: boolean;
@@ -20,17 +19,8 @@ export interface ModalProps {
  * panel (no backdrop-filter — see the .glass comment in index.css).
  * Backdrop and content each animate on their own opacity/scale/y — no
  * layout-affecting properties, per @/lib/motion.ts.
- *
- * When Settings.reduceMotion is on, this skips framer-motion entirely
- * rather than just asking it to animate instantly — see the matching
- * comment in Popover.tsx for why that distinction actually matters on a
- * weak CPU (mount/unmount bookkeeping, event listener setup, and JS-driven
- * style application are real overhead independent of whether anything is
- * visibly moving).
  */
 export const Modal = memo(function Modal({ open, onClose, title, children, className }: ModalProps) {
-  const { settings } = useSettings();
-
   const header = title && (
     <div className="mb-4 flex items-center justify-between">
       <h2 className="text-lg font-semibold text-base-content">{title}</h2>
@@ -43,25 +33,6 @@ export const Modal = memo(function Modal({ open, onClose, title, children, class
       </button>
     </div>
   );
-
-  if (settings.reduceMotion) {
-    if (!open) return null;
-    return createPortal(
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div onClick={onClose} className="absolute inset-0 bg-black/60" />
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={title}
-          className={cn("glass-strong relative w-full max-w-md rounded-2xl p-5", className)}
-        >
-          {header}
-          {children}
-        </div>
-      </div>,
-      document.body,
-    );
-  }
 
   return createPortal(
     <AnimatePresence>

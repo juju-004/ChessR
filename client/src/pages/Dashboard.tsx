@@ -95,7 +95,7 @@ export function Dashboard() {
             <Link to="/wallet/buy">
               <Button size="sm">Buy</Button>
             </Link>
-            <Link to="/wallet/withdraw">
+            <Link className="hidden sm:flex" to="/wallet/withdraw">
               <Button variant="glass" size="sm">
                 Withdraw
               </Button>
