@@ -4,8 +4,8 @@ import { CageMatch, type ICageMatch, type ICageLeg, type CageWinnerMode, type Ca
 import { Game } from "../models/Game.js";
 import { ApiError } from "../utils/ApiError.js";
 import { createDirectGame, finalizeGame, settleWager, refundWagerBothSides, type TimeControlInput } from "./game.service.js";
-import { getLiveState, deleteLiveState, pauseLiveClock, resumeLiveClock, getSideToMove } from "./gameState.service.js";
-import { clearGameTimer, scheduleGameTimer } from "./clock.service.js";
+import { getLiveState, deleteLiveState, pauseLiveClock, resumeLiveClock } from "./gameState.service.js";
+import { clearGameTimer, scheduleGameTimer, clearFirstMoveTimer, scheduleFirstMoveTimer } from "./clock.service.js";
 import { debitWagerStake, creditWagerReturn } from "./wallet.service.js";
 import { getIo } from "../sockets/io.js";
 
@@ -45,10 +45,10 @@ export function validateLegPlan(legs: CageLegInput[]) {
   if (legs.length > MAX_LEGS) throw ApiError.badRequest(`A cage match can have at most ${MAX_LEGS} legs`);
   for (const leg of legs) {
     if (leg.baseMinutes !== null && (leg.baseMinutes < 1 || leg.baseMinutes > 180)) {
-      throw ApiError.badRequest("Each leg's base time must be between 1 and 180 minutes (or unlimited)");
+      throw ApiError.badRequest("Each game's base time must be between 1 and 180 minutes (or unlimited)");
     }
     if (leg.incrementSeconds < 0 || leg.incrementSeconds > 60) {
-      throw ApiError.badRequest("Each leg's increment must be between 0 and 60 seconds");
+      throw ApiError.badRequest("Each game's increment must be between 0 and 60 seconds");
     }
   }
 }
@@ -210,121 +210,24 @@ async function refundWinnerTakesAll(match: ICageMatch): Promise<void> {
   ]);
 }
 
-// --- No-show grace timer -------------------------------------------------------
-
-// Separate from (and much shorter than) the real chess clock — this exists
-// purely to catch someone not showing up at all when a new leg auto-starts,
-// so a cage match can't get stuck forever waiting on a player who's walked
-// away. Covers BOTH sides' first move: armed for White the moment a leg
-// starts, then re-armed for Black the moment White's first move lands.
-// Cleared for good the instant Black's first move lands (moveCount reaches
-// 2) — from that point on it's an ordinary chess clock, and a timeout only
-// costs that one leg like any other loss, not the whole match.
-const noShowTimers = new Map<string, NodeJS.Timeout>();
-
-function noShowGraceSeconds(baseMinutes: number | null): number {
-  if (baseMinutes === null) return 120;
-  if (baseMinutes < 3) return 50; // bullet
-  if (baseMinutes < 10) return 75; // blitz
-  if (baseMinutes < 30) return 100; // rapid
-  return 120; // classical
-}
-
-export function clearNoShowTimer(gameId: string): void {
-  const t = noShowTimers.get(gameId);
-  if (t) {
-    clearTimeout(t);
-    noShowTimers.delete(gameId);
-  }
-}
-
-function scheduleNoShowTimer(gameId: string, baseMinutes: number | null): void {
-  clearNoShowTimer(gameId);
-  const graceMs = noShowGraceSeconds(baseMinutes) * 1000;
-  const timer = setTimeout(() => {
-    handleNoShowTimeout(gameId).catch((err) => console.error("handleNoShowTimeout failed:", err));
-  }, graceMs);
-  timer.unref?.();
-  noShowTimers.set(gameId, timer);
-}
-
-/** Called from the move handler after every successful move on every game —
- *  a cheap no-op for the overwhelming majority (any non-cage-leg game, or a
- *  cage leg past its first two plies). Re-arms the no-show timer for Black
- *  right after White's first move; clears it for good once Black's first
- *  move lands (or on any later move, harmlessly). */
-export async function handleLegMoveForNoShow(gameId: string, moveNumberAfter: number): Promise<void> {
-  clearNoShowTimer(gameId);
-  if (moveNumberAfter !== 1) return; // only White's first move re-arms anything
-
-  const gameDoc = await Game.findById(gameId).select("cageMatchId legIndex").lean();
-  if (!gameDoc?.cageMatchId || gameDoc.legIndex === undefined) return; // not a cage leg
-
-  const match = await CageMatch.findById(gameDoc.cageMatchId).select("legs status").lean();
-  if (!match || match.status !== "active") return;
-  const leg = match.legs[gameDoc.legIndex];
-  if (!leg || leg.status !== "active") return;
-
-  scheduleNoShowTimer(gameId, leg.baseMinutes);
-}
-
-/** Fires once the no-show grace period elapses. Re-verifies the game is
- *  still exactly in the state that justifies a forfeit (still active, still
- *  fewer than 2 moves played) before acting — a move landing, a pause, or
- *  the leg ending some other way in the meantime should all make this a
- *  no-op, and since the timer is cleared on those paths anyway this check is
- *  mostly a safety net for anything that slips through. */
-async function handleNoShowTimeout(gameId: string): Promise<void> {
-  noShowTimers.delete(gameId);
-
-  const liveState = await getLiveState(gameId);
-  if (!liveState || liveState.status !== "active" || liveState.paused || liveState.moveCount >= 2) return;
-
-  const gameDoc = await Game.findById(gameId).select("cageMatchId legIndex").lean();
-  if (!gameDoc?.cageMatchId || gameDoc.legIndex === undefined) return;
-
-  const match = await CageMatch.findById(gameDoc.cageMatchId);
-  if (!match || match.status !== "active") return;
-  const leg = match.legs[gameDoc.legIndex];
-  if (!leg || leg.status !== "active" || leg.gameId?.toString() !== gameId) return;
-
-  // Whoever's turn it currently is (moveCount is still 0 or 1) is the one
-  // who hasn't shown up — White if they never played a first move at all,
-  // Black if White moved but Black never replied.
-  const sideToMove = getSideToMove(liveState.fen);
-  const forfeitingUserId = sideToMove === "white" ? liveState.whiteId : liveState.blackId;
-
-  const updated = await finalizeCageMatchForfeit(match, forfeitingUserId, "no_show_forfeit", "no_show");
-
-  const p1 = updated.player1.toString();
-  const p2 = updated.player2.toString();
-  const payload = {
-    matchId: updated.id,
-    matchCode: updated.matchCode,
-    matchWinner: updated.matchWinner,
-    matchEndReason: updated.matchEndReason,
-    forfeitedBy: forfeitingUserId,
-  };
-  try {
-    const io = getIo();
-    io.to(`user:${p1}`).emit("cage:match_over", payload);
-    io.to(`user:${p2}`).emit("cage:match_over", payload);
-  } catch {
-    // Socket.IO not initialized — match state is still correctly persisted.
-  }
-}
-
-// --- Forfeit (shared by manual forfeit and the automatic no-show forfeit) -----
+// --- Forfeit ---------------------------------------------------------------
+//
+// Note: a player simply never showing up for their first move is no longer
+// a special whole-match forfeit case — it's handled by the same universal
+// first-move timer every game gets (see clock.service.ts's
+// scheduleFirstMoveTimer + gameSocket.ts's registerFirstMoveTimeoutHandler),
+// which just loses that one leg, same as any other timeout. This section is
+// now only the *manual* "forfeit the whole match" action.
 
 /** Ends the whole cage match immediately in favor of whoever DIDN'T forfeit.
  *  If a leg is currently in progress, closes it out too (settles its wager
  *  if any, stops its clocks/timers) — otherwise its clock and socket room
- *  would keep running even after the match itself has ended. Shared by the
- *  manual "forfeit entire match" action and the automatic no-show forfeit. */
+ *  would keep running even after the match itself has ended. Backs the
+ *  manual "forfeit entire match" action. */
 async function finalizeCageMatchForfeit(
   match: ICageMatch,
   forfeitingUserId: string,
-  matchEndReason: "forfeit" | "no_show_forfeit",
+  matchEndReason: "forfeit",
   legEndReason: string,
 ): Promise<ICageMatch> {
   const isP1 = match.player1.toString() === forfeitingUserId;
@@ -334,7 +237,7 @@ async function finalizeCageMatchForfeit(
   if (activeLeg?.gameId) {
     const gameId = activeLeg.gameId.toString();
     clearGameTimer(gameId);
-    clearNoShowTimer(gameId);
+    clearFirstMoveTimer(gameId);
     const liveState = await getLiveState(gameId);
     if (liveState && liveState.status === "active") {
       // If neither side has really gotten going yet (fewer than both sides'
@@ -425,13 +328,14 @@ export async function forfeitCageMatch(matchId: string, forfeitingUserId: string
 
 // --- Leg lifecycle -------------------------------------------------------------
 
-/** Creates the Game for whichever leg is next in line, marks it active on the
- *  match, and arms the no-show grace timer. Colors are randomized per leg,
- *  same as a normal challenge — nothing here guarantees a player is white in
- *  every leg or anything like that. */
+/** Creates the Game for whichever leg is next in line and marks it active on
+ *  the match — createDirectGame arms its own first-move timer, so there's
+ *  nothing extra to schedule here. Colors are randomized per leg, same as a
+ *  normal challenge — nothing here guarantees a player is white in every leg
+ *  or anything like that. */
 async function startNextLeg(match: ICageMatch): Promise<ICageMatch> {
   const leg = match.legs[match.currentLegIndex];
-  if (!leg) throw ApiError.internal("No leg to start");
+  if (!leg) throw ApiError.internal("No game to start");
 
   const [whiteId, blackId] =
     Math.random() < 0.5 ? [match.player1.toString(), match.player2.toString()] : [match.player2.toString(), match.player1.toString()];
@@ -451,8 +355,6 @@ async function startNextLeg(match: ICageMatch): Promise<ICageMatch> {
   leg.gameId = game._id;
   leg.joinCode = game.joinCode;
   await match.save();
-
-  scheduleNoShowTimer(game._id.toString(), leg.baseMinutes);
 
   return match;
 }
@@ -475,7 +377,7 @@ export async function startCageMatch(
     throw ApiError.badRequest("Enter a valid wager amount");
   }
   if (wagerMode === "split_even" && Math.floor(wagerTokens / legsInput.length) <= 0) {
-    throw ApiError.badRequest("That wager doesn't divide into a whole token per leg — raise it or use fewer legs");
+    throw ApiError.badRequest("That wager doesn't divide into a whole token per game — raise it or use fewer games");
   }
 
   const matchCode = await uniqueMatchCode();
@@ -534,11 +436,11 @@ export interface LegFinishedOutcome {
 }
 
 /** Called once a leg's underlying Game finishes normally (checkmate, a mid-
- *  game clock timeout, resignation, draw, etc). Records the result and moves
- *  the match along by score — a plain timeout only loses this ONE leg, same
- *  as any other loss; it does NOT forfeit the whole match. (The whole-match
- *  no-show forfeit is a completely separate, much narrower mechanism — see
- *  handleNoShowTimeout — that only ever fires before either side has moved.) */
+ *  game clock timeout, resignation, a first-move timeout, draw, etc).
+ *  Records the result and moves the match along by score — any timeout,
+ *  including a first-move no-show, only loses this ONE leg, same as any
+ *  other loss; it does NOT forfeit the whole match. Only the explicit
+ *  "forfeit entire match" action (finalizeCageMatchForfeit) does that. */
 export async function onLegFinished(
   cageMatchId: string,
   legIndex: number,
@@ -555,13 +457,13 @@ export async function onLegFinished(
     return { match, standings, matchStatus: match.status === "finished" ? "match_over" : "leg_advanced", nextLeg: null, matchWinner: match.matchWinner };
   }
 
-  if (leg.gameId) clearNoShowTimer(leg.gameId.toString());
+  if (leg.gameId) clearFirstMoveTimer(leg.gameId.toString());
 
   // Leg results are always recorded relative to white/black of that specific
   // leg's game, which is why we need the leg's own Game doc to know who was
   // playing which color this time round.
   const gameDoc = await Game.findById(leg.gameId).select("white black").lean();
-  if (!gameDoc) throw ApiError.internal("Leg game record missing");
+  if (!gameDoc) throw ApiError.internal("Game record missing");
 
   const whiteIsP1 = gameDoc.white.toString() === match.player1.toString();
   let legResult: "p1" | "p2" | "draw";
@@ -664,18 +566,18 @@ export async function pauseCageLeg(matchId: string): Promise<{ match: ICageMatch
 
   const leg = match.legs[match.currentLegIndex];
   if (!leg || leg.status !== "active" || !leg.gameId) {
-    throw ApiError.badRequest("There's no leg in progress to pause");
+    throw ApiError.badRequest("There's no game in progress to pause");
   }
 
   const gameId = leg.gameId.toString();
   const liveState = await getLiveState(gameId);
-  if (!liveState || liveState.status !== "active") throw ApiError.badRequest("That leg has already ended");
+  if (!liveState || liveState.status !== "active") throw ApiError.badRequest("That game has already ended");
   if (liveState.moveCount >= 2) {
-    throw ApiError.badRequest("This leg can only be paused before both sides have moved");
+    throw ApiError.badRequest("This game can only be paused before both sides have moved");
   }
 
   clearGameTimer(gameId);
-  clearNoShowTimer(gameId);
+  clearFirstMoveTimer(gameId);
   await pauseLiveClock(gameId);
 
   leg.status = "paused";
@@ -692,7 +594,7 @@ export async function pauseCageLeg(matchId: string): Promise<{ match: ICageMatch
 
 /** Mirror of pauseCageLeg — resumes a paused leg once both players agree,
  *  restarting the clock fresh from whatever was banked at pause time and
- *  re-arming a full no-show grace window. */
+ *  re-arming a full first-move grace window. */
 export async function resumeCageLeg(matchId: string): Promise<{ match: ICageMatch; leg: ICageLeg }> {
   const match = await CageMatch.findById(matchId);
   if (!match) throw ApiError.notFound("Cage match not found");
@@ -700,13 +602,13 @@ export async function resumeCageLeg(matchId: string): Promise<{ match: ICageMatc
 
   const leg = match.legs[match.currentLegIndex];
   if (!leg || leg.status !== "paused" || !leg.gameId) {
-    throw ApiError.badRequest("There's no paused leg to resume");
+    throw ApiError.badRequest("There's no paused game to resume");
   }
 
   const gameId = leg.gameId.toString();
   await resumeLiveClock(gameId);
   await scheduleGameTimer(gameId);
-  scheduleNoShowTimer(gameId, leg.baseMinutes);
+  await scheduleFirstMoveTimer(gameId);
 
   leg.status = "active";
   await match.save();

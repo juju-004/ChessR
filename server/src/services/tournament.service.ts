@@ -1,12 +1,14 @@
 import { customAlphabet } from "nanoid";
+import bcrypt from "bcrypt";
+import type { Types } from "mongoose";
 import {
   Tournament,
   type ITournament,
   type ITournamentPairing,
   type ITournamentPlayer,
   type ITournamentRound,
+  type ITournamentPrizeTier,
   type TournamentFormat,
-  type TournamentWagerMode,
 } from "../models/Tournament.js";
 import { Game } from "../models/Game.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -24,7 +26,8 @@ import {
 } from "./gameState.service.js";
 import { clearGameTimer } from "./clock.service.js";
 import {
-  debitTournamentEntry,
+  debitTournamentRegFee,
+  debitTournamentPrizeFund,
   creditTournamentReturn,
 } from "./wallet.service.js";
 import { getIo } from "../sockets/io.js";
@@ -32,6 +35,194 @@ import { getIo } from "../sockets/io.js";
 const generateCode = customAlphabet("ABCDEFGHJKMNPQRSTUVWXYZ23456789", 6);
 
 const MAX_WAGER_TOKENS = 100_000;
+const PASSWORD_BCRYPT_ROUNDS = 10;
+const MIN_START_DELAY_MS = 10_000; // scheduled start must be at least 10s out
+const MAX_START_DELAY_MS = 30 * 24 * 60 * 60 * 1000; // and at most 30 days
+
+// --- Inter-round break timer -------------------------------------------------
+//
+// Same shape as the no-show/first-move timers elsewhere in the codebase: an
+// in-memory setTimeout keyed by tournament id, with a reconciliation sweep
+// (reconcileActiveTournaments, called from index.ts) to self-heal if the
+// process restarts mid-break. Much lower stakes than a chess clock though —
+// a round starting a few seconds late because of a redeploy is a non-event,
+// so there's no urgency to make this bulletproof the way the clock timers
+// are.
+const pendingRoundTimers = new Map<string, NodeJS.Timeout>();
+
+function clearPendingRoundTimer(tournamentId: string): void {
+  const t = pendingRoundTimers.get(tournamentId);
+  if (t) {
+    clearTimeout(t);
+    pendingRoundTimers.delete(tournamentId);
+  }
+}
+
+/** Puts the tournament into its inter-round break, then activates the given
+ *  round once that break elapses. A breakSeconds of 0 (or less) skips the
+ *  break entirely and activates immediately, same as the old unconditional
+ *  behavior — so existing short-break expectations aren't disrupted. */
+async function scheduleRoundStart(
+  tournament: ITournament,
+  roundIndex: number,
+): Promise<void> {
+  const breakMs = Math.max(0, tournament.breakSeconds ?? 0) * 1000;
+  if (breakMs <= 0) {
+    await activateRound(tournament, roundIndex);
+    return;
+  }
+
+  const startsAt = new Date(Date.now() + breakMs);
+  tournament.nextRoundStartsAt = startsAt;
+  await tournament.save();
+  broadcastUpdate(tournament);
+
+  clearPendingRoundTimer(tournament.id);
+  const timer = setTimeout(() => {
+    pendingRoundTimers.delete(tournament.id);
+    fireRoundStart(tournament.id, roundIndex).catch((err) =>
+      console.error("scheduled round start failed:", err),
+    );
+  }, breakMs);
+  timer.unref?.();
+  pendingRoundTimers.set(tournament.id, timer);
+}
+
+/** Re-fetches fresh state before actually activating — the in-memory timer
+ *  firing doesn't guarantee the world hasn't changed (tournament finished
+ *  some other way, round already active from a reconciliation sweep race,
+ *  etc), so this re-verifies rather than trusting the closure's stale doc. */
+async function fireRoundStart(tournamentId: string, roundIndex: number): Promise<void> {
+  const tournament = await Tournament.findById(tournamentId);
+  if (!tournament || tournament.status !== "active") return;
+  const round = tournament.rounds[roundIndex];
+  if (!round || round.status !== "pending") return;
+
+  tournament.nextRoundStartsAt = null;
+  await activateRound(tournament, roundIndex);
+}
+
+/** Boot/periodic self-heal for scheduleRoundStart's in-memory timer — finds
+ *  any active tournament sitting in a break whose nextRoundStartsAt has
+ *  already passed (timer lost to a restart) and fires it, and re-arms a
+ *  fresh in-memory timer for any break still genuinely in progress so a
+ *  redeploy doesn't leave it waiting on the next periodic sweep alone. Also
+ *  does the exact same self-heal for scheduleAutoStart's timers below —
+ *  same underlying risk (in-memory setTimeout, wiped by a restart), so one
+ *  sweep covers both. */
+export async function reconcileActiveTournaments(): Promise<{
+  activated: number;
+  rearmed: number;
+  autoStarted: number;
+  autoStartRearmed: number;
+}> {
+  const pending = await Tournament.find({
+    status: "active",
+    nextRoundStartsAt: { $ne: null },
+  }).select("currentRoundIndex nextRoundStartsAt breakSeconds");
+
+  let activated = 0;
+  let rearmed = 0;
+  const now = Date.now();
+
+  for (const doc of pending) {
+    const roundIndex = doc.currentRoundIndex;
+    const dueAt = doc.nextRoundStartsAt ? doc.nextRoundStartsAt.getTime() : 0;
+    if (dueAt <= now) {
+      await fireRoundStart(doc.id, roundIndex);
+      activated++;
+    } else if (!pendingRoundTimers.has(doc.id)) {
+      const timer = setTimeout(() => {
+        pendingRoundTimers.delete(doc.id);
+        fireRoundStart(doc.id, roundIndex).catch((err) =>
+          console.error("re-armed round start failed:", err),
+        );
+      }, dueAt - now);
+      timer.unref?.();
+      pendingRoundTimers.set(doc.id, timer);
+      rearmed++;
+    }
+  }
+
+  const pendingStarts = await Tournament.find({
+    status: "pending",
+    scheduledStartAt: { $ne: null },
+  }).select("scheduledStartAt");
+
+  let autoStarted = 0;
+  let autoStartRearmed = 0;
+
+  for (const doc of pendingStarts) {
+    const dueAt = doc.scheduledStartAt ? doc.scheduledStartAt.getTime() : 0;
+    if (dueAt <= now) {
+      await fireAutoStart(doc.id);
+      autoStarted++;
+    } else if (!pendingAutoStartTimers.has(doc.id)) {
+      const timer = setTimeout(() => {
+        pendingAutoStartTimers.delete(doc.id);
+        fireAutoStart(doc.id).catch((err) => console.error("re-armed auto-start failed:", err));
+      }, dueAt - now);
+      timer.unref?.();
+      pendingAutoStartTimers.set(doc.id, timer);
+      autoStartRearmed++;
+    }
+  }
+
+  return { activated, rearmed, autoStarted, autoStartRearmed };
+}
+
+// --- Scheduled auto-start timer ---------------------------------------------
+//
+// Same shape and same self-heal story as the inter-round break timer above.
+// A tournament's scheduledStartAt is set once, at creation, and cleared the
+// moment it actually starts (whether that's this timer firing, or the
+// creator hitting manual Start early — see activateTournament).
+const pendingAutoStartTimers = new Map<string, NodeJS.Timeout>();
+
+function clearPendingAutoStart(tournamentId: string): void {
+  const t = pendingAutoStartTimers.get(tournamentId);
+  if (t) {
+    clearTimeout(t);
+    pendingAutoStartTimers.delete(tournamentId);
+  }
+}
+
+function scheduleAutoStart(tournament: ITournament): void {
+  clearPendingAutoStart(tournament.id);
+  if (!tournament.scheduledStartAt) return;
+
+  const delay = tournament.scheduledStartAt.getTime() - Date.now();
+  if (delay <= 0) {
+    fireAutoStart(tournament.id).catch((err) => console.error("auto-start failed:", err));
+    return;
+  }
+  const timer = setTimeout(() => {
+    pendingAutoStartTimers.delete(tournament.id);
+    fireAutoStart(tournament.id).catch((err) => console.error("scheduled auto-start failed:", err));
+  }, delay);
+  timer.unref?.();
+  pendingAutoStartTimers.set(tournament.id, timer);
+}
+
+/** Fires at the creator's chosen start time: starts the event if enough
+ *  players have joined, otherwise calls the whole thing off and refunds
+ *  everyone — same as a real-world event that doesn't reach minimum
+ *  turnout, rather than leaving it stuck waiting indefinitely. Re-verifies
+ *  fresh state first, same reasoning as fireRoundStart. */
+async function fireAutoStart(tournamentId: string): Promise<void> {
+  const tournament = await Tournament.findById(tournamentId);
+  if (!tournament || tournament.status !== "pending") return;
+
+  if (tournament.players.length >= tournament.minPlayers) {
+    await activateTournament(tournament);
+  } else {
+    await refundAllEscrow(tournament);
+    tournament.status = "cancelled";
+    tournament.scheduledStartAt = null;
+    await tournament.save();
+    broadcastUpdate(tournament, "tournament:cancelled");
+  }
+}
 
 // Every format has its own sane player-count bounds — knockout tolerates any
 // field size >= 2 (byes soak up the gap to the next power of two), swiss
@@ -109,10 +300,76 @@ export interface CreateTournamentInput {
   incrementSeconds: number;
   maxPlayers: number;
   berserkAllowed: boolean;
-  wagerMode: TournamentWagerMode;
-  wagerTokens: number;
+  // Show up in the public "Open tournaments" browse list? Defaults to false
+  // (link/code-only) if omitted.
+  isPublic?: boolean;
+  // Prize pool: creator-funded, paid out by final rank. Empty/omitted = no
+  // prize pool. See the ITournament doc comment in Tournament.ts.
+  prizeSchedule?: { fromRank: number; toRank: number; tokens: number }[];
+  // Registration fee: player-funded, the whole pool goes to the creator once
+  // the event finishes. 0/omitted = no registration fee.
+  regFeeTokens?: number;
   // Required (and only meaningful) for format === 'swiss'.
   swissRounds: number | null;
+  // Seconds to pause between rounds — see the ITournament doc comment.
+  // Optional on input; defaults to 10 like the schema itself.
+  breakSeconds?: number;
+  // When the event starts itself — required, must be far enough in the
+  // future to give players time to join (see MIN_START_DELAY_MS). The
+  // creator can still manually start early via startTournament.
+  scheduledStartAt: string | Date;
+  // Optional gate on joining — anyone with the link can view the page, but
+  // becoming a player requires this. Omitted/empty = no password.
+  password?: string;
+}
+
+const DEFAULT_BREAK_SECONDS = 10;
+const MAX_BREAK_SECONDS = 300;
+
+/** Validates and totals a creator's prize schedule — throws on anything
+ *  that doesn't cleanly partition 1..maxPlayers into non-overlapping,
+ *  ascending, gap-free rank tiers. Returns the full committed total (tokens
+ *  per tier * how many ranks that tier covers, summed). */
+function validatePrizeSchedule(
+  schedule: { fromRank: number; toRank: number; tokens: number }[],
+  maxPlayers: number,
+): { tiers: ITournamentPrizeTier[]; total: number } {
+  if (schedule.length === 0) return { tiers: [], total: 0 };
+
+  const sorted = [...schedule].sort((a, b) => a.fromRank - b.fromRank);
+  let expectedNext = 1;
+  let total = 0;
+
+  for (const tier of sorted) {
+    if (!Number.isInteger(tier.fromRank) || !Number.isInteger(tier.toRank)) {
+      throw ApiError.badRequest("Prize schedule ranks must be whole numbers");
+    }
+    if (tier.fromRank !== expectedNext) {
+      throw ApiError.badRequest(
+        `Prize schedule must cover every rank starting at 1 with no gaps or overlaps (expected rank ${expectedNext} next)`,
+      );
+    }
+    if (tier.toRank < tier.fromRank) {
+      throw ApiError.badRequest("Each prize tier's rank range must end at or after where it starts");
+    }
+    if (tier.toRank > maxPlayers) {
+      throw ApiError.badRequest(`Prize schedule can't cover a rank beyond the ${maxPlayers}-player cap`);
+    }
+    if (tier.tokens < 0 || tier.tokens > MAX_WAGER_TOKENS) {
+      throw ApiError.badRequest("Each prize tier's token amount must be a valid, reasonable number");
+    }
+    total += tier.tokens * (tier.toRank - tier.fromRank + 1);
+    expectedNext = tier.toRank + 1;
+  }
+
+  if (total > MAX_WAGER_TOKENS * 50) {
+    throw ApiError.badRequest("That prize pool total is too large");
+  }
+
+  return {
+    tiers: sorted.map((t) => ({ fromRank: t.fromRank, toRank: t.toRank, tokens: t.tokens })),
+    total,
+  };
 }
 
 export async function createTournament(
@@ -150,12 +407,33 @@ export async function createTournament(
       "Choose between 3 and 15 rounds for a swiss tournament",
     );
   }
-  if (
-    input.wagerMode === "entry_fee" &&
-    (input.wagerTokens <= 0 || input.wagerTokens > MAX_WAGER_TOKENS)
-  ) {
-    throw ApiError.badRequest("Enter a valid entry fee");
+  const regFeeTokens = input.regFeeTokens ?? 0;
+  if (regFeeTokens < 0 || regFeeTokens > MAX_WAGER_TOKENS) {
+    throw ApiError.badRequest("Enter a valid registration fee");
   }
+  if (
+    input.breakSeconds !== undefined &&
+    (input.breakSeconds < 0 || input.breakSeconds > MAX_BREAK_SECONDS)
+  ) {
+    throw ApiError.badRequest(
+      `Break between rounds must be between 0 and ${MAX_BREAK_SECONDS} seconds`,
+    );
+  }
+  const scheduledStartAt = new Date(input.scheduledStartAt);
+  const startDelay = scheduledStartAt.getTime() - Date.now();
+  if (Number.isNaN(scheduledStartAt.getTime()) || startDelay < MIN_START_DELAY_MS) {
+    throw ApiError.badRequest("Pick a start time at least a few seconds from now");
+  }
+  if (startDelay > MAX_START_DELAY_MS) {
+    throw ApiError.badRequest("That start time is too far in the future");
+  }
+  const { tiers: prizeSchedule, total: prizePoolTokens } = validatePrizeSchedule(
+    input.prizeSchedule ?? [],
+    input.maxPlayers,
+  );
+  const passwordHash = input.password?.trim()
+    ? await bcrypt.hash(input.password.trim(), PASSWORD_BCRYPT_ROUNDS)
+    : null;
 
   const code = await uniqueCode();
   const tournament = await Tournament.create({
@@ -183,19 +461,34 @@ export async function createTournament(
       },
     ],
     berserkAllowed: input.berserkAllowed,
-    wagerMode: input.wagerMode,
-    wagerTokens: input.wagerMode === "none" ? 0 : input.wagerTokens,
+    isPublic: input.isPublic ?? false,
+    prizeSchedule,
+    prizePoolTokens,
+    regFeeTokens,
+    regFeePoolTokens: 0,
+    passwordHash,
     swissRounds: input.format === "swiss" ? input.swissRounds : null,
+    breakSeconds: input.breakSeconds ?? DEFAULT_BREAK_SECONDS,
+    scheduledStartAt,
   });
 
-  if (input.wagerMode === "entry_fee" && input.wagerTokens > 0) {
-    try {
-      await debitTournamentEntry(creatorId, tournament.id, input.wagerTokens);
-    } catch (err) {
-      await Tournament.deleteOne({ _id: tournament.id });
-      throw err;
+  // The creator funds the ENTIRE prize pool up front, and — since they're
+  // auto-joined as the first player — also pays their own registration fee
+  // if the event charges one. Either debit failing rolls the whole
+  // tournament back rather than leaving a half-funded event around.
+  try {
+    if (prizePoolTokens > 0) await debitTournamentPrizeFund(creatorId, tournament.id, prizePoolTokens);
+    if (regFeeTokens > 0) {
+      await debitTournamentRegFee(creatorId, tournament.id, regFeeTokens);
+      tournament.regFeePoolTokens = regFeeTokens;
+      await tournament.save();
     }
+  } catch (err) {
+    await Tournament.deleteOne({ _id: tournament.id });
+    throw err;
   }
+
+  scheduleAutoStart(tournament);
 
   return tournament;
 }
@@ -204,6 +497,7 @@ export async function joinTournament(
   tournamentId: string,
   userId: string,
   username: string,
+  password?: string,
 ): Promise<ITournament> {
   const tournament = await Tournament.findById(tournamentId);
   if (!tournament) throw ApiError.notFound("Tournament not found");
@@ -213,9 +507,14 @@ export async function joinTournament(
     throw ApiError.badRequest("You've already joined this tournament");
   if (tournament.players.length >= tournament.maxPlayers)
     throw ApiError.conflict("This tournament is full");
+  if (tournament.passwordHash) {
+    const matches = !!password && (await bcrypt.compare(password, tournament.passwordHash));
+    if (!matches) throw ApiError.forbidden("Incorrect tournament password");
+  }
 
-  if (tournament.wagerMode === "entry_fee" && tournament.wagerTokens > 0) {
-    await debitTournamentEntry(userId, tournament.id, tournament.wagerTokens);
+  if (tournament.regFeeTokens > 0) {
+    await debitTournamentRegFee(userId, tournament.id, tournament.regFeeTokens);
+    tournament.regFeePoolTokens += tournament.regFeeTokens;
   }
   const timestamp = Date.now();
   const dateObject = new Date(timestamp);
@@ -238,8 +537,10 @@ export async function joinTournament(
 
 /** Only valid before the tournament starts — see withdrawFromTournament for
  *  backing out of an already-active event. If the creator leaves, the next
- *  earliest-joined player inherits the "creator" powers (start/cancel) rather
- *  than orphaning the tournament. */
+ *  earliest-joined player inherits the "creator" powers (start/cancel)
+ *  rather than orphaning the tournament — and since the prize pool (if any)
+ *  was funded by the ORIGINAL creator specifically, it goes back to them
+ *  rather than staying committed to an event they're no longer running. */
 export async function leaveTournament(
   tournamentId: string,
   userId: string,
@@ -257,22 +558,53 @@ export async function leaveTournament(
     (p: ITournamentPlayer) => p.user.toString() !== userId,
   );
 
-  if (tournament.wagerMode === "entry_fee" && tournament.wagerTokens > 0) {
-    await creditTournamentReturn(
-      userId,
-      tournament.id,
-      tournament.wagerTokens,
-      "tournament_refund",
-    );
+  if (tournament.regFeeTokens > 0) {
+    await creditTournamentReturn(userId, tournament.id, tournament.regFeeTokens, "tournament_refund");
+    tournament.regFeePoolTokens = Math.max(0, tournament.regFeePoolTokens - tournament.regFeeTokens);
+  }
+
+  const wasCreator = tournament.createdBy.toString() === userId;
+  if (wasCreator && tournament.prizePoolTokens > 0 && !tournament.prizePoolSettled) {
+    await creditTournamentReturn(userId, tournament.id, tournament.prizePoolTokens, "tournament_refund");
+    tournament.prizePoolSettled = true;
+    tournament.prizePoolTokens = 0;
+    tournament.prizeSchedule = [];
   }
 
   if (tournament.players.length === 0) {
+    clearPendingAutoStart(tournament.id);
     tournament.status = "cancelled";
-  } else if (tournament.createdBy.toString() === userId) {
+  } else if (wasCreator) {
     tournament.createdBy = tournament.players[0].user;
   }
   await tournament.save();
   return tournament;
+}
+
+/** Shared refund path for both cancelling and deleting a tournament before
+ *  it's settled anything on its own — everyone who paid a registration fee
+ *  gets it back, and the creator gets the prize pool they funded back (if
+ *  it hasn't already been distributed). Mutates and saves the passed-in
+ *  document but leaves status/deletion to the caller. */
+async function refundAllEscrow(tournament: ITournament): Promise<void> {
+  if (tournament.regFeeTokens > 0 && !tournament.regFeeSettled) {
+    await Promise.all(
+      tournament.players.map((p: ITournamentPlayer) =>
+        creditTournamentReturn(p.user.toString(), tournament.id, tournament.regFeeTokens, "tournament_refund"),
+      ),
+    );
+    tournament.regFeeSettled = true;
+    tournament.regFeePoolTokens = 0;
+  }
+  if (tournament.prizePoolTokens > 0 && !tournament.prizePoolSettled) {
+    await creditTournamentReturn(
+      tournament.createdBy.toString(),
+      tournament.id,
+      tournament.prizePoolTokens,
+      "tournament_refund",
+    );
+    tournament.prizePoolSettled = true;
+  }
 }
 
 export async function cancelTournament(
@@ -286,21 +618,36 @@ export async function cancelTournament(
   if (tournament.status !== "pending")
     throw ApiError.conflict("This tournament has already started");
 
-  if (tournament.wagerMode === "entry_fee" && tournament.wagerTokens > 0) {
-    await Promise.all(
-      tournament.players.map((p: ITournamentPlayer) =>
-        creditTournamentReturn(
-          p.user.toString(),
-          tournament.id,
-          tournament.wagerTokens,
-          "tournament_refund",
-        ),
-      ),
-    );
-  }
+  clearPendingAutoStart(tournament.id);
+  await refundAllEscrow(tournament);
   tournament.status = "cancelled";
   await tournament.save();
   return tournament;
+}
+
+/** Fully removes a pending tournament — distinct from cancelTournament,
+ *  which leaves a 'cancelled' record around for history. Scoped to
+ *  status === 'pending' only: once games exist (status 'active'), there's
+ *  no clean way to unwind in-progress pairings, so the organizer's only
+ *  option at that point is to let it play out (or cancel individual games
+ *  isn't supported here either — a tournament that's started stays
+ *  started). Refunds everything the same way cancelling would. */
+export async function deleteTournament(
+  tournamentId: string,
+  requesterId: string,
+): Promise<{ code: string }> {
+  const tournament = await Tournament.findById(tournamentId);
+  if (!tournament) throw ApiError.notFound("Tournament not found");
+  if (tournament.createdBy.toString() !== requesterId)
+    throw ApiError.forbidden("Only the organizer can delete this");
+  if (tournament.status !== "pending")
+    throw ApiError.conflict("Only a tournament that hasn't started yet can be deleted");
+
+  clearPendingAutoStart(tournament.id);
+  await refundAllEscrow(tournament);
+  const code = tournament.code;
+  await Tournament.deleteOne({ _id: tournament.id });
+  return { code };
 }
 
 // --- Pairing engines -----------------------------------------------------------
@@ -449,12 +796,21 @@ export async function startTournament(
     );
   }
 
+  // Manual early start — the creator doesn't have to wait out the full
+  // scheduledStartAt if the lobby's already ready to go.
+  await activateTournament(tournament);
+  return tournament;
+}
+
+/** Shared by both the manual "Start now" action and the scheduled
+ *  auto-start timer firing — builds the first round's pairings and flips
+ *  the tournament into 'active'. Assumes the caller has already checked
+ *  authorization and minPlayers; this just does the state transition. */
+async function activateTournament(tournament: ITournament): Promise<void> {
+  clearPendingAutoStart(tournament.id);
   tournament.status = "active";
   tournament.startedAt = new Date();
-  if (tournament.wagerMode === "entry_fee") {
-    tournament.prizePoolTokens =
-      tournament.wagerTokens * tournament.players.length;
-  }
+  tournament.scheduledStartAt = null;
 
   const playerIds = tournament.players.map((p: ITournamentPlayer) => p.user);
   if (tournament.format === "normal") {
@@ -477,15 +833,17 @@ export async function startTournament(
   }
 
   await tournament.save();
+  broadcastUpdate(tournament, "tournament:started");
   await activateRound(tournament, 0);
-  return tournament;
 }
 
 /** Turns a round's pending pairings into reality: creates the actual Game for
  *  every real pairing (randomizing colors, same convention as cage match
  *  legs), and immediately resolves any bye as a full point with no game
  *  needed. If every pairing in the round happens to be a bye, the round
- *  completes itself right away and cascades into the next one. */
+ *  completes itself right away and cascades into the next one. Also notifies
+ *  each paired-up player individually (see notifyPairingReady) so they land
+ *  on their game — or at least hear about it — the moment it's ready. */
 async function activateRound(
   tournament: ITournament,
   roundIndex: number,
@@ -498,6 +856,11 @@ async function activateRound(
     baseMinutes: tournament.baseMinutes,
     incrementSeconds: tournament.incrementSeconds,
   };
+
+  // Collected as pairings activate below, then notified once the round's
+  // state is fully saved — so a player clicking straight through never
+  // races the DB write that made their game real.
+  const readyPlayers: { userId: string; joinCode: string }[] = [];
 
   for (const pairing of round.pairings) {
     if (pairing.player2 === null) {
@@ -535,11 +898,39 @@ async function activateRound(
     pairing.gameId = game._id;
     pairing.joinCode = game.joinCode;
     pairing.status = "active";
+    readyPlayers.push({ userId: whiteId, joinCode: game.joinCode }, { userId: blackId, joinCode: game.joinCode });
   }
 
   await tournament.save();
   broadcastUpdate(tournament);
+  notifyPairingReady(tournament, readyPlayers);
   await maybeCompleteRound(tournament, roundIndex);
+}
+
+/** Tells each paired-up player, individually, that their game for this round
+ *  is ready — separate from broadcastUpdate's room-wide "something changed,
+ *  go refetch" ping, since this needs to reach a specific two people with a
+ *  specific joinCode they can act on immediately (auto-redirect if they're
+ *  sitting on the tournament page, a "play it now" notification otherwise —
+ *  see GlobalListeners.tsx's tournament:pairing_ready handler). */
+function notifyPairingReady(
+  tournament: ITournament,
+  readyPlayers: { userId: string; joinCode: string }[],
+): void {
+  if (readyPlayers.length === 0) return;
+  try {
+    const io = getIo();
+    for (const { userId, joinCode } of readyPlayers) {
+      io.to(`user:${userId}`).emit("tournament:pairing_ready", {
+        tournamentId: tournament.id,
+        code: tournament.code,
+        joinCode,
+      });
+    }
+  } catch {
+    // Socket.IO not initialized (script/test context) — the pairing is
+    // still correctly persisted; the player just won't get the live nudge.
+  }
 }
 
 // --- Scoring ---------------------------------------------------------------
@@ -564,11 +955,9 @@ function applyPairingScore(
   }
 
   if (!p2) {
-    // Bye — a full point, no opponent to update.
-    if (p1) {
-      p1.points += 1;
-      p1.gamesPlayed += 1;
-    }
+    // Bye — counts as having played the round (for pairing/hadBye purposes)
+    // but awards no points, unlike a real win. A bye isn't a game anyone
+    // actually won.
     return;
   }
 
@@ -650,7 +1039,7 @@ async function advanceAfterRound(
     });
     tournament.currentRoundIndex = roundIndex + 1;
     await tournament.save();
-    await activateRound(tournament, roundIndex + 1);
+    await scheduleRoundStart(tournament, roundIndex + 1);
     return;
   }
 
@@ -663,7 +1052,7 @@ async function advanceAfterRound(
     tournament.rounds.push(buildSwissRound(tournament, roundIndex + 1));
     tournament.currentRoundIndex = roundIndex + 1;
     await tournament.save();
-    await activateRound(tournament, roundIndex + 1);
+    await scheduleRoundStart(tournament, roundIndex + 1);
     return;
   }
 
@@ -671,7 +1060,7 @@ async function advanceAfterRound(
   if (roundIndex + 1 < tournament.rounds.length) {
     tournament.currentRoundIndex = roundIndex + 1;
     await tournament.save();
-    await activateRound(tournament, roundIndex + 1);
+    await scheduleRoundStart(tournament, roundIndex + 1);
   } else {
     await finishTournament(tournament);
   }
@@ -706,71 +1095,108 @@ async function finishTournament(
   broadcastUpdate(tournament, "tournament:finished");
 }
 
-async function distributePrize(tournament: ITournament): Promise<void> {
-  if (tournament.wagerMode !== "entry_fee" || tournament.prizePoolTokens <= 0)
-    return;
-
-  const claimed = await Tournament.findOneAndUpdate(
-    { _id: tournament.id, prizeSettled: false },
-    { $set: { prizeSettled: true } },
-  );
-  if (!claimed) return;
-
-  const pool = tournament.prizePoolTokens;
-
+/** Full 1st-through-last ordering for the whole field, used to match players
+ *  up against the creator's prize schedule by rank. For points-based
+ *  formats this is just rankPlayers' order with anyone who withdrew tacked
+ *  on the end (they're excluded from rankPlayers, but still occupy a rank
+ *  for schedule purposes if the schedule happens to reach that far).
+ *  Knockout has no points table, so it's built from bracket position
+ *  instead: winner, runner-up, then everyone else grouped by which round
+ *  eliminated them (later round = better placement) — ties within a group
+ *  (e.g. two people both lost in the semifinal) aren't distinguishable by
+ *  this system, so they're ordered by username just to be deterministic. */
+function computeFinalRanking(tournament: ITournament): Types.ObjectId[] {
   if (tournament.format === "normal") {
+    const order: Types.ObjectId[] = [];
+    const seen = new Set<string>();
     if (tournament.winner) {
-      await creditTournamentReturn(
-        tournament.winner.toString(),
-        tournament.id,
-        pool,
-        "tournament_payout",
-      );
+      order.push(tournament.winner);
+      seen.add(tournament.winner.toString());
     }
-    return;
+    if (tournament.runnerUp) {
+      order.push(tournament.runnerUp);
+      seen.add(tournament.runnerUp.toString());
+    }
+    const rest = tournament.players
+      .filter((p: ITournamentPlayer) => !seen.has(p.user.toString()))
+      .sort(
+        (a: ITournamentPlayer, b: ITournamentPlayer) =>
+          (b.eliminatedRound ?? -1) - (a.eliminatedRound ?? -1) || a.username.localeCompare(b.username),
+      );
+    for (const p of rest) order.push(p.user);
+    return order;
   }
 
   const ranked = rankPlayers(tournament);
-  if (ranked.length === 0) return;
-  if (ranked.length <= 2) {
-    await creditTournamentReturn(
-      ranked[0].user.toString(),
-      tournament.id,
-      pool,
-      "tournament_payout",
+  const rankedIds = new Set(ranked.map((p) => p.user.toString()));
+  const withdrawn = tournament.players.filter((p: ITournamentPlayer) => !rankedIds.has(p.user.toString()));
+  return [...ranked.map((p) => p.user), ...withdrawn.map((p: ITournamentPlayer) => p.user)];
+}
+
+/** Settles both independent money flows once a tournament finishes — see
+ *  the ITournament doc comment in Tournament.ts. Each flow is claimed with
+ *  its own atomic findOneAndUpdate guard, same pattern as the old single
+ *  prizeSettled flag, so a retry (e.g. from advanceTournamentIfPairing being
+ *  called twice for the same final result) can't double-pay either one. */
+async function distributePrize(tournament: ITournament): Promise<void> {
+  if (tournament.prizePoolTokens > 0 && !tournament.prizePoolSettled) {
+    const claimed = await Tournament.findOneAndUpdate(
+      { _id: tournament.id, prizePoolSettled: false },
+      { $set: { prizePoolSettled: true } },
     );
-    return;
+    if (claimed) {
+      const ranking = computeFinalRanking(tournament);
+      let paidOut = 0;
+      for (const tier of tournament.prizeSchedule) {
+        if (tier.tokens <= 0) continue;
+        for (let rank = tier.fromRank; rank <= tier.toRank; rank++) {
+          const userId = ranking[rank - 1];
+          if (!userId) continue;
+          await creditTournamentReturn(
+            userId.toString(),
+            tournament.id,
+            tier.tokens,
+            "tournament_payout",
+            `r${rank}`,
+          );
+          paidOut += tier.tokens;
+        }
+      }
+      // A schedule tier can outreach the actual field (e.g. "9th-15th" in a
+      // 10-player event) — whatever couldn't be handed to a real finisher
+      // goes back to whoever funded the pool, rather than vanishing.
+      const unused = tournament.prizePoolTokens - paidOut;
+      if (unused > 0) {
+        await creditTournamentReturn(
+          tournament.createdBy.toString(),
+          tournament.id,
+          unused,
+          "tournament_refund",
+          "unused",
+        );
+      }
+    }
   }
 
-  const firstShare = Math.floor(pool * 0.5);
-  const secondShare = Math.floor(pool * 0.3);
-  const thirdShare = pool - firstShare - secondShare; // remainder soaks up rounding
-  await creditTournamentReturn(
-    ranked[0].user.toString(),
-    tournament.id,
-    firstShare,
-    "tournament_payout",
-    "1",
-  );
-  await creditTournamentReturn(
-    ranked[1].user.toString(),
-    tournament.id,
-    secondShare,
-    "tournament_payout",
-    "2",
-  );
-  await creditTournamentReturn(
-    ranked[2].user.toString(),
-    tournament.id,
-    thirdShare,
-    "tournament_payout",
-    "3",
-  );
+  if (tournament.regFeePoolTokens > 0 && !tournament.regFeeSettled) {
+    const claimed = await Tournament.findOneAndUpdate(
+      { _id: tournament.id, regFeeSettled: false },
+      { $set: { regFeeSettled: true } },
+    );
+    if (claimed) {
+      await creditTournamentReturn(
+        tournament.createdBy.toString(),
+        tournament.id,
+        tournament.regFeePoolTokens,
+        "tournament_reg_revenue",
+      );
+    }
+  }
 }
 
 function broadcastUpdate(
   tournament: ITournament,
-  event: "tournament:update" | "tournament:finished" = "tournament:update",
+  event: "tournament:update" | "tournament:finished" | "tournament:started" | "tournament:cancelled" = "tournament:update",
 ) {
   try {
     getIo()
@@ -975,6 +1401,16 @@ export async function withdrawFromTournament(
 
 // --- Reads ---------------------------------------------------------------------
 
+/** Strips the password hash out of a lean tournament doc, replacing it with
+ *  a plain hasPassword boolean the client can use to decide whether to show
+ *  a password field on join — never send the hash itself down the wire. */
+function sanitizeForClient<T extends { passwordHash?: string | null }>(
+  doc: T,
+): Omit<T, "passwordHash"> & { hasPassword: boolean } {
+  const { passwordHash, ...rest } = doc;
+  return { ...rest, hasPassword: !!passwordHash };
+}
+
 export async function getTournamentByCode(codeOrId: string) {
   const mongoose = await import("mongoose");
   const query = mongoose.isValidObjectId(codeOrId)
@@ -982,21 +1418,28 @@ export async function getTournamentByCode(codeOrId: string) {
     : { code: codeOrId };
   const tournament = await Tournament.findOne(query).lean();
   if (!tournament) throw ApiError.notFound("Tournament not found");
-  return tournament;
+  return sanitizeForClient(tournament);
 }
 
+/** Only tournaments the creator opted to list publicly (isPublic) show up
+ *  here — everything else is reachable only via its direct link/code. See
+ *  the ITournament doc comment. */
 export async function listTournaments(
   status?: "pending" | "active" | "finished",
 ) {
-  return Tournament.find(status ? { status } : { status: { $ne: "cancelled" } })
+  const query: Record<string, unknown> = { isPublic: true };
+  query.status = status ?? { $ne: "cancelled" };
+  const tournaments = await Tournament.find(query)
     .sort({ createdAt: -1 })
     .limit(50)
     .lean();
+  return tournaments.map(sanitizeForClient);
 }
 
 export async function listMyTournaments(userId: string) {
-  return Tournament.find({ "players.user": userId })
+  const tournaments = await Tournament.find({ "players.user": userId })
     .sort({ createdAt: -1 })
     .limit(50)
     .lean();
+  return tournaments.map(sanitizeForClient);
 }

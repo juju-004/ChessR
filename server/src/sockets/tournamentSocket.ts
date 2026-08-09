@@ -8,12 +8,21 @@ import {
   cancelTournament,
   startTournament,
   withdrawFromTournament,
+  deleteTournament,
   type CreateTournamentInput,
 } from '../services/tournament.service.js';
 import { User } from '../models/User.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
 const MAX_WAGER_TOKENS = 100_000;
+
+const MAX_BREAK_SECONDS = 300;
+
+const prizeTierSchema = z.object({
+  fromRank: z.number().int().min(1),
+  toRank: z.number().int().min(1),
+  tokens: z.number().int().min(0).max(MAX_WAGER_TOKENS),
+});
 
 const createSchema = z.object({
   name: z.string().trim().min(3).max(60),
@@ -23,11 +32,18 @@ const createSchema = z.object({
   incrementSeconds: z.number().min(0).max(60).default(0),
   maxPlayers: z.number().int().min(2).max(64),
   berserkAllowed: z.boolean().default(true),
-  wagerMode: z.enum(['none', 'entry_fee']).default('none'),
-  wagerTokens: z.number().int().min(0).max(MAX_WAGER_TOKENS).default(0),
+  isPublic: z.boolean().default(false),
+  prizeSchedule: z.array(prizeTierSchema).max(20).optional().default([]),
+  regFeeTokens: z.number().int().min(0).max(MAX_WAGER_TOKENS).default(0),
   swissRounds: z.number().int().min(3).max(15).nullable().optional().default(null),
+  // Pause between rounds, in seconds — defaults to 10 if omitted.
+  breakSeconds: z.number().int().min(0).max(MAX_BREAK_SECONDS).default(10),
+  // ISO string — when the event should auto-start.
+  scheduledStartAt: z.string().or(z.date()),
+  password: z.string().trim().max(100).optional(),
 });
 const idSchema = z.object({ tournamentId: z.string().refine(mongoose.isValidObjectId) });
+const joinSchema = idSchema.extend({ password: z.string().optional() });
 
 function emitError(socket: Socket, message: string) {
   socket.emit('tournament:error', { message });
@@ -65,12 +81,12 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
   socket.on(
     'tournament:join',
     safeHandler(socket, async (raw: unknown) => {
-      const parsed = idSchema.safeParse(raw);
+      const parsed = joinSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid payload');
       const me = await User.findById(userId).select('username').lean();
       if (!me) return emitError(socket, 'Could not find your account');
 
-      const tournament = await joinTournament(parsed.data.tournamentId, userId, me.username);
+      const tournament = await joinTournament(parsed.data.tournamentId, userId, me.username, parsed.data.password);
       await socket.join(tournamentRoom(tournament.id));
       io.to(tournamentRoom(tournament.id)).emit('tournament:update', { tournamentId: tournament.id, code: tournament.code });
     }),
@@ -113,8 +129,10 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
     safeHandler(socket, async (raw: unknown) => {
       const parsed = idSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid payload');
-      const tournament = await startTournament(parsed.data.tournamentId, userId);
-      io.to(tournamentRoom(tournament.id)).emit('tournament:started', { tournamentId: tournament.id, code: tournament.code });
+      // startTournament (via activateTournament) broadcasts tournament:started
+      // itself — needed so the exact same event fires whether a human hits
+      // "Start now" or the scheduled auto-start timer does it unattended.
+      await startTournament(parsed.data.tournamentId, userId);
     }),
   );
 
@@ -125,6 +143,16 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
       if (!parsed.success) return emitError(socket, 'Invalid payload');
       const tournament = await withdrawFromTournament(parsed.data.tournamentId, userId);
       io.to(tournamentRoom(tournament.id)).emit('tournament:update', { tournamentId: tournament.id, code: tournament.code });
+    }),
+  );
+
+  socket.on(
+    'tournament:delete',
+    safeHandler(socket, async (raw: unknown) => {
+      const parsed = idSchema.safeParse(raw);
+      if (!parsed.success) return emitError(socket, 'Invalid payload');
+      const { code } = await deleteTournament(parsed.data.tournamentId, userId);
+      io.to(tournamentRoom(parsed.data.tournamentId)).emit('tournament:deleted', { tournamentId: parsed.data.tournamentId, code });
     }),
   );
 

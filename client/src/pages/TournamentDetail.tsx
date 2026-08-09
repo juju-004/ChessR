@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { Trophy } from 'lucide-react';
+import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Trophy, Clock, Share2, Lock, Trash2 } from 'lucide-react';
 import {
   getTournamentByCode,
   rankTournamentPlayers,
@@ -12,7 +12,52 @@ import {
 } from '../api/tournaments.js';
 import { useSocket } from '../contexts/SocketContext.js';
 import { useAuth } from '../contexts/AuthContext.js';
-import { Page, Card, CardHeader, CardTitle, Button, Badge, Spinner } from '../components/ui/index.js';
+import { useNotify } from '../contexts/NotificationContext.js';
+import { copyToClipboard } from '@/lib/utils.js';
+import { Page, Card, CardHeader, CardTitle, Button, Badge, Spinner, Input } from '../components/ui/index.js';
+
+const CLIENT_URL = import.meta.env.VITE_CLIENT_URL ?? 'http://localhost:5173';
+
+function ordinalSuffix(n: number): string {
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 13) return 'th';
+  switch (n % 10) {
+    case 1:
+      return 'st';
+    case 2:
+      return 'nd';
+    case 3:
+      return 'rd';
+    default:
+      return 'th';
+  }
+}
+
+/** Live "next round starts in Ns" countdown, shown while the tournament is
+ *  sitting in its inter-round break (see scheduleRoundStart in
+ *  tournament.service.ts — nextRoundStartsAt is only ever set during that
+ *  window). Ticks locally rather than waiting on the server; the round
+ *  activating for real sends its own tournament:update/tournament:pairing_ready
+ *  events, so this never needs to do anything beyond just counting down. */
+function BreakCountdown({ nextRoundStartsAt }: { nextRoundStartsAt: string }) {
+  const [, forceTick] = useState(0);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => forceTick((n) => n + 1), 500);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const remainingMs = new Date(nextRoundStartsAt).getTime() - Date.now();
+
+  return (
+    <Card variant="solid" className="border-(--secondary)/30 bg-(--secondary)/10">
+      <p className="flex items-center justify-center gap-1.5 text-center text-sm font-medium text-base-content">
+        <Clock className="h-4 w-4 text-(--secondary)" />
+        {remainingMs > 0 ? `Next round starts in ${Math.ceil(remainingMs / 1000)}s` : 'Starting the next round…'}
+      </p>
+    </Card>
+  );
+}
 
 function PairingRow({ tournament, pairing, myId }: { tournament: Tournament; pairing: TournamentPairing; myId?: string }) {
   const p1Name = usernameOf(tournament, pairing.player1);
@@ -62,9 +107,12 @@ export function TournamentDetail() {
   const { code = '' } = useParams<{ code: string }>();
   const socket = useSocket();
   const { user } = useAuth();
+  const { notify, dismiss } = useNotify();
+  const navigate = useNavigate();
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [error, setError] = useState('');
   const [status, setStatus] = useState<{ message: string; isError: boolean } | null>(null);
+  const [joinPassword, setJoinPassword] = useState('');
 
   const refresh = useCallback(() => {
     getTournamentByCode(code)
@@ -85,20 +133,27 @@ export function TournamentDetail() {
     function onError(payload: { message: string }) {
       setStatus({ message: payload.message, isError: true });
     }
+    function onDeleted(payload: { code: string }) {
+      if (payload.code !== code) return;
+      setStatus({ message: 'This tournament was deleted by its organizer.', isError: true });
+      setTimeout(() => navigate('/tournaments'), 1500);
+    }
     socket.on('tournament:update', onUpdate);
     socket.on('tournament:started', onUpdate);
     socket.on('tournament:cancelled', onUpdate);
     socket.on('tournament:finished', onUpdate);
+    socket.on('tournament:deleted', onDeleted);
     socket.on('tournament:error', onError);
     return () => {
       socket.off('tournament:update', onUpdate);
       socket.off('tournament:started', onUpdate);
       socket.off('tournament:cancelled', onUpdate);
       socket.off('tournament:finished', onUpdate);
+      socket.off('tournament:deleted', onDeleted);
       socket.off('tournament:error', onError);
     };
     // Re-subscribe once the tournament's Mongo _id is known.
-  }, [socket, tournament?._id, code, refresh]);
+  }, [socket, tournament?._id, code, refresh, navigate]);
 
   if (error) {
     return (
@@ -125,7 +180,9 @@ export function TournamentDetail() {
   const currentRound = tournament.rounds[tournament.currentRoundIndex];
 
   function join() {
-    socket?.emit('tournament:join', { tournamentId: tournament!._id });
+    // Once you're a player, the server already knows it — the password is
+    // only ever asked for here, at join time, never again on return visits.
+    socket?.emit('tournament:join', { tournamentId: tournament!._id, password: joinPassword || undefined });
   }
   function leave() {
     socket?.emit('tournament:leave', { tournamentId: tournament!._id });
@@ -143,9 +200,30 @@ export function TournamentDetail() {
       socket?.emit('tournament:withdraw', { tournamentId: tournament!._id });
     }
   }
+  function handleDeleteTournament() {
+    if (confirm('Delete this tournament? Everyone will be refunded and this cannot be undone.')) {
+      socket?.emit('tournament:delete', { tournamentId: tournament!._id });
+    }
+  }
+  function handleShare() {
+    copyToClipboard(`${CLIENT_URL}/tournaments/${tournament!.code}`);
+    const n = notify('Copied tournament link');
+    setTimeout(() => dismiss(n), 2000);
+  }
 
   return (
-    <Page title={tournament.name} back="/tournaments" actions={<span className="text-xs text-base-content/40">#{tournament.code}</span>}>
+    <Page
+      title={tournament.name}
+      back="/tournaments"
+      actions={
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-base-content/40">#{tournament.code}</span>
+          <Button variant="glass" size="sm" onClick={handleShare}>
+            <Share2 className="h-3.5 w-3.5" /> Share
+          </Button>
+        </div>
+      }
+    >
       <div className="mx-auto max-w-3xl space-y-4">
         {status && (
           <p className={`text-sm ${status.isError ? 'text-red-400' : 'text-green-400'}`}>{status.message}</p>
@@ -156,42 +234,67 @@ export function TournamentDetail() {
             {FORMAT_LABEL[tournament.format]} · {formatTimeControl(tournament)} · {tournament.players.length}/
             {tournament.maxPlayers} players
             {tournament.format === 'swiss' && <> · {tournament.swissRounds} rounds</>}
-            {tournament.wagerMode === 'entry_fee' && (
+            {tournament.regFeeTokens > 0 && <> · {tournament.regFeeTokens} R to join</>}
+            {tournament.prizePoolTokens > 0 && <> · {tournament.prizePoolTokens} R prize pool</>}
+            {tournament.berserkAllowed && <> · Berserk allowed ⚔</>}
+            {tournament.hasPassword && (
               <>
                 {' '}
-                · {tournament.wagerTokens} R entry · pool {tournament.prizePoolTokens} R
+                · <Lock className="inline h-3 w-3 align-[-1px]" /> Password protected
               </>
             )}
-            {tournament.berserkAllowed && <> · Berserk allowed ⚔</>}
           </p>
 
           {tournament.status === 'pending' && (
-            <div className="flex flex-wrap gap-2">
-              {!isPlayer && (
-                <Button variant="secondary" size="sm" onClick={join}>
-                  Join
-                </Button>
+            <div className="space-y-3">
+              {tournament.scheduledStartAt && (
+                <p className="flex items-center gap-1.5 text-xs text-base-content/50">
+                  <Clock className="h-3.5 w-3.5" />
+                  Starts automatically {new Date(tournament.scheduledStartAt).toLocaleString()}
+                </p>
               )}
-              {isPlayer && !isCreator && (
-                <Button variant="glass" size="sm" onClick={leave}>
-                  Leave
-                </Button>
-              )}
-              {isCreator && (
-                <>
-                  <Button
-                    size="sm"
-                    disabled={tournament.players.length < tournament.minPlayers}
-                    onClick={start}
-                    className="bg-green-700 shadow-green-700/25 hover:bg-green-600 hover:brightness-100"
-                  >
-                    Start ({tournament.players.length}/{tournament.minPlayers} min)
+              <div className="flex flex-wrap items-end gap-2">
+                {!isPlayer && (
+                  <>
+                    {tournament.hasPassword && (
+                      <div className="w-40">
+                        <Input
+                          type="password"
+                          placeholder="Password"
+                          value={joinPassword}
+                          onChange={(e) => setJoinPassword(e.target.value)}
+                        />
+                      </div>
+                    )}
+                    <Button variant="secondary" size="sm" onClick={join}>
+                      Join
+                    </Button>
+                  </>
+                )}
+                {isPlayer && !isCreator && (
+                  <Button variant="glass" size="sm" onClick={leave}>
+                    Leave
                   </Button>
-                  <Button variant="danger" size="sm" onClick={cancel}>
-                    Cancel
-                  </Button>
-                </>
-              )}
+                )}
+                {isCreator && (
+                  <>
+                    <Button
+                      size="sm"
+                      disabled={tournament.players.length < tournament.minPlayers}
+                      onClick={start}
+                      className="bg-green-700 shadow-green-700/25 hover:bg-green-600 hover:brightness-100"
+                    >
+                      Start now ({tournament.players.length}/{tournament.minPlayers} min)
+                    </Button>
+                    <Button variant="danger" size="sm" onClick={cancel}>
+                      Cancel
+                    </Button>
+                    <Button variant="glass" size="sm" onClick={handleDeleteTournament} className="text-red-400">
+                      <Trash2 className="h-3.5 w-3.5" /> Delete
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
           )}
 
@@ -211,6 +314,26 @@ export function TournamentDetail() {
             <p className="text-sm text-red-400">This tournament was cancelled.</p>
           )}
         </Card>
+
+        {tournament.prizeSchedule.length > 0 && (
+          <Card variant="solid">
+            <CardHeader>
+              <CardTitle>Prize pool — {tournament.prizePoolTokens} R</CardTitle>
+            </CardHeader>
+            <div className="space-y-1 text-sm text-base-content/70">
+              {tournament.prizeSchedule.map((tier, i) => (
+                <div key={i} className="flex justify-between">
+                  <span>{tier.fromRank === tier.toRank ? `${tier.fromRank}${ordinalSuffix(tier.fromRank)} place` : `${tier.fromRank}${ordinalSuffix(tier.fromRank)}–${tier.toRank}${ordinalSuffix(tier.toRank)} place`}</span>
+                  <span className="font-medium text-base-content">{tier.tokens} R each</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {tournament.status === 'active' && tournament.nextRoundStartsAt && (
+          <BreakCountdown nextRoundStartsAt={tournament.nextRoundStartsAt} />
+        )}
 
         {tournament.status === 'pending' && (
           <Card variant="solid">

@@ -249,14 +249,18 @@ export async function creditWagerReturn(
   });
 }
 
-// --- Tournament entry-fee escrow -----------------------------------------------
+// --- Tournament escrow ----------------------------------------------------
 // Same atomic-conditional-update pattern as the wager helpers above, just
 // scoped to a Tournament document (and its own transaction types/reference
-// prefixes) instead of a single Game.
+// prefixes) instead of a single Game. Two independent flows — see the
+// ITournament doc comment in Tournament.ts for why they're kept separate:
+// a registration fee (player-funded, ends up with the creator) and a prize
+// fund (creator-funded, ends up with the top finishers).
 
-/** Debits a player's entry fee when they join a tournament. Throws if their
- *  balance can't cover it. */
-export async function debitTournamentEntry(userId: string, tournamentId: string, tokens: number): Promise<void> {
+/** Debits a player's registration fee when they join a tournament (creator
+ *  included, if the tournament they're creating charges one). Throws if
+ *  their balance can't cover it. */
+export async function debitTournamentRegFee(userId: string, tournamentId: string, tokens: number): Promise<void> {
   if (tokens <= 0) return;
 
   const debited = await User.findOneAndUpdate(
@@ -264,42 +268,72 @@ export async function debitTournamentEntry(userId: string, tournamentId: string,
     { $inc: { tokenBalance: -tokens } },
     { new: true },
   );
-  if (!debited) throw ApiError.badRequest('Insufficient R token balance for that entry fee');
+  if (!debited) throw ApiError.badRequest('Insufficient R token balance for that registration fee');
 
   await Transaction.create({
     user: userId,
-    type: 'tournament_entry',
+    type: 'tournament_reg_fee',
     status: 'success',
     tokens,
     amountKobo: 0,
-    reference: `TRN-ENT-${tournamentId}-${userId}`,
+    reference: `TRN-REG-${tournamentId}-${userId}`,
     tournament: tournamentId,
   });
 }
 
-/** Refunds (leave before start / cancelled event) or pays out (prize
- *  distribution) tokens tied to a tournament. Reference is deterministic per
- *  tournament+user+kind+suffix so a retry can't double-credit; `suffix` lets
- *  a payout be distinguished from an earlier refund attempt for the same
- *  person if that ever happens (it shouldn't, but cheap insurance). */
+/** Debits the CREATOR's balance for the full prize schedule they set at
+ *  creation time — the whole committed total, up front, so payout at the end
+ *  is never blocked on the creator still having the funds. Throws if their
+ *  balance can't cover it (the tournament creation itself should be rolled
+ *  back by the caller if this throws). */
+export async function debitTournamentPrizeFund(userId: string, tournamentId: string, tokens: number): Promise<void> {
+  if (tokens <= 0) return;
+
+  const debited = await User.findOneAndUpdate(
+    { _id: userId, tokenBalance: { $gte: tokens } },
+    { $inc: { tokenBalance: -tokens } },
+    { new: true },
+  );
+  if (!debited) throw ApiError.badRequest('Insufficient R token balance to fund that prize pool');
+
+  await Transaction.create({
+    user: userId,
+    type: 'tournament_prize_fund',
+    status: 'success',
+    tokens,
+    amountKobo: 0,
+    reference: `TRN-PRZ-${tournamentId}-${userId}`,
+    tournament: tournamentId,
+  });
+}
+
+/** Refunds (leave before start / cancelled / deleted event, or an unused
+ *  prize tier with no player to claim it) or pays out (prize distribution, or
+ *  the reg-fee pool reaching the creator) tokens tied to a tournament.
+ *  Reference is deterministic per tournament+user+kind+suffix so a retry
+ *  can't double-credit; `suffix` lets, e.g., a rank-3 prize payout be
+ *  distinguished from a rank-1 one for the same person if that ever happens
+ *  (a bye-heavy small field, say) — it shouldn't overlap, but cheap
+ *  insurance. */
 export async function creditTournamentReturn(
   userId: string,
   tournamentId: string,
   tokens: number,
-  kind: 'tournament_refund' | 'tournament_payout',
+  kind: 'tournament_refund' | 'tournament_payout' | 'tournament_reg_revenue',
   suffix = '',
 ): Promise<void> {
   if (tokens <= 0) return;
 
   await User.updateOne({ _id: userId }, { $inc: { tokenBalance: tokens } });
 
+  const prefix = kind === 'tournament_payout' ? 'WIN' : kind === 'tournament_reg_revenue' ? 'REV' : 'RFD';
   await Transaction.create({
     user: userId,
     type: kind,
     status: 'success',
     tokens,
     amountKobo: 0,
-    reference: `TRN-${kind === 'tournament_payout' ? 'WIN' : 'RFD'}-${tournamentId}-${userId}${suffix ? `-${suffix}` : ''}`,
+    reference: `TRN-${prefix}-${tournamentId}-${userId}${suffix ? `-${suffix}` : ''}`,
     tournament: tournamentId,
   });
 }

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useNotify } from "../contexts/NotificationContext.js";
 import { useAuth } from "../contexts/AuthContext.js";
@@ -14,9 +14,20 @@ import { CageMatchOverModal } from "./CageMatchOverModal.js";
 export function GlobalListeners() {
   const socket = useSocket();
   const navigate = useNavigate();
+  const location = useLocation();
   const { notify } = useNotify();
   const { user } = useAuth();
   const [cageMatchOver, setCageMatchOver] = useState<CageMatch | null>(null);
+
+  // Read inside the socket handler below instead of putting location.pathname
+  // in that effect's dependency array — this way a page navigation doesn't
+  // tear down and re-subscribe the whole pile of socket listeners, it just
+  // keeps this ref current for whenever a tournament:pairing_ready event
+  // actually arrives.
+  const pathRef = useRef(location.pathname);
+  useEffect(() => {
+    pathRef.current = location.pathname;
+  }, [location.pathname]);
 
   useEffect(() => {
     if (!socket) return;
@@ -126,7 +137,7 @@ export function GlobalListeners() {
           ? `, ${payload.wagerTokens} R wager`
           : "";
       notify(
-        `${payload.from.username} challenged you to a ${payload.legs.length}-leg cage match${wagerNote}.`,
+        `${payload.from.username} challenged you to a ${payload.legs.length}-game cage match${wagerNote}.`,
         [
           {
             label: "Accept",
@@ -165,7 +176,7 @@ export function GlobalListeners() {
       if (!payload.nextLeg) return;
       const joinCode = payload.nextLeg.joinCode;
       notify(
-        "Your cage match's next leg is starting.",
+        "Your cage match's next game is starting.",
         [{ label: "Play it now", onClick: () => navigate(`/game/${joinCode}`) }],
         20_000,
       );
@@ -183,7 +194,7 @@ export function GlobalListeners() {
     function onPauseRequested(payload: { matchId: string; matchCode: string }) {
       if (!socket) return;
       notify(
-        "Your opponent wants to pause the current leg before either of you has moved.",
+        "Your opponent wants to pause the current game before either of you has moved.",
         [
           {
             label: "Allow pause",
@@ -206,7 +217,7 @@ export function GlobalListeners() {
     function onResumeRequested(payload: { matchId: string; matchCode: string }) {
       if (!socket) return;
       notify(
-        "Your opponent wants to resume the paused leg.",
+        "Your opponent wants to resume the paused game.",
         [
           {
             label: "Resume",
@@ -224,6 +235,30 @@ export function GlobalListeners() {
 
     function onResumeDeclined() {
       notify("Your resume request was declined.", [], 4000);
+    }
+
+    // Fires for BOTH players the instant their tournament pairing's game is
+    // created — whether that's the opening round or one that had to wait out
+    // an inter-round break (see scheduleRoundStart in tournament.service.ts).
+    // Someone actively sitting on that tournament's page gets swept straight
+    // into the game, since they're clearly there waiting for it; anyone else
+    // gets a notification with a button instead of being yanked out of
+    // whatever else they're doing.
+    function onTournamentPairingReady(payload: {
+      tournamentId: string;
+      code: string;
+      joinCode: string;
+    }) {
+      const onThisTournamentPage = pathRef.current === `/tournaments/${payload.code}`;
+      if (onThisTournamentPage) {
+        navigate(`/game/${payload.joinCode}`);
+        return;
+      }
+      notify(
+        "Your tournament game has started.",
+        [{ label: "Play it now", onClick: () => navigate(`/game/${payload.joinCode}`) }],
+        20_000,
+      );
     }
 
     socket.on("challenge:received", onChallengeReceived);
@@ -245,6 +280,7 @@ export function GlobalListeners() {
     socket.on("cage:pause_declined", onPauseDeclined);
     socket.on("cage:resume_requested", onResumeRequested);
     socket.on("cage:resume_declined", onResumeDeclined);
+    socket.on("tournament:pairing_ready", onTournamentPairingReady);
 
     return () => {
       socket.off("challenge:received", onChallengeReceived);
@@ -266,6 +302,7 @@ export function GlobalListeners() {
       socket.off("cage:pause_declined", onPauseDeclined);
       socket.off("cage:resume_requested", onResumeRequested);
       socket.off("cage:resume_declined", onResumeDeclined);
+      socket.off("tournament:pairing_ready", onTournamentPairingReady);
     };
   }, [socket, navigate, notify]);
 

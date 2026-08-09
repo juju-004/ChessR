@@ -35,12 +35,12 @@ export type LegResult = 'p1' | 'p2' | 'draw' | null;
 // Why the match itself ended (distinct from an individual leg's endReason):
 //  - 'completed': every leg was played (or the winner mode's target/clinch
 //    condition was met) and the score decided it normally.
-//  - 'no_show_forfeit': a player didn't make their first move of a leg
-//    within the grace period, which ends the WHOLE match immediately in the
-//    other player's favor — not just that one leg. This exists specifically
-//    to stop someone from just walking away mid-series once a new leg
-//    auto-starts. A normal mid-game clock timeout, by contrast, only loses
-//    that one leg and the match continues on score as usual.
+//  - 'no_show_forfeit': legacy value from before first-move timeouts were
+//    unified across all game types — historical matches may still have this,
+//    but it's no longer produced. A first-move no-show now just loses that
+//    one leg via the ordinary per-game first-move timer (see
+//    clock.service.ts), the same as any other timeout — the match continues
+//    on score as usual, exactly like 'forfeit' below never applied to it.
 //  - 'forfeit': a player explicitly forfeited the whole match.
 export type CageMatchEndReason = 'completed' | 'no_show_forfeit' | 'forfeit' | null;
 

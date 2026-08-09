@@ -125,7 +125,7 @@ export function MyGamesMenu({ className }: MyGamesMenuProps) {
                     🥊 vs {opponent.username} · {myScore}–{oppScore}
                   </p>
                   <p className="truncate text-xs text-base-content/50">
-                    Leg {m.currentLegIndex + 1}/{m.legs.length}
+                    Game {m.currentLegIndex + 1}/{m.legs.length}
                   </p>
                 </div>
                 {activeLeg && (

@@ -22,8 +22,8 @@ const WINNER_MODE_LABEL: Record<CageMatch['winnerMode'], string> = {
 const WAGER_MODE_LABEL: Record<CageMatch['wagerMode'], string> = {
   none: 'No wager',
   winner_takes_all: 'Winner takes all',
-  per_leg: 'Per leg',
-  split_even: 'Split evenly across legs',
+  per_leg: 'Per game',
+  split_even: 'Split evenly across games',
 };
 
 const LEG_STATUS_DOT: Record<string, string> = {
@@ -61,7 +61,7 @@ export function CageMatchDetail() {
       if (payload.matchId !== match!._id) return;
       refresh();
       notify(
-        'The next leg is starting.',
+        'The next game is starting.',
         [{ label: 'Play it now', onClick: () => navigate(`/game/${payload.nextLeg.joinCode}`) }],
         15_000,
       );
@@ -134,7 +134,7 @@ export function CageMatchDetail() {
       const winnerLabel = winnerIsMe ? 'you won' : `${opponent.username} won`;
       if (match.matchEndReason === 'no_show_forfeit') {
         const loserLabel = winnerIsMe ? opponent.username : 'You';
-        outcomeLine = `${loserLabel} didn't move in time at the start of a leg — ${winnerLabel} the match`;
+        outcomeLine = `${loserLabel} didn't move in time at the start of a game — ${winnerLabel} the match`;
       } else if (match.forfeitedBy) {
         outcomeLine = `${match.forfeitedBy === me._id ? 'You' : opponent.username} forfeited — ${winnerLabel}`;
       } else {
@@ -181,13 +181,13 @@ export function CageMatchDetail() {
             </span>
             <span>·</span>
             <span>
-              Leg {Math.min(match.currentLegIndex + 1, match.legs.length)} of {match.legs.length}
+              Game {Math.min(match.currentLegIndex + 1, match.legs.length)} of {match.legs.length}
             </span>
           </div>
 
           {match.status === 'active' && activeLeg?.joinCode && (
             <Link to={`/game/${activeLeg.joinCode}`} className="mb-2 block">
-              <Button fullWidth>Go to current leg (#{activeLeg.index + 1})</Button>
+              <Button fullWidth>Go to current game (#{activeLeg.index + 1})</Button>
             </Link>
           )}
           {match.status === 'active' && pausedLeg && (
@@ -196,7 +196,7 @@ export function CageMatchDetail() {
                 fullWidth
                 className="border border-amber-800 bg-amber-950/30 text-amber-300 shadow-none hover:bg-amber-950/50 hover:brightness-100"
               >
-                <Pause className="h-4 w-4" /> Leg #{pausedLeg.index + 1} is paused — go there to resume
+                <Pause className="h-4 w-4" /> Game #{pausedLeg.index + 1} is paused — go there to resume
               </Button>
             </Link>
           )}
@@ -209,7 +209,7 @@ export function CageMatchDetail() {
 
         <Card variant="solid">
           <CardHeader>
-            <CardTitle>Legs</CardTitle>
+            <CardTitle>Games</CardTitle>
           </CardHeader>
           <ol className="space-y-1.5">
             {match.legs.map((leg) => {

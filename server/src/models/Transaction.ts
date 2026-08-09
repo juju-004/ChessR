@@ -8,10 +8,19 @@ export type TransactionType =
   | 'wager_stake'
   | 'wager_payout'
   | 'wager_refund'
-  // Tournament entry-fee ledger entries — same idea as the wager_* entries
-  // above, just scoped to a Tournament document instead of a Game.
-  | 'tournament_entry'
+  // Tournament ledger entries — same idea as the wager_* entries above, just
+  // scoped to a Tournament document instead of a Game, and split across two
+  // independent flows (see the ITournament doc comment in Tournament.ts):
+  //  - 'tournament_reg_fee': a player paying to join (held in escrow).
+  //  - 'tournament_prize_fund': the CREATOR funding the prize schedule.
+  //  - 'tournament_payout': prize money reaching a placed player.
+  //  - 'tournament_reg_revenue': the whole reg-fee pool reaching the creator.
+  //  - 'tournament_refund': anything given back unused (reg fee on
+  //    leave/cancel, prize fund on cancel, unused prize tiers, etc).
+  | 'tournament_reg_fee'
+  | 'tournament_prize_fund'
   | 'tournament_payout'
+  | 'tournament_reg_revenue'
   | 'tournament_refund';
 export type TransactionStatus = 'pending' | 'success' | 'failed';
 
@@ -47,8 +56,10 @@ const transactionSchema = new Schema<ITransaction>(
         'wager_stake',
         'wager_payout',
         'wager_refund',
-        'tournament_entry',
+        'tournament_reg_fee',
+        'tournament_prize_fund',
         'tournament_payout',
+        'tournament_reg_revenue',
         'tournament_refund',
       ],
       required: true,

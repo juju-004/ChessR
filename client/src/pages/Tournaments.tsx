@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Trophy } from "lucide-react";
+import { Trophy, Plus, X } from "lucide-react";
 import {
   listOpenTournaments,
   listMyTournaments,
   FORMAT_LABEL,
   FORMAT_DESCRIPTION,
   formatTimeControl,
+  totalPrizePool,
   type Tournament,
   type TournamentFormat,
-  type TournamentWagerMode,
+  type TournamentPrizeTier,
 } from "../api/tournaments.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useAuth } from "../contexts/AuthContext.js";
@@ -57,6 +58,16 @@ const STATUS_VARIANT: Record<
   cancelled: "error",
 };
 
+// Default datetime-local value: 5 minutes from now, formatted the way the
+// input wants it (local time, no seconds/timezone) — gives the creator a
+// sane starting point they can push later rather than a blank/past field.
+function defaultStartInput(): string {
+  const d = new Date(Date.now() + 5 * 60 * 1000);
+  d.setSeconds(0, 0);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function TournamentRow({ t }: { t: Tournament }) {
   return (
     <Link
@@ -71,7 +82,8 @@ function TournamentRow({ t }: { t: Tournament }) {
         <div className="mt-0.5 text-xs text-base-content/50">
           {FORMAT_LABEL[t.format]} · {formatTimeControl(t)} · {t.players.length}
           /{t.maxPlayers} players
-          {t.wagerMode === "entry_fee" && <> · {t.wagerTokens} R entry</>}
+          {t.regFeeTokens > 0 && <> · {t.regFeeTokens} R to join</>}
+          {t.prizePoolTokens > 0 && <> · {t.prizePoolTokens} R prize pool</>}
           {t.berserkAllowed && <> · Berserk on</>}
         </div>
       </div>
@@ -96,9 +108,13 @@ export function Tournaments() {
   const [variant, setVariant] = useState<"standard" | "chess960">("standard");
   const [maxPlayers, setMaxPlayers] = useState(FORMAT_DEFAULT_MAX.swiss);
   const [swissRounds, setSwissRounds] = useState(5);
+  const [breakSeconds, setBreakSeconds] = useState(10);
   const [berserkAllowed, setBerserkAllowed] = useState(true);
-  const [wagerMode, setWagerMode] = useState<TournamentWagerMode>("none");
-  const [wagerInput, setWagerInput] = useState("0");
+  const [isPublic, setIsPublic] = useState(false);
+  const [regFeeInput, setRegFeeInput] = useState("0");
+  const [prizeTiers, setPrizeTiers] = useState<TournamentPrizeTier[]>([]);
+  const [password, setPassword] = useState("");
+  const [startInput, setStartInput] = useState(defaultStartInput);
 
   const refresh = useCallback(() => {
     listOpenTournaments().then((res) => setOpen(res.tournaments));
@@ -123,12 +139,14 @@ export function Tournaments() {
     socket.on("tournament:update", refresh);
     socket.on("tournament:started", refresh);
     socket.on("tournament:cancelled", refresh);
+    socket.on("tournament:deleted", refresh);
     socket.on("tournament:error", onError);
     return () => {
       socket.off("tournament:created", onCreated);
       socket.off("tournament:update", refresh);
       socket.off("tournament:started", refresh);
       socket.off("tournament:cancelled", refresh);
+      socket.off("tournament:deleted", refresh);
       socket.off("tournament:error", onError);
     };
   }, [socket, refresh]);
@@ -138,6 +156,19 @@ export function Tournaments() {
     setMaxPlayers(FORMAT_DEFAULT_MAX[f]);
   }
 
+  function addPrizeTier() {
+    const nextRank = (prizeTiers[prizeTiers.length - 1]?.toRank ?? 0) + 1;
+    setPrizeTiers([...prizeTiers, { fromRank: nextRank, toRank: nextRank, tokens: 0 }]);
+  }
+
+  function updatePrizeTier(i: number, patch: Partial<TournamentPrizeTier>) {
+    setPrizeTiers(prizeTiers.map((t, idx) => (idx === i ? { ...t, ...patch } : t)));
+  }
+
+  function removePrizeTier(i: number) {
+    setPrizeTiers(prizeTiers.filter((_, idx) => idx !== i));
+  }
+
   function handleCreate() {
     if (!socket) return;
     if (name.trim().length < 3)
@@ -145,12 +176,21 @@ export function Tournaments() {
         message: "Give it a name (3+ characters).",
         isError: true,
       });
-    const wagerTokens = Math.max(0, Math.floor(Number(wagerInput) || 0));
-    if (wagerMode !== "none" && wagerTokens <= 0) {
+    const regFeeTokens = Math.max(0, Math.floor(Number(regFeeInput) || 0));
+    const scheduledStartAt = new Date(startInput);
+    if (Number.isNaN(scheduledStartAt.getTime()) || scheduledStartAt.getTime() < Date.now() + 5000) {
       return setStatus({
-        message: 'Enter an entry fee, or set wager to "No wager".',
+        message: "Pick a start time a bit further in the future.",
         isError: true,
       });
+    }
+    for (const tier of prizeTiers) {
+      if (tier.toRank > maxPlayers) {
+        return setStatus({
+          message: `Prize schedule can't cover a rank beyond your ${maxPlayers}-player cap.`,
+          isError: true,
+        });
+      }
     }
     const preset = TIME_PRESETS[presetIdx];
 
@@ -162,12 +202,17 @@ export function Tournaments() {
       incrementSeconds: preset.incrementSeconds,
       maxPlayers,
       berserkAllowed,
-      wagerMode,
-      wagerTokens,
+      isPublic,
+      prizeSchedule: prizeTiers,
+      regFeeTokens,
       swissRounds: format === "swiss" ? swissRounds : null,
+      breakSeconds,
+      scheduledStartAt: scheduledStartAt.toISOString(),
+      password: password.trim() || undefined,
     });
   }
 
+  const prizePoolTotal = totalPrizePool(prizeTiers);
   const openPending = open.filter((t) => t.status === "pending");
   const openActive = open.filter((t) => t.status === "active");
 
@@ -184,6 +229,7 @@ export function Tournaments() {
             {status.message}
           </p>
         )}
+
         <Card variant="solid">
           <CardHeader>
             <CardTitle>Open tournaments</CardTitle>
@@ -191,7 +237,7 @@ export function Tournaments() {
           <CardContent className="space-y-2">
             {openPending.length === 0 && (
               <p className="text-sm text-base-content/50">
-                No tournaments waiting for players right now.
+                No public tournaments waiting for players right now.
               </p>
             )}
             {openPending.map((t) => (
@@ -205,6 +251,9 @@ export function Tournaments() {
             <CardTitle>Create a tournament</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <p className="text-xs text-base-content/50">
+              Tournaments are link/code-only by default — turn on "List publicly" below to also show it in Open tournaments for anyone to find.
+            </p>
             <Input
               label="Name"
               value={name}
@@ -284,6 +333,16 @@ export function Tournaments() {
                   />
                 </div>
               )}
+              <div className="w-28">
+                <Input
+                  label="Break (secs)"
+                  type="number"
+                  min={0}
+                  max={300}
+                  value={breakSeconds}
+                  onChange={(e) => setBreakSeconds(Number(e.target.value))}
+                />
+              </div>
             </div>
 
             <Switch
@@ -293,32 +352,107 @@ export function Tournaments() {
               description="Halve your own clock (and forfeit your increment) for a shot at a bonus 0.5 point on a win."
             />
 
-            <div className="flex flex-wrap gap-3 border-t border-base-300 pt-4">
-              <div className="w-56">
-                <Select
-                  label="Wager"
-                  value={wagerMode}
-                  onChange={(e) =>
-                    setWagerMode(e.target.value as TournamentWagerMode)
-                  }
-                >
-                  <option value="none">No wager</option>
-                  <option value="entry_fee">
-                    Entry fee (winner-takes-most prize pool)
-                  </option>
-                </Select>
+            <Switch
+              checked={isPublic}
+              onChange={setIsPublic}
+              label="List publicly"
+              description="Show up in the Open tournaments browse list for anyone to find and join. Off by default — otherwise only reachable via the link or code."
+            />
+
+            <div className="space-y-2 border-t border-base-300 pt-4">
+              <Input
+                label="Start time"
+                type="datetime-local"
+                value={startInput}
+                onChange={(e) => setStartInput(e.target.value)}
+              />
+              <p className="text-xs text-base-content/50">
+                The event starts itself at this time (if enough players have joined) — or you can start it early once the lobby's ready.
+              </p>
+            </div>
+
+            <div className="space-y-2 border-t border-base-300 pt-4">
+              <Input
+                label="Password (optional)"
+                type="text"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Leave blank for anyone with the link to join"
+              />
+            </div>
+
+            <div className="space-y-2 border-t border-base-300 pt-4">
+              <Input
+                label="Registration fee — R Coins (optional)"
+                type="number"
+                min={0}
+                value={regFeeInput}
+                onChange={(e) => setRegFeeInput(e.target.value)}
+              />
+              <p className="text-xs text-base-content/50">
+                Each player (including you) pays this to join. Held until the event finishes, then the whole pool comes to you as the organizer.
+              </p>
+            </div>
+
+            <div className="space-y-2 border-t border-base-300 pt-4">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-base-content/80">
+                  Prize pool (optional)
+                </label>
+                {prizePoolTotal > 0 && (
+                  <span className="text-xs text-base-content/50">
+                    {prizePoolTotal} R total — deducted from you now
+                  </span>
+                )}
               </div>
-              {wagerMode === "entry_fee" && (
-                <div className="w-36">
-                  <Input
-                    label="Entry fee (R Coins)"
-                    type="number"
-                    min={1}
-                    value={wagerInput}
-                    onChange={(e) => setWagerInput(e.target.value)}
-                  />
-                </div>
+              <p className="text-xs text-base-content/50">
+                Set what each rank range wins. Deducted from your own balance now, paid out by final standing when the event ends.
+              </p>
+              {prizeTiers.length === 0 && (
+                <p className="text-sm text-base-content/40">No prize tiers yet — add one below.</p>
               )}
+              {prizeTiers.map((tier, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="text-xs text-base-content/50">Rank</span>
+                  <div className="w-16">
+                    <Input
+                      type="number"
+                      min={1}
+                      value={tier.fromRank}
+                      onChange={(e) => updatePrizeTier(i, { fromRank: Number(e.target.value) })}
+                    />
+                  </div>
+                  <span className="text-xs text-base-content/50">to</span>
+                  <div className="w-16">
+                    <Input
+                      type="number"
+                      min={1}
+                      value={tier.toRank}
+                      onChange={(e) => updatePrizeTier(i, { toRank: Number(e.target.value) })}
+                    />
+                  </div>
+                  <span className="text-xs text-base-content/50">gets</span>
+                  <div className="w-24">
+                    <Input
+                      type="number"
+                      min={0}
+                      value={tier.tokens}
+                      onChange={(e) => updatePrizeTier(i, { tokens: Number(e.target.value) })}
+                    />
+                  </div>
+                  <span className="text-xs text-base-content/50">R each</span>
+                  <button
+                    onClick={() => removePrizeTier(i)}
+                    aria-label="Remove prize tier"
+                    className="ml-auto rounded-md p-1 text-red-400 hover:bg-red-900/30"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+              <Button size="sm" variant="secondary" onClick={addPrizeTier}>
+                <Plus className="h-4 w-4" /> Add prize tier
+              </Button>
             </div>
 
             <Button variant="secondary" fullWidth onClick={handleCreate}>

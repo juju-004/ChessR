@@ -5,7 +5,7 @@ import { env } from '../config/env.js';
 import { pubClient, subClient } from '../config/redis.js';
 import { socketAuthMiddleware } from './socketAuth.js';
 import { registerPresenceHandlers } from './presenceSocket.js';
-import { registerGameHandlers, registerClockTimeoutHandler } from './gameSocket.js';
+import { registerGameHandlers, registerClockTimeoutHandler, registerFirstMoveTimeoutHandler } from './gameSocket.js';
 import { registerChallengeHandlers } from './challengeSocket.js';
 import { registerCageMatchHandlers } from './cageMatchSocket.js';
 import { registerTournamentHandlers } from './tournamentSocket.js';
@@ -41,6 +41,7 @@ export function initSocketServer(httpServer: HttpServer): Server {
   io.use(socketAuthMiddleware);
 
   registerClockTimeoutHandler(io);
+  registerFirstMoveTimeoutHandler(io);
 
   io.on('connection', (socket) => {
     registerPresenceHandlers(io, socket);

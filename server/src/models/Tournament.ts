@@ -15,20 +15,30 @@ export type TournamentFormat = 'normal' | 'swiss' | 'robin' | 'round_robin';
 
 export type TournamentStatus = 'pending' | 'active' | 'finished' | 'cancelled';
 
-// Entry-fee based wagering: every player stakes the same number of tokens to
-// join, forming a shared prize pool that gets split among the top finishers
-// once the event concludes. There's no per-game staking inside a tournament.
-export type TournamentWagerMode = 'none' | 'entry_fee';
-
 export type PairingResult = 'p1' | 'p2' | 'draw' | null;
+
+// One tier of the creator-funded prize schedule — e.g. { fromRank: 3,
+// toRank: 8, tokens: 50 } means "each of 3rd through 8th place gets 50 R".
+// The full schedule's total commitment (tokens * range size, summed across
+// tiers) is deducted from the creator's balance up front at creation time —
+// see prizePoolTokens below — so the payout at the end is never blocked on
+// the creator's balance at that point.
+export interface ITournamentPrizeTier {
+  fromRank: number;
+  toRank: number;
+  tokens: number;
+}
 
 export interface ITournamentPlayer {
   user: Types.ObjectId;
   username: string;
   joinedAt: Date;
   // Points accumulate for swiss/robin/round_robin (1 / 0.5 / 0, +0.5 bonus for
-  // a berserked win). For 'normal' this is unused — elimination position is
-  // what matters, tracked via `eliminatedRound`.
+  // a berserked win). A bye is worth 0 points (see tournament.service.ts's
+  // applyPairingScore) — it still counts as having played the round for
+  // pairing purposes (hadBye), just not as a win. For 'normal' points are
+  // unused — elimination position is what matters, tracked via
+  // `eliminatedRound`.
   points: number;
   // Sum of the current points of every opponent faced so far — a simple
   // Buchholz-style tiebreaker for swiss/robin standings.
@@ -81,14 +91,53 @@ export interface ITournament extends Document {
   maxPlayers: number;
   players: ITournamentPlayer[];
   berserkAllowed: boolean;
-  wagerMode: TournamentWagerMode;
-  wagerTokens: number; // per-player entry fee; 0 when wagerMode === 'none'
-  prizePoolTokens: number;
-  prizeSettled: boolean;
+  // Whether this tournament shows up in the public "Open tournaments"
+  // browse list. Defaults to false — a tournament is reachable via its
+  // link/code either way, this just controls whether strangers can also
+  // stumble onto it without the link. Independent of passwordHash: a public
+  // tournament can still require a password to actually join.
+  isPublic: boolean;
+  // --- Prize pool: creator-funded, paid out by final rank -------------------
+  // Entirely separate from the registration fee below. The creator defines a
+  // payout schedule at creation time (e.g. 1st gets 200, 2nd gets 100, 3rd
+  // through 8th get 50 each); the full committed total is deducted from the
+  // CREATOR's own balance immediately, so it's never at risk of being
+  // under-funded when the tournament actually finishes. Empty schedule = no
+  // prize pool for this event.
+  prizeSchedule: ITournamentPrizeTier[];
+  prizePoolTokens: number; // total committed, = sum(tokens * range size) over prizeSchedule
+  prizePoolSettled: boolean;
+  // --- Registration fee: player-funded, paid out to the creator --------------
+  // Every joining player (creator included) pays this into escrow; held by
+  // the tournament until it finishes, then the WHOLE pool goes to the
+  // creator as compensation for running the event — it is NOT split among
+  // winners (that's what prizeSchedule is for). 0 = no registration fee.
+  regFeeTokens: number;
+  regFeePoolTokens: number; // accumulates as players join
+  regFeeSettled: boolean;
+  // Optional gate on joining (not on viewing — the tournament page itself is
+  // reachable by anyone with the link/code; only becoming a player requires
+  // the password). null/empty = no password. Never sent to the client as
+  // anything but a hasPassword boolean — see getTournamentByCode.
+  passwordHash: string | null;
   // Only meaningful for format === 'swiss' — how many rounds the event runs.
   swissRounds: number | null;
   currentRoundIndex: number;
   rounds: ITournamentRound[];
+  // How long the lobby waits between one round finishing and the next one's
+  // games actually starting — gives players a breather to see standings, use
+  // the bathroom, whatever, rather than getting yanked straight into another
+  // game. Defaults to 10s; organizers can widen it at creation time.
+  breakSeconds: number;
+  // Set the moment a round finishes and the next one enters its break
+  // window; null the rest of the time (including while a round is actually
+  // being played). Purely a display timestamp for the client's countdown —
+  // the server's own scheduling doesn't depend on reading this back.
+  nextRoundStartsAt: Date | null;
+  // When set, the tournament starts itself automatically at this time
+  // instead of waiting on the creator to press Start manually — see
+  // scheduleAutoStart in tournament.service.ts. null means manual start.
+  scheduledStartAt: Date | null;
   winner: Types.ObjectId | null;
   runnerUp: Types.ObjectId | null;
   createdAt: Date;
@@ -123,6 +172,15 @@ const roundSchema = new Schema<ITournamentRound>(
     pairings: { type: [pairingSchema], default: [] },
     startedAt: { type: Date },
     endedAt: { type: Date },
+  },
+  { _id: false },
+);
+
+const prizeTierSchema = new Schema<ITournamentPrizeTier>(
+  {
+    fromRank: { type: Number, required: true, min: 1 },
+    toRank: { type: Number, required: true, min: 1 },
+    tokens: { type: Number, required: true, min: 0 },
   },
   { _id: false },
 );
@@ -162,13 +220,20 @@ const tournamentSchema = new Schema<ITournament>(
     maxPlayers: { type: Number, required: true },
     players: { type: [playerSchema], default: [] },
     berserkAllowed: { type: Boolean, default: true },
-    wagerMode: { type: String, enum: ['none', 'entry_fee'], default: 'none' },
-    wagerTokens: { type: Number, default: 0, min: 0 },
+    isPublic: { type: Boolean, default: false, index: true },
+    prizeSchedule: { type: [prizeTierSchema], default: [] },
     prizePoolTokens: { type: Number, default: 0 },
-    prizeSettled: { type: Boolean, default: false },
+    prizePoolSettled: { type: Boolean, default: false },
+    regFeeTokens: { type: Number, default: 0, min: 0 },
+    regFeePoolTokens: { type: Number, default: 0 },
+    regFeeSettled: { type: Boolean, default: false },
+    passwordHash: { type: String, default: null },
     swissRounds: { type: Number, default: null },
     currentRoundIndex: { type: Number, default: 0 },
     rounds: { type: [roundSchema], default: [] },
+    breakSeconds: { type: Number, default: 10 },
+    nextRoundStartsAt: { type: Date, default: null },
+    scheduledStartAt: { type: Date, default: null },
     winner: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     runnerUp: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     startedAt: { type: Date },

@@ -64,6 +64,20 @@ export function computeLowTimeThresholdMs(baseSeconds: number | null): number {
   return thresholdSeconds * 1000;
 }
 
+/**
+ * How long a player gets to make their first move before it counts against
+ * them. Deliberately a flat window rather than scaled to time control —
+ * simpler to reason about and communicate than the old per-time-control
+ * scaling, and 25/30s is generous even for bullet while still catching a
+ * genuinely absent player quickly. Plain games get the shorter window since
+ * an abort there is low-stakes (nothing lost but a restart); cage matches
+ * and tournaments get a bit longer since a first-move timeout there costs an
+ * actual game in a series, not just a do-over.
+ */
+export function computeFirstMoveThresholdMs(isSeriesGame: boolean): number {
+  return isSeriesGame ? 30_000 : 25_000;
+}
+
 /** Whether the side to move is currently in check. */
 export function isInCheck(chess: Chess): boolean {
   return chess.inCheck();

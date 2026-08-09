@@ -93,6 +93,19 @@ export function playGameStartSound() {
   ]);
 }
 
+/** A short, aggressive "battle cry" — a low percussive hit followed
+ *  immediately by a rising sawtooth screech, deliberately harsher and
+ *  louder than every other cue in this file. Berserking is a loud, once-
+ *  per-game declaration ("I'm going for it"), so it should sound like one —
+ *  nothing else here uses a rising pitch or this much gain. */
+export function playBerserkSound() {
+  playTones([
+    { freq: 130, startOffset: 0, duration: 0.1, type: 'square', gain: 0.22 },
+    { freq: 220, startOffset: 0.02, duration: 0.14, type: 'sawtooth', gain: 0.2 },
+    { freq: 880, startOffset: 0.05, duration: 0.18, type: 'sawtooth', gain: 0.2 },
+  ]);
+}
+
 /** A sharp double-beep — the clock just crossed into "you're running low"
  *  territory. Deliberately higher-pitched and more clipped than the check
  *  alert so it reads as "look at the clock" rather than "look at the

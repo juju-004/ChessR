@@ -2,8 +2,13 @@ import { apiFetch } from './http.js';
 
 export type TournamentFormat = 'normal' | 'swiss' | 'robin' | 'round_robin';
 export type TournamentStatus = 'pending' | 'active' | 'finished' | 'cancelled';
-export type TournamentWagerMode = 'none' | 'entry_fee';
 export type PairingResult = 'p1' | 'p2' | 'draw' | null;
+
+export interface TournamentPrizeTier {
+  fromRank: number;
+  toRank: number;
+  tokens: number;
+}
 
 export interface TournamentPlayer {
   user: string;
@@ -52,12 +57,21 @@ export interface Tournament {
   maxPlayers: number;
   players: TournamentPlayer[];
   berserkAllowed: boolean;
-  wagerMode: TournamentWagerMode;
-  wagerTokens: number;
+  isPublic: boolean;
+  prizeSchedule: TournamentPrizeTier[];
   prizePoolTokens: number;
+  prizePoolSettled: boolean;
+  regFeeTokens: number;
+  regFeePoolTokens: number;
+  regFeeSettled: boolean;
+  // Never the actual hash — just whether joining requires a password.
+  hasPassword: boolean;
   swissRounds: number | null;
   currentRoundIndex: number;
   rounds: TournamentRound[];
+  breakSeconds: number;
+  nextRoundStartsAt: string | null;
+  scheduledStartAt: string | null;
   winner: string | null;
   runnerUp: string | null;
   createdAt: string;
@@ -94,6 +108,12 @@ export function usernameOf(tournament: Tournament, userId: string | null): strin
 export function formatTimeControl(t: Pick<Tournament, 'baseMinutes' | 'incrementSeconds' | 'variant'>): string {
   const base = t.baseMinutes === null ? 'Unlimited' : `${t.baseMinutes}+${t.incrementSeconds}`;
   return t.variant === 'chess960' ? `${base} · 960` : base;
+}
+
+/** Total the creator committed across every tier of a prize schedule — the
+ *  exact number debited from them at creation time. */
+export function totalPrizePool(schedule: TournamentPrizeTier[]): number {
+  return schedule.reduce((sum, t) => sum + t.tokens * (t.toRank - t.fromRank + 1), 0);
 }
 
 export const FORMAT_LABEL: Record<TournamentFormat, string> = {

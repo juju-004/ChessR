@@ -1,4 +1,5 @@
 import { useEffect, useState, memo } from "react";
+import { Swords } from "lucide-react";
 import {
   formatClock,
   type CapturedPieceCount,
@@ -45,6 +46,17 @@ export interface PanelData {
   glyphs: Record<CapturedPieceCount["type"], string>;
   /** Points this side is ahead by, 0 or negative if not ahead (or even). */
   advantage: number;
+  /** Non-null only while THIS side's first move is the one still pending
+   *  (moveCount 0 for white, 1 for black) — the grace window in ms from
+   *  computeFirstMoveThresholdMs. Renders in the same slot as MaterialBadge
+   *  below the username, since the two can never be relevant at once (no
+   *  capture is possible before either side's first move has even landed),
+   *  which is what keeps this from ever pushing the board around. */
+  firstMoveGraceMs: number | null;
+  /** True once this side has berserked — shows a small icon next to the
+   *  clock, close enough that it reads as "this clock got halved" rather
+   *  than a generic status tag. */
+  berserked: boolean;
 }
 
 /** Builds the display props one side's panel needs out of the raw material
@@ -109,6 +121,69 @@ function MaterialBadge({
         +{advantage}
       </span>
     </div>
+  );
+}
+
+/**
+ * Countdown for a still-pending first move, in the same slot MaterialBadge
+ * would otherwise occupy (see the `firstMoveGraceMs` doc comment above for
+ * why that's safe). Deliberately stays invisible for the first 5 seconds —
+ * nobody needs to be told to hurry up the instant the board loads — then
+ * counts down the seconds left before this side's first move costs them the
+ * game (or the game gets aborted, for a plain non-series game).
+ */
+function FirstMoveBadge({
+  turnStartedAtMs,
+  graceMs,
+  size = "md",
+}: {
+  turnStartedAtMs: number;
+  graceMs: number;
+  size?: "md" | "sm";
+}) {
+  const [, forceTick] = useState(0);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => forceTick((n) => n + 1), 500);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const elapsedMs = Date.now() - turnStartedAtMs;
+  const remainingMs = graceMs - elapsedMs;
+
+  // Not yet 5s in, or already expired (the server-side timeout will resolve
+  // the game momentarily) — render nothing rather than a stale "0s".
+  if (elapsedMs < 5000 || remainingMs <= 0) return null;
+
+  const seconds = Math.ceil(remainingMs / 1000);
+  return (
+    <div
+      className={cn(
+        "flex min-w-0 items-center gap-1 font-semibold text-red-400",
+        size === "sm" ? "justify-center text-[10px]" : "text-xs",
+      )}
+      title="Move now — running out of time costs this game"
+    >
+      <span className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-red-400" />
+      Move in {seconds}s
+    </div>
+  );
+}
+
+/** Small badge icon shown right next to the clock once a side has
+ *  berserked — a halved clock is a big deal, so it stays close to the thing
+ *  it actually affects rather than living up with the game-level badges. */
+function BerserkBadge({ size = "md" }: { size?: "md" | "sm" }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center rounded-full bg-red-500/20 text-red-400",
+        size === "sm" ? "h-4 w-4" : "h-5 w-5",
+      )}
+      title="Berserked — clock halved for a bonus point if they win"
+    >
+      <Swords className={size === "sm" ? "h-2.5 w-2.5" : "h-3 w-3"} />
+    </span>
   );
 }
 
@@ -199,6 +274,8 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
   pieceDiff,
   glyphs,
   advantage,
+  firstMoveGraceMs,
+  berserked,
 }: PanelData) {
   return (
     <div
@@ -224,20 +301,27 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
         >
           {username}
         </p>
-        <MaterialBadge
-          pieceDiff={pieceDiff}
-          glyphs={glyphs}
-          advantage={advantage}
+        {firstMoveGraceMs !== null ? (
+          <FirstMoveBadge turnStartedAtMs={turnStartedAtMs} graceMs={firstMoveGraceMs} />
+        ) : (
+          <MaterialBadge
+            pieceDiff={pieceDiff}
+            glyphs={glyphs}
+            advantage={advantage}
+          />
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        {berserked && <BerserkBadge />}
+        <ClockBadge
+          baseRemainingMs={baseRemainingMs}
+          turnStartedAtMs={turnStartedAtMs}
+          isTicking={isTicking}
+          isTurn={isTurn}
+          clockKnown={clockKnown}
+          lowTimeThresholdMs={lowTimeThresholdMs}
         />
       </div>
-      <ClockBadge
-        baseRemainingMs={baseRemainingMs}
-        turnStartedAtMs={turnStartedAtMs}
-        isTicking={isTicking}
-        isTurn={isTurn}
-        clockKnown={clockKnown}
-        lowTimeThresholdMs={lowTimeThresholdMs}
-      />
     </div>
   );
 });
@@ -258,6 +342,8 @@ export const PlayerPanelFlank = memo(function PlayerPanelFlank({
   pieceDiff,
   glyphs,
   advantage,
+  firstMoveGraceMs,
+  berserked,
   className,
 }: PanelData & { className?: string }) {
   return (
@@ -284,21 +370,28 @@ export const PlayerPanelFlank = memo(function PlayerPanelFlank({
       >
         {username}
       </p>
-      <ClockBadge
-        baseRemainingMs={baseRemainingMs}
-        turnStartedAtMs={turnStartedAtMs}
-        isTicking={isTicking}
-        isTurn={isTurn}
-        clockKnown={clockKnown}
-        lowTimeThresholdMs={lowTimeThresholdMs}
-        size="sm"
-      />
-      <MaterialBadge
-        pieceDiff={pieceDiff}
-        glyphs={glyphs}
-        advantage={advantage}
-        size="sm"
-      />
+      <div className="flex shrink-0 items-center gap-1">
+        {berserked && <BerserkBadge size="sm" />}
+        <ClockBadge
+          baseRemainingMs={baseRemainingMs}
+          turnStartedAtMs={turnStartedAtMs}
+          isTicking={isTicking}
+          isTurn={isTurn}
+          clockKnown={clockKnown}
+          lowTimeThresholdMs={lowTimeThresholdMs}
+          size="sm"
+        />
+      </div>
+      {firstMoveGraceMs !== null ? (
+        <FirstMoveBadge turnStartedAtMs={turnStartedAtMs} graceMs={firstMoveGraceMs} size="sm" />
+      ) : (
+        <MaterialBadge
+          pieceDiff={pieceDiff}
+          glyphs={glyphs}
+          advantage={advantage}
+          size="sm"
+        />
+      )}
     </div>
   );
 });

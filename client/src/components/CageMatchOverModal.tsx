@@ -11,9 +11,9 @@ interface CageMatchOverModalProps {
 }
 
 function reasonText(reason: CageMatch['matchEndReason']): string {
-  if (reason === 'no_show_forfeit') return "Ended — someone didn't move in time at the start of a leg.";
+  if (reason === 'no_show_forfeit') return "Ended — someone didn't move in time at the start of a game.";
   if (reason === 'forfeit') return 'Ended by forfeit.';
-  return 'All legs complete.';
+  return 'All games complete.';
 }
 
 export const CageMatchOverModal = memo(function CageMatchOverModal({ match, myUserId, onViewResult, onClose }: CageMatchOverModalProps) {
@@ -34,7 +34,7 @@ export const CageMatchOverModal = memo(function CageMatchOverModal({ match, myUs
   if (!isDraw) {
     if (match.matchEndReason === 'no_show_forfeit') {
       const loserLabel = winnerIsMe ? opponent.username : 'You';
-      outcomeLine = `${loserLabel} didn't move in time at the start of a leg.`;
+      outcomeLine = `${loserLabel} didn't move in time at the start of a game.`;
     } else if (match.forfeitedBy) {
       outcomeLine = `${match.forfeitedBy === me._id ? 'You' : opponent.username} forfeited the match.`;
     }

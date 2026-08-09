@@ -8,6 +8,8 @@ import {
   RotateCcw,
   Swords,
   Trophy,
+  Users,
+  Coins,
   type LucideIcon,
 } from "lucide-react";
 import { getTransactions, type Transaction } from "../api/wallet.js";
@@ -35,6 +37,11 @@ const typeLabels: Record<Transaction["type"], string> = {
   wager_stake: "Wager staked",
   wager_payout: "Wager won",
   wager_refund: "Wager refunded",
+  tournament_reg_fee: "Tournament registration fee",
+  tournament_prize_fund: "Tournament prize pool funded",
+  tournament_payout: "Tournament prize won",
+  tournament_reg_revenue: "Tournament registration revenue",
+  tournament_refund: "Tournament refund",
 };
 
 const typeIcons: Record<Transaction["type"], LucideIcon> = {
@@ -43,6 +50,27 @@ const typeIcons: Record<Transaction["type"], LucideIcon> = {
   wager_stake: Swords,
   wager_payout: Trophy,
   wager_refund: RotateCcw,
+  tournament_reg_fee: Users,
+  tournament_prize_fund: Coins,
+  tournament_payout: Trophy,
+  tournament_reg_revenue: Coins,
+  tournament_refund: RotateCcw,
+};
+
+// Whether a transaction type ADDS to the balance (+) or REMOVES from it (-)
+// — shown as a colored sign next to the token amount so it's clear at a
+// glance which way the tokens moved, not just how many.
+const typeAddsTokens: Record<Transaction["type"], boolean> = {
+  purchase: true,
+  withdrawal: false,
+  wager_stake: false,
+  wager_payout: true,
+  wager_refund: true,
+  tournament_reg_fee: false,
+  tournament_prize_fund: false,
+  tournament_payout: true,
+  tournament_reg_revenue: true,
+  tournament_refund: true,
 };
 
 function isMoneyMovement(type: Transaction["type"]): boolean {
@@ -100,8 +128,13 @@ export function Transactions() {
                   <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-1.5 text-sm font-medium text-base-content">
                       {typeLabels[t.type]}
-                      <span className="inline-flex items-center gap-1 text-xs font-normal text-base-content/50">
-                        · <RCoin size={12} /> {t.tokens}
+                      <span
+                        className={`inline-flex items-center gap-1 text-xs font-normal ${
+                          typeAddsTokens[t.type] ? "text-green-400" : "text-red-400"
+                        }`}
+                      >
+                        · {typeAddsTokens[t.type] ? "+" : "-"}
+                        <RCoin size={12} /> {t.tokens}
                       </span>
                     </p>
                     <p className="truncate text-xs text-base-content/50">

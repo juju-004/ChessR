@@ -19,10 +19,17 @@ import {
   assertUnderActiveGameLimit,
   MAX_ACTIVE_GAMES_PER_USER,
 } from '../services/game.service.js';
-import { advanceCageMatchLeg, handleLegMoveForNoShow } from '../services/cageMatch.service.js';
+import { advanceCageMatchLeg } from '../services/cageMatch.service.js';
 import { advanceTournamentIfPairing, berserkInTournamentGame } from '../services/tournament.service.js';
 import { getLagCompensationMs } from '../services/latency.service.js';
-import { scheduleGameTimer, clearGameTimer, setTimeoutHandler } from '../services/clock.service.js';
+import {
+  scheduleGameTimer,
+  clearGameTimer,
+  setTimeoutHandler,
+  scheduleFirstMoveTimer,
+  clearFirstMoveTimer,
+  setFirstMoveTimeoutHandler,
+} from '../services/clock.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
 const gameRoom = (gameId: string) => `game:${gameId}`;
@@ -72,6 +79,7 @@ async function endGameAndBroadcast(
   endReason: string,
 ) {
   clearGameTimer(gameId);
+  clearFirstMoveTimer(gameId);
   clearPendingDisconnect(gameId);
   const finalState = await endGame(gameId, result, endReason);
 
@@ -144,6 +152,40 @@ async function advanceTournamentIfPairingLeg(
 export function registerClockTimeoutHandler(io: Server) {
   setTimeoutHandler(async (gameId, winner) => {
     await endGameAndBroadcast(io, gameId, winner, 'timeout');
+  });
+}
+
+// A first-move timeout means different things depending on what the game
+// actually is. A plain 1-on-1 game has no series riding on it, so it just
+// gets aborted and any wager refunded — same outcome as the manual Abort
+// button. A cage match leg or tournament pairing is part of something bigger
+// that shouldn't stall out for everyone else, so the side that never showed
+// up simply loses that one game — endGameAndBroadcast already knows how to
+// advance a cage match / tournament pairing off the back of an ordinary
+// result, so this reuses that path rather than duplicating it.
+export function registerFirstMoveTimeoutHandler(io: Server) {
+  setFirstMoveTimeoutHandler(async (gameId, expiredSide) => {
+    const gameDoc = await Game.findById(gameId).select('cageMatchId tournamentId').lean();
+    const isSeriesGame = !!(gameDoc?.cageMatchId || gameDoc?.tournamentId);
+
+    if (isSeriesGame) {
+      const winner = expiredSide === 'white' ? 'black' : 'white';
+      await endGameAndBroadcast(io, gameId, winner, 'first_move_timeout');
+      return;
+    }
+
+    const state = await getLiveState(gameId);
+    if (!state) return;
+
+    clearGameTimer(gameId);
+    clearPendingDisconnect(gameId);
+    await finalizeGame(gameId, state.fen, 'aborted', null, 'first_move_timeout');
+    await refundWagerBothSides(gameId, state.whiteId, state.blackId, state.wagerTokens).catch((err) =>
+      console.error('refundWagerBothSides failed during first-move timeout:', err),
+    );
+    await deleteLiveState(gameId);
+
+    io.to(gameRoom(gameId)).emit('game:over', { gameId, result: null, reason: 'first_move_timeout' });
   });
 }
 
@@ -291,6 +333,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       // sit silently until someone tried to move.
       if (liveState?.status === 'active') {
         scheduleGameTimer(gameId).catch((err) => console.error('scheduleGameTimer on join failed:', err));
+        scheduleFirstMoveTimer(gameId).catch((err) => console.error('scheduleFirstMoveTimer on join failed:', err));
       }
 
       socket.emit('game:sync', {
@@ -348,15 +391,6 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         const lagCompensationMs = getLagCompensationMs(socket.id);
         const result = await applyMove(gameId, userId, { from, to, promotion }, lagCompensationMs);
 
-        // A move landing clears the no-show grace window it just satisfied —
-        // and if this was White's first move, re-arms a fresh one for
-        // Black's first reply. Harmless no-op for any game that was never a
-        // cage match leg, or that's already past both first moves. Not
-        // awaited so it can't slow down how fast the opponent sees the move.
-        handleLegMoveForNoShow(gameId, result.moveNumber).catch((err) =>
-          console.error('handleLegMoveForNoShow failed:', err),
-        );
-
         // Broadcast first — Mongo persistence is for history/reconnect sync, it
         // doesn't need to gate how fast the opponent sees the move land.
         io.to(gameRoom(gameId)).emit('game:move', {
@@ -385,6 +419,10 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           await endGameAndBroadcast(io, gameId, result.result!, result.endReason!);
         } else {
           scheduleGameTimer(gameId).catch((err) => console.error('scheduleGameTimer failed:', err));
+          // A move landing re-arms the window for whoever's first move is
+          // still pending (or clears it for good once both sides have
+          // moved) — cheap no-op via scheduleFirstMoveTimer's own guards.
+          scheduleFirstMoveTimer(gameId).catch((err) => console.error('scheduleFirstMoveTimer failed:', err));
         }
       } catch (err) {
         if (err instanceof GameTimeoutError) {
@@ -633,6 +671,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       }
 
       clearGameTimer(gameId);
+      clearFirstMoveTimer(gameId);
       clearPendingDisconnect(gameId);
       await finalizeGame(gameId, state.fen, 'aborted', null, 'aborted_no_moves');
       await refundWagerBothSides(gameId, state.whiteId, state.blackId, state.wagerTokens).catch((err) =>

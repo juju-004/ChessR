@@ -9,7 +9,7 @@ import {
   deleteLiveState,
   type LiveTimeControl,
 } from "./gameState.service.js";
-import { scheduleGameTimer } from "./clock.service.js";
+import { scheduleGameTimer, scheduleFirstMoveTimer } from "./clock.service.js";
 import { getIo } from "../sockets/io.js";
 import { generateChess960Fen } from "./chess960.service.js";
 import { debitWagerStake, creditWagerReturn } from "./wallet.service.js";
@@ -200,6 +200,7 @@ export async function joinOpenGame(
     game.wagerTokens,
   );
   await scheduleGameTimer(game.id);
+  await scheduleFirstMoveTimer(game.id);
 
   try {
     getIo().to(`game:${game.id}`).emit("game:state_changed");
@@ -283,6 +284,7 @@ export async function createDirectGame(
     wagerTokens,
   );
   await scheduleGameTimer(game.id);
+  await scheduleFirstMoveTimer(game.id);
 
   return game;
 }
@@ -351,6 +353,9 @@ export async function getGameByCode(code: string) {
   const game = await Game.findOne({ joinCode: code.toUpperCase() })
     .populate("white", "username avatarGradient")
     .populate("black", "username avatarGradient")
+    // Just the join code — enough for a "Back to tournament" link without
+    // pulling the whole Tournament doc down for every single game fetch.
+    .populate("tournamentId", "code")
     .lean();
   if (!game) throw ApiError.notFound("No game found with that code");
   return game;
@@ -563,6 +568,7 @@ export async function reconcileActiveGames(): Promise<{
     }
 
     await scheduleGameTimer(gameId);
+    await scheduleFirstMoveTimer(gameId);
     resumed++;
   }
 

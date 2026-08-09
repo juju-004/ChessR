@@ -168,7 +168,7 @@ export function CageMatches() {
       });
     if (legs.length < 2)
       return setStatus({
-        message: "Add at least 2 legs to the match.",
+        message: "Add at least 2 games to the match.",
         isError: true,
       });
     if (winnerMode === "first_to_n" && (!targetWins || targetWins < 1)) {
@@ -217,7 +217,7 @@ export function CageMatches() {
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-base-content/60">
-              Mix bullet, blitz, rapid, and Chess960 legs however you like, then
+              Mix bullet, blitz, rapid, and Chess960 games however you like, then
               optionally back it with a wager.
             </p>
 
@@ -236,12 +236,12 @@ export function CageMatches() {
 
             <div className="rounded-xl border border-base-300 bg-base-100/60 p-3">
               <h3 className="mb-2 text-sm font-semibold text-base-content">
-                Leg plan ({legs.length} legs)
+                Game plan ({legs.length} games)
               </h3>
 
               {legs.length === 0 && (
                 <p className="mb-2 text-sm text-base-content/50">
-                  No legs yet — add some below.
+                  No games yet — add some below.
                 </p>
               )}
               {legs.length > 0 && (
@@ -276,7 +276,7 @@ export function CageMatches() {
                         </button>
                         <button
                           onClick={() => removeLeg(i)}
-                          aria-label="Remove leg"
+                          aria-label="Remove game"
                           className="rounded-md p-1 text-red-400 hover:bg-red-900/30"
                         >
                           <X className="h-3.5 w-3.5" />
@@ -321,7 +321,7 @@ export function CageMatches() {
                   />
                 </div>
                 <Button size="md" onClick={addQuickLegs}>
-                  Add legs
+                  Add games
                 </Button>
               </div>
             </div>
@@ -360,10 +360,10 @@ export function CageMatches() {
                 Winner takes all — one stake for the whole match
               </option>
               <option value="per_leg">
-                Per leg — staked and settled as each leg finishes
+                Per game — staked and settled as each game finishes
               </option>
               <option value="split_even">
-                Split evenly — total stake divided across all legs
+                Split evenly — total stake divided across all games
               </option>
             </Select>
             {wagerMode !== "none" && (
@@ -375,7 +375,7 @@ export function CageMatches() {
                 onChange={(e) => setWagerInput(e.target.value)}
                 placeholder={
                   wagerMode === "per_leg"
-                    ? "R Coins per leg"
+                    ? "R Coins per game"
                     : "Total R Coins for the whole match"
                 }
               />
@@ -413,7 +413,7 @@ export function CageMatches() {
                     className="flex items-center justify-between rounded-xl border border-base-300 bg-base-100/60 px-3 py-2.5 transition-colors hover:border-(--primary)/40"
                   >
                     <span className="text-sm text-base-content">
-                      vs {opp.username} · leg {m.currentLegIndex + 1}/
+                      vs {opp.username} · game {m.currentLegIndex + 1}/
                       {m.legs.length}
                     </span>
                     <span className="flex items-center gap-2 text-sm text-base-content/60">

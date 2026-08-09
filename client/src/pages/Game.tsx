@@ -31,6 +31,7 @@ import {
   RefreshCw,
   FlipVertical2,
   MoreHorizontal,
+  Trophy,
 } from "lucide-react";
 import { ChessBoard } from "../components/ChessBoard.js";
 import { MoveList, MoveStrip } from "../components/MoveLog.js";
@@ -56,6 +57,7 @@ import {
   addChess960CastlingDests,
   computeMaterialDiff,
   computeLowTimeThresholdMs,
+  computeFirstMoveThresholdMs,
   turnColor,
 } from "../chessUtils.js";
 import { refreshBalance } from "../api/walletStore.js";
@@ -66,6 +68,7 @@ import {
   playGameStartSound,
   playGameOverSound,
   playLowTimeSound,
+  playBerserkSound,
   setSoundEnabled,
 } from "../sounds.js";
 import { copyToClipboard } from "@/lib/utils.js";
@@ -82,7 +85,9 @@ interface GameMeta {
   wagerTokens?: number;
   cageMatchId?: string | null;
   legIndex?: number | null;
-  tournamentId?: string | null;
+  /** Populated with just the join code by getGameByCode — enough for a
+   *  "Back to tournament" link without pulling the whole Tournament doc. */
+  tournamentId?: { _id: string; code: string } | null;
 }
 
 interface MoveLogEntry {
@@ -414,6 +419,27 @@ export function Game() {
     [material],
   );
   const isActiveGame = status === "active";
+  // The full grace window for this game: 25s for a plain game, 30s for a
+  // cage match leg or tournament pairing — see computeFirstMoveThresholdMs.
+  // Only the side whose first move is still pending actually gets a
+  // non-null value passed down to their panel; see below.
+  const firstMoveGraceMs = useMemo(
+    () => computeFirstMoveThresholdMs(!!gameMeta?.cageMatchId || !!gameMeta?.tournamentId),
+    [gameMeta?.cageMatchId, gameMeta?.tournamentId],
+  );
+  // Whose first move is currently the one on the clock: white's, until
+  // white's first move lands (moves.length 0), then black's until black's
+  // first move lands (moves.length 1). Never both, never neither, while the
+  // game's still in that idle phase — and not relevant at all once it's not
+  // (isActiveGame false, or paused for a cage match leg).
+  const firstMovePendingSide: "white" | "black" | null =
+    isActiveGame && !pausedLeg
+      ? moves.length === 0
+        ? "white"
+        : moves.length === 1
+          ? "black"
+          : null
+      : null;
 
   // Memoized: PlayerPanelRow/PlayerPanelFlank are React.memo'd, but a plain
   // object literal here would be a brand-new reference on every render of
@@ -432,6 +458,8 @@ export function Game() {
       isTicking: clockRunning && sideToMove === "white",
       clockKnown,
       lowTimeThresholdMs,
+      firstMoveGraceMs: firstMovePendingSide === "white" ? firstMoveGraceMs : null,
+      berserked: whiteBerserk,
       ...whiteMaterial,
     }),
     [
@@ -445,6 +473,9 @@ export function Game() {
       clockRunning,
       clockKnown,
       lowTimeThresholdMs,
+      firstMovePendingSide,
+      firstMoveGraceMs,
+      whiteBerserk,
       whiteMaterial,
     ],
   );
@@ -459,6 +490,8 @@ export function Game() {
       isTicking: clockRunning && sideToMove === "black",
       clockKnown,
       lowTimeThresholdMs,
+      firstMoveGraceMs: firstMovePendingSide === "black" ? firstMoveGraceMs : null,
+      berserked: blackBerserk,
       ...blackMaterial,
     }),
     [
@@ -472,6 +505,9 @@ export function Game() {
       clockRunning,
       clockKnown,
       lowTimeThresholdMs,
+      firstMovePendingSide,
+      firstMoveGraceMs,
+      blackBerserk,
       blackMaterial,
     ],
   );
@@ -815,6 +851,7 @@ export function Game() {
         setWhiteRemainingMs(payload.whiteRemainingMs);
       if (payload.blackRemainingMs !== null)
         setBlackRemainingMs(payload.blackRemainingMs);
+      playBerserkSound();
     }
 
     function onOpponentDisconnected(payload: {
@@ -1001,7 +1038,7 @@ export function Game() {
     if (!gameMeta?.cageMatchId || !socket) return;
     if (
       confirm(
-        "Forfeit the ENTIRE cage match — not just this leg? Your opponent will be declared the overall winner and any remaining legs will be skipped.",
+        "Forfeit the ENTIRE cage match — not just this game? Your opponent will be declared the overall winner and any remaining games will be skipped.",
       )
     ) {
       socket.emit("cage:forfeit", { matchId: gameMeta.cageMatchId });
@@ -1068,17 +1105,12 @@ export function Game() {
     }
   }
 
-  async function handleBerserk() {
+  function handleBerserk() {
     if (!socket || !gameMeta) return;
-    const ok = await confirmDialog({
-      title: "Berserk!",
-      description:
-        "Halve your own clock and give up your increment for a shot at a bonus 0.5 point if you win.",
-      confirmLabel: "Berserk",
-    });
-    if (ok) {
-      socket.emit("game:berserk", { gameId: gameMeta._id });
-    }
+    // Deliberately no confirmation popover — like Lichess, berserking is
+    // meant to be an instant, no-second-thoughts decision made in the first
+    // few seconds of the game, not something that pauses on a dialog.
+    socket.emit("game:berserk", { gameId: gameMeta._id });
   }
 
   function handleOfferDraw() {
@@ -1243,24 +1275,15 @@ export function Game() {
       );
     if (gameMeta?.tournamentId)
       badges.push(
-        <Link key="tourney" to="/tournaments">
+        <Link key="tourney" to={`/tournaments/${gameMeta.tournamentId.code}`}>
           <Badge variant="glass" className="hover:brightness-110">
             Tournament game
           </Badge>
         </Link>,
       );
-    if (whiteBerserk)
-      badges.push(
-        <Badge key="wb" variant="error">
-          ⚔ White berserked
-        </Badge>,
-      );
-    if (blackBerserk)
-      badges.push(
-        <Badge key="bb" variant="error">
-          ⚔ Black berserked
-        </Badge>,
-      );
+    // White/black berserked badges now live on the player panels themselves,
+    // right next to the clock they actually affect — see PlayerPanels.tsx's
+    // BerserkBadge.
   }
 
   const showChat = !settings.zenMode && role === "spectator" && live;
@@ -1364,15 +1387,33 @@ export function Game() {
   // trio above: status can't be "active" once gameOver is set. Cage match
   // legs never offer a rematch — the series has its own next-leg/forfeit
   // flow instead.
+  // Once the game's over and its modal has been dismissed, that space is
+  // reused for a single "Rematch" entry that just reopens GameOverModal —
+  // it's the only place with the actual offer-rematch button (and its
+  // "offer sent" disabled state), so this doesn't duplicate that logic,
+  // it just gets the modal back on screen. Mutually exclusive with the
+  // trio above: status can't be "active" once gameOver is set. Cage match
+  // legs and tournament pairings never offer a rematch — a cage match has
+  // its own next-leg/forfeit flow, and a tournament bracket is fixed by the
+  // pairing schedule, not something either player gets to spin up again.
   const isIdlePhase = moves.length < 2;
   const canReopenRematch =
     !!gameOver &&
     gameOverModalDismissed &&
     isPlayer &&
     !gameMeta?.cageMatchId &&
+    !gameMeta?.tournamentId &&
     gameOver.reason !== "aborted_no_moves" &&
     gameOver.reason !== "idle_timeout" &&
+    gameOver.reason !== "first_move_timeout" &&
     gameOver.reason !== "cage_forfeit";
+  const canBerserk =
+    isPlayer &&
+    status === "active" &&
+    !!gameMeta?.tournamentId &&
+    !!myColor &&
+    !(myColor === "white" ? whiteBerserk : blackBerserk) &&
+    (myColor === "white" ? moves.length === 0 : moves.length <= 1);
   const actionItems: any[] = [
     {
       label: boardFlipped ? "Unflip board" : "Flip board",
@@ -1399,6 +1440,17 @@ export function Game() {
       disabled: viewPly === null,
       mobilePrimary: true,
     },
+    ...(canBerserk
+      ? [
+          {
+            label: "Berserk — halve your clock for a bonus point",
+            icon: Swords,
+            onClick: handleBerserk,
+            danger: true,
+            mobilePrimary: true,
+          },
+        ]
+      : []),
     ...(isPlayer && status === "active" && !isIdlePhase
       ? [
           { label: "Offer draw", icon: Handshake, onClick: handleOfferDraw },
@@ -1439,6 +1491,16 @@ export function Game() {
             icon: Ban,
             onClick: handleForfeitCageMatch,
             danger: true,
+          },
+        ]
+      : []),
+    ...(gameMeta?.tournamentId
+      ? [
+          {
+            label: "Back to tournament",
+            icon: Trophy,
+            onClick: () => navigate(`/tournaments/${gameMeta.tournamentId!.code}`),
+            danger: false,
           },
         ]
       : []),
@@ -1507,7 +1569,7 @@ export function Game() {
               transition={springSnappy}
               className="pointer-events-auto flex items-center justify-center gap-1.5 rounded-xl border border-amber-500/30 bg-base-200 p-2.5 text-center text-sm text-amber-500 shadow-lg"
             >
-              <Pause className="h-4 w-4" /> This leg is paused
+              <Pause className="h-4 w-4" /> This game is paused
               {isPlayer ? "" : " by the players"}.
             </motion.div>
           )}
@@ -1539,7 +1601,7 @@ export function Game() {
                 className="border-amber-500/30 text-sm text-amber-500 shadow-xl"
               >
                 <p className="mb-2 flex items-center gap-1.5 font-semibold">
-                  <Pause className="h-4 w-4" /> This leg is paused.
+                  <Pause className="h-4 w-4" /> This game is paused.
                 </p>
                 <Button
                   size="sm"
@@ -1733,30 +1795,6 @@ export function Game() {
       </div>
 
       <div>
-        {/* Standalone berserk CTA — a persistent control a player
-         *  deliberately reaches for, not a transient alert, so it lives in
-         *  normal flow rather than the notification overlay stack above.
-         *  Moved down here (bottom of the page) instead of above the
-         *  board, out of the way of the board/panels the player is
-         *  actually looking at during the opening moves. */}
-        {isPlayer &&
-          status === "active" &&
-          gameMeta?.tournamentId &&
-          myColor &&
-          !(myColor === "white" ? whiteBerserk : blackBerserk) &&
-          (myColor === "white" ? moves.length === 0 : moves.length <= 1) && (
-            <div className="flex justify-center pt-2">
-              <Button
-                size="sm"
-                onClick={handleBerserk}
-                className="border border-red-800 bg-red-950/30 text-red-300 shadow-none hover:bg-red-950/50 hover:brightness-100"
-              >
-                <Swords className="h-4 w-4" /> Berserk — halve your clock for a
-                bonus point
-              </Button>
-            </div>
-          )}
-
         {!settings.zenMode && gameMeta?.cageMatchId && (
           <div className="md:hidden pt-2">
             <CageMatchScoreboard
@@ -1881,8 +1919,10 @@ export function Game() {
           canRematch={
             isPlayer &&
             !gameMeta?.cageMatchId &&
+            !gameMeta?.tournamentId &&
             gameOver.reason !== "aborted_no_moves" &&
             gameOver.reason !== "idle_timeout" &&
+            gameOver.reason !== "first_move_timeout" &&
             gameOver.reason !== "cage_forfeit"
           }
           rematchState={rematchState}
