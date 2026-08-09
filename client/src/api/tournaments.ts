@@ -13,6 +13,7 @@ export interface TournamentPrizeTier {
 export interface TournamentPlayer {
   user: string;
   username: string;
+  avatarGradient: string | null;
   joinedAt: string;
   points: number;
   tiebreak: number;
@@ -105,6 +106,11 @@ export function usernameOf(tournament: Tournament, userId: string | null): strin
   return tournament.players.find((p) => p.user === userId)?.username ?? 'Unknown';
 }
 
+export function gradientOf(tournament: Tournament, userId: string | null): string | null {
+  if (!userId) return null;
+  return tournament.players.find((p) => p.user === userId)?.avatarGradient ?? null;
+}
+
 export function formatTimeControl(t: Pick<Tournament, 'baseMinutes' | 'incrementSeconds' | 'variant'>): string {
   const base = t.baseMinutes === null ? 'Unlimited' : `${t.baseMinutes}+${t.incrementSeconds}`;
   return t.variant === 'chess960' ? `${base} · 960` : base;
@@ -114,6 +120,14 @@ export function formatTimeControl(t: Pick<Tournament, 'baseMinutes' | 'increment
  *  exact number debited from them at creation time. */
 export function totalPrizePool(schedule: TournamentPrizeTier[]): number {
   return schedule.reduce((sum, t) => sum + t.tokens * (t.toRank - t.fromRank + 1), 0);
+}
+
+/** "R" for a single-rank tier (only one person can ever receive it) vs
+ *  "R each" for a multi-rank tier (every rank in the range gets that
+ *  amount) — auto-detected from the tier's own range rather than something
+ *  the creator has to separately toggle. */
+export function tokensLabel(tier: Pick<TournamentPrizeTier, 'fromRank' | 'toRank'>): string {
+  return tier.fromRank === tier.toRank ? 'R' : 'R each';
 }
 
 export const FORMAT_LABEL: Record<TournamentFormat, string> = {

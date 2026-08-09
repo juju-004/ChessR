@@ -8,7 +8,7 @@ import {
   cancelTournament,
   startTournament,
   withdrawFromTournament,
-  deleteTournament,
+  updateTournament,
   type CreateTournamentInput,
 } from '../services/tournament.service.js';
 import { User } from '../models/User.js';
@@ -45,6 +45,27 @@ const createSchema = z.object({
 const idSchema = z.object({ tournamentId: z.string().refine(mongoose.isValidObjectId) });
 const joinSchema = idSchema.extend({ password: z.string().optional() });
 
+// Every field truly optional with no defaults (unlike createSchema) — an
+// omitted field must mean "leave this as-is", not "reset to the default",
+// since this is a partial edit of something that already exists.
+const editSchema = idSchema.extend({
+  name: z.string().trim().min(3).max(60).optional(),
+  format: z.enum(['normal', 'swiss', 'robin', 'round_robin']).optional(),
+  variant: z.enum(['standard', 'chess960']).optional(),
+  baseMinutes: z.number().min(1).max(180).nullable().optional(),
+  incrementSeconds: z.number().min(0).max(60).optional(),
+  maxPlayers: z.number().int().min(2).max(64).optional(),
+  berserkAllowed: z.boolean().optional(),
+  isPublic: z.boolean().optional(),
+  prizeSchedule: z.array(prizeTierSchema).max(20).optional(),
+  regFeeTokens: z.number().int().min(0).max(MAX_WAGER_TOKENS).optional(),
+  swissRounds: z.number().int().min(3).max(15).nullable().optional(),
+  breakSeconds: z.number().int().min(0).max(MAX_BREAK_SECONDS).optional(),
+  scheduledStartAt: z.string().or(z.date()).optional(),
+  // undefined (omitted) = unchanged; null = remove the password; string = set it.
+  password: z.string().trim().max(100).nullable().optional(),
+});
+
 function emitError(socket: Socket, message: string) {
   socket.emit('tournament:error', { message });
 }
@@ -69,12 +90,23 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
       const parsed = createSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid tournament settings');
 
-      const me = await User.findById(userId).select('username').lean();
+      const me = await User.findById(userId).select('username avatarGradient').lean();
       if (!me) return emitError(socket, 'Could not find your account');
 
-      const tournament = await createTournament(userId, me.username, parsed.data as CreateTournamentInput);
+      const tournament = await createTournament(userId, me.username, me.avatarGradient ?? null, parsed.data as CreateTournamentInput);
       await socket.join(tournamentRoom(tournament.id));
       socket.emit('tournament:created', { tournamentId: tournament.id, code: tournament.code });
+    }),
+  );
+
+  socket.on(
+    'tournament:edit',
+    safeHandler(socket, async (raw: unknown) => {
+      const parsed = editSchema.safeParse(raw);
+      if (!parsed.success) return emitError(socket, 'Invalid tournament settings');
+      const { tournamentId, ...changes } = parsed.data;
+      const tournament = await updateTournament(tournamentId, userId, changes);
+      io.to(tournamentRoom(tournament.id)).emit('tournament:update', { tournamentId: tournament.id, code: tournament.code });
     }),
   );
 
@@ -83,10 +115,10 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
     safeHandler(socket, async (raw: unknown) => {
       const parsed = joinSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid payload');
-      const me = await User.findById(userId).select('username').lean();
+      const me = await User.findById(userId).select('username avatarGradient').lean();
       if (!me) return emitError(socket, 'Could not find your account');
 
-      const tournament = await joinTournament(parsed.data.tournamentId, userId, me.username, parsed.data.password);
+      const tournament = await joinTournament(parsed.data.tournamentId, userId, me.username, me.avatarGradient ?? null, parsed.data.password);
       await socket.join(tournamentRoom(tournament.id));
       io.to(tournamentRoom(tournament.id)).emit('tournament:update', { tournamentId: tournament.id, code: tournament.code });
     }),
@@ -143,16 +175,6 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
       if (!parsed.success) return emitError(socket, 'Invalid payload');
       const tournament = await withdrawFromTournament(parsed.data.tournamentId, userId);
       io.to(tournamentRoom(tournament.id)).emit('tournament:update', { tournamentId: tournament.id, code: tournament.code });
-    }),
-  );
-
-  socket.on(
-    'tournament:delete',
-    safeHandler(socket, async (raw: unknown) => {
-      const parsed = idSchema.safeParse(raw);
-      if (!parsed.success) return emitError(socket, 'Invalid payload');
-      const { code } = await deleteTournament(parsed.data.tournamentId, userId);
-      io.to(tournamentRoom(parsed.data.tournamentId)).emit('tournament:deleted', { tournamentId: parsed.data.tournamentId, code });
     }),
   );
 

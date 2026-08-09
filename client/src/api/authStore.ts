@@ -2,6 +2,7 @@ export interface CurrentUser {
   id: string;
   username: string;
   email: string;
+  avatarGradient?: string | null;
 }
 
 interface AuthSnapshot {
@@ -18,6 +19,17 @@ export function getAuthSnapshot(): AuthSnapshot {
 
 export function setAuth(accessToken: string, user: CurrentUser): void {
   snapshot = { accessToken, user };
+  listeners.forEach((l) => l());
+}
+
+/** Merges a partial patch into the currently signed-in user without a full
+ *  re-login or token refresh — for cases like an avatar change that should
+ *  reflect everywhere the user object is read from (navbar, etc.)
+ *  immediately, not just after the next page reload / token refresh cycle.
+ *  No-ops if nobody's signed in. */
+export function updateAuthUser(patch: Partial<CurrentUser>): void {
+  if (!snapshot.user) return;
+  snapshot = { ...snapshot, user: { ...snapshot.user, ...patch } };
   listeners.forEach((l) => l());
 }
 

@@ -355,7 +355,9 @@ export async function getGameByCode(code: string) {
     .populate("black", "username avatarGradient")
     // Just the join code — enough for a "Back to tournament" link without
     // pulling the whole Tournament doc down for every single game fetch.
-    .populate("tournamentId", "code")
+    // code (for the "Back to tournament" link) and name (shown on the
+    // in-game tournament badge instead of a generic "Tournament game" label).
+    .populate("tournamentId", "code name")
     .lean();
   if (!game) throw ApiError.notFound("No game found with that code");
   return game;

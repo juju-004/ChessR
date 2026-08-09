@@ -338,6 +338,57 @@ export async function creditTournamentReturn(
   });
 }
 
+/** Settles the balance change from editing a pending tournament's prize
+ *  pool or registration fee (only possible while the creator is still the
+ *  sole player — see updateTournament in tournament.service.ts) — a single
+ *  call handles both directions: deltaTokens > 0 debits the creator for the
+ *  increase, < 0 refunds them the decrease, 0 is a no-op. Uses a
+ *  timestamped reference rather than the deterministic ones the debit/credit
+ *  helpers above use, since an editable amount can change more than once
+ *  and each change needs its own distinct ledger entry — a fixed reference
+ *  would collide with itself (or with the eventual real debit/refund) the
+ *  second time the same tournament+user+kind combination came up. */
+export async function adjustTournamentEscrow(
+  userId: string,
+  tournamentId: string,
+  deltaTokens: number,
+  kind: 'tournament_prize_fund' | 'tournament_reg_fee',
+): Promise<void> {
+  if (deltaTokens === 0) return;
+
+  const label = kind === 'tournament_prize_fund' ? 'PRZ' : 'REG';
+  const reference = `TRN-EDIT-${label}-${tournamentId}-${userId}-${Date.now()}`;
+
+  if (deltaTokens > 0) {
+    const debited = await User.findOneAndUpdate(
+      { _id: userId, tokenBalance: { $gte: deltaTokens } },
+      { $inc: { tokenBalance: -deltaTokens } },
+      { new: true },
+    );
+    if (!debited) throw ApiError.badRequest('Insufficient R token balance for that change');
+    await Transaction.create({
+      user: userId,
+      type: kind,
+      status: 'success',
+      tokens: deltaTokens,
+      amountKobo: 0,
+      reference,
+      tournament: tournamentId,
+    });
+  } else {
+    await User.updateOne({ _id: userId }, { $inc: { tokenBalance: -deltaTokens } });
+    await Transaction.create({
+      user: userId,
+      type: 'tournament_refund',
+      status: 'success',
+      tokens: -deltaTokens,
+      amountKobo: 0,
+      reference,
+      tournament: tournamentId,
+    });
+  }
+}
+
 export async function listTransactions(userId: string, page: number, limit: number) {
   const filter = { user: userId };
   const [transactions, total] = await Promise.all([

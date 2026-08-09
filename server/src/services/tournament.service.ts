@@ -29,6 +29,7 @@ import {
   debitTournamentRegFee,
   debitTournamentPrizeFund,
   creditTournamentReturn,
+  adjustTournamentEscrow,
 } from "./wallet.service.js";
 import { getIo } from "../sockets/io.js";
 
@@ -375,6 +376,7 @@ function validatePrizeSchedule(
 export async function createTournament(
   creatorId: string,
   creatorUsername: string,
+  creatorAvatarGradient: string | null,
   input: CreateTournamentInput,
 ): Promise<ITournament> {
   const bounds = FORMAT_BOUNDS[input.format];
@@ -451,6 +453,7 @@ export async function createTournament(
       {
         user: creatorId,
         username: creatorUsername,
+        avatarGradient: creatorAvatarGradient,
         points: 0,
         tiebreak: 0,
         gamesPlayed: 0,
@@ -497,6 +500,7 @@ export async function joinTournament(
   tournamentId: string,
   userId: string,
   username: string,
+  avatarGradient: string | null,
   password?: string,
 ): Promise<ITournament> {
   const tournament = await Tournament.findById(tournamentId);
@@ -522,6 +526,7 @@ export async function joinTournament(
   tournament.players.push({
     user: userId as any,
     username,
+    avatarGradient,
     points: 0,
     tiebreak: 0,
     gamesPlayed: 0,
@@ -559,13 +564,13 @@ export async function leaveTournament(
   );
 
   if (tournament.regFeeTokens > 0) {
-    await creditTournamentReturn(userId, tournament.id, tournament.regFeeTokens, "tournament_refund");
+    await creditTournamentReturn(userId, tournament.id, tournament.regFeeTokens, "tournament_refund", "reg");
     tournament.regFeePoolTokens = Math.max(0, tournament.regFeePoolTokens - tournament.regFeeTokens);
   }
 
   const wasCreator = tournament.createdBy.toString() === userId;
   if (wasCreator && tournament.prizePoolTokens > 0 && !tournament.prizePoolSettled) {
-    await creditTournamentReturn(userId, tournament.id, tournament.prizePoolTokens, "tournament_refund");
+    await creditTournamentReturn(userId, tournament.id, tournament.prizePoolTokens, "tournament_refund", "prize");
     tournament.prizePoolSettled = true;
     tournament.prizePoolTokens = 0;
     tournament.prizeSchedule = [];
@@ -581,16 +586,20 @@ export async function leaveTournament(
   return tournament;
 }
 
-/** Shared refund path for both cancelling and deleting a tournament before
- *  it's settled anything on its own — everyone who paid a registration fee
- *  gets it back, and the creator gets the prize pool they funded back (if
- *  it hasn't already been distributed). Mutates and saves the passed-in
+/** Shared refund path for both cancelling and (formerly) deleting a
+ *  tournament before it's settled anything on its own — everyone who paid a
+ *  registration fee gets it back, and the creator gets the prize pool they
+ *  funded back (if it hasn't already been distributed). Distinct suffixes
+ *  on each credit ("reg" vs "prize") because the creator is always also a
+ *  player — without them, refunding both to the same person for the same
+ *  tournament would produce the exact same reference string twice and trip
+ *  the Transaction model's unique index. Mutates and saves the passed-in
  *  document but leaves status/deletion to the caller. */
 async function refundAllEscrow(tournament: ITournament): Promise<void> {
   if (tournament.regFeeTokens > 0 && !tournament.regFeeSettled) {
     await Promise.all(
       tournament.players.map((p: ITournamentPlayer) =>
-        creditTournamentReturn(p.user.toString(), tournament.id, tournament.regFeeTokens, "tournament_refund"),
+        creditTournamentReturn(p.user.toString(), tournament.id, tournament.regFeeTokens, "tournament_refund", "reg"),
       ),
     );
     tournament.regFeeSettled = true;
@@ -602,6 +611,7 @@ async function refundAllEscrow(tournament: ITournament): Promise<void> {
       tournament.id,
       tournament.prizePoolTokens,
       "tournament_refund",
+      "prize",
     );
     tournament.prizePoolSettled = true;
   }
@@ -625,29 +635,142 @@ export async function cancelTournament(
   return tournament;
 }
 
-/** Fully removes a pending tournament — distinct from cancelTournament,
- *  which leaves a 'cancelled' record around for history. Scoped to
- *  status === 'pending' only: once games exist (status 'active'), there's
- *  no clean way to unwind in-progress pairings, so the organizer's only
- *  option at that point is to let it play out (or cancel individual games
- *  isn't supported here either — a tournament that's started stays
- *  started). Refunds everything the same way cancelling would. */
-export async function deleteTournament(
+export interface UpdateTournamentInput {
+  name?: string;
+  format?: TournamentFormat;
+  variant?: "standard" | "chess960";
+  baseMinutes?: number | null;
+  incrementSeconds?: number;
+  maxPlayers?: number;
+  berserkAllowed?: boolean;
+  isPublic?: boolean;
+  prizeSchedule?: { fromRank: number; toRank: number; tokens: number }[];
+  regFeeTokens?: number;
+  swissRounds?: number | null;
+  breakSeconds?: number;
+  scheduledStartAt?: string | Date;
+  // undefined = leave the password as-is; null = remove it; a string = set/replace it.
+  password?: string | null;
+}
+
+/** Only available while the creator is still the sole player — the moment
+ *  anyone else joins, every field here becomes load-bearing for someone
+ *  else's expectations (they joined knowing the time control, the fee,
+ *  etc), so editing stops being safe and cancel-and-recreate is the only
+ *  path. Because of that restriction, the only money ever at stake here is
+ *  the creator's own — no other player's escrow needs touching. Every field
+ *  is optional and independently omittable; omitted fields keep their
+ *  current value. */
+export async function updateTournament(
   tournamentId: string,
   requesterId: string,
-): Promise<{ code: string }> {
+  input: UpdateTournamentInput,
+): Promise<ITournament> {
   const tournament = await Tournament.findById(tournamentId);
   if (!tournament) throw ApiError.notFound("Tournament not found");
   if (tournament.createdBy.toString() !== requesterId)
-    throw ApiError.forbidden("Only the organizer can delete this");
+    throw ApiError.forbidden("Only the organizer can edit this");
   if (tournament.status !== "pending")
-    throw ApiError.conflict("Only a tournament that hasn't started yet can be deleted");
+    throw ApiError.conflict("This tournament has already started");
+  if (tournament.players.length > 1)
+    throw ApiError.conflict("Can't edit a tournament once other players have joined");
 
-  clearPendingAutoStart(tournament.id);
-  await refundAllEscrow(tournament);
-  const code = tournament.code;
-  await Tournament.deleteOne({ _id: tournament.id });
-  return { code };
+  const format = input.format ?? tournament.format;
+  const bounds = FORMAT_BOUNDS[format];
+  if (!bounds) throw ApiError.badRequest("Unknown tournament format");
+
+  const name = input.name !== undefined ? input.name.trim() : tournament.name;
+  if (name.length < 3)
+    throw ApiError.badRequest("Give your tournament a name (at least 3 characters)");
+
+  const maxPlayers = input.maxPlayers ?? tournament.maxPlayers;
+  if (maxPlayers < bounds.min || maxPlayers > bounds.max) {
+    throw ApiError.badRequest(
+      `A ${format} tournament supports between ${bounds.min} and ${bounds.max} players`,
+    );
+  }
+
+  const baseMinutes = input.baseMinutes !== undefined ? input.baseMinutes : tournament.baseMinutes;
+  if (baseMinutes !== null && (baseMinutes < 1 || baseMinutes > 180)) {
+    throw ApiError.badRequest("Base time must be between 1 and 180 minutes (or unlimited)");
+  }
+  const incrementSeconds = input.incrementSeconds ?? tournament.incrementSeconds;
+  if (incrementSeconds < 0 || incrementSeconds > 60) {
+    throw ApiError.badRequest("Increment must be between 0 and 60 seconds");
+  }
+
+  const swissRounds = format === "swiss" ? (input.swissRounds ?? tournament.swissRounds) : null;
+  if (format === "swiss" && (!swissRounds || swissRounds < 3 || swissRounds > 15)) {
+    throw ApiError.badRequest("Choose between 3 and 15 rounds for a swiss tournament");
+  }
+
+  const regFeeTokens = input.regFeeTokens ?? tournament.regFeeTokens;
+  if (regFeeTokens < 0 || regFeeTokens > MAX_WAGER_TOKENS) {
+    throw ApiError.badRequest("Enter a valid registration fee");
+  }
+
+  const breakSeconds = input.breakSeconds ?? tournament.breakSeconds;
+  if (breakSeconds < 0 || breakSeconds > MAX_BREAK_SECONDS) {
+    throw ApiError.badRequest(`Break between rounds must be between 0 and ${MAX_BREAK_SECONDS} seconds`);
+  }
+
+  let scheduledStartAt = tournament.scheduledStartAt;
+  if (input.scheduledStartAt !== undefined) {
+    scheduledStartAt = new Date(input.scheduledStartAt);
+    const startDelay = scheduledStartAt.getTime() - Date.now();
+    if (Number.isNaN(scheduledStartAt.getTime()) || startDelay < MIN_START_DELAY_MS) {
+      throw ApiError.badRequest("Pick a start time at least a few seconds from now");
+    }
+    if (startDelay > MAX_START_DELAY_MS) {
+      throw ApiError.badRequest("That start time is too far in the future");
+    }
+  }
+
+  const { tiers: prizeSchedule, total: prizePoolTokens } = validatePrizeSchedule(
+    input.prizeSchedule ??
+      tournament.prizeSchedule.map((t) => ({ fromRank: t.fromRank, toRank: t.toRank, tokens: t.tokens })),
+    maxPlayers,
+  );
+
+  // The creator is the only player so far, so their own reg-fee contribution
+  // IS the whole pool — adjusting the fee just means adjusting what they
+  // personally already paid in.
+  const prizeDelta = prizePoolTokens - tournament.prizePoolTokens;
+  const regFeeDelta = regFeeTokens - tournament.regFeeTokens;
+  if (prizeDelta !== 0) {
+    await adjustTournamentEscrow(requesterId, tournament.id, prizeDelta, "tournament_prize_fund");
+  }
+  if (regFeeDelta !== 0) {
+    await adjustTournamentEscrow(requesterId, tournament.id, regFeeDelta, "tournament_reg_fee");
+    tournament.regFeePoolTokens = regFeeTokens;
+  }
+
+  if (input.password !== undefined) {
+    tournament.passwordHash = input.password?.trim()
+      ? await bcrypt.hash(input.password.trim(), PASSWORD_BCRYPT_ROUNDS)
+      : null;
+  }
+
+  tournament.name = name;
+  tournament.format = format;
+  tournament.variant = input.variant ?? tournament.variant;
+  tournament.baseMinutes = baseMinutes;
+  tournament.incrementSeconds = incrementSeconds;
+  tournament.maxPlayers = maxPlayers;
+  tournament.minPlayers = bounds.min;
+  tournament.berserkAllowed = input.berserkAllowed ?? tournament.berserkAllowed;
+  tournament.isPublic = input.isPublic ?? tournament.isPublic;
+  tournament.prizeSchedule = prizeSchedule;
+  tournament.prizePoolTokens = prizePoolTokens;
+  tournament.regFeeTokens = regFeeTokens;
+  tournament.swissRounds = swissRounds;
+  tournament.breakSeconds = breakSeconds;
+  tournament.scheduledStartAt = scheduledStartAt;
+
+  await tournament.save();
+  if (input.scheduledStartAt !== undefined) scheduleAutoStart(tournament);
+  broadcastUpdate(tournament);
+  return tournament;
 }
 
 // --- Pairing engines -----------------------------------------------------------

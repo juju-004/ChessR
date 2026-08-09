@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { Swords, Eye, UserPlus, Check, Pencil, Scale } from 'lucide-react';
 import { getProfile, getUserGames, type UserProfile, type UserGameHistoryItem } from '../api/users.js';
 import { sendFriendRequest } from '../api/friends.js';
+import { updateAuthUser } from '../api/authStore.js';
 import { ApiRequestError } from '../api/http.js';
 import { formatTimeControl } from '../timeControls.js';
 import { Page, Card, Avatar, Button, Badge, Spinner } from '../components/ui/index.js';
@@ -283,9 +284,16 @@ export function Profile() {
           username={profile.username}
           currentGradient={profile.avatarGradient}
           currentBio={profile.bio}
-          onSaved={(patch) =>
-            setProfile((prev) => (prev ? { ...prev, ...patch } : prev))
-          }
+          onSaved={(patch) => {
+            setProfile((prev) => (prev ? { ...prev, ...patch } : prev));
+            // The navbar (and anywhere else) reads the avatar from the auth
+            // store, not this page's local profile state — push it there
+            // too so a changed avatar shows up immediately, not just after
+            // the next login/token refresh.
+            if (profile.isSelf && patch.avatarGradient !== undefined) {
+              updateAuthUser({ avatarGradient: patch.avatarGradient });
+            }
+          }}
         />
       )}
     </Page>

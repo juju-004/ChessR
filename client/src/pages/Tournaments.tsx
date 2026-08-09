@@ -8,6 +8,7 @@ import {
   FORMAT_DESCRIPTION,
   formatTimeControl,
   totalPrizePool,
+  tokensLabel,
   type Tournament,
   type TournamentFormat,
   type TournamentPrizeTier,
@@ -139,14 +140,12 @@ export function Tournaments() {
     socket.on("tournament:update", refresh);
     socket.on("tournament:started", refresh);
     socket.on("tournament:cancelled", refresh);
-    socket.on("tournament:deleted", refresh);
     socket.on("tournament:error", onError);
     return () => {
       socket.off("tournament:created", onCreated);
       socket.off("tournament:update", refresh);
       socket.off("tournament:started", refresh);
       socket.off("tournament:cancelled", refresh);
-      socket.off("tournament:deleted", refresh);
       socket.off("tournament:error", onError);
     };
   }, [socket, refresh]);
@@ -440,7 +439,7 @@ export function Tournaments() {
                       onChange={(e) => updatePrizeTier(i, { tokens: Number(e.target.value) })}
                     />
                   </div>
-                  <span className="text-xs text-base-content/50">R each</span>
+                  <span className="text-xs text-base-content/50">{tokensLabel(tier)}</span>
                   <button
                     onClick={() => removePrizeTier(i)}
                     aria-label="Remove prize tier"

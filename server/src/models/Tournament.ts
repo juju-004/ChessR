@@ -32,6 +32,12 @@ export interface ITournamentPrizeTier {
 export interface ITournamentPlayer {
   user: Types.ObjectId;
   username: string;
+  // Snapshotted from the User doc at join time (same denormalization as
+  // username above) — good enough for a tournament roster, and avoids a
+  // populate on every tournament fetch just to render avatars. Doesn't
+  // update retroactively if the player changes their avatar mid-tournament,
+  // same tradeoff username already makes with a username change.
+  avatarGradient: string | null;
   joinedAt: Date;
   // Points accumulate for swiss/robin/round_robin (1 / 0.5 / 0, +0.5 bonus for
   // a berserked win). A bye is worth 0 points (see tournament.service.ts's
@@ -189,6 +195,7 @@ const playerSchema = new Schema<ITournamentPlayer>(
   {
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     username: { type: String, required: true },
+    avatarGradient: { type: String, default: null },
     joinedAt: { type: Date, default: () => new Date() },
     points: { type: Number, default: 0 },
     tiebreak: { type: Number, default: 0 },

@@ -79,7 +79,7 @@ export const signup = asyncHandler(async (req, res) => {
 
   res.status(201).json({
     accessToken,
-    user: { id: user.id, username: user.username, email: user.email },
+    user: { id: user.id, username: user.username, email: user.email, avatarGradient: user.avatarGradient ?? null },
   });
 });
 
@@ -103,7 +103,7 @@ export const signin = asyncHandler(async (req, res) => {
 
   res.json({
     accessToken,
-    user: { id: user.id, username: user.username, email: user.email },
+    user: { id: user.id, username: user.username, email: user.email, avatarGradient: user.avatarGradient ?? null },
   });
 });
 
@@ -133,7 +133,7 @@ export const refresh = asyncHandler(async (req, res) => {
 
   res.json({
     accessToken,
-    user: { id: user.id, username: user.username, email: user.email },
+    user: { id: user.id, username: user.username, email: user.email, avatarGradient: user.avatarGradient ?? null },
   });
 });
 
@@ -149,6 +149,7 @@ export const me = asyncHandler(async (req: AuthedRequest, res) => {
     id: user.id,
     username: user.username,
     email: user.email,
+    avatarGradient: user.avatarGradient ?? null,
     tokenBalance: user.tokenBalance,
     friendCount: user.friends.length,
   });

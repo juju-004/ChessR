@@ -23,6 +23,14 @@ function getCtx(): AudioContext {
   return ctx;
 }
 
+function ensureAudioContext(): AudioContext {
+  const audioCtx = getCtx();
+  // Browsers suspend AudioContext until a user gesture; every sound call is
+  // triggered by one (a drag, a click), so resuming here is safe and cheap.
+  if (audioCtx.state === 'suspended') void audioCtx.resume();
+  return audioCtx;
+}
+
 interface Tone {
   freq: number;
   startOffset: number; // seconds from the sound's start
@@ -33,10 +41,7 @@ interface Tone {
 
 function playTones(tones: Tone[]) {
   if (!soundEnabled) return;
-  const audioCtx = getCtx();
-  // Browsers suspend AudioContext until a user gesture; every sound call is
-  // triggered by one (a drag, a click), so resuming here is safe and cheap.
-  if (audioCtx.state === 'suspended') void audioCtx.resume();
+  const audioCtx = ensureAudioContext();
 
   const now = audioCtx.currentTime;
   for (const tone of tones) {
@@ -56,6 +61,40 @@ function playTones(tones: Tone[]) {
     osc.start(start);
     osc.stop(start + tone.duration + 0.02);
   }
+}
+
+/** A short burst of filtered white noise — the "clash"/transient sizzle a
+ *  pure oscillator can't produce on its own. Only used by playBerserkSound
+ *  today; kept generic (not folded into playTones' Tone shape) since it's a
+ *  genuinely different signal chain (buffer source + filter, not an
+ *  oscillator) rather than just another tone variant. */
+function playNoiseBurst(startOffset: number, duration: number, gain: number, highpassFreq: number) {
+  if (!soundEnabled) return;
+  const audioCtx = ensureAudioContext();
+  const start = audioCtx.currentTime + startOffset;
+
+  const bufferSize = Math.max(1, Math.ceil(audioCtx.sampleRate * duration));
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+
+  const source = audioCtx.createBufferSource();
+  source.buffer = buffer;
+
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'highpass';
+  filter.frequency.value = highpassFreq;
+
+  const gainNode = audioCtx.createGain();
+  gainNode.gain.setValueAtTime(0, start);
+  gainNode.gain.linearRampToValueAtTime(gain, start + 0.004);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+  source.connect(filter);
+  filter.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+  source.start(start);
+  source.stop(start + duration + 0.02);
 }
 
 /** A soft, short two-note "pluck" for a normal move. */
@@ -93,16 +132,21 @@ export function playGameStartSound() {
   ]);
 }
 
-/** A short, aggressive "battle cry" — a low percussive hit followed
- *  immediately by a rising sawtooth screech, deliberately harsher and
- *  louder than every other cue in this file. Berserking is a loud, once-
- *  per-game declaration ("I'm going for it"), so it should sound like one —
- *  nothing else here uses a rising pitch or this much gain. */
+/** A short battle-horn "clash" — a bright noise transient (the sound a pure
+ *  oscillator can't make on its own) layered under a low percussive thud
+ *  and two descending sawtooth horn stabs, with a faint high "ring-out" as
+ *  it settles. Aiming for the same kind of punchy, instantly-recognizable
+ *  alarm Lichess's berserk cue goes for, while staying built entirely from
+ *  this file's own oscillator/noise toolkit rather than borrowing anything.
+ *  Deliberately the loudest, busiest sound here — berserking is a loud,
+ *  once-per-game declaration, so it should cut through everything else. */
 export function playBerserkSound() {
+  playNoiseBurst(0, 0.05, 0.18, 1500);
   playTones([
-    { freq: 130, startOffset: 0, duration: 0.1, type: 'square', gain: 0.22 },
-    { freq: 220, startOffset: 0.02, duration: 0.14, type: 'sawtooth', gain: 0.2 },
-    { freq: 880, startOffset: 0.05, duration: 0.18, type: 'sawtooth', gain: 0.2 },
+    { freq: 90, startOffset: 0, duration: 0.18, type: 'square', gain: 0.22 },
+    { freq: 659, startOffset: 0.01, duration: 0.1, type: 'sawtooth', gain: 0.2 },
+    { freq: 494, startOffset: 0.1, duration: 0.16, type: 'sawtooth', gain: 0.2 },
+    { freq: 1318, startOffset: 0.15, duration: 0.14, type: 'sawtooth', gain: 0.07 },
   ]);
 }
 

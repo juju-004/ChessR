@@ -87,7 +87,9 @@ interface GameMeta {
   legIndex?: number | null;
   /** Populated with just the join code by getGameByCode — enough for a
    *  "Back to tournament" link without pulling the whole Tournament doc. */
-  tournamentId?: { _id: string; code: string } | null;
+  /** Populated with the join code (for the "Back to tournament" link) and
+   *  name (shown on the in-game badge) by getGameByCode. */
+  tournamentId?: { _id: string; code: string; name: string } | null;
 }
 
 interface MoveLogEntry {
@@ -1277,7 +1279,7 @@ export function Game() {
       badges.push(
         <Link key="tourney" to={`/tournaments/${gameMeta.tournamentId.code}`}>
           <Badge variant="glass" className="hover:brightness-110">
-            Tournament game
+            {gameMeta.tournamentId.name}
           </Badge>
         </Link>,
       );
