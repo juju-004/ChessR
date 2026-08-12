@@ -163,44 +163,15 @@ body {
   color: transparent;
 }
 
-/* Elevated surface — the shared look for Card/Modal/Popover/glass Button
-   variants etc. This used to be a translucent, blurred "liquid glass"
-   panel (backdrop-filter: blur+saturate), then a plain opaque panel with
-   a soft box-shadow. box-shadow turned out to have its own cost: any
-   blurred shadow forces the browser to rasterize a separate shadow layer
-   and keep recompositing it, and on low-end devices that's exactly what
-   was causing the laggy scroll/UI — the same class of problem as
-   backdrop-filter, just from a different property. This version drops
-   box-shadow entirely and fakes the same "distinct floating panel" read
-   with things that are cheap to paint:
-     - a real hairline border (already doing real elevation work, not
-       decorative)
-     - a background color that's a deliberate shade off the page
-       background (--surface-bg / --surface-bg-strong vs --color-base-100),
-       so the panel reads as "raised" from contrast alone
-     - a top-to-bottom gradient "sheen" baked into background-image
-       instead of an inset box-shadow — it's just part of the normal
-       background paint, computed once, no separate shadow layer to
-       recomposite on scroll.
-   Class names are kept as `.glass`/`.glass-strong` so every existing
-   usage across the app picks up the new look automatically. */
-.glass {
-  background-color: var(--surface-bg);
-  background-image: linear-gradient(
-    -50deg,
-    var(--surface-highlight) 0%,
-    transparent 42%
-  );
-  border: 0px solid var(--surface-border);
+.elevated {
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
-.glass-strong {
-  background-color: var(--surface-bg-strong);
-  background-image: linear-gradient(
-    180deg,
-    var(--surface-highlight) 0%,
-    transparent 52%
-  );
-  border: 0px solid var(--surface-border-strong);
+.elevated-strong {
+  border: 1px solid var(--surface-border-strong);
+}
+.elevated > * {
+  position: relative;
+  z-index: 2;
 }
 
 @import "@lichess-org/chessground/assets/chessground.base.css";
@@ -231,6 +202,15 @@ body {
 .cg-wrap * {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+}
+
+/* File coordinates (a-h) should read as lowercase, matching standard chess
+   notation — algebraic squares are always written "e4", never "E4". Forced
+   explicitly rather than relying on whatever case chessground happens to
+   render its labels in, since that can vary by version/theme and isn't
+   worth depending on. Rank numbers are unaffected either way. */
+.cg-wrap coords coord {
+  text-transform: lowercase;
 }
 
 /* Board themes — real square colors, not a color-shifted copy of the brown

@@ -76,7 +76,7 @@ export function Page({
                 whileTap={{ scale: 0.9 }}
                 whileHover={{ scale: 1.05 }}
                 transition={springSnappy}
-                className="glass mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-base-content/70 hover:text-base-content"
+                className="elevated mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-base-content/70 hover:text-base-content"
               >
                 <ArrowLeft className="h-4 w-4" />
               </motion.button>

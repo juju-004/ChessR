@@ -4,6 +4,7 @@ import {
   Route,
   Navigate,
   useParams,
+  useLocation,
 } from "react-router-dom";
 import { Suspense, lazy, useEffect, useState } from "react";
 import { AuthProvider } from "./contexts/AuthContext.js";
@@ -17,6 +18,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { Navbar } from "./components/Navbar.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { ProtectedRoute } from "./components/ProtectedRoute.js";
+import { AdminProtectedRoute } from "./components/AdminProtectedRoute.js";
 import { PageLoader } from "./components/PageLoader.js";
 import { tryRestoreSession } from "./api/auth.js";
 
@@ -89,6 +91,22 @@ const WalletLayout = lazy(() =>
     default: m.WalletLayout,
   })),
 );
+// Admin console — a fully separate, unauthenticated-by-default surface
+// (see AdminProtectedRoute) that never shares a bundle chunk with the
+// player app until someone actually navigates to /admin/*.
+const AdminLogin = lazy(() =>
+  import("./pages/AdminLogin.js").then((m) => ({ default: m.AdminLogin })),
+);
+const AdminDashboard = lazy(() =>
+  import("./pages/AdminDashboard.js").then((m) => ({
+    default: m.AdminDashboard,
+  })),
+);
+const AdminReportDetail = lazy(() =>
+  import("./pages/AdminReportDetail.js").then((m) => ({
+    default: m.AdminReportDetail,
+  })),
+);
 
 // Rematching (or navigating directly between two different game codes) keeps
 // the same route element mounted — without a key tied to the code, stale
@@ -119,20 +137,42 @@ function TournamentDetailRoute() {
   return <TournamentDetail key={code} />;
 }
 
-function AppShell() {
-  const [bootstrapped, setBootstrapped] = useState(false);
+function AppBody() {
+  const location = useLocation();
+  const isAdminRoute = location.pathname.startsWith("/admin");
 
-  // Attempt to restore a session from the httpOnly refresh cookie once, on load.
-  useEffect(() => {
-    tryRestoreSession().finally(() => setBootstrapped(true));
-  }, []);
-
-  if (!bootstrapped) {
-    return <div className="p-6 text-base-content/60">Loading…</div>;
+  // The admin console renders on its own, without the player Navbar/
+  // Sidebar chrome — it's not a player surface, and shouldn't ever look
+  // like one at a glance (see AdminProtectedRoute + adminAuthStore for the
+  // rest of that separation).
+  if (isAdminRoute) {
+    return (
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route path="/admin/login" element={<AdminLogin />} />
+          <Route
+            path="/admin"
+            element={
+              <AdminProtectedRoute>
+                <AdminDashboard />
+              </AdminProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/reports/:id"
+            element={
+              <AdminProtectedRoute>
+                <AdminReportDetail />
+              </AdminProtectedRoute>
+            }
+          />
+        </Routes>
+      </Suspense>
+    );
   }
 
   return (
-    <BrowserRouter>
+    <>
       <Navbar />
       <GlobalListeners />
       <div className="flex items-start gap-4 md:px-2">
@@ -249,6 +289,25 @@ function AppShell() {
           </Suspense>
         </main>
       </div>
+    </>
+  );
+}
+
+function AppShell() {
+  const [bootstrapped, setBootstrapped] = useState(false);
+
+  // Attempt to restore a session from the httpOnly refresh cookie once, on load.
+  useEffect(() => {
+    tryRestoreSession().finally(() => setBootstrapped(true));
+  }, []);
+
+  if (!bootstrapped) {
+    return <div className="p-6 text-base-content/60">Loading…</div>;
+  }
+
+  return (
+    <BrowserRouter>
+      <AppBody />
     </BrowserRouter>
   );
 }

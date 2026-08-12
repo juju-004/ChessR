@@ -22,7 +22,7 @@ const HIDDEN_STYLE: CSSProperties = { position: "fixed", top: 0, left: 0, visibi
 
 /**
  * The shared floating-panel primitive behind Dropdown (and anything else
- * that needs a "click to reveal a glass panel anchored to a trigger"
+ * that needs a "click to reveal a elevated panel anchored to a trigger"
  * pattern). Closes on outside click or Escape. Entrance/exit is opacity +
  * scale only (see @/lib/motion.ts) with `transformOrigin` set to the
  * corner it's anchored from, so it visibly "grows out of" the trigger
@@ -162,7 +162,7 @@ export const Popover = memo(function Popover({
     ...style,
     transformOrigin: `${side === "bottom" ? "top" : "bottom"} ${align === "start" ? "left" : align === "end" ? "right" : "center"}`,
   };
-  const panelClassName = cn("glass-strong z-50 min-w-40 rounded-xl p-1.5", className);
+  const panelClassName = cn("elevated-strong z-50 min-w-40 rounded-xl p-1.5", className);
 
   return (
     <div ref={containerRef} className="relative inline-block">

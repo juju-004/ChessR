@@ -63,7 +63,7 @@ export function MyGamesMenu({ className }: MyGamesMenuProps) {
         <motion.button
           aria-label="Your active games"
           aria-expanded={open}
-          className="glass flex h-9 w-9 items-center justify-center rounded-full text-base-content/80 hover:text-base-content"
+          className="elevated flex h-9 w-9 items-center justify-center rounded-full text-base-content/80 hover:text-base-content"
           {...pressable}
         >
           <Gamepad2 className="h-4 w-4" />

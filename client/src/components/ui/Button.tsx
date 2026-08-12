@@ -33,7 +33,7 @@ const VARIANT_CLASSES: Record<ButtonVariant, string> = {
     "bg-(--secondary) text-white shadow-md shadow-(--secondary)/25 hover:brightness-110",
   gradient:
     "gradient-brand text-white shadow-lg shadow-(--primary)/25 hover:brightness-110",
-  glass: "glass text-base-content hover:bg-base-content/5",
+  glass: "elevated text-base-content hover:bg-base-content/5",
   outline:
     "border border-(--primary) text-(--primary) bg-transparent hover:bg-(--primary)/10",
   ghost:

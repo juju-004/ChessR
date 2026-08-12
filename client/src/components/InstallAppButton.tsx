@@ -40,7 +40,7 @@ export function InstallAppButton({ compact = false }: { compact?: boolean }) {
         onClick={handleClick}
         className={
           compact
-            ? "glass h-9 rounded-full px-3.5 text-sm font-semibold text-base-content transition-colors hover:bg-base-content/5"
+            ? "elevated h-9 rounded-full px-3.5 text-sm font-semibold text-base-content transition-colors hover:bg-base-content/5"
             : "rounded-md bg-amber-700 px-4 py-2 font-semibold text-neutral-950 hover:bg-amber-600"
         }
       >

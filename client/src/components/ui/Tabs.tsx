@@ -28,7 +28,7 @@ export interface TabsProps {
  */
 export const Tabs = memo(function Tabs({ items, value, onChange, className, layoutId = "tabs-indicator" }: TabsProps) {
   return (
-    <div className={cn("glass inline-flex gap-1 rounded-xl p-1", className)}>
+    <div className={cn("elevated inline-flex gap-1 rounded-xl p-1", className)}>
       {items.map((item) => {
         const active = item.value === value;
         return (

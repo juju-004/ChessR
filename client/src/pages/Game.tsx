@@ -8,7 +8,6 @@ import {
   type ReactNode,
 } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
 import { Chess } from "chess.js";
 import { getGameByCode, joinGame, cancelGame } from "../api/games.js";
 import { ApiRequestError } from "../api/http.js";
@@ -23,32 +22,36 @@ import {
   Handshake,
   Ban,
   Pause,
-  Play,
   MessageSquare,
   Share2,
   ChevronLeft,
   ChevronRight,
   RefreshCw,
   FlipVertical2,
-  MoreHorizontal,
   Trophy,
 } from "lucide-react";
-import { ChessBoard } from "../components/ChessBoard.js";
 import { MoveList, MoveStrip } from "../components/MoveLog.js";
-import { DisconnectBanner } from "../components/DisconnectBanner.js";
-import { PromotionPicker } from "../components/PromotionPicker.js";
 import { PlayerPanelRow, panelMaterial } from "../components/PlayerPanels.js";
 import { GameOverModal } from "../components/GameOverModal.js";
 import { CageMatchScoreboard } from "../components/CageMatchScoreboard.js";
+import { Card, Badge, Spinner, Button } from "../components/ui/index.js";
 import {
-  Card,
-  Button,
-  Badge,
-  Spinner,
-  Tooltip,
-  Dropdown,
-} from "../components/ui/index.js";
-import { springSnappy } from "../lib/motion.js";
+  type GameMeta,
+  type MoveLogEntry,
+  type Role,
+  isLiveStatus,
+  playSoundForMove,
+  describeResult,
+} from "../components/game/types.js";
+import { useHoldRepeat } from "../components/game/useHoldRepeat.js";
+import { GameNotificationsOverlay } from "../components/game/GameNotificationsOverlay.js";
+import { GameChatPanel } from "../components/game/GameChatPanel.js";
+import {
+  GameActionBarDesktop,
+  GameActionBarMobile,
+} from "../components/game/GameActionBar.js";
+import { GameBoardArea } from "../components/game/GameBoardArea.js";
+import { GameDetailsCard } from "../components/game/GameDetailsCard.js";
 import {
   computeDests,
   needsPromotion,
@@ -62,9 +65,6 @@ import {
 } from "../chessUtils.js";
 import { refreshBalance } from "../api/walletStore.js";
 import {
-  playMoveSound,
-  playCaptureSound,
-  playCheckSound,
   playGameStartSound,
   playGameOverSound,
   playLowTimeSound,
@@ -72,110 +72,6 @@ import {
   setSoundEnabled,
 } from "../sounds.js";
 import { copyToClipboard } from "@/lib/utils.js";
-
-interface GameMeta {
-  _id: string;
-  joinCode: string;
-  variant: "standard" | "chess960";
-  initialFen: string;
-  white: { _id: string; username: string; avatarGradient?: any } | null;
-  black: { _id: string; username: string; avatarGradient?: any } | null;
-  status: "waiting" | "active" | "finished" | "aborted";
-  timeControl: { baseSeconds: number | null; incrementSeconds: number };
-  wagerTokens?: number;
-  cageMatchId?: string | null;
-  legIndex?: number | null;
-  /** Populated with just the join code by getGameByCode — enough for a
-   *  "Back to tournament" link without pulling the whole Tournament doc. */
-  /** Populated with the join code (for the "Back to tournament" link) and
-   *  name (shown on the in-game badge) by getGameByCode. */
-  tournamentId?: { _id: string; code: string; name: string } | null;
-}
-
-interface MoveLogEntry {
-  moveNumber: number;
-  san: string;
-  from: string;
-  to: string;
-}
-
-type Role = "white" | "black" | "spectator";
-
-/** A game is only ever "live" — i.e. worth opening a socket room for —
- *  while it's waiting for an opponent or actually being played. Once it's
- *  finished or aborted there's nothing left to sync in real time, so
- *  those two statuses are the "stale" side of the fixed /game/:code URL:
- *  same page, same layout, just filled in from the one-shot REST payload
- *  instead of a socket connection. See the fetch effect below. */
-function isLiveStatus(status: GameMeta["status"]) {
-  return status === "waiting" || status === "active";
-}
-
-/** Picks the same check/capture/plain-move sound for a SAN string
- *  regardless of where the move came from — a live game:move event or
- *  just walking the move list during replay. Shared so the two call
- *  sites can't quietly drift apart. */
-function playSoundForMove(san: string | undefined) {
-  if (!san) return;
-  if (san.includes("+") || san.includes("#")) playCheckSound();
-  else if (san.includes("x")) playCaptureSound();
-  else playMoveSound();
-}
-
-/** Press-and-hold auto-repeat for the prev/next move buttons — a single
- *  tap fires `callback` once via onClick as normal; holding past an
- *  initial pause starts firing it again on a timer that shortens each
- *  rep (380ms → floor of 60ms), i.e. it accelerates the longer it's held,
- *  the same feel as a held arrow key. A ref carries the latest `callback`
- *  into the running timer so it keeps calling the freshest version even
- *  though `callback` (handlePrevMove/handleNextMove) closes over state
- *  that changes on every single rep. */
-function useHoldRepeat(callback: () => void) {
-  const callbackRef = useRef(callback);
-  callbackRef.current = callback;
-  const timeoutRef = useRef<number | null>(null);
-  const heldRef = useRef(false);
-
-  const stop = useCallback(() => {
-    if (timeoutRef.current !== null) {
-      window.clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-  }, []);
-
-  const start = useCallback(() => {
-    heldRef.current = false;
-    let delay = 380;
-    const tick = () => {
-      heldRef.current = true;
-      callbackRef.current();
-      delay = Math.max(60, delay * 0.78);
-      timeoutRef.current = window.setTimeout(tick, delay);
-    };
-    timeoutRef.current = window.setTimeout(tick, delay);
-  }, []);
-
-  useEffect(() => stop, [stop]);
-
-  return {
-    onPointerDown: start,
-    onPointerUp: stop,
-    onPointerLeave: stop,
-    onPointerCancel: stop,
-    onClick: () => {
-      // A plain tap/click fires this before the 380ms repeat threshold, so
-      // heldRef is still false — handle it as a single, normal move. If we
-      // *did* end up repeating, the button's already been driven forward
-      // by the timer, so the click that follows release would otherwise
-      // double up as one extra, unwanted step.
-      if (heldRef.current) {
-        heldRef.current = false;
-        return;
-      }
-      callbackRef.current();
-    },
-  };
-}
 
 export function Game() {
   const { code = "" } = useParams<{ code: string }>();
@@ -396,15 +292,6 @@ export function Game() {
   // --- Live clocks + material diff, computed once and handed down to
   // whichever panel presentation (row on desktop, flank on mobile) is
   // actually rendered, so there's exactly one ticking source of truth. ---
-  // NOTE: this whole block — through opponentPanelData below — deliberately
-  // lives up here with the other unconditional hooks (dests/premoveDests/
-  // historyFens above) rather than down near where it's actually rendered.
-  // It contains useMemo calls, and there are three early `return`s for
-  // loadError/mode==="loading"/mode==="need-join" between here and there —
-  // hooks placed after those fire a different number of times depending on
-  // which branch a given render takes, which is exactly the
-  // "Rendered more hooks than during the previous render" crash. Same
-  // reasoning as the comment on dests/premoveDests above.
   const sideToMove = turnColor(chess);
   const clockKnown = whiteRemainingMs !== null && blackRemainingMs !== null;
   // Memoized on `fen` alone: computeMaterialDiff/panelMaterial build fresh
@@ -426,7 +313,10 @@ export function Game() {
   // Only the side whose first move is still pending actually gets a
   // non-null value passed down to their panel; see below.
   const firstMoveGraceMs = useMemo(
-    () => computeFirstMoveThresholdMs(!!gameMeta?.cageMatchId || !!gameMeta?.tournamentId),
+    () =>
+      computeFirstMoveThresholdMs(
+        !!gameMeta?.cageMatchId || !!gameMeta?.tournamentId,
+      ),
     [gameMeta?.cageMatchId, gameMeta?.tournamentId],
   );
   // Whose first move is currently the one on the clock: white's, until
@@ -460,8 +350,12 @@ export function Game() {
       isTicking: clockRunning && sideToMove === "white",
       clockKnown,
       lowTimeThresholdMs,
-      firstMoveGraceMs: firstMovePendingSide === "white" ? firstMoveGraceMs : null,
+      firstMoveGraceMs:
+        firstMovePendingSide === "white" ? firstMoveGraceMs : null,
       berserked: whiteBerserk,
+      profileHref: gameMeta?.white
+        ? `/profile/${gameMeta.white.username}`
+        : null,
       ...whiteMaterial,
     }),
     [
@@ -492,8 +386,12 @@ export function Game() {
       isTicking: clockRunning && sideToMove === "black",
       clockKnown,
       lowTimeThresholdMs,
-      firstMoveGraceMs: firstMovePendingSide === "black" ? firstMoveGraceMs : null,
+      firstMoveGraceMs:
+        firstMovePendingSide === "black" ? firstMoveGraceMs : null,
       berserked: blackBerserk,
+      profileHref: gameMeta?.black
+        ? `/profile/${gameMeta.black.username}`
+        : null,
       ...blackMaterial,
     }),
     [
@@ -1316,58 +1214,6 @@ export function Game() {
       />
     );
 
-  const chatBody = (
-    <>
-      <div className="mb-2 min-h-0 flex-1 space-y-1 overflow-y-auto rounded-xl bg-base-100/60 p-2.5 text-sm">
-        {chatMessages.length === 0 && (
-          <p className="text-base-content/50">No messages yet.</p>
-        )}
-        {chatMessages.map((m, i) => (
-          <p key={i}>
-            <span className="font-semibold text-(--primary)">
-              {m.username}:
-            </span>{" "}
-            <span className="text-base-content">{m.message}</span>
-          </p>
-        ))}
-      </div>
-      <form onSubmit={handleSendChat} className="flex shrink-0 gap-2">
-        <input
-          type="text"
-          value={chatInput}
-          onChange={(e) => setChatInput(e.target.value)}
-          maxLength={300}
-          placeholder="Say something…"
-          className="h-10 flex-1 rounded-lg border border-base-300 bg-base-200 px-3 text-sm text-base-content focus:outline-none focus:ring-2 focus:ring-(--primary)"
-        />
-        <Button type="submit" size="md">
-          Send
-        </Button>
-      </form>
-    </>
-  );
-
-  const chatHeader = (
-    <>
-      <div className="mb-2 flex shrink-0 items-center justify-between">
-        <h2 className="flex items-center gap-1.5 text-base font-semibold text-base-content">
-          <MessageSquare className="h-4 w-4" /> Spectator chat
-        </h2>
-        <button
-          onClick={() => setChatSheetOpen(false)}
-          aria-label="Close"
-          className="text-base-content/50 hover:text-base-content/80"
-        >
-          ✕
-        </button>
-      </div>
-      <p className="mb-2 shrink-0 text-xs text-base-content/50">
-        Only visible to spectators, not the players. Not saved — refreshing
-        clears it.
-      </p>
-    </>
-  );
-
   // Resign/draw/abort — the trio of "give up on the game" actions. Abort is
   // only for normal games during the idle phase (before either side has
   // moved), mirroring the lichess-style abort window — cage match legs get
@@ -1442,6 +1288,14 @@ export function Game() {
       disabled: viewPly === null,
       mobilePrimary: true,
     },
+    {
+      label: "Share game link",
+      icon: Share2,
+      id: "share",
+      onClick: handleShareGame,
+      danger: false,
+      mobilePrimary: true,
+    },
     ...(canBerserk
       ? [
           {
@@ -1501,7 +1355,8 @@ export function Game() {
           {
             label: "Back to tournament",
             icon: Trophy,
-            onClick: () => navigate(`/tournaments/${gameMeta.tournamentId!.code}`),
+            onClick: () =>
+              navigate(`/tournaments/${gameMeta.tournamentId!.code}`),
             danger: false,
           },
         ]
@@ -1528,12 +1383,7 @@ export function Game() {
         ]
       : []),
   ];
-  const shareItem = {
-    label: "Share game link",
-    icon: Share2,
-    onClick: handleShareGame,
-    danger: false,
-  };
+
   // Mobile pill: Flip board, Share, Prev/Next move, and Spectator chat (when
   // present) stay always visible — they're the ones reached for constantly
   // mid-game. Everything else (resign/draw/abort/pause/forfeit/rematch)
@@ -1542,92 +1392,23 @@ export function Game() {
   // actionItems list as-is in the right panel.
   const mobilePrimaryItems = [
     ...actionItems.filter((item) => item.mobilePrimary),
-    shareItem,
   ];
   const mobileOverflowItems = actionItems.filter((item) => !item.mobilePrimary);
 
   return (
     <div className="relative mx-auto min-h-[calc(100dvh-7rem)] flex max-w-6xl flex-col justify-center gap-2 pb-20 md:gap-3 md:pb-2">
-      {/* Notification overlay stack — leg-paused notice, waiting-for-
-       *  opponent, move errors, the paused-leg resume card, and the
-       *  opponent-disconnect banner. All absolute + centered over the page
-       *  instead of sitting inline above the board, so any one of them
-       *  popping in or out mid-game never shifts the board or panels
-       *  beneath it. Stacked in one flex column (rather than each doing
-       *  its own absolute math like the old disconnect-only version) so
-       *  multiple notifications showing at once — say a move error right
-       *  as the opponent disconnects — line up instead of overlapping.
-       *  The wrapper is pointer-events-none so empty space over the board
-       *  stays clickable/draggable; each banner opts back into
-       *  pointer-events-auto for its own buttons. */}
-      <div className="pointer-events-none absolute inset-x-0 top-2 z-30 mx-auto flex w-[min(92vw,26rem)] flex-col items-stretch gap-2">
-        <AnimatePresence>
-          {pausedLeg && !gameOver && (
-            <motion.div
-              key="paused-banner"
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={springSnappy}
-              className="pointer-events-auto flex items-center justify-center gap-1.5 rounded-xl border border-amber-500/30 bg-base-200 p-2.5 text-center text-sm text-amber-500 shadow-lg"
-            >
-              <Pause className="h-4 w-4" /> This game is paused
-              {isPlayer ? "" : " by the players"}.
-            </motion.div>
-          )}
-
-          {moveError && (
-            <motion.p
-              key="move-error"
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={springSnappy}
-              className="pointer-events-auto rounded-xl bg-base-100 px-3 py-2 text-center text-sm text-red-400 shadow-lg"
-            >
-              {moveError}
-            </motion.p>
-          )}
-
-          {isPlayer && gameMeta?.cageMatchId && pausedLeg && (
-            <motion.div
-              key="paused-card"
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={springSnappy}
-              className="pointer-events-auto"
-            >
-              <Card
-                variant="strong"
-                className="border-amber-500/30 text-sm text-amber-500 shadow-xl"
-              >
-                <p className="mb-2 flex items-center gap-1.5 font-semibold">
-                  <Pause className="h-4 w-4" /> This game is paused.
-                </p>
-                <Button
-                  size="sm"
-                  disabled={resumeRequestSent}
-                  onClick={handleResumeRequest}
-                  className="bg-amber-700 text-white shadow-none hover:bg-amber-600 hover:brightness-100"
-                >
-                  <Play className="h-4 w-4" />
-                  {resumeRequestSent
-                    ? "Resume request sent…"
-                    : "Request resume"}
-                </Button>
-              </Card>
-            </motion.div>
-          )}
-
-          {disconnectExpiresAt !== null && !isIdlePhase && (
-            <DisconnectBanner
-              expiresAt={disconnectExpiresAt}
-              onClaim={handleClaim}
-            />
-          )}
-        </AnimatePresence>
-      </div>
+      <GameNotificationsOverlay
+        pausedLeg={pausedLeg}
+        gameOver={!!gameOver}
+        isPlayer={isPlayer}
+        moveError={moveError}
+        isCageMatch={!!gameMeta?.cageMatchId}
+        resumeRequestSent={resumeRequestSent}
+        onResumeRequest={handleResumeRequest}
+        disconnectExpiresAt={disconnectExpiresAt}
+        isIdlePhase={isIdlePhase}
+        onClaim={handleClaim}
+      />
 
       {/* Main layout — a plain top-to-bottom stack on phone (details, board,
        *  panels flanking it top/bottom), becoming a CSS grid from md up
@@ -1642,105 +1423,44 @@ export function Game() {
          *  Left column on desktop; a full-width strip above the board/panel
          *  row on tablet and phone. */}
         <div className="game-area-leftinfo sm:px-0 px-5 flex shrink-0 flex-col justify-center gap-3 lg:h-full lg:min-h-0">
-          <Card variant="solid">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                {badges.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    {badges}
-                  </div>
-                )}
-              </div>
-              <span className="flex items-center gap-1.5 text-xs font-medium text-base-content/60">
-                {!gameOver && (
-                  <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                )}
-                {gameOver
-                  ? `Game over — ${describeResult(gameOver.result)} (${gameOver.reason.replace(/_/g, " ")})`
-                  : connStatus}
-              </span>
-            </div>
-
-            {!settings.zenMode && (
-              <div className="min-h-0 lg:flex lg:flex-col">
-                {/* Vertical list — tablet & desktop. */}
-                <h2 className="hidden lg:flex mt-3 text-base-content/40 text-sm font-semibold">
-                  Moves
-                </h2>
-                <div
-                  ref={moveListScrollRef}
-                  className="hidden min-h-0 overflow-y-auto max-h-40 mb-1 pr-1 lg:block lg:flex-1"
-                >
-                  {moveListEntries ?? <></>}
-                </div>
-                <div className="lg:hidden min-h-7">{moveStripEntries}</div>
-              </div>
-            )}
-          </Card>
+          <GameDetailsCard
+            badges={badges}
+            gameOver={gameOver}
+            describeResult={describeResult}
+            connStatus={connStatus}
+            zenMode={settings.zenMode}
+            moveListEntries={moveListEntries}
+            moveStripEntries={moveStripEntries}
+            moveListScrollRef={moveListScrollRef}
+          />
         </div>
 
-        <div className="game-area-board relative flex flex-col flex-1 items-center justify-center">
-          <div className="game-area-toppanel md:hidden w-[95%]">
-            <PlayerPanelRow {...opponentPanelData} />
-          </div>
-          <div
-            className={`relative aspect-square w-full rounded-2xl flex items-center shadow- overflow-hidden board-theme-${settings.boardTheme} piece-theme-${settings.pieceTheme} justify-center bg-purple-700 `}
-          >
-            <ChessBoard
-              fen={displayFen}
-              orientation={
-                boardFlipped
-                  ? myColor === "black"
-                    ? "white"
-                    : "black"
-                  : (myColor ?? "white")
-              }
-              viewOnly={
-                !isPlayer ||
-                status !== "active" ||
-                pausedLeg ||
-                isViewingHistory
-              }
-              turnColor={chess.turn() === "w" ? "white" : "black"}
-              movableColor={myColor}
-              dests={dests}
-              premoveDests={premoveDests}
-              inCheck={inCheck}
-              lastMove={displayLastMove}
-              onUserMove={handleUserMove}
-              animationEnabled={settings.pieceAnimation}
-              showCoordinates={settings.showCoordinates}
-              showLegalMoves={settings.showLegalMoves}
-            />
-            {isPlayer && status === "waiting" && (
-              <div className="pointer-events-none absolute bg-base-200/30 inset-0 px-3 justify-center items-center top-2 z-30 mx-auto flex">
-                <motion.div
-                  key="waiting-banner"
-                  initial={{ opacity: 0, y: -8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={springSnappy}
-                  className="pointer-events-auto flex items-center gap-3 rounded-xl border border-base-300 bg-base-100 px-3 py-2.5 shadow-lg"
-                >
-                  <p className="flex-1 text-sm text-base-content/60">
-                    Waiting for an opponent to join…
-                  </p>
-                  <Button
-                    variant="glass"
-                    size="sm"
-                    onClick={handleCancelWaitingGame}
-                  >
-                    <Ban className="h-4 w-4" /> Cancel game
-                  </Button>
-                </motion.div>
-              </div>
-            )}
-            {promoPending && <PromotionPicker onPick={handlePromotionPick} />}
-          </div>
-          <div className="game-area-bottompanel md:hidden w-[95%]">
-            <PlayerPanelRow {...myPanelData} />
-          </div>
-        </div>
+        <GameBoardArea
+          opponentPanelData={opponentPanelData}
+          myPanelData={myPanelData}
+          boardTheme={settings.boardTheme}
+          pieceTheme={settings.pieceTheme}
+          displayFen={displayFen}
+          boardFlipped={boardFlipped}
+          myColor={myColor}
+          viewOnly={
+            !isPlayer || status !== "active" || pausedLeg || isViewingHistory
+          }
+          turnColor={chess.turn() === "w" ? "white" : "black"}
+          dests={dests}
+          premoveDests={premoveDests}
+          inCheck={inCheck}
+          displayLastMove={displayLastMove}
+          onUserMove={handleUserMove}
+          animationEnabled={settings.pieceAnimation}
+          showCoordinates={settings.showCoordinates}
+          showLegalMoves={settings.showLegalMoves}
+          isPlayer={isPlayer}
+          status={status}
+          onCancelWaitingGame={handleCancelWaitingGame}
+          promoPending={promoPending ? true : false}
+          onPromotionPick={handlePromotionPick}
+        />
 
         {/* Right panel — tablet & desktop. Player panels, the cage match
          *  scoreboard (if any), then the action buttons (flip/prev/next,
@@ -1771,25 +1491,11 @@ export function Game() {
                   !settings.zenMode && gameMeta?.cageMatchId ? "" : "mt-auto"
                 }`}
               >
-                {actionItems.map((item) => {
-                  const hold =
-                    item.id === "prev"
-                      ? prevHold
-                      : item.id === "next"
-                        ? nextHold
-                        : null;
-                  return (
-                    <Tooltip key={item.label} content={item.label}>
-                      <Button
-                        variant={item.danger ? "danger" : "glass"}
-                        disabled={item.disabled}
-                        {...(hold ?? { onClick: item.onClick })}
-                      >
-                        <item.icon className="h-4 w-4" />
-                      </Button>
-                    </Tooltip>
-                  );
-                })}
+                <GameActionBarDesktop
+                  actionItems={actionItems}
+                  prevHold={prevHold}
+                  nextHold={nextHold}
+                />
               </div>
             )}
           </div>
@@ -1811,106 +1517,25 @@ export function Game() {
          *  scrolling. Only the items reached for constantly mid-game (flip
          *  board, share link, spectator chat, prev/next move) stay always
          *  visible; the rest (resign/draw/abort/pause/forfeit/rematch)
-         *  collapse into the "More" dropup via the Dropdown primitive so the
-         *  pill stays a fixed, compact size regardless of game state. */}
-        {mobilePrimaryItems.length > 0 && (
-          <div
-            className="md:hidden fixed inset-x-0 z-40 flex justify-center px-3"
-            style={{ bottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
-          >
-            <div className="glass-strong flex items-center gap-1 rounded-full p-1.5">
-              {mobilePrimaryItems.map((item) => {
-                const hold =
-                  item.id === "prev"
-                    ? prevHold
-                    : item.id === "next"
-                      ? nextHold
-                      : null;
-                return (
-                  <Tooltip key={item.label} content={item.label}>
-                    <button
-                      type="button"
-                      aria-label={item.label}
-                      disabled={item.disabled}
-                      className="flex size-10 shrink-0 items-center justify-center rounded-full text-base-content/80 transition-colors hover:bg-base-content/10 hover:text-base-content disabled:opacity-40 disabled:pointer-events-none"
-                      {...(hold ?? { onClick: item.onClick })}
-                    >
-                      <item.icon className="h-4 w-4" />
-                    </button>
-                  </Tooltip>
-                );
-              })}
-              {mobileOverflowItems.length > 0 && (
-                <Dropdown
-                  trigger={
-                    <button
-                      type="button"
-                      aria-label="More actions"
-                      className="flex size-10 shrink-0 items-center justify-center rounded-full text-base-content/80 transition-colors hover:bg-base-content/10 hover:text-base-content"
-                    >
-                      <MoreHorizontal className="h-4 w-4" />
-                    </button>
-                  }
-                  items={mobileOverflowItems}
-                  align="end"
-                  side="top"
-                />
-              )}
-            </div>
-          </div>
-        )}
+         *  collapse into the "More" dropup so the pill stays a fixed,
+         *  compact size regardless of game state. */}
+        <GameActionBarMobile
+          primaryItems={mobilePrimaryItems}
+          overflowItems={mobileOverflowItems}
+          prevHold={prevHold}
+          nextHold={nextHold}
+        />
       </div>
 
-      {/* Spectator chat — a bottom sheet on phone, a right-side drawer from
-       *  md up. Both variants share one backdrop and one open/close state;
-       *  only one of the two panel variants is ever visible at a given
-       *  breakpoint (the other stays mounted but hidden via Tailwind's
-       *  responsive display classes), so there's no per-breakpoint branching
-       *  in JS — just CSS deciding which one shows. */}
-      <AnimatePresence>
-        {showChat && chatSheetOpen && (
-          <motion.div
-            className="fixed inset-0 z-40 bg-black/60"
-            onClick={() => setChatSheetOpen(false)}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-          >
-            {/* Bottom sheet — phone only. */}
-            <motion.div
-              className="glass-strong absolute inset-x-0 bottom-0 flex max-h-[70vh] flex-col rounded-t-2xl p-4 md:hidden"
-              style={{
-                paddingBottom: "calc(1rem + env(safe-area-inset-bottom))",
-              }}
-              onClick={(e) => e.stopPropagation()}
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={springSnappy}
-            >
-              {chatHeader}
-              {chatBody}
-            </motion.div>
-
-            {/* Right-side drawer — tablet & desktop. */}
-            <motion.div
-              className="glass-strong absolute inset-y-0 right-0 hidden w-full max-w-sm flex-col p-4 md:flex"
-              style={{
-                paddingTop: "calc(1rem + env(safe-area-inset-top))",
-              }}
-              onClick={(e) => e.stopPropagation()}
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              transition={springSnappy}
-            >
-              {chatHeader}
-              {chatBody}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <GameChatPanel
+        show={showChat}
+        open={chatSheetOpen}
+        onClose={() => setChatSheetOpen(false)}
+        messages={chatMessages}
+        chatInput={chatInput}
+        onChatInputChange={setChatInput}
+        onSend={handleSendChat}
+      />
 
       {gameOver && !gameOverModalDismissed && (
         <GameOverModal
@@ -1936,11 +1561,4 @@ export function Game() {
       )}
     </div>
   );
-}
-
-function describeResult(result: string | null): string {
-  if (result === "white") return "White wins";
-  if (result === "black") return "Black wins";
-  if (result === "draw") return "Draw";
-  return "Game aborted";
 }

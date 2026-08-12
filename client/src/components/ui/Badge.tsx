@@ -15,7 +15,7 @@ const VARIANT_CLASSES: Record<BadgeVariant, string> = {
   primary: "bg-(--primary)/15 text-(--primary)",
   secondary: "bg-(--secondary)/15 text-(--secondary)",
   gradient: "gradient-brand text-white",
-  glass: "glass text-base-content",
+  glass: "elevated text-base-content",
   success: "bg-green-500/15 text-green-500",
   warning: "bg-amber-500/15 text-amber-500",
   error: "bg-red-500/15 text-red-500",

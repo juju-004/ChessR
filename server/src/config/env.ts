@@ -21,6 +21,15 @@ const envSchema = z.object({
 
   PAYSTACK_SECRET_KEY: z.string().min(1, 'PAYSTACK_SECRET_KEY is required'),
   PAYSTACK_PUBLIC_KEY: z.string().min(1, 'PAYSTACK_PUBLIC_KEY is required'),
+
+  // Fixed credentials for the single expert-review admin account (see
+  // admin.controller.ts) — deliberately NOT a User document, so it never
+  // shows up in player search, leaderboards, matchmaking, etc, and can't
+  // be funded or play games. Optional at the schema level so existing
+  // deployments that haven't set these up yet don't fail to boot; the
+  // admin login route itself refuses to work until both are set.
+  ADMIN_USERNAME: z.string().optional(),
+  ADMIN_PASSWORD: z.string().min(12).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -84,7 +84,7 @@ function Toast({
       animate="visible"
       exit="exit"
       variants={slideInRight}
-      className="glass-strong relative overflow-hidden rounded-2xl p-3 pr-8 shadow-lg"
+      className="elevated-strong relative overflow-hidden rounded-2xl p-3 pr-8 shadow-lg"
     >
       <p className="mb-2 text-sm text-base-content">{item.message}</p>
 

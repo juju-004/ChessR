@@ -11,7 +11,7 @@ import { MobileNavTrigger } from "./Sidebar.js";
 /**
  * Not a bar — a row of independent floating pills. Each piece (logo, games
  * menu, connection status, install button, theme toggle, account) is its
- * own self-contained elevated `.glass` surface, with the page background
+ * own self-contained elevated `.elevated` surface, with the page background
  * showing through the gaps between them, rather than one continuous
  * navbar strip.
  */
@@ -23,7 +23,7 @@ export const Navbar = memo(function Navbar() {
       <div className="mr-auto flex items-center gap-2">
         <Link
           to="/"
-          className="glass flex h-9 items-center gap-2 rounded-full px-4 font-bold text-base-content transition-colors hover:bg-base-content/5"
+          className="elevated flex h-9 items-center gap-2 rounded-full px-4 font-bold text-base-content transition-colors hover:bg-base-content/5"
         >
           <img src="/logo.png" className="w-22" alt="App Logo" />
         </Link>

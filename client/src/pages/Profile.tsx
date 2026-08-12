@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Swords, Eye, UserPlus, Check, Pencil, Scale } from 'lucide-react';
+import { Swords, Eye, UserPlus, Check, Pencil, Scale, Flag } from 'lucide-react';
 import { getProfile, getUserGames, type UserProfile, type UserGameHistoryItem } from '../api/users.js';
 import { sendFriendRequest } from '../api/friends.js';
 import { updateAuthUser } from '../api/authStore.js';
@@ -8,6 +8,7 @@ import { ApiRequestError } from '../api/http.js';
 import { formatTimeControl } from '../timeControls.js';
 import { Page, Card, Avatar, Button, Badge, Spinner } from '../components/ui/index.js';
 import { EditProfileModal } from '../components/EditProfileModal.js';
+import { ReportUserModal } from '../components/ReportUserModal.js';
 
 const GAMES_PER_PAGE = 15;
 
@@ -27,6 +28,7 @@ export function Profile() {
   const [error, setError] = useState('');
   const [friendRequestSent, setFriendRequestSent] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
 
   useEffect(() => {
     if (!username) return;
@@ -146,6 +148,14 @@ export function Profile() {
                     <UserPlus className="h-4 w-4" /> Add friend
                   </Button>
                 )}
+                <Button
+                  variant="glass"
+                  size="sm"
+                  onClick={() => setReportOpen(true)}
+                  aria-label={`Report ${profile.username}`}
+                >
+                  <Flag className="h-4 w-4" />
+                </Button>
               </div>
             )}
           </div>
@@ -294,6 +304,13 @@ export function Profile() {
               updateAuthUser({ avatarGradient: patch.avatarGradient });
             }
           }}
+        />
+      )}
+      {!profile.isSelf && (
+        <ReportUserModal
+          open={reportOpen}
+          onClose={() => setReportOpen(false)}
+          username={profile.username}
         />
       )}
     </Page>

@@ -15,6 +15,12 @@ export interface IUser extends Document {
   avatarGradient?: string;
   /** Short freeform profile blurb, shown under the username. */
   bio?: string;
+  /** Set the moment any report is filed against this user (see Report
+   *  model) — instant, automatic, and independent of whether the report
+   *  turns out to be substantiated. An admin clears it from the report
+   *  review screen once they've looked into it. See wallet.service's
+   *  initiateWithdrawal for the enforcement side. */
+  withdrawalBlocked: boolean;
   tokenVersion: number;
   createdAt: Date;
   updatedAt: Date;
@@ -40,6 +46,7 @@ const userSchema = new Schema<IUser>(
     avatarUrl: { type: String },
     avatarGradient: { type: String },
     bio: { type: String, maxlength: 160, trim: true },
+    withdrawalBlocked: { type: Boolean, default: false },
     // Bumped on password change / "log out everywhere" to invalidate all
     // outstanding refresh tokens without needing a server-side blacklist.
     tokenVersion: { type: Number, default: 0 },

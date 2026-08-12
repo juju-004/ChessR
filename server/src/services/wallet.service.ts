@@ -113,6 +113,17 @@ export async function initiateWithdrawal(userId: string, params: WithdrawParams)
     throw ApiError.badRequest(`Minimum withdrawal is ${MIN_WITHDRAWAL_TOKENS} tokens`);
   }
 
+  // A pending report against this account blocks withdrawals the instant
+  // it's filed — before anyone's actually looked into it — so funds can't
+  // be pulled out ahead of a review. Cleared only by an admin, from the
+  // report review screen, once they've looked into it. See User.withdrawalBlocked.
+  const reportedUser = await User.findById(userId).select('withdrawalBlocked').lean();
+  if (reportedUser?.withdrawalBlocked) {
+    throw ApiError.forbidden(
+      'Withdrawals are on hold for this account pending a review. Contact support if you believe this is a mistake.',
+    );
+  }
+
   // Atomic conditional decrement — this is what prevents two concurrent
   // withdrawal requests from both passing a naive "check then deduct" and
   // taking the user's balance negative.

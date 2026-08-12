@@ -17,8 +17,8 @@ export interface CardProps extends Omit<HTMLMotionProps<"div">, "ref"> {
 }
 
 const VARIANT_CLASSES: Record<NonNullable<CardProps["variant"]>, string> = {
-  glass: "glass",
-  strong: "glass-strong",
+  glass: "elevated",
+  strong: "elevated-strong",
   solid: "bg-base-200 border border-base-300",
 };
 

@@ -11,7 +11,7 @@ interface FloatingActionButtonProps {
 }
 
 const VARIANT_CLASSES: Record<NonNullable<FloatingActionButtonProps['variant']>, string> = {
-  default: 'glass-strong text-base-content hover:bg-base-content/5',
+  default: 'elevated-strong text-base-content hover:bg-base-content/5',
   danger: 'bg-red-600/90 text-white shadow-lg shadow-red-900/30 hover:bg-red-500',
   warning: 'bg-amber-600/90 text-white shadow-lg shadow-amber-900/30 hover:bg-amber-500',
 };

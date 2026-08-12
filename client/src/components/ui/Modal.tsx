@@ -16,11 +16,17 @@ export interface ModalProps {
 /**
  * Portal-rendered so it always sits above everything regardless of where
  * it's mounted, with a solid darkened backdrop and an elevated content
- * panel (no backdrop-filter — see the .glass comment in index.css).
+ * panel (no backdrop-filter — see the .elevated comment in index.css).
  * Backdrop and content each animate on their own opacity/scale/y — no
  * layout-affecting properties, per @/lib/motion.ts.
  */
-export const Modal = memo(function Modal({ open, onClose, title, children, className }: ModalProps) {
+export const Modal = memo(function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  className,
+}: ModalProps) {
   const header = title && (
     <div className="mb-4 flex items-center justify-between">
       <h2 className="text-lg font-semibold text-base-content">{title}</h2>
@@ -54,7 +60,10 @@ export const Modal = memo(function Modal({ open, onClose, title, children, class
             role="dialog"
             aria-modal="true"
             aria-label={title}
-            className={cn("glass-strong relative w-full max-w-md rounded-2xl p-5", className)}
+            className={cn(
+              "elevated-strong relative w-full max-w-md rounded-2xl p-5",
+              className,
+            )}
           >
             {header}
             {children}
@@ -64,4 +73,4 @@ export const Modal = memo(function Modal({ open, onClose, title, children, class
     </AnimatePresence>,
     document.body,
   );
-})
+});

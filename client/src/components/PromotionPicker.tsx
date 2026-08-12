@@ -13,7 +13,7 @@ const PIECES: Array<{ key: 'q' | 'r' | 'b' | 'n'; label: string; glyph: string }
 export const PromotionPicker = memo(function PromotionPicker({ onPick }: PromotionPickerProps) {
   return (
     <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/50">
-      <div className="glass-strong w-48 rounded-2xl p-3">
+      <div className="elevated-strong w-48 rounded-2xl p-3">
         <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-base-content/50">
           Promote to
         </p>

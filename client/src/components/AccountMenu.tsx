@@ -56,7 +56,7 @@ export function AccountMenu() {
         </div>
       }
       trigger={
-        <button className="glass flex h-9 items-center gap-2 rounded-full py-1 pr-3 pl-1 text-sm font-medium text-base-content transition-colors hover:bg-base-content/5">
+        <button className="elevated flex h-9 items-center gap-2 rounded-full py-1 pr-3 pl-1 text-sm font-medium text-base-content transition-colors hover:bg-base-content/5">
           <Avatar username={user.username} gradient={user.avatarGradient} size="xs" />
           <span className="hidden sm:inline">{user.username}</span>
           <span className="items-center gap-1 flex  rounded-full bg-(--primary)/15 px-2 py-0.5 text-xs font-semibold text-(--primary) sm:flex">

@@ -36,7 +36,7 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 /**
- * The desktop-only vertical glass rail (md and up). The mobile equivalent
+ * The desktop-only vertical elevated rail (md and up). The mobile equivalent
  * — MobileNavTrigger, exported below — is rendered separately in
  * Navbar.tsx beside the logo, not here, since it needs to live in the top
  * nav row rather than float over the page.
@@ -56,7 +56,7 @@ export const Sidebar = memo(function Sidebar() {
     <nav
       aria-label="Primary"
       className={cn(
-        "group glass z-40 sticky top-20 hidden h-fit shrink-0 flex-col gap-1 self-start overflow-hidden rounded-2xl p-3 md:flex",
+        "group elevated z-40 sticky top-20 hidden h-fit shrink-0 flex-col gap-1 self-start overflow-hidden rounded-2xl p-3 md:flex",
         collapsible
           ? "w-16 transition-[width] duration-200 ease-out hover:w-56 hover:shadow-xl"
           : "w-56",
@@ -106,7 +106,7 @@ export function MobileNavTrigger() {
         <motion.button
           {...pressable}
           aria-label="Open navigation menu"
-          className="glass flex h-9 w-9 items-center justify-center rounded-full text-base-content transition-colors hover:bg-base-content/5 md:hidden"
+          className="elevated flex h-9 w-9 items-center justify-center rounded-full text-base-content transition-colors hover:bg-base-content/5 md:hidden"
         >
           <TableOfContents className="h-4 w-4" strokeWidth={3} />
         </motion.button>

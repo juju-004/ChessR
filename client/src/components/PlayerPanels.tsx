@@ -1,4 +1,5 @@
 import { useEffect, useState, memo } from "react";
+import { Link } from "react-router-dom";
 import { Swords } from "lucide-react";
 import {
   formatClock,
@@ -57,6 +58,10 @@ export interface PanelData {
    *  clock, close enough that it reads as "this clock got halved" rather
    *  than a generic status tag. */
   berserked: boolean;
+  /** Set only once a real player occupies this seat (not the "White"/
+   *  "Black" placeholder shown before anyone's joined) — when present, the
+   *  panel's avatar/name link through to that player's profile. */
+  profileHref?: string | null;
 }
 
 /** Builds the display props one side's panel needs out of the raw material
@@ -245,12 +250,12 @@ function ClockBadge({
     <div
       className={cn(
         size === "sm"
-          ? "rounded-md px-1.5 py-1 font-mono text-xs font-bold tabular-nums"
-          : "shrink-0 rounded-lg px-2.5 py-1 text-right font-mono text-sm font-bold tabular-nums",
+          ? "rounded-md px-1.5 py-1 font-mono text-xs font-bold tabular-nums transition-colors"
+          : "shrink-0 rounded-lg px-2.5 py-1 text-right font-mono text-sm font-bold tabular-nums transition-colors",
         isLow
           ? "animate-pulse bg-red-500/15 text-red-500"
           : isTurn
-            ? "bg-white/20 text-white"
+            ? "gradient-brand text-white shadow-sm shadow-(--primary)/30"
             : "bg-base-300/60 text-base-content/80",
       )}
     >
@@ -276,40 +281,57 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
   advantage,
   firstMoveGraceMs,
   berserked,
+  profileHref,
 }: PanelData) {
   return (
-    <div
-      className={cn(
-        "flex items-center gap-3 rounded-xl px-3 py-2 transition-colors",
-        isTurn
-          ? "gradient-brand text-white shadow-md shadow-(--primary)/20"
-          : "bg-base-200/70 text-base-content",
-      )}
-    >
-      <Avatar
-        username={username}
-        gradient={avatarGradient}
-        size="sm"
-        status={connected ? "online" : "offline"}
-      />
-      <div className="min-w-0 flex-1">
-        <p
-          className={cn(
-            "truncate text-sm font-semibold",
-            isTurn ? "text-white" : "text-base-content",
-          )}
-        >
-          {username}
-        </p>
-        {firstMoveGraceMs !== null ? (
-          <FirstMoveBadge turnStartedAtMs={turnStartedAtMs} graceMs={firstMoveGraceMs} />
-        ) : (
-          <MaterialBadge
-            pieceDiff={pieceDiff}
-            glyphs={glyphs}
-            advantage={advantage}
+    <div className="flex items-center gap-3 rounded-xl bg-base-200/70 px-3 py-2 text-base-content">
+      {profileHref ? (
+        <Link to={profileHref} className="shrink-0">
+          <Avatar
+            username={username}
+            gradient={avatarGradient}
+            size="sm"
+            status={connected ? "online" : "offline"}
           />
+        </Link>
+      ) : (
+        <Avatar
+          username={username}
+          gradient={avatarGradient}
+          size="sm"
+          status={connected ? "online" : "offline"}
+        />
+      )}
+      <div className="min-w-0 flex-1">
+        {profileHref ? (
+          <Link
+            to={profileHref}
+            className="block truncate text-sm font-semibold text-base-content hover:text-(--primary) hover:underline"
+          >
+            {username}
+          </Link>
+        ) : (
+          <p className="truncate text-sm font-semibold text-base-content">
+            {username}
+          </p>
         )}
+        {/* Fixed height regardless of what's inside (or nothing at all) —
+         *  both FirstMoveBadge and MaterialBadge can render null, and on
+         *  phone this row is a flex sibling of the board itself (see
+         *  .game-area-toppanel/-bottompanel in Game.tsx), so letting this
+         *  line's height come and go with material captures would resize
+         *  the board mid-game every time a piece gets taken. */}
+        <div className="min-h-[18px]">
+          {firstMoveGraceMs !== null ? (
+            <FirstMoveBadge turnStartedAtMs={turnStartedAtMs} graceMs={firstMoveGraceMs} />
+          ) : (
+            <MaterialBadge
+              pieceDiff={pieceDiff}
+              glyphs={glyphs}
+              advantage={advantage}
+            />
+          )}
+        </div>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
         {berserked && <BerserkBadge />}
@@ -344,32 +366,45 @@ export const PlayerPanelFlank = memo(function PlayerPanelFlank({
   advantage,
   firstMoveGraceMs,
   berserked,
+  profileHref,
   className,
 }: PanelData & { className?: string }) {
   return (
     <div
       className={cn(
-        "flex w-14 shrink-0 flex-col items-center gap-1.5 rounded-xl px-1 py-2 text-center transition-colors sm:w-16",
-        isTurn
-          ? "gradient-brand text-white shadow-md shadow-(--primary)/20"
-          : "bg-base-200/70 text-base-content",
+        "flex w-14 shrink-0 flex-col items-center gap-1.5 rounded-xl bg-base-200/70 px-1 py-2 text-center text-base-content sm:w-16",
         className,
       )}
     >
-      <Avatar
-        username={username}
-        gradient={avatarGradient}
-        size="sm"
-        status={connected ? "online" : "offline"}
-      />
-      <p
-        className={cn(
-          "w-full truncate text-[11px] font-semibold",
-          isTurn ? "text-white" : "text-base-content",
-        )}
-      >
-        {username}
-      </p>
+      {profileHref ? (
+        <Link to={profileHref}>
+          <Avatar
+            username={username}
+            gradient={avatarGradient}
+            size="sm"
+            status={connected ? "online" : "offline"}
+          />
+        </Link>
+      ) : (
+        <Avatar
+          username={username}
+          gradient={avatarGradient}
+          size="sm"
+          status={connected ? "online" : "offline"}
+        />
+      )}
+      {profileHref ? (
+        <Link
+          to={profileHref}
+          className="w-full truncate text-[11px] font-semibold text-base-content hover:text-(--primary) hover:underline"
+        >
+          {username}
+        </Link>
+      ) : (
+        <p className="w-full truncate text-[11px] font-semibold text-base-content">
+          {username}
+        </p>
+      )}
       <div className="flex shrink-0 items-center gap-1">
         {berserked && <BerserkBadge size="sm" />}
         <ClockBadge
@@ -382,16 +417,20 @@ export const PlayerPanelFlank = memo(function PlayerPanelFlank({
           size="sm"
         />
       </div>
-      {firstMoveGraceMs !== null ? (
-        <FirstMoveBadge turnStartedAtMs={turnStartedAtMs} graceMs={firstMoveGraceMs} size="sm" />
-      ) : (
-        <MaterialBadge
-          pieceDiff={pieceDiff}
-          glyphs={glyphs}
-          advantage={advantage}
-          size="sm"
-        />
-      )}
+      {/* Fixed height for the same reason as PlayerPanelRow's equivalent
+       *  slot — see its comment. */}
+      <div className="min-h-[14px] w-full">
+        {firstMoveGraceMs !== null ? (
+          <FirstMoveBadge turnStartedAtMs={turnStartedAtMs} graceMs={firstMoveGraceMs} size="sm" />
+        ) : (
+          <MaterialBadge
+            pieceDiff={pieceDiff}
+            glyphs={glyphs}
+            advantage={advantage}
+            size="sm"
+          />
+        )}
+      </div>
     </div>
   );
 });

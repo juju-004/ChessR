@@ -24,14 +24,14 @@ const SIDE_OFFSET: Record<NonNullable<TooltipProps["side"]>, { y?: number; x?: n
   right: { x: -4 },
 };
 
-/** Simple hover/focus tooltip — a small glass label, fades + nudges in on
+/** Simple hover/focus tooltip — a small elevated label, fades + nudges in on
  *  its offset axis only (still transform+opacity only). */
 export function Tooltip({ content, children, side = "top", className }: TooltipProps) {
   const [open, setOpen] = useState(false);
   const offset = SIDE_OFFSET[side];
 
   const tooltipClassName = cn(
-    "glass-strong pointer-events-none absolute z-50 whitespace-nowrap rounded-lg px-2.5 py-1 text-xs font-medium text-base-content",
+    "elevated-strong pointer-events-none absolute z-50 whitespace-nowrap rounded-lg px-2.5 py-1 text-xs font-medium text-base-content",
     SIDE_CLASSES[side],
     className,
   );

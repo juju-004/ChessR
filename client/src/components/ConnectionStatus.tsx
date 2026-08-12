@@ -24,7 +24,7 @@ function label(state: ConnState, latencyMs: number | null): string {
 }
 
 interface ConnectionStatusProps {
-  /** "pill" (default) is the glass pill used in the navbar. "row" is a
+  /** "pill" (default) is the elevated pill used in the navbar. "row" is a
    *  plain menu-item-style row, sized to slot into AccountMenu's dropdown
    *  on mobile — no tooltip, label always visible. */
   variant?: "pill" | "row";
@@ -135,7 +135,7 @@ export const ConnectionStatus = memo(function ConnectionStatus({
     >
       <span
         className={cn(
-          "glass flex h-9 items-center gap-1.5 rounded-full px-3 text-xs text-base-content/70",
+          "elevated flex h-9 items-center gap-1.5 rounded-full px-3 text-xs text-base-content/70",
           className,
         )}
         title={
