@@ -100,6 +100,11 @@ export function AdminDashboard() {
                   <span className="text-base-content/70">
                     {r.reporter?.username ?? "Unknown"}
                   </span>
+                  {r.reporter?.reportingBlocked && (
+                    <Badge variant="neutral" className="gap-1">
+                      Reporter blocked
+                    </Badge>
+                  )}
                   {r.reportedUser?.withdrawalBlocked && (
                     <Badge variant="error" className="gap-1">
                       <AlertTriangle className="h-3 w-3" /> Withdrawals blocked

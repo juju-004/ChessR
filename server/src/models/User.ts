@@ -21,6 +21,11 @@ export interface IUser extends Document {
    *  review screen once they've looked into it. See wallet.service's
    *  initiateWithdrawal for the enforcement side. */
   withdrawalBlocked: boolean;
+  /** Set by an admin (not automatic, unlike withdrawalBlocked) when a
+   *  user's own reports turn out to be spam/bad-faith — stops them from
+   *  filing new reports without touching anything else on the account.
+   *  See report.service.createReport for enforcement. */
+  reportingBlocked: boolean;
   tokenVersion: number;
   createdAt: Date;
   updatedAt: Date;
@@ -47,6 +52,7 @@ const userSchema = new Schema<IUser>(
     avatarGradient: { type: String },
     bio: { type: String, maxlength: 160, trim: true },
     withdrawalBlocked: { type: Boolean, default: false },
+    reportingBlocked: { type: Boolean, default: false },
     // Bumped on password change / "log out everywhere" to invalidate all
     // outstanding refresh tokens without needing a server-side blacklist.
     tokenVersion: { type: Number, default: 0 },

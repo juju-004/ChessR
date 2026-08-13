@@ -254,7 +254,10 @@ async function finalizeCageMatchForfeit(
         } catch {
           // Socket.IO not initialized (e.g. script/test context) — safe to ignore.
         }
-        await finalizeGame(gameId, liveState.fen, "aborted", null, "aborted_no_moves");
+        await finalizeGame(gameId, liveState.fen, "aborted", null, "aborted_no_moves", {
+          whiteRemainingMs: liveState.whiteRemainingMs,
+          blackRemainingMs: liveState.blackRemainingMs,
+        });
         await refundWagerBothSides(gameId, liveState.whiteId, liveState.blackId, liveState.wagerTokens).catch(
           (err) => console.error("refundWagerBothSides failed during cage forfeit:", err),
         );
@@ -284,7 +287,10 @@ async function finalizeCageMatchForfeit(
         } catch {
           // Socket.IO not initialized (e.g. script/test context) — safe to ignore.
         }
-        await finalizeGame(gameId, liveState.fen, "finished", winnerColor, legEndReason);
+        await finalizeGame(gameId, liveState.fen, "finished", winnerColor, legEndReason, {
+          whiteRemainingMs: liveState.whiteRemainingMs,
+          blackRemainingMs: liveState.blackRemainingMs,
+        });
         await deleteLiveState(gameId);
         activeLeg.status = "finished";
         activeLeg.result = winnerSide;

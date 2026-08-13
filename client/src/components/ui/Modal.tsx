@@ -20,13 +20,7 @@ export interface ModalProps {
  * Backdrop and content each animate on their own opacity/scale/y — no
  * layout-affecting properties, per @/lib/motion.ts.
  */
-export const Modal = memo(function Modal({
-  open,
-  onClose,
-  title,
-  children,
-  className,
-}: ModalProps) {
+export const Modal = memo(function Modal({ open, onClose, title, children, className }: ModalProps) {
   const header = title && (
     <div className="mb-4 flex items-center justify-between">
       <h2 className="text-lg font-semibold text-base-content">{title}</h2>
@@ -60,10 +54,7 @@ export const Modal = memo(function Modal({
             role="dialog"
             aria-modal="true"
             aria-label={title}
-            className={cn(
-              "elevated-strong relative w-full max-w-md rounded-2xl p-5",
-              className,
-            )}
+            className={cn("elevated-strong relative w-full max-w-md rounded-2xl p-5", className)}
           >
             {header}
             {children}
@@ -73,4 +64,4 @@ export const Modal = memo(function Modal({
     </AnimatePresence>,
     document.body,
   );
-});
+})

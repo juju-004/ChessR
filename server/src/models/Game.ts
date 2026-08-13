@@ -74,6 +74,15 @@ export interface IGame extends Document {
   createdAt: Date;
   startedAt?: Date;
   endedAt?: Date;
+  // Each side's clock, frozen at the moment the game ended — never
+  // touched again after that (see finalizeGame). null for an untimed
+  // game (no time control) or a game that ended before either clock
+  // started running. Everything else about a game's live state lives in
+  // Redis and evaporates once the game is over; this is the one exception,
+  // persisted specifically so a finished game's replay can still show a
+  // real final clock reading instead of "∞".
+  whiteRemainingMs?: number | null;
+  blackRemainingMs?: number | null;
 }
 
 const moveSchema = new Schema<IMove>(
@@ -146,6 +155,8 @@ const gameSchema = new Schema<IGame>(
     },
     startedAt: { type: Date },
     endedAt: { type: Date },
+    whiteRemainingMs: { type: Number, default: null },
+    blackRemainingMs: { type: Number, default: null },
   },
   { timestamps: { createdAt: true, updatedAt: false } },
 );

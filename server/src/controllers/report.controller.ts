@@ -7,7 +7,7 @@ const createReportSchema = z.object({
   reportedUsername: z.string().trim().min(1).max(24),
   reason: z.enum(['cheating', 'harassment', 'sandbagging', 'payment_dispute', 'other']),
   description: z.string().trim().min(10, 'Please give a few more details').max(2000),
-  gameCode: z.string().trim().max(20).optional(),
+  gameCode: z.string().trim().max(200).optional(),
 });
 
 export const submitReport = asyncHandler(async (req: AuthedRequest, res) => {

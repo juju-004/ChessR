@@ -46,7 +46,7 @@ export type ReportReason =
 
 export interface AdminReportListItem {
   id: string;
-  reporter: { _id: string; username: string } | null;
+  reporter: { _id: string; username: string; reportingBlocked: boolean } | null;
   reportedUser: { _id: string; username: string; withdrawalBlocked: boolean } | null;
   reason: ReportReason;
   description: string;
@@ -106,4 +106,11 @@ export function updateReport(
     method: 'PATCH',
     body: JSON.stringify(body),
   });
+}
+
+export function setUserReportingBlock(username: string, blocked: boolean) {
+  return adminFetch<{ username: string; reportingBlocked: boolean }>(
+    `/users/${encodeURIComponent(username)}/reporting-block`,
+    { method: 'PATCH', body: JSON.stringify({ blocked }) },
+  );
 }

@@ -372,12 +372,19 @@ export async function appendMove(
     promotion?: string;
     fenAfter: string;
     moveNumber: number;
+    /** Pass the exact timestamp used for the live game:move broadcast
+     *  (see gameSocket.ts) so the persisted record and what clients saw
+     *  in real time agree, instead of drifting by whatever gap sits
+     *  between the broadcast and this DB write landing. Defaults to
+     *  "now" for any other caller that doesn't have one handy. */
+    timestampMs?: number;
   },
 ): Promise<void> {
+  const { timestampMs, ...rest } = move;
   await Game.updateOne(
     { _id: gameId },
     {
-      $push: { moves: { ...move, timestampMs: Date.now() } },
+      $push: { moves: { ...rest, timestampMs: timestampMs ?? Date.now() } },
       $set: { fen: move.fenAfter },
     },
   );
@@ -389,10 +396,26 @@ export async function finalizeGame(
   status: "finished" | "aborted",
   result: "white" | "black" | "draw" | null,
   endReason: string | null,
+  finalClock?: { whiteRemainingMs: number | null; blackRemainingMs: number | null },
 ): Promise<void> {
   await Game.updateOne(
     { _id: gameId },
-    { $set: { fen, status, result, endReason, endedAt: new Date() } },
+    {
+      $set: {
+        fen,
+        status,
+        result,
+        endReason,
+        endedAt: new Date(),
+        // Optional and defaulted to null rather than required: some call
+        // sites (older code paths, or ones that only have the FEN handy)
+        // don't have a LiveGameState to read a clock from — better to
+        // persist a known-absent clock than to force every call site to
+        // thread one through just to satisfy the signature.
+        whiteRemainingMs: finalClock?.whiteRemainingMs ?? null,
+        blackRemainingMs: finalClock?.blackRemainingMs ?? null,
+      },
+    },
   );
 }
 
@@ -524,7 +547,10 @@ export async function reconcileActiveGames(): Promise<{
       g.startedAt &&
       Date.now() - g.startedAt.getTime() > IDLE_PHASE_ABANDON_MS
     ) {
-      await finalizeGame(gameId, liveState.fen, "aborted", null, "idle_timeout");
+      await finalizeGame(gameId, liveState.fen, "aborted", null, "idle_timeout", {
+        whiteRemainingMs: liveState.whiteRemainingMs,
+        blackRemainingMs: liveState.blackRemainingMs,
+      });
       await refundWagerBothSides(gameId, liveState.whiteId, liveState.blackId, liveState.wagerTokens).catch(
         (err) => console.error("refundWagerBothSides failed during idle reconciliation:", err),
       );
@@ -536,13 +562,17 @@ export async function reconcileActiveGames(): Promise<{
 
     const timeoutWinner = computeTimeoutWinner(liveState);
     if (timeoutWinner) {
-      await finalizeGame(
-        gameId,
-        liveState.fen,
-        "finished",
-        timeoutWinner,
-        "timeout",
-      );
+      // The side that timed out is whichever one WASN'T the winner — their
+      // clock is what hit zero, so that's what gets persisted; the other
+      // side's clock wasn't running and keeps whatever liveState already
+      // has for it.
+      const loserRemainingMs = 0;
+      const winnerRemainingMs =
+        timeoutWinner === "white" ? liveState.whiteRemainingMs : liveState.blackRemainingMs;
+      await finalizeGame(gameId, liveState.fen, "finished", timeoutWinner, "timeout", {
+        whiteRemainingMs: timeoutWinner === "white" ? winnerRemainingMs : loserRemainingMs,
+        blackRemainingMs: timeoutWinner === "black" ? winnerRemainingMs : loserRemainingMs,
+      });
       await deleteLiveState(gameId);
       await settleWager(
         gameId,

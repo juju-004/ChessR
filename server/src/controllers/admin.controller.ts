@@ -38,7 +38,7 @@ export const listReports = asyncHandler(async (req, res) => {
   const reports = await Report.find(filter)
     .sort({ createdAt: -1 })
     .limit(200)
-    .populate('reporter', 'username')
+    .populate('reporter', 'username reportingBlocked')
     .populate('reportedUser', 'username withdrawalBlocked')
     .lean();
 
@@ -60,7 +60,7 @@ export const listReports = asyncHandler(async (req, res) => {
 
 export const getReportDetail = asyncHandler(async (req, res) => {
   const report = await Report.findById(req.params.id)
-    .populate('reporter', 'username')
+    .populate('reporter', 'username reportingBlocked')
     .populate('reportedUser', 'username withdrawalBlocked')
     .lean();
   if (!report) throw ApiError.notFound('Report not found');
@@ -106,6 +106,25 @@ export const getReportDetail = asyncHandler(async (req, res) => {
     reviewNotes: report.reviewNotes,
     game,
   });
+});
+
+const setReportingBlockSchema = z.object({
+  blocked: z.boolean(),
+});
+
+export const setUserReportingBlock = asyncHandler(async (req, res) => {
+  const { blocked } = setReportingBlockSchema.parse(req.body);
+  const username = String(req.params.username);
+
+  const user = await User.findOneAndUpdate(
+    { usernameLower: username.toLowerCase() },
+    { $set: { reportingBlocked: blocked } },
+    { new: true },
+  ).select('username reportingBlocked');
+
+  if (!user) throw ApiError.notFound('User not found');
+
+  res.json({ username: user.username, reportingBlocked: user.reportingBlocked });
 });
 
 const updateReportSchema = z.object({

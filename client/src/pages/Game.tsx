@@ -61,6 +61,7 @@ import {
   computeMaterialDiff,
   computeLowTimeThresholdMs,
   computeFirstMoveThresholdMs,
+  reconstructPlyClocks,
   turnColor,
 } from "../chessUtils.js";
 import { refreshBalance } from "../api/walletStore.js";
@@ -292,13 +293,84 @@ export function Game() {
   // --- Live clocks + material diff, computed once and handed down to
   // whichever panel presentation (row on desktop, flank on mobile) is
   // actually rendered, so there's exactly one ticking source of truth. ---
+  // NOTE: this whole block — through opponentPanelData below — deliberately
+  // lives up here with the other unconditional hooks (dests/premoveDests/
+  // historyFens above) rather than down near where it's actually rendered.
+  // It contains useMemo calls, and there are three early `return`s for
+  // loadError/mode==="loading"/mode==="need-join" between here and there —
+  // hooks placed after those fire a different number of times depending on
+  // which branch a given render takes, which is exactly the
+  // "Rendered more hooks than during the previous render" crash. Same
+  // reasoning as the comment on dests/premoveDests above.
   const sideToMove = turnColor(chess);
-  const clockKnown = whiteRemainingMs !== null && blackRemainingMs !== null;
-  // Memoized on `fen` alone: computeMaterialDiff/panelMaterial build fresh
-  // objects each call, which would otherwise hand whitePanelData/
-  // blackPanelData's own useMemo below a "changed" dependency on every
-  // render regardless of whether the position actually moved, defeating it.
-  const material = useMemo(() => computeMaterialDiff(fen), [fen]);
+  // Memoized on `displayFen` — the position actually on screen, which is
+  // the live position normally but the historical one while browsing
+  // moves (see isViewingHistory/displayFen above) — so the material
+  // count on the panels always matches what's drawn on the board, not
+  // the live game state you've scrolled away from.
+  const material = useMemo(() => computeMaterialDiff(displayFen), [displayFen]);
+  // Per-move clock reconstruction — see reconstructPlyClocks for the exact
+  // rules this mirrors from the server. Recomputed only when the move list
+  // itself changes (new move, or a fresh load), not on every render/tick —
+  // this data doesn't change while just scrubbing through history, only
+  // the ply you're pointing at does. Skips entirely if any move is
+  // missing a timestamp (an older live session that predates this field)
+  // rather than silently producing a garbage-in-garbage-out result.
+  const plyClocks = useMemo(() => {
+    if (!gameMeta || moves.length === 0) return null;
+    if (!moves.every((m) => typeof m.timestampMs === "number")) return null;
+    return reconstructPlyClocks({
+      baseSeconds: gameMeta.timeControl.baseSeconds,
+      incrementSeconds: gameMeta.timeControl.incrementSeconds,
+      moveTimestampsMs: moves.map((m) => m.timestampMs!),
+      berserk: { white: whiteBerserk, black: blackBerserk },
+    });
+  }, [gameMeta, moves, whiteBerserk, blackBerserk]);
+  // moves[] annotated with each move's reconstructed remaining-time/
+  // think-time, handed to MoveList/MoveStrip so they can show a lichess-
+  // style clock reading (and think time) next to each move without every
+  // consumer needing to know about reconstructPlyClocks itself.
+  const annotatedMoves = useMemo(
+    () =>
+      moves.map((m, i) => ({
+        ...m,
+        remainingMs: plyClocks?.[i]?.remainingMs ?? null,
+        thinkTimeMs: plyClocks?.[i]?.thinkTimeMs ?? null,
+      })),
+    [moves, plyClocks],
+  );
+  // Each side's clock as of the position currently on screen while
+  // browsing history — the last reconstructed reading for that side at or
+  // before `viewPly`, or the untouched starting time if that side hasn't
+  // moved yet at this point in the game. Only used while isViewingHistory;
+  // live play keeps ticking off whiteRemainingMs/blackRemainingMs as
+  // before (see the panel data memos below, which pick between the two).
+  const historicalClock = useMemo(() => {
+    if (!isViewingHistory || viewPly === null) return null;
+    const baseMs =
+      gameMeta?.timeControl.baseSeconds != null
+        ? gameMeta.timeControl.baseSeconds * 1000
+        : null;
+    let white = baseMs;
+    let black = baseMs;
+    if (plyClocks) {
+      for (let i = 0; i < viewPly; i++) {
+        const clock = plyClocks[i];
+        if (!clock) continue;
+        if (i % 2 === 0) white = clock.remainingMs;
+        else black = clock.remainingMs;
+      }
+    }
+    return { white, black };
+  }, [isViewingHistory, viewPly, plyClocks, gameMeta?.timeControl.baseSeconds]);
+  const effectiveWhiteRemainingMs = isViewingHistory
+    ? (historicalClock?.white ?? null)
+    : whiteRemainingMs;
+  const effectiveBlackRemainingMs = isViewingHistory
+    ? (historicalClock?.black ?? null)
+    : blackRemainingMs;
+  const effectiveClockKnown =
+    effectiveWhiteRemainingMs !== null && effectiveBlackRemainingMs !== null;
   const whiteMaterial = useMemo(
     () => panelMaterial("white", material),
     [material],
@@ -345,10 +417,10 @@ export function Game() {
       avatarGradient: gameMeta?.white?.avatarGradient,
       isTurn: isActiveGame && sideToMove === "white",
       connected: whiteConnected,
-      baseRemainingMs: whiteRemainingMs,
+      baseRemainingMs: effectiveWhiteRemainingMs,
       turnStartedAtMs,
-      isTicking: clockRunning && sideToMove === "white",
-      clockKnown,
+      isTicking: !isViewingHistory && clockRunning && sideToMove === "white",
+      clockKnown: effectiveClockKnown,
       lowTimeThresholdMs,
       firstMoveGraceMs:
         firstMovePendingSide === "white" ? firstMoveGraceMs : null,
@@ -364,10 +436,11 @@ export function Game() {
       isActiveGame,
       sideToMove,
       whiteConnected,
-      whiteRemainingMs,
+      effectiveWhiteRemainingMs,
       turnStartedAtMs,
+      isViewingHistory,
       clockRunning,
-      clockKnown,
+      effectiveClockKnown,
       lowTimeThresholdMs,
       firstMovePendingSide,
       firstMoveGraceMs,
@@ -381,10 +454,10 @@ export function Game() {
       avatarGradient: gameMeta?.black?.avatarGradient,
       isTurn: isActiveGame && sideToMove === "black",
       connected: blackConnected,
-      baseRemainingMs: blackRemainingMs,
+      baseRemainingMs: effectiveBlackRemainingMs,
       turnStartedAtMs,
-      isTicking: clockRunning && sideToMove === "black",
-      clockKnown,
+      isTicking: !isViewingHistory && clockRunning && sideToMove === "black",
+      clockKnown: effectiveClockKnown,
       lowTimeThresholdMs,
       firstMoveGraceMs:
         firstMovePendingSide === "black" ? firstMoveGraceMs : null,
@@ -400,10 +473,11 @@ export function Game() {
       isActiveGame,
       sideToMove,
       blackConnected,
-      blackRemainingMs,
+      effectiveBlackRemainingMs,
       turnStartedAtMs,
+      isViewingHistory,
       clockRunning,
-      clockKnown,
+      effectiveClockKnown,
       lowTimeThresholdMs,
       firstMovePendingSide,
       firstMoveGraceMs,
@@ -670,6 +744,7 @@ export function Game() {
           san: payload.san,
           from: payload.from,
           to: payload.to,
+          timestampMs: payload.timestampMs,
         },
       ]);
 
@@ -1199,7 +1274,7 @@ export function Game() {
   const moveListEntries =
     moves.length === 0 ? null : (
       <MoveList
-        moves={moves}
+        moves={annotatedMoves}
         currentPly={currentPly}
         onSelectMove={handleSelectMove}
       />
@@ -1207,7 +1282,7 @@ export function Game() {
   const moveStripEntries =
     moves.length === 0 ? null : (
       <MoveStrip
-        moves={moves}
+        moves={annotatedMoves}
         currentPly={currentPly}
         onSelectMove={handleSelectMove}
         scrollRef={moveStripScrollRef}
@@ -1396,7 +1471,7 @@ export function Game() {
   const mobileOverflowItems = actionItems.filter((item) => !item.mobilePrimary);
 
   return (
-    <div className="relative mx-auto min-h-[calc(100dvh-7rem)] flex max-w-6xl flex-col justify-center gap-2 pb-20 md:gap-3 md:pb-2">
+    <div className="relative mx-auto min-h-screen md:min-h-[calc(100dvh-7rem)] flex max-w-6xl flex-col justify-center gap-2 pb-20 md:gap-3 md:pb-2">
       <GameNotificationsOverlay
         pausedLeg={pausedLeg}
         gameOver={!!gameOver}
@@ -1422,7 +1497,7 @@ export function Game() {
          *  (Spectator chat's trigger now lives in the action button row.)
          *  Left column on desktop; a full-width strip above the board/panel
          *  row on tablet and phone. */}
-        <div className="game-area-leftinfo sm:px-0 px-5 flex shrink-0 flex-col justify-center gap-3 lg:h-full lg:min-h-0">
+        <div className="game-area-leftinfo md:px-0 px-5 flex shrink-0 flex-col justify-center gap-3 lg:h-full lg:min-h-0">
           <GameDetailsCard
             badges={badges}
             gameOver={gameOver}

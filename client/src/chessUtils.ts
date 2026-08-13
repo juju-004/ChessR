@@ -190,6 +190,83 @@ export function computeMaterialDiff(fen: string): MaterialDiff {
 }
 // =============== END MATERIAL DIFF ================
 
+// ================= PER-MOVE CLOCK RECONSTRUCTION =================
+interface ClockReconstructionInput {
+  baseSeconds: number | null;
+  incrementSeconds: number;
+  /** Each move's server timestamp — same `timestampMs` recorded on
+   *  IMove server-side. */
+  moveTimestampsMs: number[];
+  berserk?: { white: boolean; black: boolean };
+}
+
+export interface PlyClock {
+  /** Remaining time for the side that just moved, immediately after this
+   *  move — null for an untimed game. Mirrors what lichess shows next to
+   *  each move in the move list. */
+  remainingMs: number | null;
+  /** How long this move actually took to play — null for the first move
+   *  of each side (the clock is "free" until both sides have moved once,
+   *  same rule the server enforces; see finalizeMove in
+   *  gameState.service.ts), and null for an untimed game. This is what a
+   *  "which move did I waste the most time on" view should key off of,
+   *  not remainingMs on its own. */
+  thinkTimeMs: number | null;
+}
+
+/**
+ * Reconstructs, for every ply, the mover's remaining clock immediately
+ * after that move — client-side, from data already on hand (move
+ * timestamps + the game's time control), so replay/history-browsing needs
+ * no separate server round trip or persisted per-ply clock log.
+ *
+ * Deliberately mirrors finalizeMove's server-side accounting exactly:
+ *   - the first move of EACH side is free (nothing charged, no increment)
+ *     — the clock only starts truly running once both sides have moved
+ *     once, same as lichess and same as this server enforces live.
+ *   - increment is added only alongside a real deduction, never on its
+ *     own (so it can't be exploited by, say, aborting before it's live).
+ *
+ * One necessary approximation: the server also subtracts a small, capped
+ * lag-compensation estimate (network round-trip) before charging the
+ * clock (see latency.service.ts) — that per-move figure isn't persisted,
+ * so this reconstruction can't replicate it exactly and will read a few
+ * tens of ms slower per move than the authoritative server clock did in
+ * the moment. Cosmetic only; doesn't change which move actually cost the
+ * most time.
+ */
+export function reconstructPlyClocks(input: ClockReconstructionInput): PlyClock[] {
+  const { baseSeconds, incrementSeconds, moveTimestampsMs, berserk } = input;
+  const baseMs = baseSeconds === null ? null : baseSeconds * 1000;
+  const incrementMs = incrementSeconds * 1000;
+
+  let whiteRemainingMs = baseMs;
+  let blackRemainingMs = baseMs;
+
+  return moveTimestampsMs.map((timestampMs, i) => {
+    const isWhite = i % 2 === 0;
+    const clockIsLive = i >= 2 && baseMs !== null;
+
+    let thinkTimeMs: number | null = null;
+    if (clockIsLive) {
+      const prevTimestampMs = moveTimestampsMs[i - 1];
+      thinkTimeMs = Math.max(0, timestampMs - prevTimestampMs);
+      const increment = (isWhite ? berserk?.white : berserk?.black) ? 0 : incrementMs;
+      if (isWhite) {
+        whiteRemainingMs = Math.max(0, (whiteRemainingMs ?? 0) - thinkTimeMs) + increment;
+      } else {
+        blackRemainingMs = Math.max(0, (blackRemainingMs ?? 0) - thinkTimeMs) + increment;
+      }
+    }
+
+    return {
+      remainingMs: isWhite ? whiteRemainingMs : blackRemainingMs,
+      thinkTimeMs,
+    };
+  });
+}
+// =============== END PER-MOVE CLOCK RECONSTRUCTION ================
+
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 
 interface Chess960StartingFiles {

@@ -198,7 +198,9 @@ function computeLiveMs(
   isTicking: boolean,
 ): number | null {
   if (baseRemainingMs === null) return null;
-  return isTicking ? baseRemainingMs - (Date.now() - turnStartedAtMs) : baseRemainingMs;
+  return isTicking
+    ? baseRemainingMs - (Date.now() - turnStartedAtMs)
+    : baseRemainingMs;
 }
 
 /**
@@ -321,9 +323,12 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
          *  .game-area-toppanel/-bottompanel in Game.tsx), so letting this
          *  line's height come and go with material captures would resize
          *  the board mid-game every time a piece gets taken. */}
-        <div className="min-h-[18px]">
+        <div className="min-h-4.5">
           {firstMoveGraceMs !== null ? (
-            <FirstMoveBadge turnStartedAtMs={turnStartedAtMs} graceMs={firstMoveGraceMs} />
+            <FirstMoveBadge
+              turnStartedAtMs={turnStartedAtMs}
+              graceMs={firstMoveGraceMs}
+            />
           ) : (
             <MaterialBadge
               pieceDiff={pieceDiff}
@@ -419,9 +424,13 @@ export const PlayerPanelFlank = memo(function PlayerPanelFlank({
       </div>
       {/* Fixed height for the same reason as PlayerPanelRow's equivalent
        *  slot — see its comment. */}
-      <div className="min-h-[14px] w-full">
+      <div className="min-h-3.5 w-full">
         {firstMoveGraceMs !== null ? (
-          <FirstMoveBadge turnStartedAtMs={turnStartedAtMs} graceMs={firstMoveGraceMs} size="sm" />
+          <FirstMoveBadge
+            turnStartedAtMs={turnStartedAtMs}
+            graceMs={firstMoveGraceMs}
+            size="sm"
+          />
         ) : (
           <MaterialBadge
             pieceDiff={pieceDiff}

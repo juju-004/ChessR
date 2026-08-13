@@ -1485,13 +1485,10 @@ export async function withdrawFromTournament(
       clearGameTimer(gameId);
       const winnerColor = liveState.whiteId === userId ? "black" : "white";
       const finalState = await endGame(gameId, winnerColor, "withdrawn");
-      await finalizeGame(
-        gameId,
-        finalState.fen,
-        "finished",
-        winnerColor,
-        "withdrawn",
-      );
+      await finalizeGame(gameId, finalState.fen, "finished", winnerColor, "withdrawn", {
+        whiteRemainingMs: finalState.whiteRemainingMs,
+        blackRemainingMs: finalState.blackRemainingMs,
+      });
       await deleteLiveState(gameId);
       try {
         getIo().to(`game:${gameId}`).emit("game:over", {

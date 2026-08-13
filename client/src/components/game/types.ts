@@ -28,6 +28,13 @@ export interface MoveLogEntry {
   san: string;
   from: string;
   to: string;
+  /** Server timestamp of when this move landed — present for every move
+   *  of a finished game (persisted) and, live, for any move made from
+   *  this point in the socket connection onward (see gameSocket.ts's
+   *  game:move payload). Missing only for moves that arrived over an
+   *  older live session before this field existed to persist — treat as
+   *  optional everywhere it's consumed (see reconstructPlyClocks). */
+  timestampMs?: number;
 }
 
 export type Role = "white" | "black" | "spectator";

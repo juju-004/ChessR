@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { ArrowUp, ArrowDown, X, Swords } from "lucide-react";
 import { listFriends, type Friend } from "../api/friends.js";
 import {
@@ -60,6 +60,8 @@ export function CageMatches() {
   const socket = useSocket();
   const { user } = useAuth();
   const myId = user?.id;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const startFormRef = useRef<HTMLDivElement | null>(null);
   const [friends, setFriends] = useState<Friend[]>([]);
   const [matches, setMatches] = useState<CageMatch[]>([]);
 
@@ -91,6 +93,29 @@ export function CageMatches() {
     listFriends().then((res) => setFriends(res.friends));
     refreshMatches();
   }, [refreshMatches]);
+
+  // Arriving from the Friends page's "Cage match" button — ?challenge=
+  // carries the friend's id so the opponent is picked automatically
+  // instead of making them find the name again in the dropdown. Only
+  // resolvable once `friends` has actually loaded (the id has to match
+  // someone in that list), and cleared from the URL right after so a
+  // refresh or the back button doesn't keep re-triggering the scroll.
+  useEffect(() => {
+    const challengeId = searchParams.get("challenge");
+    if (!challengeId || friends.length === 0) return;
+    if (friends.some((f) => f.id === challengeId)) {
+      setSelectedFriend(challengeId);
+      startFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("challenge");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [friends, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (!socket) return;
@@ -211,7 +236,7 @@ export function CageMatches() {
           </p>
         )}
 
-        <Card variant="solid">
+        <Card variant="solid" ref={startFormRef}>
           <CardHeader>
             <CardTitle>Start a cage match</CardTitle>
           </CardHeader>

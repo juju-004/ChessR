@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { motion } from "framer-motion";
 import { Ban } from "lucide-react";
 import { ChessBoard } from "../ChessBoard.js";
@@ -5,6 +6,7 @@ import { PromotionPicker } from "../PromotionPicker.js";
 import { PlayerPanelRow, type PanelData } from "../PlayerPanels.js";
 import { Button } from "../ui/index.js";
 import { springSnappy } from "../../lib/motion.js";
+import { useSquareSize } from "./useSquareSize.js";
 
 interface GameBoardAreaProps {
   opponentPanelData: PanelData;
@@ -59,28 +61,31 @@ export function GameBoardArea({
   promoPending,
   onPromotionPick,
 }: GameBoardAreaProps) {
+  const squareWrapperRef = useRef<HTMLDivElement | null>(null);
+  const squareSize = useSquareSize(squareWrapperRef);
+
   return (
-    <div className="game-area-board relative flex flex-col flex-1 items-center justify-center">
-      <div className="game-area-toppanel md:hidden w-[95%]">
+    <div className="game-area-board mt-6 md:mt-0 relative flex flex-col flex-1 items-center justify-center">
+      <div className=" md:hidden w-[95%]">
         <PlayerPanelRow {...opponentPanelData} />
       </div>
-      {/* The classic aspect-ratio-in-a-shrinkable-flex-column trap: a
-       *  plain `w-full aspect-square` box computes its height FROM its
-       *  width, but flex-shrink can still independently shrink that
-       *  height to fit the column without ever reconciling the width
-       *  back down to match — so at certain viewport-height/zoom
-       *  combinations the two stop agreeing and the board renders
-       *  smaller than the box around it. A size container sidesteps
-       *  the whole problem: this wrapper is the one thing that's
-       *  unambiguously sized by flexbox (flex-1 + min-h-0 gives it
-       *  exactly the space left after the mobile top/bottom panels),
-       *  and the board below is sized from ITS dimensions via cqw/cqh
-       *  rather than back through width→aspect-ratio→flex-shrink. The
-       *  browser can now only ever produce one answer, not two that
-       *  might disagree. */}
-      <div className="relative flex w-full min-h-0 flex-1 items-center justify-center @container-size">
+      {/* This wrapper is the one thing unambiguously sized by flexbox
+       *  (flex-1 + min-h-0 gives it exactly the space left after the
+       *  mobile top/bottom panels) — useSquareSize measures it directly
+       *  via ResizeObserver and hands back the largest square that fits,
+       *  which the board below is then sized to with plain inline
+       *  width/height. No CSS unit trickery, no container-query support
+       *  to depend on — just a measured number in, a pixel size out. */}
+      <div
+        ref={squareWrapperRef}
+        className="relative flex w-full min-h-0 flex-1 items-center justify-center"
+      >
         <div
-          className={`relative bg-purple-700 w-[min(100cqw,100cqh)] h-[min(100cqw,100cqh)] rounded-2xl flex items-center shadow- overflow-hidden board-theme-${boardTheme} piece-theme-${pieceTheme} justify-center`}
+          style={{
+            width: squareSize || undefined,
+            height: squareSize || undefined,
+          }}
+          className={`relative rounded-2xl flex items-center shadow- overflow-hidden board-theme-${boardTheme} piece-theme-${pieceTheme} justify-center`}
         >
           <ChessBoard
             fen={displayFen}
@@ -125,7 +130,7 @@ export function GameBoardArea({
           {promoPending && <PromotionPicker onPick={onPromotionPick} />}
         </div>
       </div>
-      <div className="game-area-bottompanel md:hidden w-[95%]">
+      <div className=" md:hidden w-[95%]">
         <PlayerPanelRow {...myPanelData} />
       </div>
     </div>

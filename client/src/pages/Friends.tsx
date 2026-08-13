@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { Search, Swords, Eye, UserCircle2 } from "lucide-react";
 import {
   listFriends,
   listIncomingRequests,
@@ -13,11 +14,16 @@ import { Page } from "@/components/ui/Page.js";
 import { Card } from "@/components/ui/Card.js";
 import { Select } from "@/components/ui/Select.js";
 import { Input } from "@/components/ui/Input.js";
+import { Button } from "@/components/ui/Button.js";
+
+type SortMode = "alphabetical" | "online";
 
 export function Friends() {
   const socket = useSocket();
   const [requests, setRequests] = useState<IncomingRequest[]>([]);
   const [friends, setFriends] = useState<Friend[]>([]);
+  const [search, setSearch] = useState("");
+  const [sortMode, setSortMode] = useState<SortMode>("online");
   const [tcIndex, setTcIndex] = useState(2);
   const [variant, setVariant] = useState<"standard" | "chess960">("standard");
   const [wagerInput, setWagerInput] = useState("0");
@@ -99,6 +105,24 @@ export function Friends() {
       isError: false,
     });
   }
+
+  // Search matches on username substring (case-insensitive); sort mode
+  // "online" groups online friends first (alphabetical within each group)
+  // so the people you can actually challenge right now surface without
+  // hunting through a long offline list — "alphabetical" ignores online
+  // status entirely for a straight a-z list.
+  const visibleFriends = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const filtered = query
+      ? friends.filter((f) => f.username.toLowerCase().includes(query))
+      : friends;
+    return [...filtered].sort((a, b) => {
+      if (sortMode === "online" && a.online !== b.online) {
+        return a.online ? -1 : 1;
+      }
+      return a.username.localeCompare(b.username, undefined, { sensitivity: "base" });
+    });
+  }, [friends, search, sortMode]);
 
   return (
     <Page title="Friends" description="View and challenge your friends.">
@@ -185,15 +209,42 @@ export function Friends() {
             placeholder="0 for a free game"
           />
 
+          <div className="mb-3.5 flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="flex-1">
+              <Input
+                label="Search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Find a friend by username…"
+                leadingIcon={<Search className="h-4 w-4" />}
+              />
+            </div>
+            <div className="sm:w-44">
+              <Select
+                label="Sort by"
+                value={sortMode}
+                onChange={(e) => setSortMode(e.target.value as SortMode)}
+              >
+                <option value="online">Online first</option>
+                <option value="alphabetical">Alphabetical</option>
+              </Select>
+            </div>
+          </div>
+
           {friends.length === 0 && (
             <p className="text-sm text-base-content/60">
               No friends yet. Find players and add some!
             </p>
           )}
-          {friends.map((f) => (
+          {friends.length > 0 && visibleFriends.length === 0 && (
+            <p className="text-sm text-base-content/60">
+              No friends match "{search}".
+            </p>
+          )}
+          {visibleFriends.map((f) => (
             <div
               key={f.id}
-              className="flex items-center justify-between border-b border-base-300 py-2 last:border-none"
+              className="flex flex-wrap items-center justify-between gap-2 border-b border-base-300 py-2 last:border-none"
             >
               <span className="flex items-center gap-2 text-sm text-base-content">
                 <span
@@ -201,29 +252,32 @@ export function Friends() {
                 />
                 {f.username}
               </span>
-              <span className="flex gap-2">
-                <Link
-                  to={`/profile/${f.username}`}
-                  className="rounded-md bg-base-300 px-3 py-1.5 text-sm font-semibold text-base-content hover:bg-base-300"
-                >
-                  Profile
+              <span className="flex flex-wrap gap-2">
+                <Link to={`/profile/${f.username}`}>
+                  <Button variant="glass" size="sm">
+                    <UserCircle2 className="h-4 w-4" /> Profile
+                  </Button>
                 </Link>
                 {f.activeGameCode ? (
-                  <Link
-                    to={`/game/${f.activeGameCode}`}
-                    className="rounded-md bg-green-800 px-3 py-1.5 text-sm font-semibold text-green-100 hover:bg-green-700"
-                  >
-                    Watch
+                  <Link to={`/game/${f.activeGameCode}`}>
+                    <Button variant="glass" size="sm">
+                      <Eye className="h-4 w-4 text-green-500" /> Watch
+                    </Button>
                   </Link>
                 ) : (
-                  <button
+                  <Button
+                    size="sm"
                     onClick={() => handleChallenge(f.id)}
                     disabled={!f.online}
-                    className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Challenge
-                  </button>
+                  </Button>
                 )}
+                <Link to={`/cage?challenge=${f.id}`}>
+                  <Button variant="glass" size="sm">
+                    <Swords className="h-4 w-4" /> Cage match
+                  </Button>
+                </Link>
               </span>
             </div>
           ))}

@@ -106,9 +106,10 @@ async function endGameAndBroadcast(
     whiteRemainingMs: finalState.whiteRemainingMs,
     blackRemainingMs: finalState.blackRemainingMs,
   });
-  finalizeGame(gameId, finalState.fen, 'finished', result, endReason).catch((err) =>
-    console.error('finalizeGame failed:', err),
-  );
+  finalizeGame(gameId, finalState.fen, 'finished', result, endReason, {
+    whiteRemainingMs: finalState.whiteRemainingMs,
+    blackRemainingMs: finalState.blackRemainingMs,
+  }).catch((err) => console.error('finalizeGame failed:', err));
   deleteLiveState(gameId).catch((err) => console.error('deleteLiveState failed:', err));
 
   await advanceCageMatchIfLeg(gameId, result, endReason);
@@ -179,7 +180,10 @@ export function registerFirstMoveTimeoutHandler(io: Server) {
 
     clearGameTimer(gameId);
     clearPendingDisconnect(gameId);
-    await finalizeGame(gameId, state.fen, 'aborted', null, 'first_move_timeout');
+    await finalizeGame(gameId, state.fen, 'aborted', null, 'first_move_timeout', {
+      whiteRemainingMs: state.whiteRemainingMs,
+      blackRemainingMs: state.blackRemainingMs,
+    });
     await refundWagerBothSides(gameId, state.whiteId, state.blackId, state.wagerTokens).catch((err) =>
       console.error('refundWagerBothSides failed during first-move timeout:', err),
     );
@@ -389,6 +393,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
 
       try {
         const lagCompensationMs = getLagCompensationMs(socket.id);
+        const moveTimestampMs = Date.now();
         const result = await applyMove(gameId, userId, { from, to, promotion }, lagCompensationMs);
 
         // Broadcast first — Mongo persistence is for history/reconnect sync, it
@@ -404,6 +409,11 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           whiteRemainingMs: result.whiteRemainingMs,
           blackRemainingMs: result.blackRemainingMs,
           turnStartedAtMs: Date.now(),
+          // Same timestamp persisted via appendMove below (not two separate
+          // Date.now() calls) — this is what lets a client reconstruct a
+          // per-move clock/think-time reading without a full refetch, same
+          // as it already can for a finished game's persisted moves.
+          timestampMs: moveTimestampMs,
         });
 
         appendMove(gameId, {
@@ -413,6 +423,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           promotion: result.promotion,
           fenAfter: result.fenAfter,
           moveNumber: result.moveNumber,
+          timestampMs: moveTimestampMs,
         }).catch((err) => console.error('appendMove failed:', err));
 
         if (result.isGameOver) {
@@ -673,7 +684,10 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       clearGameTimer(gameId);
       clearFirstMoveTimer(gameId);
       clearPendingDisconnect(gameId);
-      await finalizeGame(gameId, state.fen, 'aborted', null, 'aborted_no_moves');
+      await finalizeGame(gameId, state.fen, 'aborted', null, 'aborted_no_moves', {
+        whiteRemainingMs: state.whiteRemainingMs,
+        blackRemainingMs: state.blackRemainingMs,
+      });
       await refundWagerBothSides(gameId, state.whiteId, state.blackId, state.wagerTokens).catch((err) =>
         console.error('refundWagerBothSides failed:', err),
       );

@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, AlertTriangle, ShieldAlert } from "lucide-react";
+import { ArrowLeft, AlertTriangle, ShieldAlert, ShieldOff, ShieldCheck } from "lucide-react";
 import {
   getReportDetail,
   updateReport,
+  setUserReportingBlock,
   type AdminReportDetail as AdminReportDetailType,
   type ReportStatus,
 } from "../api/admin.js";
@@ -24,6 +25,7 @@ export function AdminReportDetail() {
   const [notes, setNotes] = useState("");
   const [clearBlock, setClearBlock] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [togglingReportAccess, setTogglingReportAccess] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -47,6 +49,17 @@ export function AdminReportDetail() {
       setClearBlock(false);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleToggleReportAccess() {
+    if (!report?.reporter) return;
+    setTogglingReportAccess(true);
+    try {
+      await setUserReportingBlock(report.reporter.username, !report.reporter.reportingBlocked);
+      if (id) setReport(await getReportDetail(id));
+    } finally {
+      setTogglingReportAccess(false);
     }
   }
 
@@ -97,6 +110,32 @@ export function AdminReportDetail() {
           {report.reason.replace(/_/g, " ")}
         </p>
         <p className="mt-3 text-sm text-base-content/80">{report.description}</p>
+
+        {report.reporter && (
+          <div className="mt-3 flex items-center justify-between gap-2 border-t border-base-300/60 pt-3">
+            <p className="text-xs text-base-content/50">
+              {report.reporter.reportingBlocked
+                ? `${report.reporter.username} is currently blocked from filing new reports.`
+                : `Bogus or bad-faith report? You can restrict ${report.reporter.username} from filing more.`}
+            </p>
+            <Button
+              variant={report.reporter.reportingBlocked ? "glass" : "danger"}
+              size="sm"
+              onClick={handleToggleReportAccess}
+              disabled={togglingReportAccess}
+            >
+              {report.reporter.reportingBlocked ? (
+                <>
+                  <ShieldCheck className="h-4 w-4" /> Restore report access
+                </>
+              ) : (
+                <>
+                  <ShieldOff className="h-4 w-4" /> Block from reporting
+                </>
+              )}
+            </Button>
+          </div>
+        )}
       </Card>
 
       {report.gameCode && !game && (

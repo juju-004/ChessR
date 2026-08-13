@@ -106,8 +106,22 @@
   --surface-bg: #ffffff;
   --surface-bg-strong: #ffffff;
   --surface-border: rgba(15, 23, 42, 0.1);
-  --surface-border-strong: rgba(15, 23, 42, 0.13);
-  --surface-highlight: rgba(255, 255, 255, 0.8);
+  --surface-border-strong: rgba(15, 23, 42, 0.16);
+  /* A faint brand-tinted sheen (not plain white) baked into the panel's
+     own background-image — ties the "solid card" look back to the brand
+     gradient without spending anything on blur or shadow. */
+  --surface-sheen: linear-gradient(
+    165deg,
+    rgba(59, 130, 246, 0.05) 0%,
+    rgba(139, 92, 246, 0.035) 42%,
+    transparent 75%
+  );
+  --surface-sheen-strong: linear-gradient(
+    165deg,
+    rgba(59, 130, 246, 0.07) 0%,
+    rgba(139, 92, 246, 0.05) 42%,
+    transparent 75%
+  );
 }
 
 [data-theme="dark"] {
@@ -118,9 +132,20 @@
 
   --surface-bg: #1b1b23;
   --surface-bg-strong: #202029;
-  --surface-border: rgba(255, 255, 255, 0.07);
-  --surface-border-strong: rgba(255, 255, 255, 0.09);
-  --surface-highlight: rgba(255, 255, 255, 0.04);
+  --surface-border: rgba(255, 255, 255, 0.08);
+  --surface-border-strong: rgba(255, 255, 255, 0.12);
+  --surface-sheen: linear-gradient(
+    165deg,
+    rgba(59, 130, 246, 0.1) 0%,
+    rgba(139, 92, 246, 0.07) 42%,
+    transparent 75%
+  );
+  --surface-sheen-strong: linear-gradient(
+    165deg,
+    rgba(59, 130, 246, 0.14) 0%,
+    rgba(139, 92, 246, 0.1) 42%,
+    transparent 75%
+  );
 }
 
 html {
@@ -163,15 +188,37 @@ body {
   color: transparent;
 }
 
+/* Elevated surface — the shared look for Card/Modal/Popover/glass Button
+   variants etc. This used to be a translucent, blurred "liquid glass"
+   panel (backdrop-filter: blur+saturate), which was a measurable
+   jank/battery cost on older/lower-end phones — and box-shadow has its
+   own version of that same cost (a blurred shadow forces a separate
+   rasterized layer that has to be recomposited on every scroll/animation
+   frame). This version is a genuinely solid, opaque panel: real
+   background-color, a real hairline border doing actual elevation work,
+   and a faint brand-tinted sheen baked directly into background-image
+   (see --surface-sheen above) — all of that is just the element's normal
+   background paint, computed once, nothing to blur or recomposite.
+   Class names are `.elevated`/`.elevated-strong` — deliberately NOT named
+   `.glass`, because daisyUI ships its own `.glass` utility class (real
+   backdrop-filter blur + saturate + shadow baked in). Reusing that name
+   only "worked" because this rule happened to be later in the cascade and
+   used !important to stomp daisyUI's declarations — fragile, and exactly
+   the kind of thing that silently breaks again the moment daisyUI's own
+   output order changes (a version bump, a build-tool change, etc). A
+   distinct name means there's no collision to begin with. The
+   `variant="glass"` prop on Button/Card/Badge is unchanged (that's just a
+   semantic name in our own API) — only the underlying CSS class it maps
+   to changed. */
 .elevated {
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background-color: var(--surface-bg);
+  background-image: var(--surface-sheen);
+  border: 1px solid var(--surface-border);
 }
 .elevated-strong {
+  background-color: var(--surface-bg-strong);
+  background-image: var(--surface-sheen-strong);
   border: 1px solid var(--surface-border-strong);
-}
-.elevated > * {
-  position: relative;
-  z-index: 2;
 }
 
 @import "@lichess-org/chessground/assets/chessground.base.css";
@@ -417,10 +464,6 @@ body {
   .game-grid .game-area-rightpanel {
     grid-area: rightpanel;
     display: flex;
-  }
-  .game-grid .game-area-toppanel,
-  .game-grid .game-area-bottompanel {
-    display: none;
   }
 }
 

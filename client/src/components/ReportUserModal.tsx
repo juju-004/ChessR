@@ -13,17 +13,25 @@ const REASONS: { value: ReportReason; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
+/** Accepts either a bare join code ("AB12CD") or a full game URL
+ *  ("https://chessr.app/game/AB12CD", "/game/ab12cd", with or without a
+ *  trailing slash/query string) and returns just the code. Falls back to
+ *  treating the whole input as a code if it doesn't look like a URL, so a
+ *  typo'd/partial paste doesn't just silently disappear. */
+function extractGameCode(input: string): string {
+  const trimmed = input.trim();
+  const match = trimmed.match(/\/game\/([a-zA-Z0-9]+)/);
+  if (match) return match[1].toUpperCase();
+  return trimmed.toUpperCase();
+}
+
 export interface ReportUserModalProps {
   open: boolean;
   onClose: () => void;
   username: string;
 }
 
-export function ReportUserModal({
-  open,
-  onClose,
-  username,
-}: ReportUserModalProps) {
+export function ReportUserModal({ open, onClose, username }: ReportUserModalProps) {
   const { notify } = useNotify();
   const [reason, setReason] = useState<ReportReason>("cheating");
   const [gameCode, setGameCode] = useState("");
@@ -50,17 +58,13 @@ export function ReportUserModal({
         reportedUsername: username,
         reason,
         description: description.trim(),
-        gameCode: gameCode.trim() || undefined,
+        gameCode: gameCode.trim() ? extractGameCode(gameCode) : undefined,
       });
       notify(`Report submitted. Our team will review it.`, [], 4000);
       reset();
       onClose();
     } catch (err) {
-      setError(
-        err instanceof ApiRequestError
-          ? err.message
-          : "Could not submit report",
-      );
+      setError(err instanceof ApiRequestError ? err.message : "Could not submit report");
     } finally {
       setSubmitting(false);
     }
@@ -78,15 +82,13 @@ export function ReportUserModal({
       <div className="flex flex-col gap-4">
         <p className="text-sm text-base-content/60">
           Reports are reviewed by our team. If this involves a specific game,
-          include its code below so we can pull it up directly — the account's
-          withdrawals are put on hold automatically while we look into it.
+          include its code below so we can pull it up directly — the
+          account's withdrawals are put on hold automatically while we look
+          into it.
         </p>
 
         <div>
-          <label
-            htmlFor="report-reason"
-            className="mb-2 block text-sm font-medium text-base-content/80"
-          >
+          <label htmlFor="report-reason" className="mb-2 block text-sm font-medium text-base-content/80">
             Reason
           </label>
           <select
@@ -104,29 +106,21 @@ export function ReportUserModal({
         </div>
 
         <div>
-          <label
-            htmlFor="report-game-code"
-            className="mb-2 block text-sm font-medium text-base-content/80"
-          >
-            Game code <span className="text-base-content/40">(optional)</span>
+          <label htmlFor="report-game-code" className="mb-2 block text-sm font-medium text-base-content/80">
+            Game code or URL <span className="text-base-content/40">(optional)</span>
           </label>
           <input
             id="report-game-code"
             type="text"
             value={gameCode}
-            onChange={(e) =>
-              setGameCode(e.target.value.toUpperCase().slice(0, 25))
-            }
-            placeholder="e.g. AB12CD"
+            onChange={(e) => setGameCode(e.target.value.slice(0, 200))}
+            placeholder="e.g. AB12CD or https://chessr.app/game/AB12CD"
             className="w-full rounded-lg border border-base-300 bg-base-200/60 px-3 py-2 text-sm text-base-content outline-none focus:border-(--primary)"
           />
         </div>
 
         <div>
-          <label
-            htmlFor="report-description"
-            className="mb-2 block text-sm font-medium text-base-content/80"
-          >
+          <label htmlFor="report-description" className="mb-2 block text-sm font-medium text-base-content/80">
             What happened?
           </label>
           <textarea
