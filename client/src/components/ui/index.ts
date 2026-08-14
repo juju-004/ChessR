@@ -15,6 +15,7 @@ export { Badge, type BadgeProps, type BadgeVariant } from "./Badge.js";
 export { Avatar, type AvatarProps } from "./Avatar.js";
 export { Modal, type ModalProps } from "./Modal.js";
 export { Popover, type PopoverProps } from "./Popover.js";
+export { ResponsiveOverlay, type ResponsiveOverlayProps } from "./ResponsiveOverlay.js";
 export { Dropdown, type DropdownProps, type DropdownItem } from "./Dropdown.js";
 export { ConfirmModal, type ConfirmModalProps } from "./ConfirmModal.js";
 export { Tabs, type TabsProps, type TabItem } from "./Tabs.js";

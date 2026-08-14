@@ -64,10 +64,16 @@ export function GameBoardArea({
   const squareWrapperRef = useRef<HTMLDivElement | null>(null);
   const squareSize = useSquareSize(squareWrapperRef);
 
+  // Flipping the board moves my pieces to the top — the panels flanking
+  // it should move with them, so the panel nearest my rank on screen
+  // always reads as "me" regardless of orientation.
+  const topPanelData = boardFlipped ? myPanelData : opponentPanelData;
+  const bottomPanelData = boardFlipped ? opponentPanelData : myPanelData;
+
   return (
     <div className="game-area-board mt-6 md:mt-0 relative flex flex-col flex-1 items-center justify-center">
       <div className=" md:hidden w-[95%]">
-        <PlayerPanelRow {...opponentPanelData} />
+        <PlayerPanelRow {...topPanelData} />
       </div>
       {/* This wrapper is the one thing unambiguously sized by flexbox
        *  (flex-1 + min-h-0 gives it exactly the space left after the
@@ -131,7 +137,7 @@ export function GameBoardArea({
         </div>
       </div>
       <div className=" md:hidden w-[95%]">
-        <PlayerPanelRow {...myPanelData} />
+        <PlayerPanelRow {...bottomPanelData} />
       </div>
     </div>
   );

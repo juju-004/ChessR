@@ -3,18 +3,15 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   LayoutDashboard,
-  Search,
   Users,
   Swords,
   Trophy,
   Settings,
   type LucideIcon,
-  TableOfContents,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext.js";
 import { cn } from "../lib/cn.js";
-import { pressable, springSnappy } from "../lib/motion.js";
-import { Dropdown, type DropdownItem } from "./ui/Dropdown.js";
+import { springSnappy } from "../lib/motion.js";
 
 interface NavItem {
   to: string;
@@ -28,18 +25,16 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/find", label: "Find", icon: Search },
-  { to: "/friends", label: "Friends", icon: Users },
+  { to: "/players", label: "Players", icon: Users },
   { to: "/cage", label: "Cage", icon: Swords },
   { to: "/tournaments", label: "Tournaments", icon: Trophy },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
 /**
- * The desktop-only vertical elevated rail (md and up). The mobile equivalent
- * — MobileNavTrigger, exported below — is rendered separately in
- * Navbar.tsx beside the logo, not here, since it needs to live in the top
- * nav row rather than float over the page.
+ * The desktop-only vertical elevated rail (md and up). The mobile
+ * equivalent — MobileDock, exported below — is a fixed bottom tab bar
+ * rendered separately in App.tsx, not here.
  */
 export const Sidebar = memo(function Sidebar() {
   const { isAuthed } = useAuth();
@@ -76,45 +71,46 @@ export const Sidebar = memo(function Sidebar() {
 });
 
 /**
- * The nav items rendered as a Dropdown, for use beside the logo in
- * Navbar.tsx on mobile (md:hidden is baked into the trigger button itself,
- * so this can be dropped straight into the navbar without an extra
- * wrapper). Opens downward (side="bottom") since it now lives at the top
- * of the screen rather than the old fixed bottom-left FAB it replaced.
+ * The mobile bottom dock — site navigation, phone only. Renders as a
+ * full-width tab bar fixed to the bottom of the screen (see `.dock` in
+ * index.css). Deliberately hides itself on `/game/:code`: the game page's
+ * own action bar (GameActionBarMobile in components/game/GameActionBar.tsx)
+ * occupies that same visual slot there instead, sharing the same `.dock`
+ * classes so it reads as one dock whose contents change with context
+ * rather than two fixed-bottom elements fighting for the same space.
  */
-export function MobileNavTrigger() {
+export function MobileDock() {
+  const { isAuthed } = useAuth();
   const { pathname } = useLocation();
   const navigate = useNavigate();
-
-  const items: DropdownItem[] = NAV_ITEMS.map((item) => {
-    const isActive = item.end
-      ? pathname === item.to
-      : pathname.startsWith(item.to);
-    return {
-      label: item.label,
-      icon: item.icon,
-      onClick: () => navigate(item.to),
-      className: isActive
-        ? "text-primary bg-base-200 font-semibold"
-        : undefined,
-    };
-  });
+  if (!isAuthed) return null;
+  if (pathname.startsWith("/game/")) return null;
 
   return (
-    <Dropdown
-      trigger={
-        <motion.button
-          {...pressable}
-          aria-label="Open navigation menu"
-          className="elevated flex h-9 w-9 items-center justify-center rounded-full text-base-content transition-colors hover:bg-base-content/5 md:hidden"
-        >
-          <TableOfContents className="h-4 w-4" strokeWidth={3} />
-        </motion.button>
-      }
-      items={items}
-      align="start"
-      side="bottom"
-    />
+    <nav aria-label="Primary" className="docker flex md:hidden">
+      {NAV_ITEMS.map((item) => {
+        const isActive = item.end
+          ? pathname === item.to
+          : pathname.startsWith(item.to);
+        const Icon = item.icon;
+        return (
+          <button
+            key={item.to}
+            type="button"
+            onClick={() => navigate(item.to)}
+            aria-label={item.label}
+            aria-current={isActive ? "page" : undefined}
+            className={cn(
+              "docker-item docker-item-grow",
+              isActive && "docker-item-active",
+            )}
+          >
+            <Icon className="h-5 w-5" strokeWidth={isActive ? 2.5 : 2} />
+            <span>{item.label}</span>
+          </button>
+        );
+      })}
+    </nav>
   );
 }
 

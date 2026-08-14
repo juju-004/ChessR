@@ -23,12 +23,11 @@ import {
   Ban,
   Pause,
   MessageSquare,
-  Share2,
   ChevronLeft,
   ChevronRight,
   RefreshCw,
-  FlipVertical2,
   Trophy,
+  FlipVertical,
 } from "lucide-react";
 import { MoveList, MoveStrip } from "../components/MoveLog.js";
 import { PlayerPanelRow, panelMaterial } from "../components/PlayerPanels.js";
@@ -41,7 +40,6 @@ import {
   type Role,
   isLiveStatus,
   playSoundForMove,
-  describeResult,
 } from "../components/game/types.js";
 import { useHoldRepeat } from "../components/game/useHoldRepeat.js";
 import { GameNotificationsOverlay } from "../components/game/GameNotificationsOverlay.js";
@@ -73,6 +71,7 @@ import {
   setSoundEnabled,
 } from "../sounds.js";
 import { copyToClipboard } from "@/lib/utils.js";
+import { formatTimeControl } from "../timeControls.js";
 
 export function Game() {
   const { code = "" } = useParams<{ code: string }>();
@@ -141,7 +140,6 @@ export function Game() {
   } | null>(null);
   const [whiteConnected, setWhiteConnected] = useState(false);
   const [blackConnected, setBlackConnected] = useState(false);
-  const [connStatus, setConnStatus] = useState("Connecting…");
   const [moveError, setMoveError] = useState("");
   const [promoPending, setPromoPending] = useState<{
     orig: string;
@@ -661,7 +659,6 @@ export function Game() {
   useEffect(() => {
     if (mode !== "board" || !socket || !gameMeta || !live) return;
     const gameId = gameMeta._id;
-    setConnStatus("Connecting…");
     cageMatchOverRef.current = false;
 
     function deriveLastMove(
@@ -669,12 +666,6 @@ export function Game() {
     ): [string, string] | undefined {
       const last = moveList[moveList.length - 1];
       return last ? [last.from, last.to] : undefined;
-    }
-
-    function onConnectError(err: Error) {
-      setConnStatus((prev) =>
-        prev === "Connecting…" ? `Connection failed: ${err.message}` : prev,
-      );
     }
 
     // Room membership does not survive a reconnect — a dropped/restarted
@@ -719,15 +710,6 @@ export function Game() {
           : null,
       );
       if (gameIsOver) setGameOverModalDismissed(false);
-      setConnStatus(
-        payload.role === "spectator"
-          ? "Spectating"
-          : payload.status === "active"
-            ? "Your game"
-            : payload.status === "waiting"
-              ? "Waiting for opponent…"
-              : payload.status,
-      );
     }
 
     function onMove(payload: any) {
@@ -802,9 +784,6 @@ export function Game() {
     }
 
     function onOpponentConnected(payload: { userId: string }) {
-      setConnStatus((s) =>
-        s === "Your game" || s === "active" ? "Opponent connected" : s,
-      );
       markConnection(payload.userId, true);
       playGameStartSound();
     }
@@ -924,7 +903,6 @@ export function Game() {
       setGameOverModalDismissed(true);
     }
 
-    socket.on("connect_error", onConnectError);
     socket.on("connect", joinRoom);
     socket.on("game:sync", onSync);
     socket.on("game:move", onMove);
@@ -951,7 +929,6 @@ export function Game() {
     if (socket.connected) joinRoom();
 
     return () => {
-      socket.off("connect_error", onConnectError);
       socket.off("connect", joinRoom);
       socket.off("game:sync", onSync);
       socket.off("game:move", onMove);
@@ -1105,8 +1082,25 @@ export function Game() {
     notify("Rematch offer sent — waiting for your opponent…", [], 5000);
   }
 
-  const handleShareGame = () => {
-    copyToClipboard(`${CLIENT_URL}/game/${code}`);
+  const handleShareGame = async () => {
+    const url = `${CLIENT_URL}/game/${code}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "Join my chess game on Chessr", url });
+      } catch (err) {
+        // AbortError just means the person closed the share sheet without
+        // picking anything — not a failure worth surfacing. Any other
+        // failure (e.g. share unexpectedly rejected) falls back to a
+        // plain clipboard copy so the action still does *something*.
+        if ((err as Error)?.name !== "AbortError") {
+          copyToClipboard(url);
+          const n = notify("Copied game url");
+          setTimeout(() => dismiss(n), 2000);
+        }
+      }
+      return;
+    }
+    copyToClipboard(url);
     const n = notify("Copied game url");
     setTimeout(() => {
       dismiss(n);
@@ -1236,6 +1230,12 @@ export function Game() {
 
   const badges: ReactNode[] = [];
   if (!settings.zenMode) {
+    if (gameMeta?.timeControl)
+      badges.push(
+        <Badge key="tc" variant="neutral">
+          {formatTimeControl(gameMeta.timeControl)}
+        </Badge>,
+      );
     if (gameMeta?.variant === "chess960")
       badges.push(
         <Badge key="960" variant="secondary">
@@ -1340,7 +1340,7 @@ export function Game() {
   const actionItems: any[] = [
     {
       label: boardFlipped ? "Unflip board" : "Flip board",
-      icon: FlipVertical2,
+      icon: FlipVertical,
       onClick: handleFlipBoard,
       danger: false,
       mobilePrimary: true,
@@ -1361,14 +1361,6 @@ export function Game() {
       onClick: handleNextMove,
       danger: false,
       disabled: viewPly === null,
-      mobilePrimary: true,
-    },
-    {
-      label: "Share game link",
-      icon: Share2,
-      id: "share",
-      onClick: handleShareGame,
-      danger: false,
       mobilePrimary: true,
     },
     ...(canBerserk
@@ -1471,7 +1463,7 @@ export function Game() {
   const mobileOverflowItems = actionItems.filter((item) => !item.mobilePrimary);
 
   return (
-    <div className="relative mx-auto min-h-screen md:min-h-[calc(100dvh-7rem)] flex max-w-6xl flex-col justify-center gap-2 pb-20 md:gap-3 md:pb-2">
+    <div className="relative mx-auto min-h-screen md:min-h-[calc(100dvh-7rem)] flex max-w-6xl flex-col justify-center gap-2 md:gap-3 md:pb-2">
       <GameNotificationsOverlay
         pausedLeg={pausedLeg}
         gameOver={!!gameOver}
@@ -1500,9 +1492,8 @@ export function Game() {
         <div className="game-area-leftinfo md:px-0 px-5 flex shrink-0 flex-col justify-center gap-3 lg:h-full lg:min-h-0">
           <GameDetailsCard
             badges={badges}
-            gameOver={gameOver}
-            describeResult={describeResult}
-            connStatus={connStatus}
+            code={code}
+            onShare={handleShareGame}
             zenMode={settings.zenMode}
             moveListEntries={moveListEntries}
             moveStripEntries={moveStripEntries}
@@ -1546,9 +1537,13 @@ export function Game() {
         <div className="game-area-rightpanel justify-center min-h-0 flex-col gap-3">
           <div>
             <Card variant="solid" className="shrink-0 space-y-2">
-              <PlayerPanelRow {...opponentPanelData} />
+              <PlayerPanelRow
+                {...(boardFlipped ? myPanelData : opponentPanelData)}
+              />
 
-              <PlayerPanelRow {...myPanelData} />
+              <PlayerPanelRow
+                {...(boardFlipped ? opponentPanelData : myPanelData)}
+              />
             </Card>
 
             {!settings.zenMode && gameMeta?.cageMatchId && (

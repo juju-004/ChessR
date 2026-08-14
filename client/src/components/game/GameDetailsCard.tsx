@@ -1,25 +1,24 @@
 import { type ReactNode, type RefObject } from "react";
+import { Share2 } from "lucide-react";
 import { Card } from "../ui/index.js";
 
 interface GameDetailsCardProps {
   badges: ReactNode[];
-  gameOver: { result: string | null; reason: string } | null;
-  describeResult: (result: string | null) => string;
-  connStatus: string;
+  code: string;
+  onShare: () => void;
   zenMode: boolean;
   moveListEntries: ReactNode;
   moveStripEntries: ReactNode;
   moveListScrollRef: RefObject<HTMLDivElement | null>;
 }
 
-/** Game details — code, share, badges, status, and the move list. Left
- *  column on desktop; a full-width strip above the board/panel row on
- *  tablet and phone. */
+/** Game details — code, share, badges, and the move list. Left column on
+ *  desktop; a full-width strip above the board/panel row on tablet and
+ *  phone. */
 export function GameDetailsCard({
   badges,
-  gameOver,
-  describeResult,
-  connStatus,
+  code,
+  onShare,
   zenMode,
   moveListEntries,
   moveStripEntries,
@@ -37,13 +36,17 @@ export function GameDetailsCard({
             <div className="flex flex-wrap items-center gap-2">{badges}</div>
           )}
         </div>
-        <span className="flex items-center gap-1.5 text-xs font-medium text-base-content/60">
-          {!gameOver && (
-            <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-          )}
-          {gameOver
-            ? `Game over — ${describeResult(gameOver.result)} (${gameOver.reason.replace(/_/g, " ")})`
-            : connStatus}
+        <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-base-content/60">
+          <span className="font-mono tracking-wide">{code}</span>
+          <button
+            type="button"
+            onClick={onShare}
+            aria-label="Copy game link"
+            title="Copy game link"
+            className="rounded-md p-1 text-base-content/50 transition-colors hover:bg-base-300/60 hover:text-base-content"
+          >
+            <Share2 className="h-3.5 w-3.5" />
+          </button>
         </span>
       </div>
 

@@ -16,7 +16,7 @@ import { ConfirmProvider } from "./contexts/ConfirmContext.js";
 import { GlobalListeners } from "./components/GlobalListeners.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { Navbar } from "./components/Navbar.js";
-import { Sidebar } from "./components/Sidebar.js";
+import { Sidebar, MobileDock } from "./components/Sidebar.js";
 import { ProtectedRoute } from "./components/ProtectedRoute.js";
 import { AdminProtectedRoute } from "./components/AdminProtectedRoute.js";
 import { PageLoader } from "./components/PageLoader.js";
@@ -41,16 +41,13 @@ const SignUp = lazy(() =>
 const Dashboard = lazy(() =>
   import("./pages/Dashboard.js").then((m) => ({ default: m.Dashboard })),
 );
-const ProfileSearch = lazy(() =>
-  import("./pages/ProfileSearch.js").then((m) => ({
-    default: m.ProfileSearch,
+const Players = lazy(() =>
+  import("./pages/Players.js").then((m) => ({
+    default: m.Players,
   })),
 );
 const Profile = lazy(() =>
   import("./pages/Profile.js").then((m) => ({ default: m.Profile })),
-);
-const Friends = lazy(() =>
-  import("./pages/Friends.js").then((m) => ({ default: m.Friends })),
 );
 const Game = lazy(() =>
   import("./pages/Game.js").then((m) => ({ default: m.Game })),
@@ -177,7 +174,13 @@ function AppBody() {
       <GlobalListeners />
       <div className="flex items-start gap-4 md:px-2">
         <Sidebar />
-        <main className="min-w-0 flex-1 pb-6 md:pb-12">
+        {/* pb-24 reserves room for the fixed bottom dock (see .dock in
+         *  index.css) so it never overlaps page content on phone — the
+         *  dock itself is always mounted below (either MobileDock's site
+         *  nav or, on /game/:code, the in-game action bar), so this
+         *  padding is needed everywhere on mobile, not just on the game
+         *  page. Irrelevant from md up, where the dock doesn't render. */}
+        <main className="min-w-0 flex-1 pb-24 md:pb-12">
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route
@@ -193,26 +196,22 @@ function AppBody() {
               {/* Old bookmarks/links to /dashboard keep working — / is the dashboard now. */}
               <Route path="/dashboard" element={<Navigate to="/" replace />} />
               <Route
-                path="/find"
+                path="/players"
                 element={
                   <ProtectedRoute>
-                    <ProfileSearch />
+                    <Players />
                   </ProtectedRoute>
                 }
               />
+              {/* /find and /friends merged into one /players page — old
+               *  bookmarks/links to either keep working. */}
+              <Route path="/find" element={<Navigate to="/players" replace />} />
+              <Route path="/friends" element={<Navigate to="/players" replace />} />
               <Route
                 path="/profile/:username"
                 element={
                   <ProtectedRoute>
                     <Profile />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/friends"
-                element={
-                  <ProtectedRoute>
-                    <Friends />
                   </ProtectedRoute>
                 }
               />
@@ -289,6 +288,7 @@ function AppBody() {
           </Suspense>
         </main>
       </div>
+      <MobileDock />
     </>
   );
 }

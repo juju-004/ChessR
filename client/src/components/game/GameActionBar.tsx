@@ -1,5 +1,7 @@
-import { MoreHorizontal } from "lucide-react";
+import { Home, MoreVertical } from "lucide-react";
 import { Button, Tooltip, Dropdown, DropdownItem } from "../ui/index.js";
+import { cn } from "../../lib/cn.js";
+import { useNavigate } from "react-router-dom";
 
 export interface GameActionItem {
   label: string;
@@ -62,11 +64,19 @@ export function GameActionBarDesktop({
   );
 }
 
-/** Mobile action pill — fixed to the bottom of the screen instead of
- *  sitting in normal flow, so it's always reachable without scrolling.
- *  Only the items reached for constantly mid-game stay always visible;
- *  the rest collapse into the "More" dropup via the Dropdown primitive so
- *  the pill stays a fixed, compact size regardless of game state. */
+/** In-game mobile action bar — occupies the same fixed-bottom slot as the
+ *  site-navigation dock (see `.dock` in index.css and MobileDock in
+ *  components/Sidebar.tsx, which hides itself on /game/:code so this is
+ *  the only thing rendered there).
+ *
+ *  Three zones so nothing important can get squeezed off-screen: a pinned
+ *  Dashboard link on the left (so you're never stuck without a way back
+ *  to the rest of the site mid-game — the old version dropped nav
+ *  entirely here), a horizontally-scrollable middle for the
+ *  reached-for-constantly items (flip/prev/next/share/etc — however many
+ *  there are, they scroll rather than shrinking to illegible slivers),
+ *  and a pinned "More" dropup on the right for resign/draw/abort/etc so
+ *  it's always in the same spot and never scrolled out of view. */
 export function GameActionBarMobile({
   primaryItems,
   overflowItems,
@@ -78,46 +88,50 @@ export function GameActionBarMobile({
   prevHold: HoldHandlers;
   nextHold: HoldHandlers;
 }) {
+  const navigate = useNavigate();
   if (primaryItems.length === 0) return null;
   return (
-    <div
-      className="md:hidden fixed inset-x-0 z-40 flex justify-center px-3"
-      style={{ bottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
-    >
-      <div className="elevated-strong flex items-center gap-1 rounded-full p-1.5">
-        {primaryItems.map((item) => {
-          const hold = holdFor(item, prevHold, nextHold);
-          return (
-            <Tooltip key={item.label} content={item.label}>
-              <button
-                type="button"
-                aria-label={item.label}
-                disabled={item.disabled}
-                className="flex size-10 shrink-0 items-center justify-center rounded-full text-base-content/80 transition-colors hover:bg-base-content/10 hover:text-base-content disabled:opacity-40 disabled:pointer-events-none"
-                {...(hold ?? { onClick: item.onClick })}
-              >
-                <item.icon className="h-4 w-4" />
-              </button>
-            </Tooltip>
-          );
-        })}
-        {overflowItems.length > 0 && (
-          <Dropdown
-            trigger={
-              <button
-                type="button"
-                aria-label="More actions"
-                className="flex size-10 shrink-0 items-center justify-center rounded-full text-base-content/80 transition-colors hover:bg-base-content/10 hover:text-base-content"
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </button>
-            }
-            items={overflowItems as DropdownItem[]}
-            align="end"
-            side="top"
-          />
-        )}
-      </div>
-    </div>
+    <nav aria-label="Game actions" className="docker game flex md:hidden">
+      <button
+        type="button"
+        className={"docker-item docker-item-grow"}
+        onClick={() => navigate("/")}
+      >
+        <Home className="h-5 w-5" />
+      </button>
+
+      {primaryItems.map((item) => {
+        const hold = holdFor(item, prevHold, nextHold);
+        return (
+          <button
+            key={item.label}
+            type="button"
+            aria-label={item.label}
+            disabled={item.disabled}
+            className={cn(
+              "docker-item docker-item-grow",
+              item.danger && "docker-item-danger",
+            )}
+            {...(hold ?? { onClick: item.onClick })}
+          >
+            <item.icon className="h-5 w-5" />
+          </button>
+        );
+      })}
+      <Dropdown
+        trigger={
+          <button
+            type="button"
+            aria-label="More actions"
+            className="docker-item w-full docker-item-grow"
+          >
+            <MoreVertical className="h-5 w-5" />
+          </button>
+        }
+        items={overflowItems as DropdownItem[]}
+        align="end"
+        side="top"
+      />
+    </nav>
   );
 }

@@ -99,29 +99,27 @@
   --secondary: #8b5cf6;
   --secondary-light: #a78bfa;
 
-  /* Elevated-surface tokens — an opaque card design (no backdrop-filter)
-     used by .glass/.glass-strong below. Replaces the old translucent
-     "liquid glass" look, which relied on backdrop-filter blur and was a
-     measurable jank/battery cost on older/lower-end phones. */
+  /* Elevated-surface tokens — solid, no gradient. The card and the page
+     itself are both essentially white (--surface-bg vs. bg-base-100 on
+     <body> in index.html), so a border alone — especially a faint
+     brand-tinted one — doesn't reliably separate a card from the page
+     it's sitting on; some renders/zoom levels/monitors will show
+     basically nothing. A shadow separates them regardless of whether
+     the two colors are identical, so that's now the primary elevation
+     cue (see --surface-shadow-* below and the `filter: drop-shadow()`
+     declarations on .elevated/.elevated-strong/.dock) — drop-shadow
+     specifically, not box-shadow, since it composites more predictably
+     with the rounded corners + overflow:hidden the pill dock relies on.
+     The border sticks around as a secondary, subtler brand-tint cue, not
+     the only one. "strong" steps up the fill, border, and shadow a notch
+     for surfaces that need to read as sitting above another elevated
+     surface (modals, popovers). */
   --surface-bg: #ffffff;
-  --surface-bg-strong: #ffffff;
-  --surface-border: rgba(15, 23, 42, 0.1);
-  --surface-border-strong: rgba(15, 23, 42, 0.16);
-  /* A faint brand-tinted sheen (not plain white) baked into the panel's
-     own background-image — ties the "solid card" look back to the brand
-     gradient without spending anything on blur or shadow. */
-  --surface-sheen: linear-gradient(
-    165deg,
-    rgba(59, 130, 246, 0.05) 0%,
-    rgba(139, 92, 246, 0.035) 42%,
-    transparent 75%
-  );
-  --surface-sheen-strong: linear-gradient(
-    165deg,
-    rgba(59, 130, 246, 0.07) 0%,
-    rgba(139, 92, 246, 0.05) 42%,
-    transparent 75%
-  );
+  --surface-bg-strong: #f7f9ff;
+  --surface-border: rgba(59, 130, 246, 0.14);
+  --surface-border-strong: rgba(59, 130, 246, 0.22);
+  --surface-shadow-tight: rgba(15, 23, 42, 0.08);
+  --surface-shadow-soft: rgba(15, 23, 42, 0.1);
 }
 
 [data-theme="dark"] {
@@ -132,20 +130,10 @@
 
   --surface-bg: #1b1b23;
   --surface-bg-strong: #202029;
-  --surface-border: rgba(255, 255, 255, 0.08);
-  --surface-border-strong: rgba(255, 255, 255, 0.12);
-  --surface-sheen: linear-gradient(
-    165deg,
-    rgba(59, 130, 246, 0.1) 0%,
-    rgba(139, 92, 246, 0.07) 42%,
-    transparent 75%
-  );
-  --surface-sheen-strong: linear-gradient(
-    165deg,
-    rgba(59, 130, 246, 0.14) 0%,
-    rgba(139, 92, 246, 0.1) 42%,
-    transparent 75%
-  );
+  --surface-border: rgba(96, 165, 250, 0.18);
+  --surface-border-strong: rgba(96, 165, 250, 0.28);
+  --surface-shadow-tight: rgba(0, 0, 0, 0.4);
+  --surface-shadow-soft: rgba(0, 0, 0, 0.5);
 }
 
 html {
@@ -191,34 +179,138 @@ body {
 /* Elevated surface — the shared look for Card/Modal/Popover/glass Button
    variants etc. This used to be a translucent, blurred "liquid glass"
    panel (backdrop-filter: blur+saturate), which was a measurable
-   jank/battery cost on older/lower-end phones — and box-shadow has its
-   own version of that same cost (a blurred shadow forces a separate
-   rasterized layer that has to be recomposited on every scroll/animation
-   frame). This version is a genuinely solid, opaque panel: real
-   background-color, a real hairline border doing actual elevation work,
-   and a faint brand-tinted sheen baked directly into background-image
-   (see --surface-sheen above) — all of that is just the element's normal
-   background paint, computed once, nothing to blur or recomposite.
-   Class names are `.elevated`/`.elevated-strong` — deliberately NOT named
-   `.glass`, because daisyUI ships its own `.glass` utility class (real
-   backdrop-filter blur + saturate + shadow baked in). Reusing that name
-   only "worked" because this rule happened to be later in the cascade and
-   used !important to stomp daisyUI's declarations — fragile, and exactly
-   the kind of thing that silently breaks again the moment daisyUI's own
-   output order changes (a version bump, a build-tool change, etc). A
-   distinct name means there's no collision to begin with. The
-   `variant="glass"` prop on Button/Card/Badge is unchanged (that's just a
-   semantic name in our own API) — only the underlying CSS class it maps
-   to changed. */
+   jank/battery cost on older/lower-end phones. This version is solid and
+   flat — a plain background-color, no gradient fill, no blur — separated
+   from the page behind it primarily by a shadow (filter: drop-shadow(),
+   not box-shadow — see --surface-shadow-* above and the note below on
+   why), with a faint brand-tinted border as a secondary accent rather
+   than the only separation cue. Class names are `.elevated`/
+   `.elevated-strong` — deliberately NOT named `.glass`, because daisyUI
+   ships its own `.glass` utility class (real backdrop-filter blur +
+   saturate + shadow baked in). Reusing that name only "worked" because
+   this rule happened to be later in the cascade and used !important to
+   stomp daisyUI's declarations — fragile, and exactly the kind of thing
+   that silently breaks again the moment daisyUI's own output order
+   changes (a version bump, a build-tool change, etc). A distinct name
+   means there's no collision to begin with. The `variant="glass"` prop
+   on Button/Card/Badge is unchanged (that's just a semantic name in our
+   own API) — only the underlying CSS class it maps to changed.
+
+   drop-shadow(), not box-shadow: box-shadow draws a shadow of the
+   element's own box, which is easy to reason about and cheap for a
+   simple rectangle — but it can't be clipped by border-radius the way
+   this app's `.dock` (a rounded pill with `overflow: hidden`) needs, and
+   it renders even through a fully-transparent background. drop-shadow()
+   is a filter, so it follows the actual rendered alpha shape of the
+   element (rounded corners included) and composites correctly with
+   overflow:hidden ancestors — the tradeoff is it can be marginally more
+   expensive to repaint on very low-end hardware since it's calculated
+   from the alpha channel rather than the box geometry, but for a static
+   card that isn't animating every frame that difference isn't
+   noticeable. */
 .elevated {
   background-color: var(--surface-bg);
-  background-image: var(--surface-sheen);
-  border: 1px solid var(--surface-border);
+  filter: drop-shadow(0 1px 2px var(--surface-shadow-tight))
+    drop-shadow(0 6px 16px var(--surface-shadow-soft));
 }
 .elevated-strong {
   background-color: var(--surface-bg-strong);
-  background-image: var(--surface-sheen-strong);
-  border: 1px solid var(--surface-border-strong);
+  filter: drop-shadow(0 2px 5px var(--surface-shadow-tight))
+    drop-shadow(0 14px 32px var(--surface-shadow-soft));
+}
+
+/* ---------------------------------------------------------------------------
+   Mobile bottom dock
+   -------------------------------------------------------------------------
+   A floating pill inset from the screen edges (phone only), matching the
+   floating-pill look of the top Navbar, rather than a bar flush against
+   the bottom edge. Replaces both the old dropdown nav trigger and the old
+   floating action pill. Two mutually-exclusive components render into
+   this same visual slot and share these classes: MobileDock (site
+   navigation — see components/Sidebar.tsx) hides itself on /game/:code,
+   and the in-game action bar (see components/game/GameActionBar.tsx) only
+   ever mounts on /game/:code — so exactly one is ever on screen, and from
+   the person's point of view it reads as one dock whose contents change
+   with context rather than two competing fixed-position elements.
+
+   Note this class deliberately does NOT set `display` — visibility/layout
+   (flex on phone, hidden from md up) is left entirely to Tailwind's own
+   `flex md:hidden` utilities on the elements using this class. Tailwind
+   v4's utilities live inside its own cascade layer, and plain unlayered
+   rules like this one always win over ANY layered rule regardless of
+   source order or specificity — so a `display: flex` written here would
+   silently beat `md:hidden` at every viewport width, which is exactly
+   what was causing the dock to stay visible on desktop/laptop. Keeping
+   `display` out of this file sidesteps that entirely. */
+.docker {
+  position: fixed;
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: calc(0.75rem + env(safe-area-inset-bottom));
+  z-index: 40;
+  align-items: stretch;
+  border-radius: 9999px;
+  background-color: var(--surface-bg-strong);
+  padding: 0.2rem 0.4rem;
+  box-shadow:
+    0 2px 5px var(--surface-shadow-tight),
+    0 14px 32px var(--surface-shadow-soft);
+}
+.docker-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  min-width: 0;
+  padding: 0.4rem 0.25rem;
+  border-radius: 9999px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--color-base-content);
+  opacity: 0.55;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+.docker-item span {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.docker-item:disabled {
+  opacity: 0.25;
+  pointer-events: none;
+}
+.docker-item-active {
+  opacity: 1;
+  color: var(--primary);
+  background-color: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.docker-item-danger {
+  color: #ef4444;
+  opacity: 0.75;
+}
+
+.docker > * {
+  flex: 1 1 0%;
+}
+
+.game .docker-item {
+  opacity: 1;
+  padding: 0.7rem 0.25rem;
+}
+.game .docker-item:disabled {
+  opacity: 0.55;
+}
+.game .docker-item:active {
+  transition:
+    color 1s ease-out,
+    background-color 1s ease-out;
+  color: var(--primary);
+  background-color: color-mix(in srgb, var(--primary) 12%, transparent);
 }
 
 @import "@lichess-org/chessground/assets/chessground.base.css";

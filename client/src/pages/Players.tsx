@@ -1,0 +1,421 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import {
+  Search,
+  Swords,
+  Eye,
+  UserCircle2,
+  UserPlus,
+  Check,
+} from "lucide-react";
+import { searchUsers, type UserSearchResult } from "../api/users.js";
+import {
+  listFriends,
+  listIncomingRequests,
+  respondToFriendRequest,
+  sendFriendRequest,
+  type Friend,
+  type IncomingRequest,
+} from "../api/friends.js";
+import { useSocket } from "../contexts/SocketContext.js";
+import { TIME_CONTROLS } from "../timeControls.js";
+import { Page } from "@/components/ui/Page.js";
+import { Card } from "@/components/ui/Card.js";
+import { Select } from "@/components/ui/Select.js";
+import { Input } from "@/components/ui/Input.js";
+import { Button } from "@/components/ui/Button.js";
+import { Avatar } from "@/components/ui/Avatar.js";
+import { ResponsiveOverlay } from "@/components/ui/ResponsiveOverlay.js";
+
+/** Merged "Players" page — search-for-anyone (the old /find) and your
+ *  friends list + requests + challenge form (the old /friends) used to be
+ *  two separate pages, but they're really one workflow: find someone,
+ *  friend them, then challenge them — splitting that across a nav switch
+ *  just added a click in the middle of it. Search results now also get an
+ *  inline "Add friend" action, which /find never had. */
+export function Players() {
+  const socket = useSocket();
+  const [requests, setRequests] = useState<IncomingRequest[]>([]);
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [friendSearch, setFriendSearch] = useState("");
+  const [tcIndex, setTcIndex] = useState(2);
+  const [variant, setVariant] = useState<"standard" | "chess960">("standard");
+  const [wagerInput, setWagerInput] = useState("0");
+  const [status, setStatus] = useState<{
+    message: string;
+    isError: boolean;
+  } | null>(null);
+
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<UserSearchResult[]>([]);
+  const [searchError, setSearchError] = useState("");
+  const [sentRequestIds, setSentRequestIds] = useState<Set<string>>(new Set());
+  /** Which friend's row currently has its challenge overlay open — null
+   *  means none. Only one at a time, so a single piece of state (rather
+   *  than a per-friend open flag) is enough, and it lets the "Send
+   *  challenge" button close its own overlay after sending. */
+  const [challengingFriendId, setChallengingFriendId] = useState<string | null>(
+    null,
+  );
+
+  const refreshRequests = useCallback(() => {
+    listIncomingRequests().then((res) => setRequests(res.requests));
+  }, []);
+
+  const refreshFriends = useCallback(() => {
+    listFriends().then((res) => setFriends(res.friends));
+  }, []);
+
+  useEffect(() => {
+    refreshRequests();
+    refreshFriends();
+  }, [refreshRequests, refreshFriends]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    function onRequestReceived() {
+      refreshRequests();
+    }
+    function onPresence() {
+      refreshFriends();
+    }
+    function onSent() {
+      setStatus({
+        message: "Challenge sent — waiting for a response…",
+        isError: false,
+      });
+    }
+    function onError(payload: { message: string }) {
+      setStatus({ message: payload.message, isError: true });
+    }
+
+    socket.on("friend:request_received", onRequestReceived);
+    socket.on("friend:presence", onPresence);
+    socket.on("challenge:sent", onSent);
+    socket.on("challenge:error", onError);
+
+    return () => {
+      socket.off("friend:request_received", onRequestReceived);
+      socket.off("friend:presence", onPresence);
+      socket.off("challenge:sent", onSent);
+      socket.off("challenge:error", onError);
+    };
+  }, [socket, refreshFriends]);
+
+  async function handleAccept(requestId: string) {
+    await respondToFriendRequest(requestId, true);
+    refreshRequests();
+    refreshFriends();
+  }
+
+  async function handleDecline(requestId: string) {
+    await respondToFriendRequest(requestId, false);
+    refreshRequests();
+  }
+
+  function handleChallenge(friendId: string) {
+    if (!socket) return;
+    const tc = TIME_CONTROLS[tcIndex];
+    const wagerTokens = Math.max(0, Math.floor(Number(wagerInput) || 0));
+    socket.emit("challenge:send", {
+      toUserId: friendId,
+      baseMinutes: tc.baseMinutes,
+      incrementSeconds: tc.incrementSeconds,
+      variant,
+      wagerTokens,
+    });
+    const wagerNote = wagerTokens > 0 ? `, ${wagerTokens} R wager` : "";
+    setStatus({
+      message: `Challenge sent (${tc.label}${variant === "chess960" ? ", Chess960" : ""}${wagerNote}) — waiting for a response…`,
+      isError: false,
+    });
+    setChallengingFriendId(null);
+  }
+
+  function handleSearchChange(value: string) {
+    setQuery(value);
+    if (!value.trim()) {
+      setResults([]);
+      return;
+    }
+    searchUsers(value.trim())
+      .then((res) => {
+        setResults(res.users);
+        setSearchError("");
+      })
+      .catch(() => setSearchError("Search failed."));
+  }
+
+  async function handleAddFriend(userId: string) {
+    await sendFriendRequest(userId);
+    setSentRequestIds((prev) => new Set(prev).add(userId));
+  }
+
+  // Search matches on username substring (case-insensitive); sort mode
+  // "online" groups online friends first (alphabetical within each group)
+  // so the people you can actually challenge right now surface without
+  // hunting through a long offline list — "alphabetical" ignores online
+  // status entirely for a straight a-z list.
+  const visibleFriends = useMemo(() => {
+    const q = friendSearch.trim().toLowerCase();
+    const filtered = q
+      ? friends.filter((f) => f.username.toLowerCase().includes(q))
+      : friends;
+    return [...filtered].sort((a) => {
+      return a.online ? -1 : 1;
+    });
+  }, [friends, friendSearch]);
+
+  const friendIds = useMemo(() => new Set(friends.map((f) => f.id)), [friends]);
+
+  return (
+    <Page
+      title="Players"
+      description="Search for anyone, manage friends, and send challenges."
+    >
+      <div className="space-y-4">
+        {status && (
+          <p
+            className={`text-sm ${status.isError ? "text-red-400" : "text-green-400"}`}
+          >
+            {status.message}
+          </p>
+        )}
+
+        <Card variant="solid">
+          <h1 className="mb-2 flex items-center gap-2 text-lg font-semibold text-base-content">
+            <Search className="h-4 w-4 text-base-content/50" /> Search players
+          </h1>
+          <Input
+            type="text"
+            placeholder=""
+            value={query}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            leadingIcon={<Search className="h-4 w-4" />}
+          />
+
+          {searchError && (
+            <p className="mt-3 text-sm text-red-400">{searchError}</p>
+          )}
+          {results.length === 0 && query.trim() && !searchError && (
+            <p className="mt-3 text-sm text-base-content/50">No users found.</p>
+          )}
+
+          <div className="mt-3 divide-y divide-base-300">
+            {results.map((u) => {
+              const alreadyFriend = friendIds.has(u._id);
+              const requestSent = sentRequestIds.has(u._id);
+              return (
+                <div
+                  key={u._id}
+                  className="flex items-center justify-between gap-3 py-2.5"
+                >
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <Avatar
+                      username={u.username}
+                      size="sm"
+                      gradient={u.avatarGradient}
+                    />
+                    <span className="truncate text-sm font-medium text-base-content">
+                      {u.username}
+                    </span>
+                  </div>
+                  <span className="flex flex-wrap gap-2">
+                    {!alreadyFriend && (
+                      <Button
+                        variant="glass"
+                        size="sm"
+                        disabled={requestSent}
+                        onClick={() => handleAddFriend(u._id)}
+                      >
+                        {requestSent ? (
+                          <>
+                            <Check className="h-4 w-4" /> Sent
+                          </>
+                        ) : (
+                          <>
+                            <UserPlus className="h-4 w-4" /> Add friend
+                          </>
+                        )}
+                      </Button>
+                    )}
+                    <Link to={`/profile/${u.username}`}>
+                      <Button variant="glass" size="sm">
+                        View
+                      </Button>
+                    </Link>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+
+        <Card variant="solid">
+          <h1 className="mb-2 text-lg font-semibold text-base-content">
+            Friend requests
+          </h1>
+          {requests.length === 0 && (
+            <p className="text-sm text-base-content/60">No pending requests.</p>
+          )}
+          {requests.map((r) => (
+            <div
+              key={r._id}
+              className="flex items-center justify-between border-b border-base-300 py-2 last:border-none"
+            >
+              <span className="text-sm text-base-content">
+                {r.from.username}
+              </span>
+              <span className="flex gap-2">
+                <button
+                  onClick={() => handleAccept(r._id)}
+                  className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-500"
+                >
+                  Accept
+                </button>
+                <button
+                  onClick={() => handleDecline(r._id)}
+                  className="rounded-md bg-base-300 px-3 py-1.5 text-sm font-semibold text-base-content hover:bg-base-300"
+                >
+                  Decline
+                </button>
+              </span>
+            </div>
+          ))}
+        </Card>
+
+        <Card variant="solid" className="w-full">
+          <h1 className="mb-3 text-lg font-semibold text-base-content">
+            Friends
+          </h1>
+
+          <div className="mb-3.5 flex gap-2 sm:items-end">
+            <div className="flex-1">
+              <Input
+                value={friendSearch}
+                onChange={(e) => setFriendSearch(e.target.value)}
+                placeholder="Find a friend by username…"
+                leadingIcon={<Search className="h-4 w-4" />}
+              />
+            </div>
+          </div>
+
+          {friends.length === 0 && (
+            <p className="text-sm text-base-content/60">
+              No friends yet. Search for players above and add some!
+            </p>
+          )}
+          {friends.length > 0 && visibleFriends.length === 0 && (
+            <p className="text-sm text-base-content/60">
+              No friends match "{friendSearch}".
+            </p>
+          )}
+          {visibleFriends.map((f) => (
+            <div
+              key={f.id}
+              className="flex flex-wrap items-center justify-between gap-2 border-b border-base-300 py-2 last:border-none"
+            >
+              <span className="flex items-center gap-2 text-sm text-base-content">
+                <span
+                  className={`inline-block h-2 w-2 rounded-full ${f.online ? "bg-green-500" : "bg-base-300"}`}
+                />
+                {f.username}
+              </span>
+              <span className="flex flex-wrap gap-2">
+                <Link to={`/profile/${f.username}`}>
+                  <Button variant="glass" size="sm">
+                    <UserCircle2 className="h-4 w-4" />
+                    <span className="hidden sm:flex">Profile</span>
+                  </Button>
+                </Link>
+                {f.activeGameCode ? (
+                  <Link to={`/game/${f.activeGameCode}`}>
+                    <Button variant="glass" size="sm">
+                      <Eye className="h-4 w-4 text-green-500" />{" "}
+                      <span className="hidden sm:flex">Watch</span>
+                    </Button>
+                  </Link>
+                ) : (
+                  // The time control/variant/wager form used to sit
+                  // permanently expanded above this whole list, one
+                  // global config applied to whichever friend you
+                  // clicked "Challenge" for — moved into a per-friend
+                  // overlay instead, so the settings live right next to
+                  // the person they apply to. Settings still persist
+                  // across friends (same tcIndex/variant/wagerInput
+                  // state) so re-challenging someone with the same setup
+                  // is still one click.
+                  <ResponsiveOverlay
+                    title={`Challenge ${f.username}`}
+                    align="end"
+                    className="w-72 max-w-[calc(100vw-2rem)]"
+                    open={challengingFriendId === f.id}
+                    onOpenChange={(open) =>
+                      setChallengingFriendId(open ? f.id : null)
+                    }
+                    trigger={
+                      <Button size="sm" disabled={!f.online}>
+                        Challenge
+                      </Button>
+                    }
+                  >
+                    <div className="space-y-3">
+                      <Select
+                        label="Time control"
+                        value={tcIndex}
+                        onChange={(e) => setTcIndex(Number(e.target.value))}
+                      >
+                        {TIME_CONTROLS.map((tc, i) => (
+                          <option key={tc.label} value={i}>
+                            {tc.label}
+                          </option>
+                        ))}
+                      </Select>
+
+                      <Select
+                        label="Variant"
+                        value={variant}
+                        onChange={(e) =>
+                          setVariant(e.target.value as "standard" | "chess960")
+                        }
+                      >
+                        <option value="standard">Standard</option>
+                        <option value="chess960">
+                          Chess960 (Fischer Random)
+                        </option>
+                      </Select>
+
+                      <Input
+                        label="R Coin wager (per player)"
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={wagerInput}
+                        onChange={(e) => setWagerInput(e.target.value)}
+                        placeholder="0 for a free game"
+                      />
+
+                      <Button
+                        className="w-full"
+                        onClick={() => handleChallenge(f.id)}
+                      >
+                        Send challenge
+                      </Button>
+                    </div>
+                  </ResponsiveOverlay>
+                )}
+                <Link to={`/cage?challenge=${f.id}`}>
+                  <Button variant="glass" size="sm">
+                    <Swords className="h-4 w-4" />{" "}
+                    <span className="hidden sm:flex">Cage match</span>
+                  </Button>
+                </Link>
+              </span>
+            </div>
+          ))}
+        </Card>
+      </div>
+    </Page>
+  );
+}

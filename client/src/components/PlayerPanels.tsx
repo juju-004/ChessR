@@ -286,7 +286,7 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
   profileHref,
 }: PanelData) {
   return (
-    <div className="flex items-center gap-3 rounded-xl bg-base-200/70 px-3 py-2 text-base-content">
+    <div className="flex h-[54px] items-center gap-3 rounded-xl bg-base-200/70 px-3 py-2 text-base-content">
       {profileHref ? (
         <Link to={profileHref} className="shrink-0">
           <Avatar
@@ -304,11 +304,20 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
           status={connected ? "online" : "offline"}
         />
       )}
+      {/* No min-h reserved here on purpose — when neither badge below has
+       *  anything to show, this column is just the username line, and
+       *  `items-center` on the row centers it normally. The row itself is
+       *  a fixed height (above), not this column, so when a badge *does*
+       *  render, the now-taller two-line column re-centers (shifting the
+       *  username up to make room) without changing the row's own size —
+       *  which matters because on phone this row is a flex sibling of the
+       *  board itself (see .game-area-toppanel/-bottompanel in Game.tsx),
+       *  so a resizing row would resize the board mid-game. */}
       <div className="min-w-0 flex-1">
         {profileHref ? (
           <Link
             to={profileHref}
-            className="block truncate text-sm font-semibold text-base-content hover:text-(--primary) hover:underline"
+            className="block truncate text-sm font-semibold text-base-content hover:text-(--primary)"
           >
             {username}
           </Link>
@@ -317,26 +326,18 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
             {username}
           </p>
         )}
-        {/* Fixed height regardless of what's inside (or nothing at all) —
-         *  both FirstMoveBadge and MaterialBadge can render null, and on
-         *  phone this row is a flex sibling of the board itself (see
-         *  .game-area-toppanel/-bottompanel in Game.tsx), so letting this
-         *  line's height come and go with material captures would resize
-         *  the board mid-game every time a piece gets taken. */}
-        <div className="min-h-4.5">
-          {firstMoveGraceMs !== null ? (
-            <FirstMoveBadge
-              turnStartedAtMs={turnStartedAtMs}
-              graceMs={firstMoveGraceMs}
-            />
-          ) : (
-            <MaterialBadge
-              pieceDiff={pieceDiff}
-              glyphs={glyphs}
-              advantage={advantage}
-            />
-          )}
-        </div>
+        {firstMoveGraceMs !== null ? (
+          <FirstMoveBadge
+            turnStartedAtMs={turnStartedAtMs}
+            graceMs={firstMoveGraceMs}
+          />
+        ) : (
+          <MaterialBadge
+            pieceDiff={pieceDiff}
+            glyphs={glyphs}
+            advantage={advantage}
+          />
+        )}
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
         {berserked && <BerserkBadge />}

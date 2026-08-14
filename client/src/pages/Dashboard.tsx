@@ -2,6 +2,16 @@ import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Chess } from "chess.js";
 import {
+  Swords,
+  Trophy,
+  Users,
+  Plus,
+  Hash,
+  Wallet,
+  ArrowRight,
+  type LucideIcon,
+} from "lucide-react";
+import {
   createGame,
   listFriendsActiveGames,
   type ActiveFriendGame,
@@ -11,6 +21,12 @@ import { useAuth } from "../contexts/AuthContext.js";
 import { TIME_CONTROLS, formatTimeControl } from "../timeControls.js";
 import { turnColor } from "../chessUtils.js";
 import { useTokenBalance } from "../hooks/useTokenBalance.js";
+import {
+  listOpenTournaments,
+  formatTimeControl as formatTournamentTimeControl,
+  type Tournament,
+} from "../api/tournaments.js";
+import { listMyCageMatches, type CageMatch } from "../api/cageMatches.js";
 import {
   Page,
   Card,
@@ -22,7 +38,39 @@ import {
   Button,
   Badge,
   RCoin,
+  ResponsiveOverlay,
 } from "../components/ui/index.js";
+
+/** A single tappable/clickable tile for the quick-links grid — one icon,
+ *  one label, one destination. */
+function QuickLink({
+  to,
+  icon: Icon,
+  label,
+  accent,
+}: {
+  to: string;
+  icon: LucideIcon;
+  label: string;
+  accent: string;
+}) {
+  return (
+    <Link to={to} className="flex-1">
+      <Card
+        variant="solid"
+        interactive
+        className="flex h-full flex-col items-center gap-2 py-5 text-center"
+      >
+        <span
+          className={`flex h-10 w-10 items-center justify-center rounded-full ${accent}`}
+        >
+          <Icon className="h-5 w-5" />
+        </span>
+        <span className="text-sm font-semibold text-base-content">{label}</span>
+      </Card>
+    </Link>
+  );
+}
 
 export function Dashboard() {
   const { user } = useAuth();
@@ -39,11 +87,22 @@ export function Dashboard() {
   const [gamesError, setGamesError] = useState("");
   const { balance, refresh } = useTokenBalance();
 
+  const [openTournaments, setOpenTournaments] = useState<Tournament[] | null>(
+    null,
+  );
+  const [cageMatches, setCageMatches] = useState<CageMatch[] | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     listFriendsActiveGames()
       .then((res) => !cancelled && setActiveGames(res.games))
       .catch(() => !cancelled && setGamesError("Failed to load active games."));
+    listOpenTournaments("pending")
+      .then((res) => !cancelled && setOpenTournaments(res.tournaments))
+      .catch(() => !cancelled && setOpenTournaments([]));
+    listMyCageMatches()
+      .then((res) => !cancelled && setCageMatches(res.matches))
+      .catch(() => !cancelled && setCageMatches([]));
     return () => {
       cancelled = true;
     };
@@ -78,6 +137,13 @@ export function Dashboard() {
     if (code) navigate(`/game/${code}`);
   }
 
+  const activeCageMatches =
+    cageMatches?.filter((m) => m.status === "active") ?? [];
+  const recentCageMatches =
+    cageMatches
+      ?.filter((m) => m.status === "finished")
+      .slice(0, 3) ?? [];
+
   return (
     <Page title={`Welcome, ${user?.username ?? ""}`}>
       <div className="space-y-4">
@@ -93,7 +159,9 @@ export function Dashboard() {
           </div>
           <div className="flex gap-2">
             <Link to="/wallet/buy">
-              <Button size="sm">Buy</Button>
+              <Button size="sm">
+                <Wallet className="h-4 w-4" /> Buy
+              </Button>
             </Link>
             <Link className="hidden sm:flex" to="/wallet/withdraw">
               <Button variant="glass" size="sm">
@@ -108,77 +176,199 @@ export function Dashboard() {
           </div>
         </Card>
 
+        {/* Quick links — the three other big areas of the app, one tap
+         *  away, with an icon so this reads at a glance instead of as a
+         *  wall of text links. */}
+        <div className="flex gap-3">
+          <QuickLink
+            to="/players"
+            icon={Users}
+            label="Players"
+            accent="bg-blue-500/15 text-blue-400"
+          />
+          <QuickLink
+            to="/cage"
+            icon={Swords}
+            label="Cage matches"
+            accent="bg-rose-500/15 text-rose-400"
+          />
+          <QuickLink
+            to="/tournaments"
+            icon={Trophy}
+            label="Tournaments"
+            accent="bg-amber-500/15 text-amber-400"
+          />
+        </div>
+
+        {/* Play — create/join, collapsed behind a ResponsiveOverlay trigger
+         *  (Modal on phone, Popover on desktop) instead of two permanently
+         *  expanded forms taking up the top of the dashboard. */}
         <Card variant="solid">
           <CardHeader>
-            <CardTitle>Start a new game</CardTitle>
+            <CardTitle>Play</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <Select
-              label="Time control"
-              value={tcIndex}
-              onChange={(e) => setTcIndex(Number(e.target.value))}
-            >
-              {TIME_CONTROLS.map((tc, i) => (
-                <option key={tc.label} value={i}>
-                  {tc.label}
-                </option>
-              ))}
-            </Select>
-
-            <Select
-              label="Variant"
-              value={variant}
-              onChange={(e) =>
-                setVariant(e.target.value as "standard" | "chess960")
-              }
-              hint={
-                variant === "chess960"
-                  ? "Note: castling isn't available in Chess960 games yet — a limitation in the underlying chess library, not a bug."
-                  : undefined
+          <CardContent className="flex flex-col gap-3 sm:flex-row">
+            <ResponsiveOverlay
+              title="Create a new game"
+              align="start"
+              className="w-80 max-w-[calc(100vw-2rem)]"
+              trigger={
+                <Button className="w-full sm:w-auto">
+                  <Plus className="h-4 w-4" /> Create game
+                </Button>
               }
             >
-              <option value="standard">Standard</option>
-              <option value="chess960">Chess960 (Fischer Random)</option>
-            </Select>
+              <div className="space-y-3">
+                <Select
+                  label="Time control"
+                  value={tcIndex}
+                  onChange={(e) => setTcIndex(Number(e.target.value))}
+                >
+                  {TIME_CONTROLS.map((tc, i) => (
+                    <option key={tc.label} value={i}>
+                      {tc.label}
+                    </option>
+                  ))}
+                </Select>
 
-            <Input
-              label="R Coin wager (per player)"
-              type="number"
-              min={0}
-              step={1}
-              value={wagerInput}
-              onChange={(e) => setWagerInput(e.target.value)}
-              placeholder="0 for a free game"
-              hint={
-                wagerTokens > 0
-                  ? `You'll stake ${wagerTokens} R Coins now. Winner takes the full ${wagerTokens * 2}.`
-                  : "Leave at 0 to play for free."
-              }
-            />
+                <Select
+                  label="Variant"
+                  value={variant}
+                  onChange={(e) =>
+                    setVariant(e.target.value as "standard" | "chess960")
+                  }
+                  hint={
+                    variant === "chess960"
+                      ? "Note: castling isn't available in Chess960 games yet — a limitation in the underlying chess library, not a bug."
+                      : undefined
+                  }
+                >
+                  <option value="standard">Standard</option>
+                  <option value="chess960">Chess960 (Fischer Random)</option>
+                </Select>
 
-            <Button onClick={handleCreate} loading={creating}>
-              Create game
-            </Button>
-            {error && <p className="text-sm text-red-400">{error}</p>}
+                <Input
+                  label="R Coin wager (per player)"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={wagerInput}
+                  onChange={(e) => setWagerInput(e.target.value)}
+                  placeholder="0 for a free game"
+                  hint={
+                    wagerTokens > 0
+                      ? `You'll stake ${wagerTokens} R Coins now. Winner takes the full ${wagerTokens * 2}.`
+                      : "Leave at 0 to play for free."
+                  }
+                />
+
+                <Button className="w-full" onClick={handleCreate} loading={creating}>
+                  Create game
+                </Button>
+                {error && <p className="text-sm text-red-400">{error}</p>}
+              </div>
+            </ResponsiveOverlay>
+
+            <div className="flex flex-1 gap-2">
+              <Input
+                type="text"
+                placeholder="Join by code, e.g. 7K3M9P"
+                maxLength={10}
+                value={joinCodeInput}
+                onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
+                className="uppercase"
+                leadingIcon={<Hash className="h-4 w-4" />}
+              />
+              <Button variant="glass" onClick={handleJoinByCode}>
+                Join
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
         <Card variant="solid">
           <CardHeader>
-            <CardTitle>Join a game by code</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Trophy className="h-4 w-4 text-amber-400" /> Open tournaments
+            </CardTitle>
+            <Link to="/tournaments" className="text-sm text-(--primary) hover:underline">
+              View all
+            </Link>
           </CardHeader>
-          <CardContent className="flex gap-2">
-            <Input
-              type="text"
-              placeholder="e.g. 7K3M9P"
-              maxLength={10}
-              value={joinCodeInput}
-              onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
-              className="uppercase"
-            />
-            <Button className="flex" variant="glass" onClick={handleJoinByCode}>
-              Join
-            </Button>
+          <CardContent>
+            {openTournaments === null && (
+              <p className="text-sm text-base-content/60">Loading…</p>
+            )}
+            {openTournaments && openTournaments.length === 0 && (
+              <p className="text-sm text-base-content/60">
+                No open tournaments right now.
+              </p>
+            )}
+            {openTournaments &&
+              openTournaments.slice(0, 4).map((t) => (
+                <Link
+                  key={t._id}
+                  to={`/tournaments/${t.code}`}
+                  className="flex items-center justify-between gap-2 border-b border-base-300 py-2 last:border-none hover:text-(--primary)"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-base-content">
+                      {t.name}
+                    </p>
+                    <p className="text-xs text-base-content/50">
+                      {formatTournamentTimeControl(t)} · {t.players.length}/
+                      {t.maxPlayers} players
+                    </p>
+                  </div>
+                  <ArrowRight className="h-4 w-4 shrink-0 text-base-content/40" />
+                </Link>
+              ))}
+          </CardContent>
+        </Card>
+
+        <Card variant="solid">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Swords className="h-4 w-4 text-rose-400" /> Cage matches
+            </CardTitle>
+            <Link to="/cage" className="text-sm text-(--primary) hover:underline">
+              View all
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {cageMatches === null && (
+              <p className="text-sm text-base-content/60">Loading…</p>
+            )}
+            {cageMatches &&
+              activeCageMatches.length === 0 &&
+              recentCageMatches.length === 0 && (
+                <p className="text-sm text-base-content/60">
+                  No cage matches yet.
+                </p>
+              )}
+            {[...activeCageMatches, ...recentCageMatches].map((m) => {
+              const opponent =
+                m.player1._id === user?.id ? m.player2 : m.player1;
+              return (
+                <Link
+                  key={m._id}
+                  to={`/cage/${m.matchCode}`}
+                  className="flex items-center justify-between gap-2 border-b border-base-300 py-2 last:border-none hover:text-(--primary)"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-base-content">
+                      vs {opponent.username}
+                    </p>
+                    <p className="text-xs text-base-content/50">
+                      Leg {m.currentLegIndex + 1}/{m.legs.length}
+                    </p>
+                  </div>
+                  <Badge variant={m.status === "active" ? "success" : "neutral"}>
+                    {m.status === "active" ? "Active" : "Finished"}
+                  </Badge>
+                </Link>
+              );
+            })}
           </CardContent>
         </Card>
 
