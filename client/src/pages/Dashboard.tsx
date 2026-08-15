@@ -48,14 +48,16 @@ function QuickLink({
   icon: Icon,
   label,
   accent,
+  className = "",
 }: {
   to: string;
   icon: LucideIcon;
   label: string;
   accent: string;
+  className?: string;
 }) {
   return (
-    <Link to={to} className="flex-1">
+    <Link to={to} className={`flex-1 ${className}`}>
       <Card
         variant="solid"
         interactive
@@ -179,7 +181,7 @@ export function Dashboard() {
         {/* Quick links — the three other big areas of the app, one tap
          *  away, with an icon so this reads at a glance instead of as a
          *  wall of text links. */}
-        <div className="flex gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:flex">
           <QuickLink
             to="/players"
             icon={Users}
@@ -197,6 +199,7 @@ export function Dashboard() {
             icon={Trophy}
             label="Tournaments"
             accent="bg-amber-500/15 text-amber-400"
+            className="col-span-2 sm:col-span-1"
           />
         </div>
 

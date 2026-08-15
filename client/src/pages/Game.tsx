@@ -1463,7 +1463,7 @@ export function Game() {
   const mobileOverflowItems = actionItems.filter((item) => !item.mobilePrimary);
 
   return (
-    <div className="relative mx-auto min-h-screen md:min-h-[calc(100dvh-7rem)] flex max-w-6xl flex-col justify-center gap-2 md:gap-3 md:pb-2">
+    <div className="relative mx-auto md:min-h-[calc(100dvh-7rem)] flex max-w-6xl flex-col justify-center gap-2 md:gap-3 md:pb-2">
       <GameNotificationsOverlay
         pausedLeg={pausedLeg}
         gameOver={!!gameOver}

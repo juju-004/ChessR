@@ -215,8 +215,9 @@ body {
 }
 .elevated-strong {
   background-color: var(--surface-bg-strong);
-  filter: drop-shadow(0 2px 5px var(--surface-shadow-tight))
-    drop-shadow(0 14px 32px var(--surface-shadow-soft));
+  box-shadow:
+    0 2px 5px var(--surface-shadow-tight),
+    0 14px 32px var(--surface-shadow-soft);
 }
 
 /* ---------------------------------------------------------------------------
@@ -265,7 +266,7 @@ body {
   min-width: 0;
   padding: 0.4rem 0.25rem;
   border-radius: 9999px;
-  font-size: 0.6rem;
+  font-size: 0.5rem;
   font-weight: 600;
   line-height: 1;
   color: var(--color-base-content);
