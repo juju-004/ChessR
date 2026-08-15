@@ -72,8 +72,8 @@ export function CageMatches() {
   const [quickCount, setQuickCount] = useState(5);
   const [winnerMode, setWinnerMode] = useState<CageWinnerMode>("total_score");
   const [targetWins, setTargetWins] = useState(3);
-  const [wagerMode, setWagerMode] = useState<CageWagerMode>("none");
-  const [wagerInput, setWagerInput] = useState("0");
+  const [wagerMode, setWagerMode] = useState<CageWagerMode>("winner_takes_all");
+  const [wagerInput, setWagerInput] = useState("10");
   const [status, setStatus] = useState<{
     message: string;
     isError: boolean;
@@ -203,9 +203,9 @@ export function CageMatches() {
       });
     }
     const wagerTokens = Math.max(0, Math.floor(Number(wagerInput) || 0));
-    if (wagerMode !== "none" && wagerTokens <= 0) {
+    if (wagerTokens <= 0) {
       return setStatus({
-        message: 'Enter a wager amount, or set wager to "No wager".',
+        message: "Enter a wager amount — every cage match requires one.",
         isError: true,
       });
     }
@@ -380,7 +380,6 @@ export function CageMatches() {
               value={wagerMode}
               onChange={(e) => setWagerMode(e.target.value as CageWagerMode)}
             >
-              <option value="none">No wager</option>
               <option value="winner_takes_all">
                 Winner takes all — one stake for the whole match
               </option>
@@ -391,20 +390,18 @@ export function CageMatches() {
                 Split evenly — total stake divided across all games
               </option>
             </Select>
-            {wagerMode !== "none" && (
-              <Input
-                type="number"
-                min={1}
-                step={1}
-                value={wagerInput}
-                onChange={(e) => setWagerInput(e.target.value)}
-                placeholder={
-                  wagerMode === "per_leg"
-                    ? "R Coins per game"
-                    : "Total R Coins for the whole match"
-                }
-              />
-            )}
+            <Input
+              type="number"
+              min={1}
+              step={1}
+              value={wagerInput}
+              onChange={(e) => setWagerInput(e.target.value)}
+              placeholder={
+                wagerMode === "per_leg"
+                  ? "R Coins per game"
+                  : "Total R Coins for the whole match"
+              }
+            />
 
             <Button
               fullWidth

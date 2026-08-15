@@ -75,6 +75,10 @@ function EditTournamentForm({
   function save() {
     if (!socket) return;
     if (name.trim().length < 3) return setError('Give it a name (3+ characters).');
+    const regFeeTokens = Math.max(0, Math.floor(Number(regFeeInput) || 0));
+    if (regFeeTokens < 1) {
+      return setError('Set a registration fee — every tournament requires one.');
+    }
     const scheduledStartAt = new Date(startInput);
     if (Number.isNaN(scheduledStartAt.getTime()) || scheduledStartAt.getTime() < Date.now() + 5000) {
       return setError('Pick a start time a bit further in the future.');
@@ -95,7 +99,7 @@ function EditTournamentForm({
       berserkAllowed,
       isPublic,
       prizeSchedule: prizeTiers,
-      regFeeTokens: Math.max(0, Math.floor(Number(regFeeInput) || 0)),
+      regFeeTokens,
       swissRounds: format === 'swiss' ? swissRounds : null,
       breakSeconds,
       scheduledStartAt: scheduledStartAt.toISOString(),
@@ -215,7 +219,7 @@ function EditTournamentForm({
         <Input
           label="Registration fee — R Coins"
           type="number"
-          min={0}
+          min={1}
           value={regFeeInput}
           onChange={(e) => setRegFeeInput(e.target.value)}
         />

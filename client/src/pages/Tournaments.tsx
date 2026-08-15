@@ -15,6 +15,7 @@ import {
 } from "../api/tournaments.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useAuth } from "../contexts/AuthContext.js";
+import { useRakePercent } from "../hooks/useRakePercent.js";
 import {
   Page,
   Card,
@@ -112,7 +113,7 @@ export function Tournaments() {
   const [breakSeconds, setBreakSeconds] = useState(10);
   const [berserkAllowed, setBerserkAllowed] = useState(true);
   const [isPublic, setIsPublic] = useState(false);
-  const [regFeeInput, setRegFeeInput] = useState("0");
+  const [regFeeInput, setRegFeeInput] = useState("10");
   const [prizeTiers, setPrizeTiers] = useState<TournamentPrizeTier[]>([]);
   const [password, setPassword] = useState("");
   const [startInput, setStartInput] = useState(defaultStartInput);
@@ -168,6 +169,8 @@ export function Tournaments() {
     setPrizeTiers(prizeTiers.filter((_, idx) => idx !== i));
   }
 
+  const rakePercent = useRakePercent();
+
   function handleCreate() {
     if (!socket) return;
     if (name.trim().length < 3)
@@ -176,6 +179,12 @@ export function Tournaments() {
         isError: true,
       });
     const regFeeTokens = Math.max(0, Math.floor(Number(regFeeInput) || 0));
+    if (regFeeTokens < 1) {
+      return setStatus({
+        message: "Set a registration fee — every tournament requires one.",
+        isError: true,
+      });
+    }
     const scheduledStartAt = new Date(startInput);
     if (Number.isNaN(scheduledStartAt.getTime()) || scheduledStartAt.getTime() < Date.now() + 5000) {
       return setStatus({
@@ -382,14 +391,16 @@ export function Tournaments() {
 
             <div className="space-y-2 border-t border-base-300 pt-4">
               <Input
-                label="Registration fee — R Coins (optional)"
+                label="Registration fee — R Coins"
                 type="number"
-                min={0}
+                min={1}
                 value={regFeeInput}
                 onChange={(e) => setRegFeeInput(e.target.value)}
               />
               <p className="text-xs text-base-content/50">
-                Each player (including you) pays this to join. Held until the event finishes, then the whole pool comes to you as the organizer.
+                {rakePercent !== null
+                  ? `Each player (including you) pays this to join. Held until the event finishes, then the pool minus a ${rakePercent}% platform fee comes to you as the organizer.`
+                  : "Each player (including you) pays this to join. Held until the event finishes, then the pool (minus a platform fee) comes to you as the organizer."}
               </p>
             </div>
 

@@ -42,8 +42,8 @@ const sendSchema = z.object({
   legs: z.array(legSchema).min(2).max(30),
   winnerMode: z.enum(['total_score', 'most_categories', 'first_to_n']).default('total_score'),
   targetWins: z.number().int().min(1).max(30).nullable().optional().default(null),
-  wagerMode: z.enum(['none', 'winner_takes_all', 'per_leg', 'split_even']).default('none'),
-  wagerTokens: z.number().int().min(0).max(MAX_WAGER_TOKENS).default(0),
+  wagerMode: z.enum(['winner_takes_all', 'per_leg', 'split_even']).default('winner_takes_all'),
+  wagerTokens: z.number().int().min(1, 'A wager is required for every cage match').max(MAX_WAGER_TOKENS),
 });
 const respondSchema = z.object({ inviteId: z.string(), accept: z.boolean() });
 const cancelSchema = z.object({ inviteId: z.string() });
@@ -98,7 +98,7 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
       if (winnerMode === 'first_to_n' && (!targetWins || targetWins < 1)) {
         return emitError(socket, 'Choose a target win count for a first-to-N match');
       }
-      if (wagerMode !== 'none' && wagerTokens <= 0) {
+      if (wagerTokens <= 0) {
         return emitError(socket, 'Enter a valid wager amount');
       }
 

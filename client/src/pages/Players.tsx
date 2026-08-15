@@ -40,7 +40,7 @@ export function Players() {
   const [friendSearch, setFriendSearch] = useState("");
   const [tcIndex, setTcIndex] = useState(2);
   const [variant, setVariant] = useState<"standard" | "chess960">("standard");
-  const [wagerInput, setWagerInput] = useState("0");
+  const [wagerInput, setWagerInput] = useState("10");
   const [status, setStatus] = useState<{
     message: string;
     isError: boolean;
@@ -117,7 +117,7 @@ export function Players() {
   function handleChallenge(friendId: string) {
     if (!socket) return;
     const tc = TIME_CONTROLS[tcIndex];
-    const wagerTokens = Math.max(0, Math.floor(Number(wagerInput) || 0));
+    const wagerTokens = Math.max(1, Math.floor(Number(wagerInput) || 0));
     socket.emit("challenge:send", {
       toUserId: friendId,
       baseMinutes: tc.baseMinutes,
@@ -125,9 +125,8 @@ export function Players() {
       variant,
       wagerTokens,
     });
-    const wagerNote = wagerTokens > 0 ? `, ${wagerTokens} R wager` : "";
     setStatus({
-      message: `Challenge sent (${tc.label}${variant === "chess960" ? ", Chess960" : ""}${wagerNote}) — waiting for a response…`,
+      message: `Challenge sent (${tc.label}${variant === "chess960" ? ", Chess960" : ""}, ${wagerTokens} R wager) — waiting for a response…`,
       isError: false,
     });
     setChallengingFriendId(null);
@@ -389,16 +388,16 @@ export function Players() {
                       <Input
                         label="R Coin wager (per player)"
                         type="number"
-                        min={0}
+                        min={1}
                         step={1}
                         value={wagerInput}
                         onChange={(e) => setWagerInput(e.target.value)}
-                        placeholder="0 for a free game"
                       />
 
                       <Button
                         className="w-full"
                         onClick={() => handleChallenge(f.id)}
+                        disabled={Math.floor(Number(wagerInput) || 0) < 1}
                       >
                         Send challenge
                       </Button>

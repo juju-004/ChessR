@@ -9,7 +9,13 @@ interface GameOverModalProps {
   isPlayer: boolean;
   canRematch: boolean;
   rematchState: 'idle' | 'offered';
-  wagerSettlement?: { wagerTokens: number; potTokens: number; winnerId: string | null } | null;
+  wagerSettlement?: {
+    wagerTokens: number;
+    potTokens: number;
+    winnerId: string | null;
+    payoutTokens: number;
+    rakeTokens: number;
+  } | null;
   myUserId?: string;
   onRematch: () => void;
   onClose: () => void;
@@ -49,7 +55,7 @@ export const GameOverModal = memo(function GameOverModal({
       return `Draw — your ${wagerSettlement.wagerTokens} R Coin stake was refunded.`;
     }
     if (wagerSettlement.winnerId === myUserId) {
-      return `You won ${wagerSettlement.potTokens} R Coins!`;
+      return `You won ${wagerSettlement.payoutTokens} R Coins!`;
     }
     return `You lost your ${wagerSettlement.wagerTokens} R Coin stake.`;
   })();

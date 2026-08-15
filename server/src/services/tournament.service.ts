@@ -30,6 +30,8 @@ import {
   debitTournamentPrizeFund,
   creditTournamentReturn,
   adjustTournamentEscrow,
+  computeRake,
+  recordRake,
 } from "./wallet.service.js";
 import { getIo } from "../sockets/io.js";
 
@@ -410,8 +412,8 @@ export async function createTournament(
     );
   }
   const regFeeTokens = input.regFeeTokens ?? 0;
-  if (regFeeTokens < 0 || regFeeTokens > MAX_WAGER_TOKENS) {
-    throw ApiError.badRequest("Enter a valid registration fee");
+  if (regFeeTokens < 1 || regFeeTokens > MAX_WAGER_TOKENS) {
+    throw ApiError.badRequest("A registration fee is required for every tournament");
   }
   if (
     input.breakSeconds !== undefined &&
@@ -705,8 +707,8 @@ export async function updateTournament(
   }
 
   const regFeeTokens = input.regFeeTokens ?? tournament.regFeeTokens;
-  if (regFeeTokens < 0 || regFeeTokens > MAX_WAGER_TOKENS) {
-    throw ApiError.badRequest("Enter a valid registration fee");
+  if (regFeeTokens < 1 || regFeeTokens > MAX_WAGER_TOKENS) {
+    throw ApiError.badRequest("A registration fee is required for every tournament");
   }
 
   const breakSeconds = input.breakSeconds ?? tournament.breakSeconds;
@@ -1307,12 +1309,14 @@ async function distributePrize(tournament: ITournament): Promise<void> {
       { $set: { regFeeSettled: true } },
     );
     if (claimed) {
+      const { rakeTokens, netTokens } = computeRake(tournament.regFeePoolTokens);
       await creditTournamentReturn(
         tournament.createdBy.toString(),
         tournament.id,
-        tournament.regFeePoolTokens,
+        netTokens,
         "tournament_reg_revenue",
       );
+      await recordRake("tournament", tournament.id, rakeTokens, tournament.regFeePoolTokens);
     }
   }
 }

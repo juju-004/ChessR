@@ -106,14 +106,11 @@
      it's sitting on; some renders/zoom levels/monitors will show
      basically nothing. A shadow separates them regardless of whether
      the two colors are identical, so that's now the primary elevation
-     cue (see --surface-shadow-* below and the `filter: drop-shadow()`
-     declarations on .elevated/.elevated-strong/.dock) — drop-shadow
-     specifically, not box-shadow, since it composites more predictably
-     with the rounded corners + overflow:hidden the pill dock relies on.
-     The border sticks around as a secondary, subtler brand-tint cue, not
-     the only one. "strong" steps up the fill, border, and shadow a notch
-     for surfaces that need to read as sitting above another elevated
-     surface (modals, popovers). */
+     cue (see --surface-shadow-* below and the `box-shadow` declarations
+     on .elevated/.elevated-strong/.dock). The border sticks around as a
+     secondary, subtler brand-tint cue, not the only one. "strong" steps
+     up the fill, border, and shadow a notch for surfaces that need to
+     read as sitting above another elevated surface (modals, popovers). */
   --surface-bg: #ffffff;
   --surface-bg-strong: #f7f9ff;
   --surface-border: rgba(59, 130, 246, 0.14);
@@ -181,37 +178,39 @@ body {
    panel (backdrop-filter: blur+saturate), which was a measurable
    jank/battery cost on older/lower-end phones. This version is solid and
    flat — a plain background-color, no gradient fill, no blur — separated
-   from the page behind it primarily by a shadow (filter: drop-shadow(),
-   not box-shadow — see --surface-shadow-* above and the note below on
-   why), with a faint brand-tinted border as a secondary accent rather
-   than the only separation cue. Class names are `.elevated`/
-   `.elevated-strong` — deliberately NOT named `.glass`, because daisyUI
-   ships its own `.glass` utility class (real backdrop-filter blur +
-   saturate + shadow baked in). Reusing that name only "worked" because
-   this rule happened to be later in the cascade and used !important to
-   stomp daisyUI's declarations — fragile, and exactly the kind of thing
-   that silently breaks again the moment daisyUI's own output order
-   changes (a version bump, a build-tool change, etc). A distinct name
-   means there's no collision to begin with. The `variant="glass"` prop
-   on Button/Card/Badge is unchanged (that's just a semantic name in our
-   own API) — only the underlying CSS class it maps to changed.
+   from the page behind it primarily by a shadow (box-shadow, see
+   --surface-shadow-* above), with a faint brand-tinted border as a
+   secondary accent rather than the only separation cue. Class names are
+   `.elevated`/`.elevated-strong` — deliberately NOT named `.glass`,
+   because daisyUI ships its own `.glass` utility class (real
+   backdrop-filter blur + saturate + shadow baked in). Reusing that name
+   only "worked" because this rule happened to be later in the cascade and
+   used !important to stomp daisyUI's declarations — fragile, and exactly
+   the kind of thing that silently breaks again the moment daisyUI's own
+   output order changes (a version bump, a build-tool change, etc). A
+   distinct name means there's no collision to begin with. The
+   `variant="glass"` prop on Button/Card/Badge is unchanged (that's just a
+   semantic name in our own API) — only the underlying CSS class it maps
+   to changed.
 
-   drop-shadow(), not box-shadow: box-shadow draws a shadow of the
-   element's own box, which is easy to reason about and cheap for a
-   simple rectangle — but it can't be clipped by border-radius the way
-   this app's `.dock` (a rounded pill with `overflow: hidden`) needs, and
-   it renders even through a fully-transparent background. drop-shadow()
-   is a filter, so it follows the actual rendered alpha shape of the
-   element (rounded corners included) and composites correctly with
-   overflow:hidden ancestors — the tradeoff is it can be marginally more
-   expensive to repaint on very low-end hardware since it's calculated
-   from the alpha channel rather than the box geometry, but for a static
-   card that isn't animating every frame that difference isn't
-   noticeable. */
+   box-shadow, not filter: drop-shadow(): these used to use drop-shadow()
+   because it clips to the actual alpha shape (rounded corners included)
+   rather than the box's rectangle. The problem: `filter` (any value other
+   than none) forces the browser to composite the element as its own
+   layer and re-render that entire layer from scratch on every frame
+   anything inside it animates — including a pure-transform, GPU-only
+   animation like Tabs' sliding active-pill indicator (@/lib/motion.ts's
+   whole premise is that transform/opacity are compositor-only and don't
+   force a repaint, which filter quietly defeats). That's what was
+   producing visible lag on the Tabs indicator even on desktop. box-shadow
+   doesn't have that side effect and, since every one of these surfaces
+   has a solid (non-transparent) background matching its own border-
+   radius, it clips to the rounded corners just as correctly here. */
 .elevated {
   background-color: var(--surface-bg);
-  filter: drop-shadow(0 1px 2px var(--surface-shadow-tight))
-    drop-shadow(0 6px 16px var(--surface-shadow-soft));
+  box-shadow:
+    0 1px 2px var(--surface-shadow-tight),
+    0 6px 16px var(--surface-shadow-soft);
 }
 .elevated-strong {
   background-color: var(--surface-bg-strong);

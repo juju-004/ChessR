@@ -114,3 +114,35 @@ export function setUserReportingBlock(username: string, blocked: boolean) {
     { method: 'PATCH', body: JSON.stringify({ blocked }) },
   );
 }
+
+// --- Platform revenue (rake) -------------------------------------------------
+// See PlatformRevenue.ts / wallet.service.ts's computeRake+recordRake on the
+// server — a cut of every decisive game/cage-match wager and every
+// tournament reg-fee pool.
+
+export type RevenueSource = 'game' | 'cage_match' | 'tournament';
+
+export interface RevenueEntry {
+  id: string;
+  source: RevenueSource;
+  sourceId: string;
+  tokens: number;
+  grossPotTokens: number;
+  ratePercent: number;
+  createdAt: string;
+}
+
+export interface RevenueSummary {
+  balanceTokens: number;
+  ratePercent: number;
+  bySource: Record<RevenueSource, { tokens: number; count: number }>;
+  entries: RevenueEntry[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export function getRevenueSummary(page = 1, limit = 50) {
+  return adminFetch<RevenueSummary>(`/revenue?page=${page}&limit=${limit}`);
+}

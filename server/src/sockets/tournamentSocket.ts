@@ -34,7 +34,7 @@ const createSchema = z.object({
   berserkAllowed: z.boolean().default(true),
   isPublic: z.boolean().default(false),
   prizeSchedule: z.array(prizeTierSchema).max(20).optional().default([]),
-  regFeeTokens: z.number().int().min(0).max(MAX_WAGER_TOKENS).default(0),
+  regFeeTokens: z.number().int().min(1, 'A registration fee is required for every tournament').max(MAX_WAGER_TOKENS),
   swissRounds: z.number().int().min(3).max(15).nullable().optional().default(null),
   // Pause between rounds, in seconds — defaults to 10 if omitted.
   breakSeconds: z.number().int().min(0).max(MAX_BREAK_SECONDS).default(10),
@@ -58,7 +58,7 @@ const editSchema = idSchema.extend({
   berserkAllowed: z.boolean().optional(),
   isPublic: z.boolean().optional(),
   prizeSchedule: z.array(prizeTierSchema).max(20).optional(),
-  regFeeTokens: z.number().int().min(0).max(MAX_WAGER_TOKENS).optional(),
+  regFeeTokens: z.number().int().min(1, 'A registration fee is required for every tournament').max(MAX_WAGER_TOKENS).optional(),
   swissRounds: z.number().int().min(3).max(15).nullable().optional(),
   breakSeconds: z.number().int().min(0).max(MAX_BREAK_SECONDS).optional(),
   scheduledStartAt: z.string().or(z.date()).optional(),

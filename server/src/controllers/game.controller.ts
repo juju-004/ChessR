@@ -27,10 +27,8 @@ const createSchema = z.object({
   wagerTokens: z
     .number()
     .int()
-    .min(0)
-    .max(MAX_WAGER_TOKENS)
-    .optional()
-    .default(0),
+    .min(1, "A wager is required for every game")
+    .max(MAX_WAGER_TOKENS),
 });
 const idParamSchema = z.object({
   id: z.string().refine(mongoose.isValidObjectId),

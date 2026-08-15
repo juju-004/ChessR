@@ -115,9 +115,14 @@ export interface ITournament extends Document {
   prizePoolSettled: boolean;
   // --- Registration fee: player-funded, paid out to the creator --------------
   // Every joining player (creator included) pays this into escrow; held by
-  // the tournament until it finishes, then the WHOLE pool goes to the
-  // creator as compensation for running the event — it is NOT split among
-  // winners (that's what prizeSchedule is for). 0 = no registration fee.
+  // the tournament until it finishes, then the pool (minus the platform's
+  // rake — see wallet.service.ts's computeRake) goes to the creator as
+  // compensation for running the event — it is NOT split among winners
+  // (that's what prizeSchedule is for). Compulsory (>= 1) for every
+  // tournament created going forward — enforced in createTournament/
+  // updateTournament (tournament.service.ts) and the create/edit socket
+  // schemas (tournamentSocket.ts). 0 only appears on tournaments created
+  // before that requirement existed.
   regFeeTokens: number;
   regFeePoolTokens: number; // accumulates as players join
   regFeeSettled: boolean;

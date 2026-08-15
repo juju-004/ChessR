@@ -24,7 +24,7 @@ const sendSchema = z.object({
   baseMinutes: z.number().min(1).max(180).nullable().optional().default(10),
   incrementSeconds: z.number().min(0).max(60).optional().default(0),
   variant: z.enum(['standard', 'chess960']).optional().default('standard'),
-  wagerTokens: z.number().int().min(0).max(MAX_WAGER_TOKENS).optional().default(0),
+  wagerTokens: z.number().int().min(1, 'A wager is required for every game').max(MAX_WAGER_TOKENS),
 });
 const respondSchema = z.object({ challengeId: z.string(), accept: z.boolean() });
 

@@ -21,6 +21,7 @@ import { useAuth } from "../contexts/AuthContext.js";
 import { TIME_CONTROLS, formatTimeControl } from "../timeControls.js";
 import { turnColor } from "../chessUtils.js";
 import { useTokenBalance } from "../hooks/useTokenBalance.js";
+import { useRakePercent } from "../hooks/useRakePercent.js";
 import {
   listOpenTournaments,
   formatTimeControl as formatTournamentTimeControl,
@@ -79,7 +80,7 @@ export function Dashboard() {
   const navigate = useNavigate();
   const [tcIndex, setTcIndex] = useState(2);
   const [variant, setVariant] = useState<"standard" | "chess960">("standard");
-  const [wagerInput, setWagerInput] = useState("0");
+  const [wagerInput, setWagerInput] = useState("10");
   const [joinCodeInput, setJoinCodeInput] = useState("");
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
@@ -110,7 +111,9 @@ export function Dashboard() {
     };
   }, []);
 
-  const wagerTokens = Math.max(0, Math.floor(Number(wagerInput) || 0));
+  const wagerTokens = Math.max(1, Math.floor(Number(wagerInput) || 0));
+  const rakePercent = useRakePercent();
+  const wagerRake = rakePercent !== null ? Math.floor((wagerTokens * 2 * rakePercent) / 100) : null;
 
   async function handleCreate() {
     const tc = TIME_CONTROLS[tcIndex];
@@ -253,19 +256,23 @@ export function Dashboard() {
                 <Input
                   label="R Coin wager (per player)"
                   type="number"
-                  min={0}
+                  min={1}
                   step={1}
                   value={wagerInput}
                   onChange={(e) => setWagerInput(e.target.value)}
-                  placeholder="0 for a free game"
                   hint={
-                    wagerTokens > 0
-                      ? `You'll stake ${wagerTokens} R Coins now. Winner takes the full ${wagerTokens * 2}.`
-                      : "Leave at 0 to play for free."
+                    wagerRake !== null
+                      ? `You'll stake ${wagerTokens} R Coins now. Winner takes ${wagerTokens * 2 - wagerRake} (${rakePercent}% platform fee).`
+                      : `You'll stake ${wagerTokens} R Coins now.`
                   }
                 />
 
-                <Button className="w-full" onClick={handleCreate} loading={creating}>
+                <Button
+                  className="w-full"
+                  onClick={handleCreate}
+                  loading={creating}
+                  disabled={wagerTokens < 1}
+                >
                   Create game
                 </Button>
                 {error && <p className="text-sm text-red-400">{error}</p>}

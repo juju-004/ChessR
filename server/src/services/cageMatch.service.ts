@@ -6,7 +6,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { createDirectGame, finalizeGame, settleWager, refundWagerBothSides, type TimeControlInput } from "./game.service.js";
 import { getLiveState, deleteLiveState, pauseLiveClock, resumeLiveClock } from "./gameState.service.js";
 import { clearGameTimer, scheduleGameTimer, clearFirstMoveTimer, scheduleFirstMoveTimer } from "./clock.service.js";
-import { debitWagerStake, creditWagerReturn } from "./wallet.service.js";
+import { debitWagerStake, creditWagerReturn, computeRake, recordRake } from "./wallet.service.js";
 import { getIo } from "../sockets/io.js";
 
 const generateCode = customAlphabet("ABCDEFGHJKMNPQRSTUVWXYZ23456789", 6);
@@ -189,8 +189,10 @@ async function settleWinnerTakesAll(match: ICageMatch, winner: "p1" | "p2" | "dr
     ]);
     return;
   }
+  const { rakeTokens, netTokens } = computeRake(pot);
   const winnerId = winner === "p1" ? match.player1.toString() : match.player2.toString();
-  await creditWagerReturn(winnerId, matchId, pot, "wager_payout");
+  await creditWagerReturn(winnerId, matchId, netTokens, "wager_payout");
+  await recordRake("cage_match", matchId, rakeTokens, pot);
 }
 
 /** Refunds an escrowed winner-takes-all pot without paying anyone — used when
@@ -379,7 +381,11 @@ export async function startCageMatch(
   if (winnerMode === "first_to_n" && (!targetWins || targetWins < 1)) {
     throw ApiError.badRequest("Choose a target win count for a first-to-N match");
   }
-  if (wagerMode !== "none" && (wagerTokens <= 0 || wagerTokens > MAX_WAGER_TOKENS)) {
+  // Wagers are compulsory — 'none' is no longer a selectable mode (see
+  // cageMatchSocket.ts's sendSchema), but this is checked here too as a
+  // defense-in-depth guard against anything that calls this service
+  // directly.
+  if (wagerMode === "none" || wagerTokens <= 0 || wagerTokens > MAX_WAGER_TOKENS) {
     throw ApiError.badRequest("Enter a valid wager amount");
   }
   if (wagerMode === "split_even" && Math.floor(wagerTokens / legsInput.length) <= 0) {

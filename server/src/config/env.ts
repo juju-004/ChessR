@@ -22,6 +22,13 @@ const envSchema = z.object({
   PAYSTACK_SECRET_KEY: z.string().min(1, 'PAYSTACK_SECRET_KEY is required'),
   PAYSTACK_PUBLIC_KEY: z.string().min(1, 'PAYSTACK_PUBLIC_KEY is required'),
 
+  // The platform's cut of every wagered pot — normal games, cage matches,
+  // and tournament registration-fee pools all run through the same
+  // computeRake() helper in wallet.service.ts, so this one knob controls
+  // all three. A whole-number percent, 0-100 (0 = rake disabled entirely).
+  // See wallet.service.ts's computeRake for the actual math.
+  RAKE_PERCENT: z.coerce.number().min(0).max(100).default(10),
+
   // Fixed credentials for the single expert-review admin account (see
   // admin.controller.ts) — deliberately NOT a User document, so it never
   // shows up in player search, leaderboards, matchmaking, etc, and can't

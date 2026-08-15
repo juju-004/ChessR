@@ -13,7 +13,11 @@ export type CageMatchStatus = 'active' | 'finished' | 'cancelled';
 export type CageWinnerMode = 'total_score' | 'most_categories' | 'first_to_n';
 
 // How (and whether) the match is wagered.
-//  - 'none': free match, no tokens at stake.
+//  - 'none': free match, no tokens at stake. No longer selectable when
+//    starting a new match (wagers are compulsory — see the sendSchema in
+//    cageMatchSocket.ts and the guard in startCageMatch), kept in the type
+//    only because older matches created before that requirement existed
+//    may still have it.
 //  - 'winner_takes_all': the full wagerTokens amount is staked once by each
 //    player up front and escrowed for the whole match; the overall winner
 //    takes the combined pot at the end (refunded to both on an overall draw).

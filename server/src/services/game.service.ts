@@ -12,7 +12,7 @@ import {
 import { scheduleGameTimer, scheduleFirstMoveTimer } from "./clock.service.js";
 import { getIo } from "../sockets/io.js";
 import { generateChess960Fen } from "./chess960.service.js";
-import { debitWagerStake, creditWagerReturn } from "./wallet.service.js";
+import { debitWagerStake, creditWagerReturn, computeRake, recordRake } from "./wallet.service.js";
 // NOTE: cageMatch.service.ts imports several functions from this same file
 // (createDirectGame, finalizeGame, settleWager), so this is a deliberate
 // circular import. It's safe here because every cross-reference on both
@@ -433,6 +433,8 @@ export interface WagerSettlement {
   wagerTokens: number;
   potTokens: number;
   winnerId: string | null; // null for a draw (both refunded) or an unwagered game
+  rakeTokens: number; // platform's cut — 0 for a draw (nothing to rake, it's a refund)
+  payoutTokens: number; // what the winner actually received (potTokens - rakeTokens); 0 for a draw
 }
 
 /**
@@ -464,12 +466,16 @@ export async function settleWager(
       creditWagerReturn(whiteId, gameId, wagerTokens, "wager_refund"),
       creditWagerReturn(blackId, gameId, wagerTokens, "wager_refund"),
     ]);
-    return { wagerTokens, potTokens, winnerId: null };
+    return { wagerTokens, potTokens, winnerId: null, rakeTokens: 0, payoutTokens: 0 };
   }
 
+  // Rake comes off the pot before the winner is paid — see wallet.service.ts's
+  // computeRake for the split, RAKE_PERCENT in .env for the rate.
+  const { rakeTokens, netTokens } = computeRake(potTokens);
   const winnerId = result === "white" ? whiteId : blackId;
-  await creditWagerReturn(winnerId, gameId, potTokens, "wager_payout");
-  return { wagerTokens, potTokens, winnerId };
+  await creditWagerReturn(winnerId, gameId, netTokens, "wager_payout");
+  await recordRake("game", gameId, rakeTokens, potTokens);
+  return { wagerTokens, potTokens, winnerId, rakeTokens, payoutTokens: netTokens };
 }
 
 /** Refunds both players' stakes for a game that's being torn down before it

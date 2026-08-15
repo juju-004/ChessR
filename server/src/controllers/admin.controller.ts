@@ -6,11 +6,71 @@ import { signAdminToken } from '../services/token.service.js';
 import { Report } from '../models/Report.js';
 import { User } from '../models/User.js';
 import { Game } from '../models/Game.js';
+import { PlatformRevenue } from '../models/PlatformRevenue.js';
 import { analyzeGameForSuspicion } from '../services/anticheat.service.js';
 
 const loginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
+});
+
+const revenueQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(50),
+});
+
+/** The admin page's rake/revenue view — a running total ("admin wallet"
+ *  balance, summed straight from the PlatformRevenue ledger rather than a
+ *  separately-tracked counter that could drift out of sync with it), a
+ *  breakdown by source so it's clear how much came from games vs. cage
+ *  matches vs. tournament reg fees, and a paginated feed of individual
+ *  cuts for auditing. See wallet.service.ts's computeRake/recordRake for
+ *  where these rows come from, and RAKE_PERCENT in .env for the current
+ *  rate. */
+export const getRevenueSummary = asyncHandler(async (req, res) => {
+  const { page, limit } = revenueQuerySchema.parse(req.query);
+
+  const [totals, entries, total] = await Promise.all([
+    PlatformRevenue.aggregate<{ _id: string; tokens: number; count: number }>([
+      { $group: { _id: '$source', tokens: { $sum: '$tokens' }, count: { $sum: 1 } } },
+    ]),
+    PlatformRevenue.find()
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean(),
+    PlatformRevenue.countDocuments(),
+  ]);
+
+  const bySource: Record<string, { tokens: number; count: number }> = {
+    game: { tokens: 0, count: 0 },
+    cage_match: { tokens: 0, count: 0 },
+    tournament: { tokens: 0, count: 0 },
+  };
+  let balanceTokens = 0;
+  for (const row of totals) {
+    bySource[row._id] = { tokens: row.tokens, count: row.count };
+    balanceTokens += row.tokens;
+  }
+
+  res.json({
+    balanceTokens,
+    ratePercent: env.RAKE_PERCENT,
+    bySource,
+    entries: entries.map((e) => ({
+      id: e._id,
+      source: e.source,
+      sourceId: e.sourceId,
+      tokens: e.tokens,
+      grossPotTokens: e.grossPotTokens,
+      ratePercent: e.ratePercent,
+      createdAt: e.createdAt,
+    })),
+    page,
+    limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+  });
 });
 
 export const adminLogin = asyncHandler(async (req, res) => {

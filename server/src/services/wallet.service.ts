@@ -1,7 +1,9 @@
 import { nanoid } from 'nanoid';
 import { User } from '../models/User.js';
 import { Transaction, type ITransaction } from '../models/Transaction.js';
+import { PlatformRevenue } from '../models/PlatformRevenue.js';
 import { ApiError } from '../utils/ApiError.js';
+import { env } from '../config/env.js';
 import {
   verifyTransaction,
   createTransferRecipient,
@@ -200,6 +202,53 @@ export async function resolveWithdrawalFromWebhook(
   transaction.failureReason = `Paystack transfer ${outcome}`;
   await transaction.save();
   await User.updateOne({ _id: transaction.user }, { $inc: { tokenBalance: transaction.tokens } });
+}
+
+// --- Platform rake ---------------------------------------------------------------
+// A cut of every wagered pot (normal games, cage matches) and every
+// tournament registration-fee pool goes to the platform instead of whoever
+// would otherwise receive the whole thing — the winner for a wager, the
+// organizer for a reg-fee pool. Rate is operator-configurable via
+// RAKE_PERCENT in the server .env (see config/env.ts), so it can be tuned
+// without a code change/redeploy involving this file.
+
+export interface RakeSplit {
+  rakeTokens: number;
+  netTokens: number; // grossTokens - rakeTokens — what actually reaches the recipient
+}
+
+/** Splits a gross pot/pool into the platform's cut and the remainder. Floors
+ *  the rake (never rounds up) so the platform's cut can't ever exceed the
+ *  configured percentage, even on an odd total — any lost fraction of a
+ *  token from the floor just stays with whoever the remainder goes to. */
+export function computeRake(grossTokens: number): RakeSplit {
+  if (grossTokens <= 0) return { rakeTokens: 0, netTokens: 0 };
+  const rakeTokens = Math.floor((grossTokens * env.RAKE_PERCENT) / 100);
+  return { rakeTokens, netTokens: grossTokens - rakeTokens };
+}
+
+/** Records the platform's cut of a settled pot/pool. Never touches a user's
+ *  balance — there's no "platform user" account, just this ledger — and is
+ *  a no-op for a zero-percent/zero-token cut so a disabled rake doesn't
+ *  clutter the admin page with $0 rows. Not wrapped in the same
+ *  wagerSettled-style atomic guard as the payout it accompanies, since it's
+ *  always called immediately after that guard already succeeded — see
+ *  settleWager, settleWinnerTakesAll, and distributePrize, the only three
+ *  callers. */
+export async function recordRake(
+  source: 'game' | 'cage_match' | 'tournament',
+  sourceId: string,
+  rakeTokens: number,
+  grossPotTokens: number,
+): Promise<void> {
+  if (rakeTokens <= 0) return;
+  await PlatformRevenue.create({
+    source,
+    sourceId,
+    tokens: rakeTokens,
+    grossPotTokens,
+    ratePercent: env.RAKE_PERCENT,
+  });
 }
 
 // --- Wager escrow ---------------------------------------------------------------
