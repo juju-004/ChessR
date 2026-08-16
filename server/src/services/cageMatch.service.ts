@@ -416,7 +416,7 @@ export async function startCageMatch(
     winnerMode,
     targetWins: winnerMode === "first_to_n" ? targetWins : null,
     wagerMode,
-    wagerTokens: wagerMode === "none" ? 0 : wagerTokens,
+    wagerTokens,
   });
 
   try {
