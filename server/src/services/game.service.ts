@@ -13,6 +13,7 @@ import { scheduleGameTimer, scheduleFirstMoveTimer } from "./clock.service.js";
 import { getIo } from "../sockets/io.js";
 import { generateChess960Fen } from "./chess960.service.js";
 import { debitWagerStake, creditWagerReturn, computeRake, recordRake } from "./wallet.service.js";
+import { applyRatingForGame } from "./rating.service.js";
 // NOTE: cageMatch.service.ts imports several functions from this same file
 // (createDirectGame, finalizeGame, settleWager), so this is a deliberate
 // circular import. It's safe here because every cross-reference on both
@@ -351,8 +352,8 @@ export async function listOpenGames(excludeUserId?: string) {
 
 export async function getGameByCode(code: string) {
   const game = await Game.findOne({ joinCode: code.toUpperCase() })
-    .populate("white", "username avatarGradient")
-    .populate("black", "username avatarGradient")
+    .populate("white", "username avatarGradient rating ratedGamesPlayed")
+    .populate("black", "username avatarGradient rating ratedGamesPlayed")
     // Just the join code — enough for a "Back to tournament" link without
     // pulling the whole Tournament doc down for every single game fetch.
     // code (for the "Back to tournament" link) and name (shown on the
@@ -588,6 +589,9 @@ export async function reconcileActiveGames(): Promise<{
         timeoutWinner,
       ).catch((err) =>
         console.error("settleWager failed during reconciliation:", err),
+      );
+      applyRatingForGame(gameId, liveState.whiteId, liveState.blackId, timeoutWinner).catch((err) =>
+        console.error("applyRatingForGame failed during reconciliation:", err),
       );
       if (g.cageMatchId && g.legIndex !== undefined) {
         await advanceCageMatchLeg(g.cageMatchId.toString(), g.legIndex, timeoutWinner, "timeout");

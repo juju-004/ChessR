@@ -40,6 +40,10 @@ export const ChessBoard = memo(function ChessBoard({
   const groundRef = useRef<CgApi | null>(null);
   const onUserMoveRef = useRef(onUserMove);
   onUserMoveRef.current = onUserMove;
+  // Tracks orientation across renders so the sync effect below can tell
+  // "the board flipped" apart from "a piece actually moved" — see that
+  // effect for why the distinction matters.
+  const orientationRef = useRef(orientation);
 
   // No separate wrapper div — this measures the caller's own parent
   // element directly (e.g. Game.tsx's themed board container) via
@@ -108,6 +112,9 @@ export const ChessBoard = memo(function ChessBoard({
   }, [viewOnly, boardSize > 0]);
 
   useLayoutEffect(() => {
+    const isFlip = orientationRef.current !== orientation;
+    orientationRef.current = orientation;
+
     groundRef.current?.set({
       fen,
       orientation,
@@ -116,7 +123,16 @@ export const ChessBoard = memo(function ChessBoard({
       lastMove: lastMove as Key[] | undefined,
       check: inCheck,
       coordinates: showCoordinates,
-      animation: { enabled: animationEnabled, duration: 200 },
+      // A flip repositions every piece on the board at once (their pixel
+      // target changed because the axes flipped, not because anything
+      // moved) — chessground's animation system can't tell that apart
+      // from a real move, so left alone it slides all 32 squares' worth
+      // of pieces into place over `duration`, which is what showed up as
+      // "flip takes a moment" instead of being instant. Disabling
+      // animation for just this one set() call fixes that; a real move
+      // right after still gets the user's normal animationEnabled
+      // setting on the very next update.
+      animation: { enabled: isFlip ? false : animationEnabled, duration: 200 },
       movable: {
         color: movableColor,
         dests: dests as any,

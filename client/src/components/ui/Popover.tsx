@@ -1,7 +1,7 @@
 import { useLayoutEffect, useEffect, useRef, useState, type CSSProperties, type ReactNode, memo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/cn.js";
-import { scaleIn } from "@/lib/motion.js";
+import { popoverContent } from "@/lib/motion.js";
 
 export interface PopoverProps {
   /** The element that opens the popover on click. Rendered as-is — the
@@ -96,8 +96,8 @@ export const Popover = memo(function Popover({
       if (!trigger || !panel) return;
       const triggerRect = trigger.getBoundingClientRect();
       // offsetWidth/offsetHeight, not getBoundingClientRect(), for the
-      // panel's own size: the panel is mid-entrance-animation (scaleIn
-      // starts at scale: 0.92), and getBoundingClientRect reports the
+      // panel's own size: the panel is mid-entrance-animation (popoverContent
+      // starts at scale: 0.94), and getBoundingClientRect reports the
       // currently-transformed box, so measuring it here would size the
       // panel as if it were still slightly shrunk — off by just enough
       // to look "deformed" until something (e.g. scroll) re-triggers a
@@ -174,7 +174,7 @@ export const Popover = memo(function Popover({
             initial="hidden"
             animate="visible"
             exit="exit"
-            variants={scaleIn}
+            variants={popoverContent}
             style={panelStyle}
             className={panelClassName}
           >

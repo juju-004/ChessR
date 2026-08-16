@@ -38,6 +38,8 @@ import {
   type GameMeta,
   type MoveLogEntry,
   type Role,
+  type RatingUpdate,
+  type WagerSettlement,
   isLiveStatus,
   playSoundForMove,
 } from "../components/game/types.js";
@@ -132,11 +134,8 @@ export function Game() {
   const [gameOver, setGameOver] = useState<{
     result: string | null;
     reason: string;
-    wagerSettlement?: {
-      wagerTokens: number;
-      potTokens: number;
-      winnerId: string | null;
-    } | null;
+    wagerSettlement?: WagerSettlement | null;
+    ratingUpdate?: RatingUpdate | null;
   } | null>(null);
   const [whiteConnected, setWhiteConnected] = useState(false);
   const [blackConnected, setBlackConnected] = useState(false);
@@ -426,11 +425,13 @@ export function Game() {
       profileHref: gameMeta?.white
         ? `/profile/${gameMeta.white.username}`
         : null,
+      ratingCategory: gameMeta?.white?.ratingCategory ?? null,
       ...whiteMaterial,
     }),
     [
       gameMeta?.white?.username,
       gameMeta?.white?.avatarGradient,
+      gameMeta?.white?.ratingCategory,
       isActiveGame,
       sideToMove,
       whiteConnected,
@@ -463,11 +464,13 @@ export function Game() {
       profileHref: gameMeta?.black
         ? `/profile/${gameMeta.black.username}`
         : null,
+      ratingCategory: gameMeta?.black?.ratingCategory ?? null,
       ...blackMaterial,
     }),
     [
       gameMeta?.black?.username,
       gameMeta?.black?.avatarGradient,
+      gameMeta?.black?.ratingCategory,
       isActiveGame,
       sideToMove,
       blackConnected,
@@ -736,11 +739,8 @@ export function Game() {
     function onOver(payload: {
       result: string | null;
       reason: string;
-      wagerSettlement?: {
-        wagerTokens: number;
-        potTokens: number;
-        winnerId: string | null;
-      } | null;
+      wagerSettlement?: WagerSettlement | null;
+      ratingUpdate?: RatingUpdate | null;
       whiteRemainingMs?: number | null;
       blackRemainingMs?: number | null;
     }) {
@@ -1624,6 +1624,11 @@ export function Game() {
           }
           rematchState={rematchState}
           wagerSettlement={gameOver.wagerSettlement}
+          ratingUpdate={
+            isPlayer && myColor && gameOver.ratingUpdate
+              ? gameOver.ratingUpdate[myColor]
+              : null
+          }
           myUserId={user?.id}
           onRematch={handleRematch}
           onClose={() => setGameOverModalDismissed(true)}

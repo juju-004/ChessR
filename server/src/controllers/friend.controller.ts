@@ -6,6 +6,7 @@ import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { getUserSocketIds } from '../services/presence.service.js';
 import { getActiveGameCodeForUser } from '../services/game.service.js';
+import { getRatingCategory } from '../services/rating.service.js';
 import { getIo } from '../sockets/io.js';
 import type { AuthedRequest } from '../middleware/auth.js';
 
@@ -87,7 +88,7 @@ export const respondToFriendRequest = asyncHandler(async (req: AuthedRequest, re
 
 export const listFriends = asyncHandler(async (req: AuthedRequest, res) => {
   const user = await User.findById(req.user!.id)
-    .populate('friends', 'username avatarUrl avatarGradient')
+    .populate('friends', 'username avatarUrl avatarGradient rating ratedGamesPlayed')
     .lean();
   if (!user) throw ApiError.notFound('User not found');
 
@@ -96,6 +97,8 @@ export const listFriends = asyncHandler(async (req: AuthedRequest, res) => {
       id: f._id,
       username: f.username,
       avatarUrl: f.avatarUrl,
+      avatarGradient: f.avatarGradient ?? null,
+      ratingCategory: getRatingCategory(f.rating, f.ratedGamesPlayed),
       online: (await getUserSocketIds(f._id.toString())).length > 0,
       activeGameCode: await getActiveGameCodeForUser(f._id.toString()),
     })),

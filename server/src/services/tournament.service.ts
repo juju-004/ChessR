@@ -33,6 +33,7 @@ import {
   computeRake,
   recordRake,
 } from "./wallet.service.js";
+import { applyRatingForGame } from "./rating.service.js";
 import { getIo } from "../sockets/io.js";
 
 const generateCode = customAlphabet("ABCDEFGHJKMNPQRSTUVWXYZ23456789", 6);
@@ -1494,11 +1495,21 @@ export async function withdrawFromTournament(
         blackRemainingMs: finalState.blackRemainingMs,
       });
       await deleteLiveState(gameId);
+      const ratingUpdate = await applyRatingForGame(
+        gameId,
+        finalState.whiteId,
+        finalState.blackId,
+        winnerColor,
+      ).catch((err) => {
+        console.error("applyRatingForGame failed during withdrawal:", err);
+        return null;
+      });
       try {
         getIo().to(`game:${gameId}`).emit("game:over", {
           gameId,
           result: winnerColor,
           reason: "withdrawn",
+          ratingUpdate,
         });
       } catch {
         // Socket.IO not initialized — safe to ignore.

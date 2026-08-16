@@ -10,6 +10,7 @@ import {
   verifyRefreshToken,
 } from "../services/token.service.js";
 import { env, isProd } from "../config/env.js";
+import { getRatingCategory, gamesUntilRanked } from "../services/rating.service.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 
 const BCRYPT_ROUNDS = 12;
@@ -51,6 +52,13 @@ function setRefreshCookie(res: Response, token: string) {
   });
 }
 
+function ratingFields(user: { rating: number; ratedGamesPlayed: number }) {
+  return {
+    ratingCategory: getRatingCategory(user.rating, user.ratedGamesPlayed),
+    ratedGamesUntilRanked: gamesUntilRanked(user.ratedGamesPlayed),
+  };
+}
+
 export const signup = asyncHandler(async (req, res) => {
   const { username, email, password } = signupSchema.parse(req.body);
 
@@ -79,7 +87,13 @@ export const signup = asyncHandler(async (req, res) => {
 
   res.status(201).json({
     accessToken,
-    user: { id: user.id, username: user.username, email: user.email, avatarGradient: user.avatarGradient ?? null },
+    user: {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      avatarGradient: user.avatarGradient ?? null,
+      ...ratingFields(user),
+    },
   });
 });
 
@@ -103,7 +117,13 @@ export const signin = asyncHandler(async (req, res) => {
 
   res.json({
     accessToken,
-    user: { id: user.id, username: user.username, email: user.email, avatarGradient: user.avatarGradient ?? null },
+    user: {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      avatarGradient: user.avatarGradient ?? null,
+      ...ratingFields(user),
+    },
   });
 });
 
@@ -133,7 +153,13 @@ export const refresh = asyncHandler(async (req, res) => {
 
   res.json({
     accessToken,
-    user: { id: user.id, username: user.username, email: user.email, avatarGradient: user.avatarGradient ?? null },
+    user: {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      avatarGradient: user.avatarGradient ?? null,
+      ...ratingFields(user),
+    },
   });
 });
 
@@ -152,5 +178,6 @@ export const me = asyncHandler(async (req: AuthedRequest, res) => {
     avatarGradient: user.avatarGradient ?? null,
     tokenBalance: user.tokenBalance,
     friendCount: user.friends.length,
+    ...ratingFields(user),
   });
 });

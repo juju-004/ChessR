@@ -7,6 +7,7 @@ import {
   type MaterialDiff,
 } from "../chessUtils.js";
 import { Avatar } from "./ui/index.js";
+import { RatingBadge } from "./RatingBadge.js";
 import { cn } from "../lib/cn.js";
 
 // Black-tinted glyphs represent pieces captured *from* black (shown on
@@ -62,6 +63,11 @@ export interface PanelData {
    *  "Black" placeholder shown before anyone's joined) — when present, the
    *  panel's avatar/name link through to that player's profile. */
   profileHref?: string | null;
+  /** Only meaningful once profileHref is set (a real player, not the
+   *  placeholder seat) — the compact RatingBadge renders off of
+   *  `profileHref` being present, not this being non-null, since null
+   *  itself is a real state to show ("Unranked"). */
+  ratingCategory?: string | null;
 }
 
 /** Builds the display props one side's panel needs out of the raw material
@@ -284,6 +290,7 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
   firstMoveGraceMs,
   berserked,
   profileHref,
+  ratingCategory,
 }: PanelData) {
   return (
     <div className="flex h-[54px] items-center gap-3 rounded-xl bg-base-200/70 px-3 py-2 text-base-content">
@@ -317,9 +324,10 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
         {profileHref ? (
           <Link
             to={profileHref}
-            className="block truncate text-sm font-semibold text-base-content hover:text-(--primary)"
+            className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-base-content hover:text-(--primary)"
           >
-            {username}
+            <span className="min-w-0 truncate">{username}</span>
+            <RatingBadge category={ratingCategory ?? null} compact />
           </Link>
         ) : (
           <p className="truncate text-sm font-semibold text-base-content">

@@ -3,6 +3,11 @@ export interface CurrentUser {
   username: string;
   email: string;
   avatarGradient?: string | null;
+  /** null = "Unranked" (fewer than ratedGamesUntilRanked more rated games
+   *  played). See rating.service.ts on the server — this is a tier name,
+   *  never the hidden underlying number. */
+  ratingCategory?: string | null;
+  ratedGamesUntilRanked?: number;
 }
 
 interface AuthSnapshot {

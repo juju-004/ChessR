@@ -4,6 +4,7 @@ import { Game } from '../models/Game.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { getActiveGameCodeForUser } from '../services/game.service.js';
+import { getRatingCategory, gamesUntilRanked } from '../services/rating.service.js';
 import type { AuthedRequest } from '../middleware/auth.js';
 
 const searchSchema = z.object({
@@ -47,17 +48,25 @@ export const searchUsers = asyncHandler(async (req, res) => {
   const regex = new RegExp('^' + q.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
   const users = await User.find({ usernameLower: regex })
-    .select('username avatarUrl avatarGradient')
+    .select('username avatarUrl avatarGradient rating ratedGamesPlayed')
     .limit(20)
     .lean();
 
-  res.json({ users });
+  res.json({
+    users: users.map((u) => ({
+      _id: u._id,
+      username: u.username,
+      avatarUrl: u.avatarUrl,
+      avatarGradient: u.avatarGradient,
+      ratingCategory: getRatingCategory(u.rating, u.ratedGamesPlayed),
+    })),
+  });
 });
 
 export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
   const { username } = req.params;
   const user = await User.findOne({ usernameLower: username.toLowerCase() })
-    .select('username avatarUrl avatarGradient bio friends createdAt')
+    .select('username avatarUrl avatarGradient bio friends createdAt rating ratedGamesPlayed')
     .lean();
 
   if (!user) throw ApiError.notFound('User not found');
@@ -133,6 +142,8 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
     avatarGradient: user.avatarGradient,
     bio: user.bio,
     memberSince: user.createdAt,
+    ratingCategory: getRatingCategory(user.rating, user.ratedGamesPlayed),
+    ratedGamesUntilRanked: gamesUntilRanked(user.ratedGamesPlayed),
     stats: { wins, losses, draws, gamesPlayed: wins + losses + draws },
     isFriend,
     isSelf,

@@ -152,7 +152,7 @@ export function Dashboard() {
   return (
     <Page title={`Welcome, ${user?.username ?? ""}`}>
       <div className="space-y-4">
-        <Card className="flex items-center justify-between">
+        <Card variant="solid" className="elevated-responsive flex items-center justify-between">
           <div className="flex items-center gap-3">
             <RCoin size={34} />
             <div>

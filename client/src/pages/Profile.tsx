@@ -9,6 +9,7 @@ import { formatTimeControl } from '../timeControls.js';
 import { Page, Card, Avatar, Button, Badge, Spinner } from '../components/ui/index.js';
 import { EditProfileModal } from '../components/EditProfileModal.js';
 import { ReportUserModal } from '../components/ReportUserModal.js';
+import { RatingBadge } from '../components/RatingBadge.js';
 
 const GAMES_PER_PAGE = 15;
 
@@ -111,6 +112,10 @@ export function Profile() {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-bold text-base-content">{profile.username}</h1>
+                <RatingBadge
+                  category={profile.ratingCategory}
+                  gamesUntilRanked={profile.ratedGamesUntilRanked}
+                />
                 {profile.isSelf && (
                   <button
                     onClick={() => setEditOpen(true)}

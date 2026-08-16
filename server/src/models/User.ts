@@ -27,6 +27,17 @@ export interface IUser extends Document {
    *  See report.service.createReport for enforcement. */
   reportingBlocked: boolean;
   tokenVersion: number;
+  /** Hidden internal skill rating — Elo-like, starts at 1500, shared across
+   *  every time control and variant (deliberately NOT split per-TC/variant
+   *  like lichess/chess.com). Never sent to the client as a raw number —
+   *  see rating.service.ts's getRatingCategory for the tier name that
+   *  actually gets shown. */
+  rating: number;
+  /** Count of decisive/drawn games that have fed into `rating`. Doubles as
+   *  the provisional-period gate (see PROVISIONAL_GAMES_THRESHOLD in
+   *  rating.service.ts) — below that count, ratingCategory reads as
+   *  "Unranked" no matter what the hidden number says. */
+  ratedGamesPlayed: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -56,6 +67,8 @@ const userSchema = new Schema<IUser>(
     // Bumped on password change / "log out everywhere" to invalidate all
     // outstanding refresh tokens without needing a server-side blacklist.
     tokenVersion: { type: Number, default: 0 },
+    rating: { type: Number, default: 1500 },
+    ratedGamesPlayed: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true },
 );

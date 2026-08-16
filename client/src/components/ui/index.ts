@@ -11,7 +11,7 @@ export {
 export { Input, type InputProps } from "./Input.js";
 export { Select, type SelectProps } from "./Select.js";
 export { Switch, type SwitchProps } from "./Switch.js";
-export { Badge, type BadgeProps, type BadgeVariant } from "./Badge.js";
+export { Badge, BADGE_VARIANT_CLASSES, type BadgeProps, type BadgeVariant } from "./Badge.js";
 export { Avatar, type AvatarProps } from "./Avatar.js";
 export { Modal, type ModalProps } from "./Modal.js";
 export { Popover, type PopoverProps } from "./Popover.js";

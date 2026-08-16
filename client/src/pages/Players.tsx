@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Search,
   Swords,
   Eye,
-  UserCircle2,
   UserPlus,
   Check,
 } from "lucide-react";
@@ -26,6 +25,7 @@ import { Input } from "@/components/ui/Input.js";
 import { Button } from "@/components/ui/Button.js";
 import { Avatar } from "@/components/ui/Avatar.js";
 import { ResponsiveOverlay } from "@/components/ui/ResponsiveOverlay.js";
+import { RatingBadge } from "@/components/RatingBadge.js";
 
 /** Merged "Players" page — search-for-anyone (the old /find) and your
  *  friends list + requests + challenge form (the old /friends) used to be
@@ -35,6 +35,7 @@ import { ResponsiveOverlay } from "@/components/ui/ResponsiveOverlay.js";
  *  inline "Add friend" action, which /find never had. */
 export function Players() {
   const socket = useSocket();
+  const navigate = useNavigate();
   const [requests, setRequests] = useState<IncomingRequest[]>([]);
   const [friends, setFriends] = useState<Friend[]>([]);
   const [friendSearch, setFriendSearch] = useState("");
@@ -219,6 +220,7 @@ export function Players() {
                     <span className="truncate text-sm font-medium text-base-content">
                       {u.username}
                     </span>
+                    <RatingBadge category={u.ratingCategory} className="shrink-0" />
                   </div>
                   <span className="flex flex-wrap gap-2">
                     {!alreadyFriend && (
@@ -313,21 +315,23 @@ export function Players() {
           {visibleFriends.map((f) => (
             <div
               key={f.id}
-              className="flex flex-wrap items-center justify-between gap-2 border-b border-base-300 py-2 last:border-none"
+              onClick={() => navigate(`/profile/${f.username}`)}
+              className="-mx-2 flex cursor-pointer flex-wrap items-center justify-between gap-2 rounded-lg border-b border-base-300 px-2 py-2 transition-colors last:border-none hover:bg-base-200/60"
             >
-              <span className="flex items-center gap-2 text-sm text-base-content">
-                <span
-                  className={`inline-block h-2 w-2 rounded-full ${f.online ? "bg-green-500" : "bg-base-300"}`}
+              <span className="flex min-w-0 items-center gap-2.5 text-sm text-base-content">
+                <Avatar
+                  username={f.username}
+                  size="sm"
+                  gradient={f.avatarGradient}
+                  status={f.online ? "online" : "offline"}
                 />
-                {f.username}
+                <span className="truncate">{f.username}</span>
+                <RatingBadge category={f.ratingCategory} />
               </span>
-              <span className="flex flex-wrap gap-2">
-                <Link to={`/profile/${f.username}`}>
-                  <Button variant="glass" size="sm">
-                    <UserCircle2 className="h-4 w-4" />
-                    <span className="hidden sm:flex">Profile</span>
-                  </Button>
-                </Link>
+              <span
+                className="flex flex-wrap gap-2"
+                onClick={(e) => e.stopPropagation()}
+              >
                 {f.activeGameCode ? (
                   <Link to={`/game/${f.activeGameCode}`}>
                     <Button variant="glass" size="sm">
@@ -336,15 +340,15 @@ export function Players() {
                     </Button>
                   </Link>
                 ) : (
-                  // The time control/variant/wager form used to sit
-                  // permanently expanded above this whole list, one
-                  // global config applied to whichever friend you
-                  // clicked "Challenge" for — moved into a per-friend
-                  // overlay instead, so the settings live right next to
-                  // the person they apply to. Settings still persist
-                  // across friends (same tcIndex/variant/wagerInput
-                  // state) so re-challenging someone with the same setup
-                  // is still one click.
+                  // Time control/variant/wager (for a live challenge) and
+                  // the cage match option both live in this one overlay now
+                  // — settings persist across friends (same tcIndex/
+                  // variant/wagerInput state) so re-challenging someone
+                  // with the same setup is still one click. The trigger
+                  // itself stays open-able even when the friend's offline
+                  // (a cage match invite doesn't need them online right
+                  // now the way an instant challenge does) — only "Send
+                  // challenge" is gated on presence.
                   <ResponsiveOverlay
                     title={`Challenge ${f.username}`}
                     align="end"
@@ -353,11 +357,7 @@ export function Players() {
                     onOpenChange={(open) =>
                       setChallengingFriendId(open ? f.id : null)
                     }
-                    trigger={
-                      <Button size="sm" disabled={!f.online}>
-                        Challenge
-                      </Button>
-                    }
+                    trigger={<Button size="sm">Challenge</Button>}
                   >
                     <div className="space-y-3">
                       <Select
@@ -397,19 +397,23 @@ export function Players() {
                       <Button
                         className="w-full"
                         onClick={() => handleChallenge(f.id)}
-                        disabled={Math.floor(Number(wagerInput) || 0) < 1}
+                        disabled={!f.online || Math.floor(Number(wagerInput) || 0) < 1}
                       >
-                        Send challenge
+                        {f.online ? "Send challenge" : "Friend is offline"}
                       </Button>
+
+                      <Link
+                        to={`/cage?challenge=${f.id}`}
+                        className="block"
+                        onClick={() => setChallengingFriendId(null)}
+                      >
+                        <Button variant="glass" className="w-full">
+                          <Swords className="h-4 w-4" /> Cage match instead
+                        </Button>
+                      </Link>
                     </div>
                   </ResponsiveOverlay>
                 )}
-                <Link to={`/cage?challenge=${f.id}`}>
-                  <Button variant="glass" size="sm">
-                    <Swords className="h-4 w-4" />{" "}
-                    <span className="hidden sm:flex">Cage match</span>
-                  </Button>
-                </Link>
               </span>
             </div>
           ))}

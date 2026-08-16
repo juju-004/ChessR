@@ -12,6 +12,7 @@ import {
   getGameByCode,
   listFriendsActiveGames,
 } from "../services/game.service.js";
+import { getRatingCategory } from "../services/rating.service.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 
 // Sanity ceiling on a single wager — not a business limit, just a guard
@@ -105,8 +106,26 @@ export const getMyActiveGames = asyncHandler(
   },
 );
 
+// Swaps a populated white/black user sub-doc's raw rating fields for the
+// computed, client-safe category before anything reaches res.json —
+// getGameByCode selects `rating`/`ratedGamesPlayed` on the populate purely
+// so this can compute from them; neither should ever leave the server.
+function withRatingCategory<T extends { rating?: number; ratedGamesPlayed?: number } | null>(
+  player: T,
+) {
+  if (!player) return player;
+  const { rating, ratedGamesPlayed, ...rest } = player as any;
+  return { ...rest, ratingCategory: getRatingCategory(rating ?? 1500, ratedGamesPlayed ?? 0) };
+}
+
 export const getGameByCodeHandler = asyncHandler(async (req, res) => {
   const { code } = codeParamSchema.parse(req.params);
   const game = await getGameByCode(code);
-  res.json({ game });
+  res.json({
+    game: {
+      ...game,
+      white: withRatingCategory(game.white as any),
+      black: withRatingCategory(game.black as any),
+    },
+  });
 });

@@ -212,11 +212,45 @@ body {
     0 1px 2px var(--surface-shadow-tight),
     0 6px 16px var(--surface-shadow-soft);
 }
+/* elevated-strong's blur radius trimmed down from 32px to 18px — this class
+   is what Modal/Popover/Tooltip all use, so its shadow gets rasterized on
+   every single frame of their entrance/exit animation (a wider blur means
+   more pixels to blur, every frame), and that's what was showing up as lag
+   once actually tested on a real phone rather than a dev machine. Still
+   reads as "elevated", just a tighter, cheaper shadow. */
 .elevated-strong {
   background-color: var(--surface-bg-strong);
   box-shadow:
-    0 2px 5px var(--surface-shadow-tight),
-    0 14px 32px var(--surface-shadow-soft);
+    0 2px 4px var(--surface-shadow-tight),
+    0 8px 18px var(--surface-shadow-soft);
+}
+/* Same background as .elevated, no shadow at all — for a surface that
+   doesn't need to visually float above the page and where the shadow was
+   removed outright (not just made cheaper) on request, e.g. Tabs. */
+.elevated-flat {
+  background-color: var(--surface-bg);
+}
+/* Same look as .elevated, but the shadow is swapped for a plain border on
+   phone and only becomes a shadow from `sm` up — opt-in per component
+   (Dashboard's wallet balance card, Page's back button) for spots
+   specifically reported as laggy on a real phone, rather than baked into
+   the shared .elevated class everywhere. A border has none of a shadow's
+   per-frame blur-rasterization cost, which matters here because both of
+   these are interactive elements that scale on tap (see @/lib/motion.ts's
+   pressable/liftable), so on phone the shadow would otherwise repaint on
+   every frame of that animation. */
+.elevated-responsive {
+  background-color: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  box-shadow: none;
+}
+@media (min-width: 640px) {
+  .elevated-responsive {
+    border: none;
+    box-shadow:
+      0 1px 2px var(--surface-shadow-tight),
+      0 6px 16px var(--surface-shadow-soft);
+  }
 }
 
 /* ---------------------------------------------------------------------------

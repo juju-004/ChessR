@@ -102,10 +102,28 @@ export const modalBackdrop: Variants = {
   exit: { opacity: 0, transition: tweenFast },
 };
 
+// A tween, not a spring — springSnappy settles in ~250-300ms even though
+// it "looks" fast because of the initial overshoot; a modal/popover
+// opening or closing is a frequent, high-traffic interaction where that
+// extra settle time reads as lag, not polish. Fixed, short durations here
+// instead.
+const overlayIn: Transition = { duration: 0.14, ease: EASE_OUT };
+const overlayOut: Transition = { duration: 0.09, ease: EASE_OUT };
+
 export const modalContent: Variants = {
-  hidden: { opacity: 0, scale: 0.95, y: 8 },
-  visible: { opacity: 1, scale: 1, y: 0, transition: springSnappy },
-  exit: { opacity: 0, scale: 0.97, y: 4, transition: tweenFast },
+  hidden: { opacity: 0, scale: 0.96, y: 6 },
+  visible: { opacity: 1, scale: 1, y: 0, transition: overlayIn },
+  exit: { opacity: 0, scale: 0.98, y: 3, transition: overlayOut },
+};
+
+// Popover's own entrance — deliberately not reusing the general-purpose
+// scaleIn below (Card/badge "pop in" entrances elsewhere in the app),
+// since those didn't need to get faster and shouldn't change just because
+// Popover did.
+export const popoverContent: Variants = {
+  hidden: { opacity: 0, scale: 0.94 },
+  visible: { opacity: 1, scale: 1, transition: overlayIn },
+  exit: { opacity: 0, scale: 0.96, transition: overlayOut },
 };
 
 // --- Interaction micro-states -------------------------------------------------

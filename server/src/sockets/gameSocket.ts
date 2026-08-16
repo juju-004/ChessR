@@ -21,6 +21,7 @@ import {
 } from '../services/game.service.js';
 import { advanceCageMatchLeg } from '../services/cageMatch.service.js';
 import { advanceTournamentIfPairing, berserkInTournamentGame } from '../services/tournament.service.js';
+import { applyRatingForGame, getRatingCategory } from '../services/rating.service.js';
 import { getLagCompensationMs } from '../services/latency.service.js';
 import {
   scheduleGameTimer,
@@ -63,6 +64,18 @@ function emitError(socket: Socket, message: string) {
   socket.emit('game:error', { message });
 }
 
+// Swaps a populated white/black sub-doc's raw rating/ratedGamesPlayed for
+// the computed, client-safe category. Populate queries in this file select
+// those two fields purely so this can compute from them — neither should
+// ever reach a client payload.
+function withRatingCategory<T extends { rating?: number; ratedGamesPlayed?: number } | null>(
+  player: T,
+) {
+  if (!player) return player;
+  const { rating, ratedGamesPlayed, ...rest } = player as any;
+  return { ...rest, ratingCategory: getRatingCategory(rating ?? 1500, ratedGamesPlayed ?? 0) };
+}
+
 function safeHandler<T>(socket: Socket, fn: (payload: T) => Promise<void>) {
   return (payload: T) => {
     fn(payload).catch((err) => {
@@ -83,10 +96,11 @@ async function endGameAndBroadcast(
   clearPendingDisconnect(gameId);
   const finalState = await endGame(gameId, result, endReason);
 
-  // Wager settlement is quick and only happens once per finished game (not on
-  // the hot move-broadcast path), so it's worth awaiting it to include
-  // directly in the game:over payload rather than making clients re-fetch
-  // their wallet balance to see the payout land.
+  // Wager settlement and rating are both quick and only happen once per
+  // finished game (not on the hot move-broadcast path), so it's worth
+  // awaiting them to include directly in the game:over payload rather than
+  // making clients re-fetch their wallet balance / profile to see the
+  // payout and any rank change land.
   const wagerSettlement = await settleWager(
     gameId,
     finalState.whiteId,
@@ -97,12 +111,22 @@ async function endGameAndBroadcast(
     console.error('settleWager failed:', err);
     return null;
   });
+  const ratingUpdate = await applyRatingForGame(
+    gameId,
+    finalState.whiteId,
+    finalState.blackId,
+    result,
+  ).catch((err) => {
+    console.error('applyRatingForGame failed:', err);
+    return null;
+  });
 
   io.to(gameRoom(gameId)).emit('game:over', {
     gameId,
     result,
     reason: endReason,
     wagerSettlement,
+    ratingUpdate,
     whiteRemainingMs: finalState.whiteRemainingMs,
     blackRemainingMs: finalState.blackRemainingMs,
   });
@@ -289,7 +313,10 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       if (!parsed.success) return emitError(socket, 'Invalid join payload');
       const { gameId } = parsed.data;
 
-      const game = await Game.findById(gameId).populate('white', 'username avatarGradient').populate('black', 'username avatarGradient').lean();
+      const game = await Game.findById(gameId)
+        .populate('white', 'username avatarGradient rating ratedGamesPlayed')
+        .populate('black', 'username avatarGradient rating ratedGamesPlayed')
+        .lean();
       if (!game) return emitError(socket, 'Game not found');
 
       // `white`/`black` may or may not be populated depending on the query
@@ -350,8 +377,8 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         status: liveState?.status ?? game.status,
         result: liveState?.result ?? game.result,
         endReason: liveState?.endReason ?? game.endReason,
-        white: game.white,
-        black: game.black,
+        white: withRatingCategory(game.white as any),
+        black: withRatingCategory(game.black as any),
         whiteConnected,
         blackConnected,
         moves: game.moves,

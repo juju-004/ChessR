@@ -9,8 +9,8 @@ export interface GameMeta {
   joinCode: string;
   variant: "standard" | "chess960";
   initialFen: string;
-  white: { _id: string; username: string; avatarGradient?: any } | null;
-  black: { _id: string; username: string; avatarGradient?: any } | null;
+  white: { _id: string; username: string; avatarGradient?: any; ratingCategory?: string | null } | null;
+  black: { _id: string; username: string; avatarGradient?: any; ratingCategory?: string | null } | null;
   status: "waiting" | "active" | "finished" | "aborted";
   timeControl: { baseSeconds: number | null; incrementSeconds: number };
   wagerTokens?: number;
@@ -38,6 +38,25 @@ export interface MoveLogEntry {
 }
 
 export type Role = "white" | "black" | "spectator";
+
+export interface RatingSideUpdate {
+  previousCategory: string | null;
+  newCategory: string | null;
+  ratedGamesPlayed: number;
+}
+
+export interface RatingUpdate {
+  white: RatingSideUpdate;
+  black: RatingSideUpdate;
+}
+
+export interface WagerSettlement {
+  wagerTokens: number;
+  potTokens: number;
+  winnerId: string | null;
+  payoutTokens: number;
+  rakeTokens: number;
+}
 
 /** A game is only ever "live" — i.e. worth opening a socket room for —
  *  while it's waiting for an opponent or actually being played. Once it's

@@ -5,6 +5,7 @@ export interface UserSearchResult {
   username: string;
   avatarUrl?: string | null;
   avatarGradient?: string | null;
+  ratingCategory: string | null;
 }
 
 export interface UserProfile {
@@ -14,6 +15,10 @@ export interface UserProfile {
   avatarGradient?: string | null;
   bio?: string | null;
   memberSince: string;
+  /** null = "Unranked" — the player hasn't hit ratedGamesUntilRanked more
+   *  rated games yet. See rating.service.ts on the server. */
+  ratingCategory: string | null;
+  ratedGamesUntilRanked: number;
   stats: { wins: number; losses: number; draws: number; gamesPlayed: number };
   isFriend: boolean;
   isSelf: boolean;

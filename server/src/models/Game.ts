@@ -56,6 +56,13 @@ export interface IGame extends Document {
   // settlement path is ever triggered twice for the same game (e.g. a
   // reconciliation sweep racing the live socket flow after a restart).
   wagerSettled: boolean;
+  /** Flips to true exactly once, the moment this game's result has been
+   *  folded into both players' hidden rating (see rating.service.ts's
+   *  applyRatingForGame) — same double-application guard pattern as
+   *  wagerSettled, for the same reason (more than one code path can reach
+   *  a decisive finish for the same game: the live game-over flow,
+   *  tournament withdrawal, and boot-time reconciliation). */
+  ratingApplied: boolean;
   // Set when this game is one leg of a cage match — links back to the parent
   // CageMatch document and records this leg's position in its ordered list.
   // Left undefined for standalone games (the overwhelming majority).
@@ -141,6 +148,7 @@ const gameSchema = new Schema<IGame>(
     isPrivate: { type: Boolean, default: false },
     wagerTokens: { type: Number, default: 0, min: 0 },
     wagerSettled: { type: Boolean, default: false },
+    ratingApplied: { type: Boolean, default: false },
     cageMatchId: { type: Schema.Types.ObjectId, ref: 'CageMatch', index: true },
     legIndex: { type: Number },
     tournamentId: { type: Schema.Types.ObjectId, ref: 'Tournament', index: true },

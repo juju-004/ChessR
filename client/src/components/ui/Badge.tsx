@@ -11,7 +11,7 @@ export type BadgeVariant =
   | "error"
   | "neutral";
 
-const VARIANT_CLASSES: Record<BadgeVariant, string> = {
+export const BADGE_VARIANT_CLASSES: Record<BadgeVariant, string> = {
   primary: "bg-(--primary)/15 text-(--primary)",
   secondary: "bg-(--secondary)/15 text-(--secondary)",
   gradient: "gradient-brand text-white",
@@ -35,7 +35,7 @@ export function Badge({
     <span
       className={cn(
         "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold",
-        VARIANT_CLASSES[variant],
+        BADGE_VARIANT_CLASSES[variant],
         className,
       )}
       {...props}

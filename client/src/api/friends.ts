@@ -3,6 +3,9 @@ import { apiFetch } from './http.js';
 export interface Friend {
   id: string;
   username: string;
+  avatarUrl?: string | null;
+  avatarGradient?: string | null;
+  ratingCategory: string | null;
   online: boolean;
   activeGameCode: string | null;
 }

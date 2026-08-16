@@ -1,6 +1,8 @@
 import { memo } from "react";
 import { Trophy, Frown, Handshake, Ban } from "lucide-react";
 import { Card, Button } from "./ui/index.js";
+import { RatingBadge } from "./RatingBadge.js";
+import type { RatingSideUpdate } from "./game/types.js";
 
 interface GameOverModalProps {
   result: string | null;
@@ -17,6 +19,7 @@ interface GameOverModalProps {
     rakeTokens: number;
   } | null;
   myUserId?: string;
+  ratingUpdate?: RatingSideUpdate | null;
   onRematch: () => void;
   onClose: () => void;
 }
@@ -41,6 +44,7 @@ export const GameOverModal = memo(function GameOverModal({
   rematchState,
   wagerSettlement,
   myUserId,
+  ratingUpdate,
   onRematch,
   onClose,
 }: GameOverModalProps) {
@@ -59,6 +63,13 @@ export const GameOverModal = memo(function GameOverModal({
     }
     return `You lost your ${wagerSettlement.wagerTokens} R Coin stake.`;
   })();
+
+  // Only worth a line when the tier actually changed — a same-tier result
+  // (the overwhelmingly common case) has nothing new to say. Unranked →
+  // a real tier for the first time counts as a change too, not just a
+  // tier-to-tier move.
+  const rankChanged =
+    !!ratingUpdate && ratingUpdate.newCategory !== ratingUpdate.previousCategory;
 
   return (
     <div
@@ -111,6 +122,15 @@ export const GameOverModal = memo(function GameOverModal({
           >
             {wagerText}
           </p>
+        )}
+
+        {rankChanged && ratingUpdate && (
+          <div className="mb-5 flex items-center justify-center gap-2 rounded-xl bg-base-200/70 px-3 py-2.5 text-sm">
+            <span className="font-medium text-base-content/70">
+              {ratingUpdate.previousCategory === null ? "You've been ranked" : "Rank updated"}
+            </span>
+            <RatingBadge category={ratingUpdate.newCategory} />
+          </div>
         )}
 
         <div className="flex flex-col gap-2">
