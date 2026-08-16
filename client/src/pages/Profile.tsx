@@ -1,22 +1,45 @@
-import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { Swords, Eye, UserPlus, Check, Pencil, Scale, Flag } from 'lucide-react';
-import { getProfile, getUserGames, type UserProfile, type UserGameHistoryItem } from '../api/users.js';
-import { sendFriendRequest } from '../api/friends.js';
-import { updateAuthUser } from '../api/authStore.js';
-import { ApiRequestError } from '../api/http.js';
-import { formatTimeControl } from '../timeControls.js';
-import { Page, Card, Avatar, Button, Badge, Spinner } from '../components/ui/index.js';
-import { EditProfileModal } from '../components/EditProfileModal.js';
-import { ReportUserModal } from '../components/ReportUserModal.js';
-import { RatingBadge } from '../components/RatingBadge.js';
+import { useEffect, useState } from "react";
+import { useParams, Link } from "react-router-dom";
+import {
+  Swords,
+  Eye,
+  UserPlus,
+  Check,
+  Pencil,
+  Scale,
+  Flag,
+} from "lucide-react";
+import {
+  getProfile,
+  getUserGames,
+  type UserProfile,
+  type UserGameHistoryItem,
+} from "../api/users.js";
+import { sendFriendRequest } from "../api/friends.js";
+import { updateAuthUser } from "../api/authStore.js";
+import { ApiRequestError } from "../api/http.js";
+import { formatTimeControl } from "../timeControls.js";
+import {
+  Page,
+  Card,
+  Avatar,
+  Button,
+  Badge,
+  Spinner,
+} from "../components/ui/index.js";
+import { EditProfileModal } from "../components/EditProfileModal.js";
+import { ReportUserModal } from "../components/ReportUserModal.js";
+import { RatingBadge } from "../components/RatingBadge.js";
 
 const GAMES_PER_PAGE = 15;
 
-const resultVariant: Record<UserGameHistoryItem['result'], 'success' | 'error' | 'neutral'> = {
-  win: 'success',
-  loss: 'error',
-  draw: 'neutral',
+const resultVariant: Record<
+  UserGameHistoryItem["result"],
+  "success" | "error" | "neutral"
+> = {
+  win: "success",
+  loss: "error",
+  draw: "neutral",
 };
 
 export function Profile() {
@@ -26,18 +49,22 @@ export function Profile() {
   const [page, setPage] = useState(1);
   const [totalGames, setTotalGames] = useState(0);
   const [gamesLoading, setGamesLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [friendRequestSent, setFriendRequestSent] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
 
   useEffect(() => {
     if (!username) return;
-    setError('');
+    setError("");
     setProfile(null);
     getProfile(username)
       .then(setProfile)
-      .catch((err) => setError(err instanceof ApiRequestError ? err.message : 'Profile not found'));
+      .catch((err) =>
+        setError(
+          err instanceof ApiRequestError ? err.message : "Profile not found",
+        ),
+      );
   }, [username]);
 
   // Lazy-loaded in pages of GAMES_PER_PAGE via "Load more" below, rather
@@ -73,7 +100,10 @@ export function Profile() {
   if (error) {
     return (
       <div className="mx-auto mt-6 max-w-2xl px-4">
-        <Card variant="solid" className="border-red-900/50 bg-red-950/20 text-red-300">
+        <Card
+          variant="solid"
+          className="border-red-900/50 bg-red-950/20 text-red-300"
+        >
           {error}
         </Card>
       </div>
@@ -101,35 +131,50 @@ export function Profile() {
   const gamesPlayed = profile.stats.gamesPlayed || 1;
   const winPct = Math.round((profile.stats.wins / gamesPlayed) * 100);
   const hasMoreGames = games.length < totalGames;
-  const h2hTotal = profile.h2h ? profile.h2h.wins + profile.h2h.losses + profile.h2h.draws : 0;
+  const h2hTotal = profile.h2h
+    ? profile.h2h.wins + profile.h2h.losses + profile.h2h.draws
+    : 0;
 
   return (
     <Page>
       <div className="space-y-4">
         <Card variant="solid">
-          <div className="flex flex-wrap items-center gap-4">
-            <Avatar username={profile.username} size="lg" gradient={profile.avatarGradient} />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-bold text-base-content">{profile.username}</h1>
-                <RatingBadge
-                  category={profile.ratingCategory}
-                  gamesUntilRanked={profile.ratedGamesUntilRanked}
-                />
-                {profile.isSelf && (
-                  <button
-                    onClick={() => setEditOpen(true)}
-                    aria-label="Edit profile"
-                    className="rounded-full p-1.5 text-base-content/40 transition-colors hover:bg-base-200 hover:text-base-content"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
+          <div className="flex flex-col lg:flex-row gap-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <Avatar
+                username={profile.username}
+                size="lg"
+                gradient={profile.avatarGradient}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-2xl font-bold text-base-content">
+                    {profile.username}
+                  </h1>
+                  <RatingBadge
+                    category={profile.ratingCategory}
+                    gamesUntilRanked={profile.ratedGamesUntilRanked}
+                  />
+                  {profile.isSelf && (
+                    <button
+                      onClick={() => setEditOpen(true)}
+                      aria-label="Edit profile"
+                      className="rounded-full p-1.5 text-base-content/40 transition-colors hover:bg-base-200 hover:text-base-content"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+                <p className="text-sm text-base-content/50">
+                  Member since{" "}
+                  {new Date(profile.memberSince).toLocaleDateString()}
+                </p>
+                {profile.bio && (
+                  <p className="mt-1 text-sm text-base-content/70">
+                    {profile.bio}
+                  </p>
                 )}
               </div>
-              <p className="text-sm text-base-content/50">
-                Member since {new Date(profile.memberSince).toLocaleDateString()}
-              </p>
-              {profile.bio && <p className="mt-1 text-sm text-base-content/70">{profile.bio}</p>}
             </div>
             {!profile.isSelf && (
               <div className="flex flex-wrap items-center gap-2">
@@ -159,7 +204,7 @@ export function Profile() {
                   onClick={() => setReportOpen(true)}
                   aria-label={`Report ${profile.username}`}
                 >
-                  <Flag className="h-4 w-4" />
+                  <Flag className="h-3 w-3" /> Report
                 </Button>
               </div>
             )}
@@ -167,15 +212,21 @@ export function Profile() {
 
           <div className="mt-4 grid grid-cols-4 gap-2 border-t border-base-300 pt-4 text-center">
             <div>
-              <p className="text-lg font-bold text-green-500">{profile.stats.wins}</p>
+              <p className="text-lg font-bold text-green-500">
+                {profile.stats.wins}
+              </p>
               <p className="text-xs text-base-content/50">Wins</p>
             </div>
             <div>
-              <p className="text-lg font-bold text-red-400">{profile.stats.losses}</p>
+              <p className="text-lg font-bold text-red-400">
+                {profile.stats.losses}
+              </p>
               <p className="text-xs text-base-content/50">Losses</p>
             </div>
             <div>
-              <p className="text-lg font-bold text-base-content/70">{profile.stats.draws}</p>
+              <p className="text-lg font-bold text-base-content/70">
+                {profile.stats.draws}
+              </p>
               <p className="text-xs text-base-content/50">Draws</p>
             </div>
             <div>
@@ -195,9 +246,15 @@ export function Profile() {
                 </h2>
               </div>
               <div className="flex items-center gap-3 text-sm">
-                <span className="font-semibold text-green-500">{profile.h2h.wins}W</span>
-                <span className="font-semibold text-red-400">{profile.h2h.losses}L</span>
-                <span className="font-semibold text-base-content/60">{profile.h2h.draws}D</span>
+                <span className="font-semibold text-green-500">
+                  {profile.h2h.wins}W
+                </span>
+                <span className="font-semibold text-red-400">
+                  {profile.h2h.losses}L
+                </span>
+                <span className="font-semibold text-base-content/60">
+                  {profile.h2h.draws}D
+                </span>
               </div>
             </div>
             {/* Simple proportional bar — wins/losses/draws as thirds of a
@@ -229,7 +286,9 @@ export function Profile() {
         <Card variant="solid">
           <div className="mb-2 flex items-center gap-2">
             <Swords className="h-4 w-4 text-base-content/50" />
-            <h2 className="text-base font-semibold text-base-content">Game history</h2>
+            <h2 className="text-base font-semibold text-base-content">
+              Game history
+            </h2>
           </div>
           {!gamesLoading && games.length === 0 && (
             <p className="text-sm text-base-content/50">No games played yet.</p>
@@ -243,20 +302,20 @@ export function Profile() {
               >
                 <div className="flex min-w-0 items-center gap-2.5">
                   <Avatar
-                    username={g.opponent?.username ?? '?'}
+                    username={g.opponent?.username ?? "?"}
                     size="xs"
                     gradient={g.opponent?.avatarGradient}
                   />
                   <div className="min-w-0">
                     <p className="truncate font-medium text-base-content">
-                      {g.opponent?.username ?? 'Unknown'}
+                      {g.opponent?.username ?? "Unknown"}
                     </p>
                     <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-base-content/40">
                       <span
                         className={
-                          g.color === 'white'
-                            ? 'inline-block h-2 w-2 rounded-full border border-base-content/30 bg-white'
-                            : 'inline-block h-2 w-2 rounded-full border border-base-content/30 bg-black'
+                          g.color === "white"
+                            ? "inline-block h-2 w-2 rounded-full border border-base-content/30 bg-white"
+                            : "inline-block h-2 w-2 rounded-full border border-base-content/30 bg-black"
                         }
                       />
                       <span className="capitalize">{g.color}</span>
@@ -269,7 +328,10 @@ export function Profile() {
                     </p>
                   </div>
                 </div>
-                <Badge variant={resultVariant[g.result]} className="shrink-0 uppercase">
+                <Badge
+                  variant={resultVariant[g.result]}
+                  className="shrink-0 uppercase"
+                >
                   {g.result}
                 </Badge>
               </Link>

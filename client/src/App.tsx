@@ -71,6 +71,12 @@ const TournamentDetail = lazy(() =>
 const NotFound = lazy(() =>
   import("./pages/NotFound.js").then((m) => ({ default: m.NotFound })),
 );
+const About = lazy(() =>
+  import("./pages/About.js").then((m) => ({ default: m.About })),
+);
+const Terms = lazy(() =>
+  import("./pages/Terms.js").then((m) => ({ default: m.Terms })),
+);
 const BuyTokens = lazy(() =>
   import("./pages/BuyTokens.js").then((m) => ({ default: m.BuyTokens })),
 );
@@ -193,6 +199,10 @@ function AppBody() {
               />
               <Route path="/signin" element={<SignIn />} />
               <Route path="/signup" element={<SignUp />} />
+              {/* Public — reachable pre-login from the signup form, and
+               *  linked from the dashboard footer once signed in. */}
+              <Route path="/about" element={<About />} />
+              <Route path="/terms" element={<Terms />} />
               {/* Old bookmarks/links to /dashboard keep working — / is the dashboard now. */}
               <Route path="/dashboard" element={<Navigate to="/" replace />} />
               <Route

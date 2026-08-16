@@ -8,8 +8,10 @@ import { fadeInUp, springSnappy } from "@/lib/motion.js";
 export interface PageProps {
   children: ReactNode;
   /** Header title. Omit entirely for a page that wants no header at all
-   *  (still gets the responsive width/padding + fade-in). */
-  title?: string;
+   *  (still gets the responsive width/padding + fade-in). Usually a
+   *  string, but accepts any node — e.g. a logo image standing in for
+   *  the page name. */
+  title?: ReactNode;
   description?: string;
   /** Adds a back button before the title. Pass a specific route to navigate
    *  there directly, or `true` to just pop one entry off browser history. */

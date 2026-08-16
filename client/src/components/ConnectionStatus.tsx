@@ -11,8 +11,8 @@ const PING_TIMEOUT_MS = 6000;
 function dotColor(state: ConnState, latencyMs: number | null): string {
   if (state !== "connected") return "bg-red-500";
   if (latencyMs === null) return "bg-base-300";
-  if (latencyMs < 150) return "bg-green-500";
-  if (latencyMs < 400) return "bg-amber-500";
+  if (latencyMs < 300) return "bg-green-500";
+  if (latencyMs < 600) return "bg-amber-500";
   return "bg-red-500";
 }
 

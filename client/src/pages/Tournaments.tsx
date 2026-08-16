@@ -46,8 +46,8 @@ const TIME_PRESETS: {
 const FORMAT_DEFAULT_MAX: Record<TournamentFormat, number> = {
   normal: 16,
   swiss: 12,
-  robin: 8,
   round_robin: 6,
+  arena: 20,
 };
 
 const STATUS_VARIANT: Record<
@@ -110,6 +110,8 @@ export function Tournaments() {
   const [variant, setVariant] = useState<"standard" | "chess960">("standard");
   const [maxPlayers, setMaxPlayers] = useState(FORMAT_DEFAULT_MAX.swiss);
   const [swissRounds, setSwissRounds] = useState(5);
+  const [robinRounds, setRobinRounds] = useState(1);
+  const [arenaMinutes, setArenaMinutes] = useState(60);
   const [breakSeconds, setBreakSeconds] = useState(10);
   const [berserkAllowed, setBerserkAllowed] = useState(true);
   const [isPublic, setIsPublic] = useState(false);
@@ -214,6 +216,8 @@ export function Tournaments() {
       prizeSchedule: prizeTiers,
       regFeeTokens,
       swissRounds: format === "swiss" ? swissRounds : null,
+      robinRounds: format === "round_robin" ? robinRounds : null,
+      arenaMinutes: format === "arena" ? arenaMinutes : null,
       breakSeconds,
       scheduledStartAt: scheduledStartAt.toISOString(),
       password: password.trim() || undefined,
@@ -227,7 +231,7 @@ export function Tournaments() {
   return (
     <Page
       title="Tournaments"
-      description="Run a knockout bracket, a swiss event, or a full round-robin."
+      description="Run a knockout bracket, a swiss or arena event, or a round-robin."
     >
       <div className="mx-auto space-y-4">
         {status && (
@@ -338,6 +342,31 @@ export function Tournaments() {
                     max={15}
                     value={swissRounds}
                     onChange={(e) => setSwissRounds(Number(e.target.value))}
+                  />
+                </div>
+              )}
+              {format === "round_robin" && (
+                <div className="w-36">
+                  <Input
+                    label="Times each pair plays"
+                    type="number"
+                    min={1}
+                    max={4}
+                    value={robinRounds}
+                    onChange={(e) => setRobinRounds(Number(e.target.value))}
+                    hint="1 = normal, 2 = double, etc."
+                  />
+                </div>
+              )}
+              {format === "arena" && (
+                <div className="w-32">
+                  <Input
+                    label="Duration (mins)"
+                    type="number"
+                    min={5}
+                    max={360}
+                    value={arenaMinutes}
+                    onChange={(e) => setArenaMinutes(Number(e.target.value))}
                   />
                 </div>
               )}

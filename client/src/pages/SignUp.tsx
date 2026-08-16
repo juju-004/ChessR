@@ -100,8 +100,15 @@ export function SignUp() {
         </Button>
 
         <p className="text-center text-xs text-base-content/50">
-          By signing up, you agree to play fair — server-side move validation
-          means everyone else does too.
+          By signing up, you agree to our{" "}
+          <Link
+            to="/terms"
+            className="font-medium text-(--primary) hover:underline"
+          >
+            Terms of Service
+          </Link>{" "}
+          — server-side move validation means everyone plays fair, and
+          everyone else does too.
         </p>
       </form>
     </AuthLayout>

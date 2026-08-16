@@ -10,11 +10,34 @@ interface GameDetailsCardProps {
   moveListEntries: ReactNode;
   moveStripEntries: ReactNode;
   moveListScrollRef: RefObject<HTMLDivElement | null>;
+  // Set once the game's over — a persistent, always-visible "White Wins —
+  // Timeout" / "Draw — Stalemate" / "You Won! — Checkmate" line, styled by
+  // outcome (win/loss/draw/aborted). Exists specifically so that landing on
+  // an already-finished game (replay, spectating, coming back later) still
+  // tells you who won and how without having to dig through the move list
+  // or reopen the modal — the modal itself only auto-pops the moment a game
+  // actually ends, not on every subsequent visit. Clicking it reopens that
+  // modal for the full breakdown (rating change, wager payout, rematch).
+  resultSummary?: {
+    text: string;
+    tone: "win" | "loss" | "draw" | "neutral";
+    onClick: () => void;
+  } | null;
 }
 
-/** Game details — code, share, badges, and the move list. Left column on
- *  desktop; a full-width strip above the board/panel row on tablet and
- *  phone. */
+const RESULT_TONE_CLASS: Record<
+  NonNullable<GameDetailsCardProps["resultSummary"]>["tone"],
+  string
+> = {
+  win: "border-green-900/40 bg-green-950/20 text-green-300 hover:bg-green-950/30",
+  loss: "border-red-900/40 bg-red-950/20 text-red-300 hover:bg-red-950/30",
+  draw: "border-base-300 bg-base-200/60 text-base-content/80 hover:bg-base-200",
+  neutral: "border-base-300 bg-base-200/60 text-base-content/60 hover:bg-base-200",
+};
+
+/** Game details — code, share, badges, result, and the move list. Left
+ *  column on desktop; a full-width strip above the board/panel row on
+ *  tablet and phone. */
 export function GameDetailsCard({
   badges,
   code,
@@ -23,6 +46,7 @@ export function GameDetailsCard({
   moveListEntries,
   moveStripEntries,
   moveListScrollRef,
+  resultSummary,
 }: GameDetailsCardProps) {
   return (
     <Card variant="solid">
@@ -49,6 +73,16 @@ export function GameDetailsCard({
           </button>
         </span>
       </div>
+
+      {resultSummary && (
+        <button
+          type="button"
+          onClick={resultSummary.onClick}
+          className={`mt-2 w-full rounded-lg border px-3 py-1.5 text-left text-sm font-medium transition-colors ${RESULT_TONE_CLASS[resultSummary.tone]}`}
+        >
+          {resultSummary.text}
+        </button>
+      )}
 
       {!zenMode && (
         <div className="min-h-0 lg:flex lg:flex-col">

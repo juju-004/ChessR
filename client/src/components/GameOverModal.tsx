@@ -24,14 +24,14 @@ interface GameOverModalProps {
   onClose: () => void;
 }
 
-function titleFor(result: string | null, myColor: 'white' | 'black' | undefined, isPlayer: boolean): string {
+export function titleFor(result: string | null, myColor: 'white' | 'black' | undefined, isPlayer: boolean): string {
   if (result === null) return 'Game Aborted';
   if (result === 'draw') return 'Draw';
   if (isPlayer && myColor) return result === myColor ? 'You Won!' : 'You Lost';
   return result === 'white' ? 'White Wins' : 'Black Wins';
 }
 
-function reasonText(reason: string): string {
+export function reasonText(reason: string): string {
   return reason.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
 }
 

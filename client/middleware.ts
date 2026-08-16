@@ -1,9 +1,9 @@
 /**
  * Vercel Edge Middleware — runs on Vercel's edge network, in front of the
  * normal static/SPA response, for every request matching `config.matcher`
- * below. This is what makes a shared /game/:code or /replay/:code link
- * show a real title/description in WhatsApp, Facebook, Twitter/X,
- * Discord, iMessage, etc.
+ * below. This is what makes a shared /game/:code, /replay/:code, or
+ * /tournaments/:code link show a real title/description in WhatsApp,
+ * Facebook, Twitter/X, Discord, iMessage, etc.
  *
  * Why this exists at all: those crawlers fetch the URL and read whatever
  * HTML comes back *without* running any JavaScript — so a plain Vite SPA,
@@ -31,14 +31,15 @@
  *      (Vite) project — check https://vercel.com/docs/functions/edge-middleware
  *      since this may have changed since this was written.
  *   3. Test with Facebook's Sharing Debugger, Twitter's Card Validator, or
- *      by pasting a real game link into a WhatsApp chat to yourself.
+ *      by pasting a real game/tournament link into a WhatsApp chat to
+ *      yourself.
  */
 
 const CRAWLER_UA_PATTERN =
   /facebookexternalhit|WhatsApp|Twitterbot|Slackbot|Discordbot|LinkedInBot|TelegramBot|Pinterest|redditbot|vkShare|Applebot|SkypeUriPreview/i;
 
 export const config = {
-  matcher: ["/game/:code", "/replay/:code"],
+  matcher: ["/game/:code", "/replay/:code", "/tournaments/:code"],
 };
 
 export default async function middleware(request: Request): Promise<Response | undefined> {
@@ -48,15 +49,24 @@ export default async function middleware(request: Request): Promise<Response | u
   }
 
   const url = new URL(request.url);
-  const match = url.pathname.match(/^\/(?:game|replay)\/([^/]+)/);
-  if (!match) return undefined;
-  const code = match[1];
+  // /game/:code and /replay/:code both describe a *game* — ReplayRedirect
+  // just forwards old /replay links to /game client-side, but a crawler
+  // never runs that JS, so it needs the same games/code/:code/card as
+  // /game/:code. /tournaments/:code is the only route pointing at a
+  // different resource, hence its own capture group / endpoint below.
+  const gameMatch = url.pathname.match(/^\/(?:game|replay)\/([^/]+)/);
+  const tournamentMatch = url.pathname.match(/^\/tournaments\/([^/]+)/);
+  if (!gameMatch && !tournamentMatch) return undefined;
 
   const apiBase = process.env.API_BASE_URL;
   if (!apiBase) return undefined; // not configured — fail open to the normal SPA
 
+  const cardPath = gameMatch
+    ? `/games/code/${encodeURIComponent(gameMatch[1])}/card`
+    : `/tournaments/code/${encodeURIComponent(tournamentMatch![1])}/card`;
+
   try {
-    const cardRes = await fetch(`${apiBase}/games/code/${encodeURIComponent(code)}/card`);
+    const cardRes = await fetch(`${apiBase}${cardPath}`);
     const html = await cardRes.text();
     return new Response(html, {
       status: cardRes.status,

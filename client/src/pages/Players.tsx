@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import {
-  Search,
-  Swords,
-  Eye,
-  UserPlus,
-  Check,
-} from "lucide-react";
+import { Search, Swords, Eye, UserPlus, Check } from "lucide-react";
 import { searchUsers, type UserSearchResult } from "../api/users.js";
 import {
   listFriends,
@@ -202,27 +196,37 @@ export function Players() {
             <p className="mt-3 text-sm text-base-content/50">No users found.</p>
           )}
 
-          <div className="mt-3 divide-y divide-base-300">
+          <div>
             {results.map((u) => {
               const alreadyFriend = friendIds.has(u._id);
               const requestSent = sentRequestIds.has(u._id);
               return (
                 <div
                   key={u._id}
-                  className="flex items-center justify-between gap-3 py-2.5"
+                  onClick={() => navigate(`/profile/${u.username}`)}
+                  className="-mx-2 flex cursor-pointer flex-wrap items-center justify-between gap-2 rounded-lg border-b border-base-300 px-2 py-2 transition-colors last:border-none hover:bg-base-200/60"
                 >
-                  <div className="flex min-w-0 items-center gap-2.5">
+                  <span className="flex min-w-0 items-center gap-2.5 text-sm text-base-content">
                     <Avatar
                       username={u.username}
                       size="sm"
                       gradient={u.avatarGradient}
                     />
-                    <span className="truncate text-sm font-medium text-base-content">
-                      {u.username}
-                    </span>
-                    <RatingBadge category={u.ratingCategory} className="shrink-0" />
-                  </div>
-                  <span className="flex flex-wrap gap-2">
+                    <span className="truncate">{u.username}</span>
+                    <RatingBadge
+                      className="md:hidden"
+                      compact
+                      category={u.ratingCategory}
+                    />
+                    <RatingBadge
+                      className="hidden! md:flex!"
+                      category={u.ratingCategory}
+                    />
+                  </span>
+                  <span
+                    className="flex flex-wrap gap-2"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     {!alreadyFriend && (
                       <Button
                         variant="glass"
@@ -326,7 +330,15 @@ export function Players() {
                   status={f.online ? "online" : "offline"}
                 />
                 <span className="truncate">{f.username}</span>
-                <RatingBadge category={f.ratingCategory} />
+                <RatingBadge
+                  className="md:hidden"
+                  compact
+                  category={f.ratingCategory}
+                />
+                <RatingBadge
+                  className="hidden! md:flex!"
+                  category={f.ratingCategory}
+                />
               </span>
               <span
                 className="flex flex-wrap gap-2"
@@ -357,7 +369,12 @@ export function Players() {
                     onOpenChange={(open) =>
                       setChallengingFriendId(open ? f.id : null)
                     }
-                    trigger={<Button size="sm">Challenge</Button>}
+                    trigger={
+                      <Button size="sm" variant="secondary">
+                        <Swords className="size-3" />
+                        <span className="md:flex hidden">Challenge</span>
+                      </Button>
+                    }
                   >
                     <div className="space-y-3">
                       <Select
@@ -397,7 +414,9 @@ export function Players() {
                       <Button
                         className="w-full"
                         onClick={() => handleChallenge(f.id)}
-                        disabled={!f.online || Math.floor(Number(wagerInput) || 0) < 1}
+                        disabled={
+                          !f.online || Math.floor(Number(wagerInput) || 0) < 1
+                        }
                       >
                         {f.online ? "Send challenge" : "Friend is offline"}
                       </Button>

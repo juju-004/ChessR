@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 import { MoveList, MoveStrip } from "../components/MoveLog.js";
 import { PlayerPanelRow, panelMaterial } from "../components/PlayerPanels.js";
-import { GameOverModal } from "../components/GameOverModal.js";
+import { GameOverModal, titleFor, reasonText } from "../components/GameOverModal.js";
 import { CageMatchScoreboard } from "../components/CageMatchScoreboard.js";
 import { Card, Badge, Spinner, Button } from "../components/ui/index.js";
 import {
@@ -1263,6 +1263,26 @@ export function Game() {
 
   const showChat = !settings.zenMode && role === "spectator" && live;
 
+  // Persistent "White Wins — Timeout" style line for GameDetailsCard — see
+  // that component's doc comment on resultSummary for why this needs to
+  // exist separately from the modal (which only auto-pops once, right when
+  // a game ends live; it stays dismissed on every later visit).
+  const resultSummary = gameOver
+    ? {
+        text: `${titleFor(gameOver.result, myColor, isPlayer)} — ${reasonText(gameOver.reason)}`,
+        tone: (gameOver.result === null
+          ? "neutral"
+          : gameOver.result === "draw"
+            ? "draw"
+            : isPlayer && myColor
+              ? gameOver.result === myColor
+                ? "win"
+                : "loss"
+              : "neutral") as "win" | "loss" | "draw" | "neutral",
+        onClick: () => setGameOverModalDismissed(false),
+      }
+    : null;
+
   // Which ply is "selected" right now — the one being browsed, or the
   // live move if nothing's being browsed. Drives the highlight below.
   const currentPly = viewPly ?? liveViewPly;
@@ -1498,6 +1518,7 @@ export function Game() {
             moveListEntries={moveListEntries}
             moveStripEntries={moveStripEntries}
             moveListScrollRef={moveListScrollRef}
+            resultSummary={resultSummary}
           />
         </div>
 

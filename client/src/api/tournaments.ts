@@ -1,6 +1,6 @@
 import { apiFetch } from './http.js';
 
-export type TournamentFormat = 'normal' | 'swiss' | 'robin' | 'round_robin';
+export type TournamentFormat = 'normal' | 'swiss' | 'round_robin' | 'arena';
 export type TournamentStatus = 'pending' | 'active' | 'finished' | 'cancelled';
 export type PairingResult = 'p1' | 'p2' | 'draw' | null;
 
@@ -68,6 +68,9 @@ export interface Tournament {
   // Never the actual hash — just whether joining requires a password.
   hasPassword: boolean;
   swissRounds: number | null;
+  robinRounds: number | null;
+  arenaMinutes: number | null;
+  arenaEndsAt: string | null;
   currentRoundIndex: number;
   rounds: TournamentRound[];
   breakSeconds: number;
@@ -133,13 +136,21 @@ export function tokensLabel(tier: Pick<TournamentPrizeTier, 'fromRank' | 'toRank
 export const FORMAT_LABEL: Record<TournamentFormat, string> = {
   normal: 'Knockout',
   swiss: 'Swiss',
-  robin: 'Round-robin',
-  round_robin: 'Double round-robin',
+  round_robin: 'Round-robin',
+  arena: 'Arena',
 };
 
 export const FORMAT_DESCRIPTION: Record<TournamentFormat, string> = {
   normal: 'Single-elimination bracket — lose once and you\'re out.',
   swiss: 'A fixed number of rounds, paired by score each round.',
-  robin: 'Everyone plays everyone else once.',
-  round_robin: 'Everyone plays everyone else twice.',
+  round_robin: 'Everyone plays everyone else a set number of times.',
+  arena: 'Random pairing to start, then paired by score — runs for a fixed window, like a lichess daily arena.',
 };
+
+/** How many games a round-robin field actually plays — for display next to
+ *  the format picker/summary. */
+export function robinRoundsLabel(robinRounds: number | null): string {
+  if (!robinRounds || robinRounds === 1) return 'Everyone plays everyone once.';
+  if (robinRounds === 2) return 'Everyone plays everyone twice.';
+  return `Everyone plays everyone ${robinRounds} times.`;
+}

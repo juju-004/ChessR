@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ShieldCheck, LogOut, AlertTriangle, Swords, Trophy, Gamepad2 } from "lucide-react";
+import {
+  ShieldCheck,
+  LogOut,
+  AlertTriangle,
+  Swords,
+  Trophy,
+  Gamepad2,
+} from "lucide-react";
 import {
   listReports,
   getRevenueSummary,
@@ -10,7 +17,14 @@ import {
   type RevenueSource,
 } from "../api/admin.js";
 import { clearAdminToken } from "../api/adminAuthStore.js";
-import { Card, Badge, Spinner, Button, Tabs, RCoinAmount } from "../components/ui/index.js";
+import {
+  Card,
+  Badge,
+  Spinner,
+  Button,
+  Tabs,
+  RCoinAmount,
+} from "../components/ui/index.js";
 
 const STATUS_FILTERS: (ReportStatus | "all")[] = [
   "pending",
@@ -20,7 +34,10 @@ const STATUS_FILTERS: (ReportStatus | "all")[] = [
   "all",
 ];
 
-const statusVariant: Record<ReportStatus, "warning" | "neutral" | "success" | "error"> = {
+const statusVariant: Record<
+  ReportStatus,
+  "warning" | "neutral" | "success" | "error"
+> = {
   pending: "warning",
   reviewing: "neutral",
   actioned: "success",
@@ -90,7 +107,6 @@ export function AdminDashboard() {
 
       <div className="mb-4">
         <Tabs
-          layoutId="admin-tabs"
           value={tab}
           onChange={(v) => setTab(v as "reports" | "revenue")}
           items={[
@@ -125,7 +141,10 @@ export function AdminDashboard() {
           )}
 
           {error && (
-            <Card variant="solid" className="border-red-900/50 bg-red-950/20 text-red-300">
+            <Card
+              variant="solid"
+              className="border-red-900/50 bg-red-950/20 text-red-300"
+            >
               {error}
             </Card>
           )}
@@ -156,15 +175,21 @@ export function AdminDashboard() {
                       )}
                       {r.reportedUser?.withdrawalBlocked && (
                         <Badge variant="error" className="gap-1">
-                          <AlertTriangle className="h-3 w-3" /> Withdrawals blocked
+                          <AlertTriangle className="h-3 w-3" /> Withdrawals
+                          blocked
                         </Badge>
                       )}
                     </div>
-                    <Badge variant={statusVariant[r.status]} className="capitalize">
+                    <Badge
+                      variant={statusVariant[r.status]}
+                      className="capitalize"
+                    >
                       {r.status}
                     </Badge>
                   </div>
-                  <p className="mt-1.5 line-clamp-2 text-base-content/60">{r.description}</p>
+                  <p className="mt-1.5 line-clamp-2 text-base-content/60">
+                    {r.description}
+                  </p>
                   <p className="mt-1.5 text-xs text-base-content/40">
                     {r.reason.replace(/_/g, " ")}
                     {r.gameCode ? ` · game ${r.gameCode}` : ""} ·{" "}
@@ -184,7 +209,10 @@ export function AdminDashboard() {
           )}
 
           {revenueError && (
-            <Card variant="solid" className="border-red-900/50 bg-red-950/20 text-red-300">
+            <Card
+              variant="solid"
+              className="border-red-900/50 bg-red-950/20 text-red-300"
+            >
               {revenueError}
             </Card>
           )}
@@ -195,35 +223,52 @@ export function AdminDashboard() {
                *  cut ever recorded (see PlatformRevenue.ts on the server).
                *  Not a separately-maintained counter, so it can never drift
                *  out of sync with the ledger below it. */}
-              <Card variant="solid" className="flex items-center justify-between">
+              <Card
+                variant="solid"
+                className="flex items-center justify-between"
+              >
                 <div>
-                  <p className="text-sm text-(--primary)">Admin wallet balance</p>
+                  <p className="text-sm text-(--primary)">
+                    Admin wallet balance
+                  </p>
                   <p className="text-2xl font-bold text-base-content">
-                    <RCoinAmount value={revenue.balanceTokens} size={22} className="text-2xl font-bold" />
+                    <RCoinAmount
+                      value={revenue.balanceTokens}
+                      size={22}
+                      className="text-2xl font-bold"
+                    />
                   </p>
                 </div>
                 <Badge variant="neutral">{revenue.ratePercent}% rake</Badge>
               </Card>
 
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                {(Object.keys(SOURCE_LABEL) as RevenueSource[]).map((source) => {
-                  const Icon = SOURCE_ICON[source];
-                  const s = revenue.bySource[source];
-                  return (
-                    <Card key={source} variant="solid" className="flex items-center gap-3">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-(--primary)/15 text-(--primary)">
-                        <Icon className="h-4 w-4" />
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-xs text-base-content/50">{SOURCE_LABEL[source]}</p>
-                        <p className="text-sm font-semibold text-base-content">
-                          <RCoinAmount value={s.tokens} size={14} /> · {s.count}{" "}
-                          {s.count === 1 ? "cut" : "cuts"}
-                        </p>
-                      </div>
-                    </Card>
-                  );
-                })}
+                {(Object.keys(SOURCE_LABEL) as RevenueSource[]).map(
+                  (source) => {
+                    const Icon = SOURCE_ICON[source];
+                    const s = revenue.bySource[source];
+                    return (
+                      <Card
+                        key={source}
+                        variant="solid"
+                        className="flex items-center gap-3"
+                      >
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-(--primary)/15 text-(--primary)">
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-xs text-base-content/50">
+                            {SOURCE_LABEL[source]}
+                          </p>
+                          <p className="text-sm font-semibold text-base-content">
+                            <RCoinAmount value={s.tokens} size={14} /> ·{" "}
+                            {s.count} {s.count === 1 ? "cut" : "cuts"}
+                          </p>
+                        </div>
+                      </Card>
+                    );
+                  },
+                )}
               </div>
 
               {revenue.entries.length === 0 ? (
@@ -235,12 +280,19 @@ export function AdminDashboard() {
                   {revenue.entries.map((e) => {
                     const Icon = SOURCE_ICON[e.source];
                     return (
-                      <Card key={e.id} variant="solid" className="flex items-center justify-between text-sm">
+                      <Card
+                        key={e.id}
+                        variant="solid"
+                        className="flex items-center justify-between text-sm"
+                      >
                         <div className="flex items-center gap-2 text-base-content/70">
                           <Icon className="h-4 w-4 text-base-content/40" />
-                          <span className="capitalize">{SOURCE_LABEL[e.source]}</span>
+                          <span className="capitalize">
+                            {SOURCE_LABEL[e.source]}
+                          </span>
                           <span className="text-base-content/40">
-                            · {e.ratePercent}% of <RCoinAmount value={e.grossPotTokens} size={12} />
+                            · {e.ratePercent}% of{" "}
+                            <RCoinAmount value={e.grossPotTokens} size={12} />
                           </span>
                         </div>
                         <div className="flex items-center gap-3">
