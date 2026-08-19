@@ -63,6 +63,11 @@ const CageMatchDetail = lazy(() =>
 const Tournaments = lazy(() =>
   import("./pages/Tournaments.js").then((m) => ({ default: m.Tournaments })),
 );
+const CreateTournament = lazy(() =>
+  import("./pages/CreateTournament.js").then((m) => ({
+    default: m.CreateTournament,
+  })),
+);
 const TournamentDetail = lazy(() =>
   import("./pages/TournamentDetail.js").then((m) => ({
     default: m.TournamentDetail,
@@ -215,8 +220,14 @@ function AppBody() {
               />
               {/* /find and /friends merged into one /players page — old
                *  bookmarks/links to either keep working. */}
-              <Route path="/find" element={<Navigate to="/players" replace />} />
-              <Route path="/friends" element={<Navigate to="/players" replace />} />
+              <Route
+                path="/find"
+                element={<Navigate to="/players" replace />}
+              />
+              <Route
+                path="/friends"
+                element={<Navigate to="/players" replace />}
+              />
               <Route
                 path="/profile/:username"
                 element={
@@ -262,6 +273,14 @@ function AppBody() {
                 element={
                   <ProtectedRoute>
                     <Tournaments />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/tournaments/new"
+                element={
+                  <ProtectedRoute>
+                    <CreateTournament />
                   </ProtectedRoute>
                 }
               />
@@ -312,7 +331,7 @@ function AppShell() {
   }, []);
 
   if (!bootstrapped) {
-    return <div className="p-6 text-base-content/60">Loading…</div>;
+    return <></>;
   }
 
   return (

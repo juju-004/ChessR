@@ -242,7 +242,7 @@ export function Profile() {
               <div className="flex items-center gap-2">
                 <Scale className="h-4 w-4 text-base-content/50" />
                 <h2 className="text-base font-semibold text-base-content">
-                  Head-to-head with {profile.username}
+                  H2H with {profile.username}
                 </h2>
               </div>
               <div className="flex items-center gap-3 text-sm">

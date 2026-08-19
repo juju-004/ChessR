@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, memo } from "react";
 import { motion } from "framer-motion";
 import { Ban } from "lucide-react";
 import { ChessBoard } from "../ChessBoard.js";
@@ -36,8 +36,15 @@ interface GameBoardAreaProps {
 /** The board itself plus everything that visually anchors to it: the
  *  mobile top/bottom player panels flanking it, the waiting-for-opponent
  *  banner, and the promotion picker overlay. Split out of Game.tsx mainly
- *  for size — this block owns no state of its own. */
-export function GameBoardArea({
+ *  for size — this block owns no state of its own.
+ *
+ *  Wrapped in React.memo: Game.tsx re-renders on a lot of state that has
+ *  nothing to do with the board itself (chat input, move errors, toast
+ *  banners…), and this component's own inner ChessBoard is already memoized
+ *  — but without this wrapper every one of those unrelated re-renders was
+ *  still reconciling this whole tree (panels, waiting banner, promotion
+ *  picker) for no visible change. */
+export const GameBoardArea = memo(function GameBoardArea({
   opponentPanelData,
   myPanelData,
   boardTheme,
@@ -141,4 +148,4 @@ export function GameBoardArea({
       </div>
     </div>
   );
-}
+});

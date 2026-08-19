@@ -5,8 +5,19 @@ import { cn } from "@/lib/cn.js";
 
 type ConnState = "connecting" | "connected" | "reconnecting" | "disconnected";
 
-const PING_INTERVAL_MS = 4000;
+// Lichess pings roughly every 2s and displays a smoothed reading rather
+// than the raw last round-trip — a single slow sample (a GC pause, a wifi
+// blip) shouldn't make the dot/number jump around on its own. Matched here:
+// a 2s cadence with an exponential moving average over the last several
+// samples instead of the previous 4s interval showing the bare last value.
+const PING_INTERVAL_MS = 2000;
 const PING_TIMEOUT_MS = 6000;
+// Weight given to each new sample in the running average — lower is
+// smoother/slower to react, higher tracks the latest sample more closely.
+// 0.3 settles within ~4-5 samples (~10s) of a step change, which is
+// responsive enough to reflect "connection got bad" quickly while still
+// ironing out single-sample noise.
+const LATENCY_EMA_ALPHA = 0.3;
 
 function dotColor(state: ConnState, latencyMs: number | null): string {
   if (state !== "connected") return "bg-red-500";
@@ -40,11 +51,18 @@ export const ConnectionStatus = memo(function ConnectionStatus({
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const pingTimerRef = useRef<number | null>(null);
   const pingTimeoutRef = useRef<number | null>(null);
+  // The running average itself — kept in a ref (not state) since it's
+  // purely internal bookkeeping for sendPing's own next calculation, not
+  // something anything needs to read/react to directly. Reset to null on
+  // disconnect so a reconnect starts fresh instead of averaging in a stale
+  // pre-drop reading.
+  const smoothedLatencyRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!socket) {
       setState("connecting");
       setLatencyMs(null);
+      smoothedLatencyRef.current = null;
       return;
     }
 
@@ -55,24 +73,33 @@ export const ConnectionStatus = memo(function ConnectionStatus({
       // If a ping never gets an ack back within a reasonable window, treat it
       // as a connection problem rather than leaving a stale "42ms" showing —
       // the socket itself may not have noticed the drop yet.
-      pingTimeoutRef.current = window.setTimeout(
-        () => setLatencyMs(null),
-        PING_TIMEOUT_MS,
-      );
+      pingTimeoutRef.current = window.setTimeout(() => {
+        smoothedLatencyRef.current = null;
+        setLatencyMs(null);
+      }, PING_TIMEOUT_MS);
       socket.emit("ping:check", sentAt, () => {
         if (pingTimeoutRef.current) window.clearTimeout(pingTimeoutRef.current);
-        setLatencyMs(Date.now() - sentAt);
+        const sample = Date.now() - sentAt;
+        const prev = smoothedLatencyRef.current;
+        const next =
+          prev === null
+            ? sample
+            : Math.round(prev + LATENCY_EMA_ALPHA * (sample - prev));
+        smoothedLatencyRef.current = next;
+        setLatencyMs(next);
       });
     }
 
     function onConnect() {
       setState("connected");
+      smoothedLatencyRef.current = null;
       sendPing();
       pingTimerRef.current = window.setInterval(sendPing, PING_INTERVAL_MS);
     }
 
     function onDisconnect(reason: string) {
       setLatencyMs(null);
+      smoothedLatencyRef.current = null;
       if (pingTimerRef.current) window.clearInterval(pingTimerRef.current);
       // 'io server disconnect' / 'io client disconnect' are deliberate
       // (logout, server kicked us) — anything else is the socket trying to

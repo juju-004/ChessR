@@ -1,6 +1,7 @@
-import { type ReactNode, type RefObject } from "react";
+import { memo, type ReactNode, type RefObject } from "react";
 import { Share2 } from "lucide-react";
 import { Card } from "../ui/index.js";
+import { cn } from "@/lib/cn.js";
 
 interface GameDetailsCardProps {
   badges: ReactNode[];
@@ -10,14 +11,6 @@ interface GameDetailsCardProps {
   moveListEntries: ReactNode;
   moveStripEntries: ReactNode;
   moveListScrollRef: RefObject<HTMLDivElement | null>;
-  // Set once the game's over — a persistent, always-visible "White Wins —
-  // Timeout" / "Draw — Stalemate" / "You Won! — Checkmate" line, styled by
-  // outcome (win/loss/draw/aborted). Exists specifically so that landing on
-  // an already-finished game (replay, spectating, coming back later) still
-  // tells you who won and how without having to dig through the move list
-  // or reopen the modal — the modal itself only auto-pops the moment a game
-  // actually ends, not on every subsequent visit. Clicking it reopens that
-  // modal for the full breakdown (rating change, wager payout, rematch).
   resultSummary?: {
     text: string;
     tone: "win" | "loss" | "draw" | "neutral";
@@ -29,18 +22,22 @@ const RESULT_TONE_CLASS: Record<
   NonNullable<GameDetailsCardProps["resultSummary"]>["tone"],
   string
 > = {
-  win: "border-green-900/40 bg-green-950/20 text-green-300 hover:bg-green-950/30",
-  loss: "border-red-900/40 bg-red-950/20 text-red-300 hover:bg-red-950/30",
-  draw: "border-base-300 bg-base-200/60 text-base-content/80 hover:bg-base-200",
-  neutral: "border-base-300 bg-base-200/60 text-base-content/60 hover:bg-base-200",
+  win: "text-green-300",
+  loss: "text-red-300",
+  draw: "text-base-content/80 ",
+  neutral: "text-base-content/60 ",
 };
 
 /** Game details — code, share, badges, result, and the move list. Left
  *  column on desktop; a full-width strip above the board/panel row on
- *  tablet and phone. */
-export function GameDetailsCard({
+ *  tablet and phone.
+ *
+ *  React.memo'd for the same reason as GameBoardArea — moveListEntries/
+ *  moveStripEntries are the actual MoveList/MoveStrip elements built in
+ *  Game.tsx, already memoized internally, but this wrapper stops Game's
+ *  unrelated re-renders from even reaching this far down the tree. */
+export const GameDetailsCard = memo(function GameDetailsCard({
   badges,
-  code,
   onShare,
   zenMode,
   moveListEntries,
@@ -61,15 +58,14 @@ export function GameDetailsCard({
           )}
         </div>
         <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-base-content/60">
-          <span className="font-mono tracking-wide">{code}</span>
           <button
             type="button"
             onClick={onShare}
             aria-label="Copy game link"
             title="Copy game link"
-            className="rounded-md p-1 text-base-content/50 transition-colors hover:bg-base-300/60 hover:text-base-content"
+            className="rounded-md cursor-pointer flex items-center gap-2 p-1 text-base-content/50 transition-colors hover:bg-base-300/60 hover:text-base-content"
           >
-            <Share2 className="h-3.5 w-3.5" />
+            <Share2 className="h-3.5 w-3.5" /> Share
           </button>
         </span>
       </div>
@@ -78,7 +74,7 @@ export function GameDetailsCard({
         <button
           type="button"
           onClick={resultSummary.onClick}
-          className={`mt-2 w-full rounded-lg border px-3 py-1.5 text-left text-sm font-medium transition-colors ${RESULT_TONE_CLASS[resultSummary.tone]}`}
+          className={`mt-2 w-full opacity-80 hover:opacity-100 text-left text-sm duration-300 font-bold cursor-pointer ${RESULT_TONE_CLASS[resultSummary.tone]}`}
         >
           {resultSummary.text}
         </button>
@@ -87,7 +83,12 @@ export function GameDetailsCard({
       {!zenMode && (
         <div className="min-h-0 lg:flex lg:flex-col">
           {/* Vertical list — tablet & desktop. */}
-          <h2 className="hidden lg:flex mt-3 text-base-content/40 text-sm font-semibold">
+          <h2
+            className={cn(
+              moveListEntries ? "opacity-100" : "opacity-0",
+              "hidden lg:flex mt-3 text-base-content/40 text-sm font-semibold",
+            )}
+          >
             Moves
           </h2>
           <div
@@ -101,4 +102,4 @@ export function GameDetailsCard({
       )}
     </Card>
   );
-}
+});

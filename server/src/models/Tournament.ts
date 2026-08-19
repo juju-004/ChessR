@@ -6,12 +6,25 @@ import mongoose, { Schema, type Document, type Types } from 'mongoose';
 // Game (tagged with tournamentId + roundIndex + pairingIndex) reusing the
 // exact same move/clock/socket machinery as a standalone game.
 
-export type TournamentFormat = 'normal' | 'swiss' | 'robin' | 'round_robin';
+export type TournamentFormat = 'normal' | 'swiss' | 'robin' | 'round_robin' | 'arena';
 // 'normal'      — single-elimination knockout bracket, byes for non-power-of-2 fields.
 // 'swiss'       — fixed number of rounds, opponents paired by score each round.
-// 'robin'       — single round-robin: every player plays every other player once.
-// 'round_robin' — double round-robin: every player plays every other player
-//                 twice (colors reversed the second time), like home/away.
+// 'robin'       — legacy: single round-robin (every player plays every other
+//                 player once). No longer offered at creation — superseded
+//                 by 'round_robin' + robinRounds below — but still handled
+//                 by the pairing/scoring engine so tournaments created
+//                 before this change keep working exactly as they did.
+// 'round_robin' — every player plays every other player `robinRounds` times
+//                 (colors reversed on alternating laps, like home/away).
+//                 robinRounds === 1 is equivalent to legacy 'robin';
+//                 robinRounds === 2 is equivalent to the old hardcoded
+//                 'round_robin' behavior (always-double), now just the
+//                 default rather than the only option.
+// 'arena'       — Lichess-style free-for-all: once the event starts, every
+//                 available player is continuously paired against another
+//                 available player for as long as the arena clock runs,
+//                 rather than everyone moving through synchronized rounds
+//                 together. See tryArenaPairings in tournament.service.ts.
 
 export type TournamentStatus = 'pending' | 'active' | 'finished' | 'cancelled';
 
@@ -57,6 +70,12 @@ export interface ITournamentPlayer {
   eliminatedRound: number | null;
   hadBye: boolean;
   withdrawn: boolean;
+  // Arena-only: the player has voluntarily stepped out of the pairing
+  // queue without withdrawing from the event entirely — like Lichess's
+  // pause button. They keep their points/standing and can toggle this
+  // back off at any time to resume being paired. Meaningless for every
+  // other format (there's no continuous pairing queue to step out of).
+  paused: boolean;
 }
 
 export interface ITournamentPairing {
@@ -88,6 +107,14 @@ export interface ITournament extends Document {
   code: string;
   name: string;
   createdBy: Types.ObjectId;
+  // True when the creator set this up purely to run it — see
+  // createTournament in tournament.service.ts: when set, the creator is
+  // never pushed into `players` and never charged regFeeTokens. Immutable
+  // after creation (not exposed on the edit form) since flipping it after
+  // players have joined would mean either retroactively refunding/charging
+  // the creator or forcibly adding/removing them from a roster that other
+  // players and pairings already reference.
+  organizerOnly: boolean;
   format: TournamentFormat;
   variant: 'standard' | 'chess960';
   baseMinutes: number | null;
@@ -133,6 +160,18 @@ export interface ITournament extends Document {
   passwordHash: string | null;
   // Only meaningful for format === 'swiss' — how many rounds the event runs.
   swissRounds: number | null;
+  // Only meaningful for format === 'round_robin' — how many times the field
+  // plays through the full round-robin schedule (1 = single round, 2 =
+  // double/home-away, etc). Null for every other format, including legacy
+  // 'robin' docs (which are implicitly always 1 lap).
+  robinRounds: number | null;
+  // Only meaningful for format === 'arena' — how long the event runs once
+  // started. arenaEndsAt is the actual computed deadline (set at start
+  // time from arenaMinutes), the thing the pairing engine and the client's
+  // countdown both check against; arenaMinutes is just the creator's
+  // original input, kept around for display/editing.
+  arenaMinutes: number | null;
+  arenaEndsAt: Date | null;
   currentRoundIndex: number;
   rounds: ITournamentRound[];
   // How long the lobby waits between one round finishing and the next one's
@@ -209,6 +248,7 @@ const playerSchema = new Schema<ITournamentPlayer>(
     eliminatedRound: { type: Number, default: null },
     hadBye: { type: Boolean, default: false },
     withdrawn: { type: Boolean, default: false },
+    paused: { type: Boolean, default: false },
   },
   { _id: false },
 );
@@ -218,7 +258,8 @@ const tournamentSchema = new Schema<ITournament>(
     code: { type: String, required: true, unique: true, index: true },
     name: { type: String, required: true, trim: true, maxlength: 60 },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    format: { type: String, enum: ['normal', 'swiss', 'robin', 'round_robin'], required: true },
+    organizerOnly: { type: Boolean, default: false },
+    format: { type: String, enum: ['normal', 'swiss', 'robin', 'round_robin', 'arena'], required: true },
     variant: { type: String, enum: ['standard', 'chess960'], default: 'standard' },
     baseMinutes: { type: Number, default: null },
     incrementSeconds: { type: Number, default: 0 },
@@ -241,6 +282,9 @@ const tournamentSchema = new Schema<ITournament>(
     regFeeSettled: { type: Boolean, default: false },
     passwordHash: { type: String, default: null },
     swissRounds: { type: Number, default: null },
+    robinRounds: { type: Number, default: null },
+    arenaMinutes: { type: Number, default: null },
+    arenaEndsAt: { type: Date, default: null },
     currentRoundIndex: { type: Number, default: 0 },
     rounds: { type: [roundSchema], default: [] },
     breakSeconds: { type: Number, default: 10 },

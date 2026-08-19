@@ -6,9 +6,9 @@ import {
   joinTournament,
   leaveTournament,
   cancelTournament,
-  startTournament,
   withdrawFromTournament,
   updateTournament,
+  setArenaPause,
   type CreateTournamentInput,
 } from '../services/tournament.service.js';
 import { User } from '../models/User.js';
@@ -26,16 +26,19 @@ const prizeTierSchema = z.object({
 
 const createSchema = z.object({
   name: z.string().trim().min(3).max(60),
-  format: z.enum(['normal', 'swiss', 'robin', 'round_robin']),
+  format: z.enum(['normal', 'swiss', 'round_robin', 'arena']),
   variant: z.enum(['standard', 'chess960']).default('standard'),
   baseMinutes: z.number().min(1).max(180).nullable(),
   incrementSeconds: z.number().min(0).max(60).default(0),
-  maxPlayers: z.number().int().min(2).max(64),
+  maxPlayers: z.number().int().min(2).max(100),
   berserkAllowed: z.boolean().default(true),
   isPublic: z.boolean().default(false),
+  organizerOnly: z.boolean().default(false),
   prizeSchedule: z.array(prizeTierSchema).max(20).optional().default([]),
   regFeeTokens: z.number().int().min(1, 'A registration fee is required for every tournament').max(MAX_WAGER_TOKENS),
   swissRounds: z.number().int().min(3).max(15).nullable().optional().default(null),
+  robinRounds: z.number().int().min(1).max(4).nullable().optional().default(null),
+  arenaMinutes: z.number().int().min(5).max(360).nullable().optional().default(null),
   // Pause between rounds, in seconds — defaults to 10 if omitted.
   breakSeconds: z.number().int().min(0).max(MAX_BREAK_SECONDS).default(10),
   // ISO string — when the event should auto-start.
@@ -44,22 +47,25 @@ const createSchema = z.object({
 });
 const idSchema = z.object({ tournamentId: z.string().refine(mongoose.isValidObjectId) });
 const joinSchema = idSchema.extend({ password: z.string().optional() });
+const pauseSchema = idSchema.extend({ paused: z.boolean() });
 
 // Every field truly optional with no defaults (unlike createSchema) — an
 // omitted field must mean "leave this as-is", not "reset to the default",
 // since this is a partial edit of something that already exists.
 const editSchema = idSchema.extend({
   name: z.string().trim().min(3).max(60).optional(),
-  format: z.enum(['normal', 'swiss', 'robin', 'round_robin']).optional(),
+  format: z.enum(['normal', 'swiss', 'round_robin', 'arena']).optional(),
   variant: z.enum(['standard', 'chess960']).optional(),
   baseMinutes: z.number().min(1).max(180).nullable().optional(),
   incrementSeconds: z.number().min(0).max(60).optional(),
-  maxPlayers: z.number().int().min(2).max(64).optional(),
+  maxPlayers: z.number().int().min(2).max(100).optional(),
   berserkAllowed: z.boolean().optional(),
   isPublic: z.boolean().optional(),
   prizeSchedule: z.array(prizeTierSchema).max(20).optional(),
   regFeeTokens: z.number().int().min(1, 'A registration fee is required for every tournament').max(MAX_WAGER_TOKENS).optional(),
   swissRounds: z.number().int().min(3).max(15).nullable().optional(),
+  robinRounds: z.number().int().min(1).max(4).nullable().optional(),
+  arenaMinutes: z.number().int().min(5).max(360).nullable().optional(),
   breakSeconds: z.number().int().min(0).max(MAX_BREAK_SECONDS).optional(),
   scheduledStartAt: z.string().or(z.date()).optional(),
   // undefined (omitted) = unchanged; null = remove the password; string = set it.
@@ -157,14 +163,12 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
   );
 
   socket.on(
-    'tournament:start',
+    'tournament:pause',
     safeHandler(socket, async (raw: unknown) => {
-      const parsed = idSchema.safeParse(raw);
+      const parsed = pauseSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid payload');
-      // startTournament (via activateTournament) broadcasts tournament:started
-      // itself — needed so the exact same event fires whether a human hits
-      // "Start now" or the scheduled auto-start timer does it unattended.
-      await startTournament(parsed.data.tournamentId, userId);
+      const tournament = await setArenaPause(parsed.data.tournamentId, userId, parsed.data.paused);
+      io.to(tournamentRoom(tournament.id)).emit('tournament:update', { tournamentId: tournament.id, code: tournament.code });
     }),
   );
 

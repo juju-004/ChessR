@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Trophy, Clock, Share2, Lock, Pencil, Plus, X } from "lucide-react";
+import { Trophy, Clock, Share2, Lock, Pencil, Plus, X, ChevronDown, Pause, Play } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   getTournamentByCode,
   rankTournamentPlayers,
@@ -10,6 +11,7 @@ import {
   totalPrizePool,
   tokensLabel,
   FORMAT_LABEL,
+  FORMAT_MAX_PLAYERS,
   type Tournament,
   type TournamentPairing,
   type TournamentPlayer,
@@ -218,7 +220,7 @@ function EditTournamentForm({
             label="Max players"
             type="number"
             min={2}
-            max={64}
+            max={FORMAT_MAX_PLAYERS[format]}
             value={maxPlayers}
             onChange={(e) => setMaxPlayers(Number(e.target.value))}
           />
@@ -536,6 +538,59 @@ function ArenaCountdown({ arenaEndsAt }: { arenaEndsAt: string }) {
   );
 }
 
+/** Arena and swiss both keep accepting new players after they've started
+ *  (see acceptingJoins in tournament.service.ts) — arena because its
+ *  pairing queue is continuous, swiss because a fresh round is built from
+ *  the current player list each time a round transition happens. Knockout
+ *  and round-robin don't: their whole schedule is fixed the moment the
+ *  event starts, so there's nothing to slot a newcomer into.
+ *
+ *  This mirrors that same window purely for what to show — the server is
+ *  the actual authority and will reject a join that's arrived too late
+ *  regardless of what this renders. */
+function LateJoinRow({
+  tournament,
+  joinPassword,
+  setJoinPassword,
+  join,
+}: {
+  tournament: Tournament;
+  joinPassword: string;
+  setJoinPassword: (v: string) => void;
+  join: () => void;
+}) {
+  if (tournament.format !== "arena" && tournament.format !== "swiss") return null;
+
+  const stillOpen =
+    tournament.format === "arena"
+      ? !!tournament.arenaEndsAt &&
+        Date.now() < new Date(tournament.arenaEndsAt).getTime()
+      : tournament.currentRoundIndex < (tournament.swissRounds ?? 1) - 1;
+
+  if (!stillOpen) return null;
+
+  return (
+    <div className="flex flex-wrap items-end gap-2">
+      <p className="w-full text-xs text-base-content/50">
+        This tournament is already under way, but you can still jump in.
+      </p>
+      {tournament.hasPassword && (
+        <div className="w-40">
+          <Input
+            type="password"
+            placeholder="Password"
+            value={joinPassword}
+            onChange={(e) => setJoinPassword(e.target.value)}
+          />
+        </div>
+      )}
+      <Button variant="secondary" size="sm" onClick={join}>
+        Join
+      </Button>
+    </div>
+  );
+}
+
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-lg bg-base-200/60 px-2 py-1.5">
@@ -687,77 +742,6 @@ function PlayerTournamentDetails({
   );
 }
 
-/** Three cups sized by place — the bigger the podium spot, the bigger the
- *  cup. Knockout only ever knows a winner + runner-up (no tracked "who lost
- *  the other semifinal first" ordering), so it renders two cups; every
- *  points-based format (swiss/round_robin/arena) has a real 3rd place in
- *  its standings, so it gets all three. */
-function PodiumCups({
-  tournament,
-  standings,
-}: {
-  tournament: Tournament;
-  standings: TournamentPlayer[];
-}) {
-  const isPointsFormat = tournament.format !== "normal";
-
-  type PodiumEntry = { username: string; avatarGradient: string | null };
-  const first: PodiumEntry | null = isPointsFormat
-    ? standings[0] ?? null
-    : tournament.winner
-      ? {
-          username: usernameOf(tournament, tournament.winner),
-          avatarGradient: gradientOf(tournament, tournament.winner),
-        }
-      : null;
-  const second: PodiumEntry | null = isPointsFormat
-    ? standings[1] ?? null
-    : tournament.runnerUp
-      ? {
-          username: usernameOf(tournament, tournament.runnerUp),
-          avatarGradient: gradientOf(tournament, tournament.runnerUp),
-        }
-      : null;
-  const third: PodiumEntry | null = isPointsFormat ? standings[2] ?? null : null;
-
-  if (!first) return null;
-
-  const CUP_CLASS: Record<1 | 2 | 3, string> = {
-    1: "h-10 w-10 text-amber-400",
-    2: "h-7 w-7 text-slate-300",
-    3: "h-6 w-6 text-orange-600",
-  };
-  const ORDINAL: Record<1 | 2 | 3, string> = { 1: "1st", 2: "2nd", 3: "3rd" };
-  // Classic podium arrangement — 2nd, 1st, 3rd left to right — rather than
-  // strict rank order, so the tallest cup lands in the middle.
-  const slots: { entry: PodiumEntry; place: 1 | 2 | 3 }[] = [
-    second && { entry: second, place: 2 as const },
-    first && { entry: first, place: 1 as const },
-    third && { entry: third, place: 3 as const },
-  ].filter((s): s is { entry: PodiumEntry; place: 1 | 2 | 3 } => !!s);
-
-  return (
-    <Card variant="solid" className="flex items-end justify-center gap-6 py-6">
-      {slots.map(({ entry, place }) => (
-        <div key={place} className="flex flex-col items-center gap-1.5">
-          <Trophy className={CUP_CLASS[place]} />
-          <Avatar
-            username={entry.username}
-            gradient={entry.avatarGradient}
-            size={place === 1 ? "sm" : "xs"}
-          />
-          <p className="max-w-20 truncate text-center text-xs font-medium text-base-content">
-            {entry.username}
-          </p>
-          <p className="text-[10px] uppercase tracking-wide text-base-content/40">
-            {ORDINAL[place]}
-          </p>
-        </div>
-      ))}
-    </Card>
-  );
-}
-
 function PairingRow({
   tournament,
   pairing,
@@ -855,6 +839,10 @@ export function TournamentDetail() {
   const [editing, setEditing] = useState(false);
   const [manualRoundIndex, setManualRoundIndex] = useState<number | null>(null);
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  // Collapsed by default — the tier breakdown is useful detail but not
+  // something you need to see every time you land on the page, especially
+  // once the header/card title already shows the total.
+  const [prizePoolOpen, setPrizePoolOpen] = useState(false);
 
   const refresh = useCallback(() => {
     getTournamentByCode(code)
@@ -912,6 +900,7 @@ export function TournamentDetail() {
 
   const myId = user?.id;
   const isPlayer = !!myId && tournament.players.some((p) => p.user === myId);
+  const myPlayer = tournament.players.find((p) => p.user === myId);
   const isCreator = tournament.createdBy === myId;
   const isPointsFormat = tournament.format !== "normal";
   const standings = isPointsFormat ? rankTournamentPlayers(tournament) : [];
@@ -943,8 +932,8 @@ export function TournamentDetail() {
       socket?.emit("tournament:cancel", { tournamentId: tournament!._id });
     }
   }
-  function start() {
-    socket?.emit("tournament:start", { tournamentId: tournament!._id });
+  function togglePause(paused: boolean) {
+    socket?.emit("tournament:pause", { tournamentId: tournament!._id, paused });
   }
   function withdraw() {
     if (
@@ -983,9 +972,6 @@ export function TournamentDetail() {
       back="/tournaments"
       actions={
         <div className="flex items-center gap-2">
-          <span className="text-xs text-base-content/40">
-            #{tournament.code}
-          </span>
           <Button variant="glass" size="sm" onClick={handleShare}>
             <Share2 className="h-3.5 w-3.5" /> Share
           </Button>
@@ -1076,18 +1062,12 @@ export function TournamentDetail() {
                   )}
                   {isCreator && (
                     <>
-                      <Button
-                        size="sm"
-                        disabled={
-                          tournament.players.length < tournament.minPlayers
-                        }
-                        onClick={start}
-                        className="bg-green-700 shadow-green-700/25 hover:bg-green-600 hover:brightness-100"
-                      >
-                        Start now ({tournament.players.length}/
-                        {tournament.minPlayers} min)
-                      </Button>
-                      {tournament.players.length === 1 && (
+                      {/* Mirrors the server's own "still safe to edit"
+                       *  threshold in updateTournament — organizerOnly
+                       *  tournaments never count the creator as a player,
+                       *  so their threshold is 0 joined players, not 1. */}
+                      {tournament.players.length <=
+                        (tournament.organizerOnly ? 0 : 1) && (
                         <Button
                           variant="glass"
                           size="sm"
@@ -1105,10 +1085,33 @@ export function TournamentDetail() {
               </div>
             )}
 
+            {tournament.status === "active" && !isPlayer && (
+              <LateJoinRow tournament={tournament} joinPassword={joinPassword} setJoinPassword={setJoinPassword} join={join} />
+            )}
+
             {tournament.status === "active" && isPlayer && (
-              <Button variant="danger" size="sm" onClick={withdraw}>
-                Withdraw
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                {tournament.format === "arena" && (
+                  <Button
+                    variant="glass"
+                    size="sm"
+                    onClick={() => togglePause(!myPlayer?.paused)}
+                  >
+                    {myPlayer?.paused ? (
+                      <>
+                        <Play className="h-3.5 w-3.5" /> Resume
+                      </>
+                    ) : (
+                      <>
+                        <Pause className="h-3.5 w-3.5" /> Pause
+                      </>
+                    )}
+                  </Button>
+                )}
+                <Button variant="danger" size="sm" onClick={withdraw}>
+                  Withdraw
+                </Button>
+              </div>
             )}
 
             {tournament.status === "finished" && (
@@ -1130,29 +1133,51 @@ export function TournamentDetail() {
           </Card>
         )}
 
-        {tournament.status === "finished" && (
-          <PodiumCups tournament={tournament} standings={standings} />
-        )}
-
         {tournament.prizeSchedule.length > 0 && (
           <Card variant="solid">
-            <CardHeader>
-              <CardTitle>Prize pool — {tournament.prizePoolTokens} R</CardTitle>
-            </CardHeader>
-            <div className="space-y-1 text-sm text-base-content/70">
-              {tournament.prizeSchedule.map((tier, i) => (
-                <div key={i} className="flex justify-between">
-                  <span>
-                    {tier.fromRank === tier.toRank
-                      ? `${tier.fromRank}${ordinalSuffix(tier.fromRank)} place`
-                      : `${tier.fromRank}${ordinalSuffix(tier.fromRank)}–${tier.toRank}${ordinalSuffix(tier.toRank)} place`}
-                  </span>
-                  <span className="font-medium text-base-content">
-                    {tier.tokens} {tokensLabel(tier)}
-                  </span>
-                </div>
-              ))}
-            </div>
+            <button
+              type="button"
+              onClick={() => setPrizePoolOpen((v) => !v)}
+              className="flex w-full items-center justify-between text-left"
+              aria-expanded={prizePoolOpen}
+            >
+              <CardHeader className="pointer-events-none mb-0">
+                <CardTitle>
+                  Prize pool — {tournament.prizePoolTokens} R
+                </CardTitle>
+              </CardHeader>
+              <ChevronDown
+                className={`h-4 w-4 shrink-0 text-base-content/40 transition-transform ${
+                  prizePoolOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+            <AnimatePresence initial={false}>
+              {prizePoolOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2, ease: "easeInOut" }}
+                  className="overflow-hidden"
+                >
+                  <div className="space-y-1 pt-2 text-sm text-base-content/70">
+                    {tournament.prizeSchedule.map((tier, i) => (
+                      <div key={i} className="flex justify-between">
+                        <span>
+                          {tier.fromRank === tier.toRank
+                            ? `${tier.fromRank}${ordinalSuffix(tier.fromRank)} place`
+                            : `${tier.fromRank}${ordinalSuffix(tier.fromRank)}–${tier.toRank}${ordinalSuffix(tier.toRank)} place`}
+                        </span>
+                        <span className="font-medium text-base-content">
+                          {tier.tokens} {tokensLabel(tier)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </Card>
         )}
 
@@ -1228,6 +1253,11 @@ export function TournamentDetail() {
                                 size="xs"
                               />
                               {p.username}
+                              {p.paused && (
+                                <Badge variant="neutral" className="py-0!">
+                                  paused
+                                </Badge>
+                              )}
                             </button>
                           }
                         >
@@ -1250,6 +1280,11 @@ export function TournamentDetail() {
                           size="xs"
                         />
                         {p.username}
+                        {p.paused && (
+                          <Badge variant="neutral" className="py-0!">
+                            paused
+                          </Badge>
+                        )}
                       </button>
                     </td>
                     <td className="py-1 text-right">{p.points}</td>

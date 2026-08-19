@@ -169,7 +169,7 @@ export const ChessBoard = memo(function ChessBoard({
   return (
     <div
       ref={containerRef}
-      className="cg-wrap rounded-2xl overflow-hidden"
+      className="cg-wrap rounded-lg overflow-hidden"
       style={{ width: boardSize, height: boardSize }}
     />
   );

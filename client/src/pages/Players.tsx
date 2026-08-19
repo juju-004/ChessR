@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Search, Swords, Eye, UserPlus, Check } from "lucide-react";
+import { Search, Swords, UserPlus, Check, TvMinimalPlay } from "lucide-react";
 import { searchUsers, type UserSearchResult } from "../api/users.js";
 import {
   listFriends,
@@ -186,7 +186,8 @@ export function Players() {
             placeholder=""
             value={query}
             onChange={(e) => handleSearchChange(e.target.value)}
-            leadingIcon={<Search className="h-4 w-4" />}
+            leadingIcon={<Search className="h-4 w-4 mb-3.5" />}
+            className="mb-3.5"
           />
 
           {searchError && (
@@ -204,7 +205,7 @@ export function Players() {
                 <div
                   key={u._id}
                   onClick={() => navigate(`/profile/${u.username}`)}
-                  className="-mx-2 flex cursor-pointer flex-wrap items-center justify-between gap-2 rounded-lg border-b border-base-300 px-2 py-2 transition-colors last:border-none hover:bg-base-200/60"
+                  className="-mx-2 flex cursor-pointer flex-wrap items-center justify-between gap-2 rounded-lg border-b border-base-300 px-2 py-2 transition-colors last:border-none hover:bg-base-100/60"
                 >
                   <span className="flex min-w-0 items-center gap-2.5 text-sm text-base-content">
                     <Avatar
@@ -229,7 +230,7 @@ export function Players() {
                   >
                     {!alreadyFriend && (
                       <Button
-                        variant="glass"
+                        variant="secondary"
                         size="sm"
                         disabled={requestSent}
                         onClick={() => handleAddFriend(u._id)}
@@ -240,16 +241,12 @@ export function Players() {
                           </>
                         ) : (
                           <>
-                            <UserPlus className="h-4 w-4" /> Add friend
+                            <UserPlus className="h-4 w-4" />{" "}
+                            <span className="hidden sm:flex">Add friend</span>
                           </>
                         )}
                       </Button>
                     )}
-                    <Link to={`/profile/${u.username}`}>
-                      <Button variant="glass" size="sm">
-                        View
-                      </Button>
-                    </Link>
                   </span>
                 </div>
               );
@@ -320,7 +317,7 @@ export function Players() {
             <div
               key={f.id}
               onClick={() => navigate(`/profile/${f.username}`)}
-              className="-mx-2 flex cursor-pointer flex-wrap items-center justify-between gap-2 rounded-lg border-b border-base-300 px-2 py-2 transition-colors last:border-none hover:bg-base-200/60"
+              className="-mx-2  flex cursor-pointer flex-wrap items-center justify-between gap-2 rounded-lg border-b border-base-300 px-2 py-2 transition-colors last:border-none hover:bg-base-100/60!"
             >
               <span className="flex min-w-0 items-center gap-2.5 text-sm text-base-content">
                 <Avatar
@@ -345,10 +342,10 @@ export function Players() {
                 onClick={(e) => e.stopPropagation()}
               >
                 {f.activeGameCode ? (
-                  <Link to={`/game/${f.activeGameCode}`}>
+                  <Link to={`/game/`}>
                     <Button variant="glass" size="sm">
-                      <Eye className="h-4 w-4 text-green-500" />{" "}
-                      <span className="hidden sm:flex">Watch</span>
+                      <TvMinimalPlay className="h-4 w-4" />{" "}
+                      <span className="hidden! sm:flex">Watch</span>
                     </Button>
                   </Link>
                 ) : (
@@ -372,7 +369,7 @@ export function Players() {
                     trigger={
                       <Button size="sm" variant="secondary">
                         <Swords className="size-3" />
-                        <span className="md:flex hidden">Challenge</span>
+                        <span className="sm:flex hidden">Challenge</span>
                       </Button>
                     }
                   >

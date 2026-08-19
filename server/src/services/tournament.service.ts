@@ -35,6 +35,7 @@ import {
 } from "./wallet.service.js";
 import { applyRatingForGame } from "./rating.service.js";
 import { getIo } from "../sockets/io.js";
+import { isUserOnline } from "./presence.service.js";
 
 const generateCode = customAlphabet("ABCDEFGHJKMNPQRSTUVWXYZ23456789", 6);
 
@@ -172,6 +173,29 @@ export async function reconcileActiveTournaments(): Promise<{
     }
   }
 
+  // Same self-heal, same reasoning, for arena's own in-memory end timer —
+  // a restart mid-arena would otherwise leave arenaEndsAt sitting there
+  // with nothing watching it.
+  const pendingArenaEnds = await Tournament.find({
+    status: "active",
+    format: "arena",
+    arenaEndsAt: { $ne: null },
+  }).select("arenaEndsAt");
+
+  for (const doc of pendingArenaEnds) {
+    const dueAt = doc.arenaEndsAt ? doc.arenaEndsAt.getTime() : 0;
+    if (dueAt <= now) {
+      await fireArenaEnd(doc.id);
+    } else if (!pendingArenaEndTimers.has(doc.id)) {
+      const timer = setTimeout(() => {
+        pendingArenaEndTimers.delete(doc.id);
+        fireArenaEnd(doc.id).catch((err) => console.error("re-armed arena end failed:", err));
+      }, dueAt - now);
+      timer.unref?.();
+      pendingArenaEndTimers.set(doc.id, timer);
+    }
+  }
+
   return { activated, rearmed, autoStarted, autoStartRearmed };
 }
 
@@ -233,11 +257,19 @@ async function fireAutoStart(tournamentId: string): Promise<void> {
 // wants enough players to make several rounds meaningful, and the two
 // round-robin formats are capped fairly low since game count grows
 // quadratically (double round-robin doubles that again).
+// Every format has its own sane player-count bounds — knockout tolerates any
+// field size >= 2 (byes soak up the gap to the next power of two), swiss
+// wants enough players to make several rounds meaningful, round-robin is
+// capped fairly low since game count grows quadratically (and again with
+// each extra robinRounds lap), and arena tolerates a much larger field
+// since players aren't all locked into synchronized rounds together — a
+// big arena just means more simultaneous games, not more rounds.
 const FORMAT_BOUNDS: Record<TournamentFormat, { min: number; max: number }> = {
   normal: { min: 2, max: 64 },
   swiss: { min: 4, max: 64 },
   robin: { min: 3, max: 20 },
   round_robin: { min: 3, max: 14 },
+  arena: { min: 4, max: 100 },
 };
 
 async function uniqueCode(): Promise<string> {
@@ -307,6 +339,11 @@ export interface CreateTournamentInput {
   // Show up in the public "Open tournaments" browse list? Defaults to false
   // (link/code-only) if omitted.
   isPublic?: boolean;
+  // If true, the creator runs the event without playing in it — they're
+  // never added to `players` and never charged regFeeTokens (they still
+  // fund the prize pool, if any, same as any other creator). Defaults to
+  // false. Immutable after creation — see the ITournament doc comment.
+  organizerOnly?: boolean;
   // Prize pool: creator-funded, paid out by final rank. Empty/omitted = no
   // prize pool. See the ITournament doc comment in Tournament.ts.
   prizeSchedule?: { fromRank: number; toRank: number; tokens: number }[];
@@ -315,12 +352,20 @@ export interface CreateTournamentInput {
   regFeeTokens?: number;
   // Required (and only meaningful) for format === 'swiss'.
   swissRounds: number | null;
+  // Only meaningful for format === 'round_robin' — how many laps through
+  // the field (1-4). Omitted/null defaults to 1 (a single round-robin).
+  robinRounds?: number | null;
+  // Required (and only meaningful) for format === 'arena' — how long the
+  // event runs once started, in minutes.
+  arenaMinutes?: number | null;
   // Seconds to pause between rounds — see the ITournament doc comment.
   // Optional on input; defaults to 10 like the schema itself.
   breakSeconds?: number;
   // When the event starts itself — required, must be far enough in the
-  // future to give players time to join (see MIN_START_DELAY_MS). The
-  // creator can still manually start early via startTournament.
+  // future to give players time to join (see MIN_START_DELAY_MS). There's
+  // no manual early-start override — every tournament starts at the time
+  // it announced, so everyone who's planning around that start time (and
+  // anyone still deciding whether to join before then) can rely on it.
   scheduledStartAt: string | Date;
   // Optional gate on joining — anyone with the link can view the page, but
   // becoming a player requires this. Omitted/empty = no password.
@@ -412,6 +457,23 @@ export async function createTournament(
       "Choose between 3 and 15 rounds for a swiss tournament",
     );
   }
+  if (
+    input.format === "round_robin" &&
+    input.robinRounds != null &&
+    (input.robinRounds < 1 || input.robinRounds > 4)
+  ) {
+    throw ApiError.badRequest(
+      "Choose between 1 and 4 laps for a round-robin tournament",
+    );
+  }
+  if (
+    input.format === "arena" &&
+    (!input.arenaMinutes || input.arenaMinutes < 5 || input.arenaMinutes > 360)
+  ) {
+    throw ApiError.badRequest(
+      "Choose an arena duration between 5 and 360 minutes",
+    );
+  }
   const regFeeTokens = input.regFeeTokens ?? 0;
   if (regFeeTokens < 1 || regFeeTokens > MAX_WAGER_TOKENS) {
     throw ApiError.badRequest("A registration fee is required for every tournament");
@@ -441,10 +503,12 @@ export async function createTournament(
     : null;
 
   const code = await uniqueCode();
+  const organizerOnly = input.organizerOnly ?? false;
   const tournament = await Tournament.create({
     code,
     name: input.name.trim(),
     createdBy: creatorId,
+    organizerOnly,
     format: input.format,
     variant: input.variant,
     baseMinutes: input.baseMinutes,
@@ -452,20 +516,26 @@ export async function createTournament(
     status: "pending",
     minPlayers: bounds.min,
     maxPlayers: input.maxPlayers,
-    players: [
-      {
-        user: creatorId,
-        username: creatorUsername,
-        avatarGradient: creatorAvatarGradient,
-        points: 0,
-        tiebreak: 0,
-        gamesPlayed: 0,
-        berserkWins: 0,
-        eliminatedRound: null,
-        hadBye: false,
-        withdrawn: false,
-      },
-    ],
+    // organizerOnly: the creator runs the event but never occupies a
+    // player slot themselves, so they're left out of the roster entirely
+    // — see the debit block below for the matching skip of their own
+    // registration fee.
+    players: organizerOnly
+      ? []
+      : [
+          {
+            user: creatorId,
+            username: creatorUsername,
+            avatarGradient: creatorAvatarGradient,
+            points: 0,
+            tiebreak: 0,
+            gamesPlayed: 0,
+            berserkWins: 0,
+            eliminatedRound: null,
+            hadBye: false,
+            withdrawn: false,
+          },
+        ],
     berserkAllowed: input.berserkAllowed,
     isPublic: input.isPublic ?? false,
     prizeSchedule,
@@ -474,17 +544,20 @@ export async function createTournament(
     regFeePoolTokens: 0,
     passwordHash,
     swissRounds: input.format === "swiss" ? input.swissRounds : null,
+    robinRounds: input.format === "round_robin" ? (input.robinRounds ?? 1) : null,
+    arenaMinutes: input.format === "arena" ? input.arenaMinutes : null,
     breakSeconds: input.breakSeconds ?? DEFAULT_BREAK_SECONDS,
     scheduledStartAt,
   });
 
-  // The creator funds the ENTIRE prize pool up front, and — since they're
-  // auto-joined as the first player — also pays their own registration fee
-  // if the event charges one. Either debit failing rolls the whole
-  // tournament back rather than leaving a half-funded event around.
+  // The creator funds the ENTIRE prize pool up front regardless of whether
+  // they're playing — and, if they ARE auto-joined as the first player
+  // (i.e. not organizerOnly), also pays their own registration fee like
+  // any other entrant. Either debit failing rolls the whole tournament
+  // back rather than leaving a half-funded event around.
   try {
     if (prizePoolTokens > 0) await debitTournamentPrizeFund(creatorId, tournament.id, prizePoolTokens);
-    if (regFeeTokens > 0) {
+    if (!organizerOnly && regFeeTokens > 0) {
       await debitTournamentRegFee(creatorId, tournament.id, regFeeTokens);
       tournament.regFeePoolTokens = regFeeTokens;
       await tournament.save();
@@ -499,6 +572,35 @@ export async function createTournament(
   return tournament;
 }
 
+/** Whether `tournament` is still accepting new players right now. Every
+ *  format accepts joins while pending. Arena and swiss additionally accept
+ *  "late" joins after the event has started — arena because its pairing
+ *  queue is continuous and a newcomer can simply be dropped into the next
+ *  pairing wave (see tryArenaPairings), swiss because a fresh round is
+ *  built from tournament.players from scratch each time (see
+ *  buildSwissRound) so a newcomer just starts appearing in whichever round
+ *  gets built next. Knockout and round-robin can't sensibly accept
+ *  latecomers — their entire schedule (the bracket, or the round-robin
+ *  circle) is fixed the moment the event starts. */
+function acceptingJoins(tournament: ITournament): boolean {
+  if (tournament.status === "pending") return true;
+  if (tournament.status !== "active") return false;
+  if (tournament.format === "arena") {
+    return (
+      !!tournament.arenaEndsAt && Date.now() < tournament.arenaEndsAt.getTime()
+    );
+  }
+  if (tournament.format === "swiss") {
+    const totalRounds = tournament.swissRounds ?? 1;
+    // Joining only matters if there's still at least one round left that
+    // hasn't been built yet — joining during literally the last round
+    // would mean sitting there paying a registration fee for a tournament
+    // that's already effectively over for them.
+    return tournament.currentRoundIndex < totalRounds - 1;
+  }
+  return false;
+}
+
 export async function joinTournament(
   tournamentId: string,
   userId: string,
@@ -508,8 +610,12 @@ export async function joinTournament(
 ): Promise<ITournament> {
   const tournament = await Tournament.findById(tournamentId);
   if (!tournament) throw ApiError.notFound("Tournament not found");
-  if (tournament.status !== "pending")
-    throw ApiError.conflict("This tournament has already started");
+  if (!acceptingJoins(tournament))
+    throw ApiError.conflict(
+      tournament.status === "pending"
+        ? "This tournament has already started"
+        : "It's too late to join this tournament",
+    );
   if (findPlayer(tournament, userId))
     throw ApiError.badRequest("You've already joined this tournament");
   if (tournament.players.length >= tournament.maxPlayers)
@@ -537,9 +643,21 @@ export async function joinTournament(
     eliminatedRound: null,
     hadBye: false,
     withdrawn: false,
+    paused: false,
     joinedAt: dateObject,
   });
   await tournament.save();
+
+  // A late joiner into an already-running arena might be pairable right
+  // now if someone else happens to be free — no reason to make them wait
+  // for the next unrelated pairing event. Swiss doesn't need the
+  // equivalent here: they'll simply be included the next time a round is
+  // built (see buildSwissRound), which only happens at a round boundary
+  // anyway, not something joining can trigger early.
+  if (tournament.status === "active" && tournament.format === "arena") {
+    await tryArenaPairings(tournament);
+  }
+
   return tournament;
 }
 
@@ -650,6 +768,8 @@ export interface UpdateTournamentInput {
   prizeSchedule?: { fromRank: number; toRank: number; tokens: number }[];
   regFeeTokens?: number;
   swissRounds?: number | null;
+  robinRounds?: number | null;
+  arenaMinutes?: number | null;
   breakSeconds?: number;
   scheduledStartAt?: string | Date;
   // undefined = leave the password as-is; null = remove it; a string = set/replace it.
@@ -675,7 +795,12 @@ export async function updateTournament(
     throw ApiError.forbidden("Only the organizer can edit this");
   if (tournament.status !== "pending")
     throw ApiError.conflict("This tournament has already started");
-  if (tournament.players.length > 1)
+  // Editable only while nobody but possibly the creator has joined.
+  // organizerOnly tournaments never count the creator as a player (see
+  // createTournament), so their "safe to edit" threshold is 0 joined
+  // players rather than 1.
+  const maxEditablePlayers = tournament.organizerOnly ? 0 : 1;
+  if (tournament.players.length > maxEditablePlayers)
     throw ApiError.conflict("Can't edit a tournament once other players have joined");
 
   const format = input.format ?? tournament.format;
@@ -707,6 +832,17 @@ export async function updateTournament(
     throw ApiError.badRequest("Choose between 3 and 15 rounds for a swiss tournament");
   }
 
+  const robinRounds =
+    format === "round_robin" ? (input.robinRounds ?? tournament.robinRounds ?? 1) : null;
+  if (format === "round_robin" && robinRounds != null && (robinRounds < 1 || robinRounds > 4)) {
+    throw ApiError.badRequest("Choose between 1 and 4 laps for a round-robin tournament");
+  }
+
+  const arenaMinutes = format === "arena" ? (input.arenaMinutes ?? tournament.arenaMinutes) : null;
+  if (format === "arena" && (!arenaMinutes || arenaMinutes < 5 || arenaMinutes > 360)) {
+    throw ApiError.badRequest("Choose an arena duration between 5 and 360 minutes");
+  }
+
   const regFeeTokens = input.regFeeTokens ?? tournament.regFeeTokens;
   if (regFeeTokens < 1 || regFeeTokens > MAX_WAGER_TOKENS) {
     throw ApiError.badRequest("A registration fee is required for every tournament");
@@ -735,15 +871,18 @@ export async function updateTournament(
     maxPlayers,
   );
 
-  // The creator is the only player so far, so their own reg-fee contribution
-  // IS the whole pool — adjusting the fee just means adjusting what they
-  // personally already paid in.
+  // The creator is the only (possible) player so far, so their own reg-fee
+  // contribution IS the whole pool — adjusting the fee just means adjusting
+  // what they personally already paid in. organizerOnly tournaments skip
+  // this entirely: the creator was never charged a registration fee at
+  // creation time (they're not a player), so there's nothing of theirs to
+  // adjust here either — see createTournament's matching skip.
   const prizeDelta = prizePoolTokens - tournament.prizePoolTokens;
   const regFeeDelta = regFeeTokens - tournament.regFeeTokens;
   if (prizeDelta !== 0) {
     await adjustTournamentEscrow(requesterId, tournament.id, prizeDelta, "tournament_prize_fund");
   }
-  if (regFeeDelta !== 0) {
+  if (!tournament.organizerOnly && regFeeDelta !== 0) {
     await adjustTournamentEscrow(requesterId, tournament.id, regFeeDelta, "tournament_reg_fee");
     tournament.regFeePoolTokens = regFeeTokens;
   }
@@ -767,6 +906,8 @@ export async function updateTournament(
   tournament.prizePoolTokens = prizePoolTokens;
   tournament.regFeeTokens = regFeeTokens;
   tournament.swissRounds = swissRounds;
+  tournament.robinRounds = robinRounds;
+  tournament.arenaMinutes = arenaMinutes;
   tournament.breakSeconds = breakSeconds;
   tournament.scheduledStartAt = scheduledStartAt;
 
@@ -778,18 +919,19 @@ export async function updateTournament(
 
 // --- Pairing engines -----------------------------------------------------------
 
-/** Standard "circle method" round-robin schedule. Returns one array of
- *  [player1, player2|null] pairs per round; a null partner is a bye (only
- *  possible when the field has an odd number of players — everyone sits out
- *  exactly one round in that case). `doubled` runs the whole schedule twice
- *  with player1/player2 swapped the second time (double round-robin) —
- *  actual board color is still randomized per pairing at game-creation time,
- *  same as everywhere else in this codebase, so this swap mainly keeps the
- *  bookkeeping honest about who's "home" rather than guaranteeing a literal
- *  color alternation. */
+/** Builds the round-robin pairing schedule via the standard "circle method"
+ *  — one player fixed, the rest rotate around them each round, guaranteeing
+ *  everyone plays everyone else exactly once per lap with no repeats. A bye
+ *  slot (null) is added for an odd-sized field so every round still pairs
+ *  cleanly; that bye rotates through the field along with everyone else.
+ *
+ *  `laps` repeats the whole schedule that many times — 1 = a single round
+ *  robin, 2 = double (colors reversed on the second lap, like home/away),
+ *  3+ keeps alternating color on each additional lap. laps <= 1 returns
+ *  just the base schedule. */
 function circleMethodSchedule(
   playerIds: string[],
-  doubled: boolean,
+  laps: number,
 ): [string, string | null][][] {
   const ids: (string | null)[] = [...playerIds];
   if (ids.length % 2 === 1) ids.push(null);
@@ -814,11 +956,19 @@ function circleMethodSchedule(
     arr.splice(0, arr.length, fixed, ...rest);
   }
 
-  if (!doubled) return rounds;
-  const reversed = rounds.map((round) =>
-    round.map(([a, b]) => [b ?? a, b ? a : null] as [string, string | null]),
-  );
-  return [...rounds, ...reversed];
+  if (laps <= 1) return rounds;
+  const schedule = [...rounds];
+  for (let lap = 1; lap < laps; lap++) {
+    const reverseColors = lap % 2 === 1;
+    const lapRounds = rounds.map((round) =>
+      round.map(
+        ([a, b]) =>
+          (reverseColors ? [b ?? a, b ? a : null] : [a, b]) as [string, string | null],
+      ),
+    );
+    schedule.push(...lapRounds);
+  }
+  return schedule;
 }
 
 /** Builds round 0 of a single-elimination bracket. Byes only ever happen in
@@ -847,11 +997,29 @@ function buildKnockoutRound0(playerIds: any[]): ITournamentRound {
  *  fair and rematch-free for reasonably sized fields, and never stalls —
  *  if literally everyone remaining has already played everyone else, it
  *  falls back to allowing a rematch rather than leaving someone unpaired. */
-function buildSwissRound(
+/** Smart pairing, swiss half: builds the pairing set for a round using only
+ *  players who are currently online, so nobody gets paired against someone
+ *  who isn't actually around to play — an offline player simply sits this
+ *  round out (no bye consumed, no points lost) and is reconsidered fresh
+ *  the next time a round is built, whenever they're back.
+ *
+ *  The one deliberate escape hatch: if fewer than 2 players are online
+ *  right now, filtering by presence would leave nothing to pair at all —
+ *  rather than stall the whole event indefinitely waiting for people to
+ *  show up, this falls back to pairing everyone regardless of online
+ *  status for that one round. Presence-based skipping is a fairness
+ *  nicety, not something worth deadlocking a tournament over. */
+async function buildSwissRound(
   tournament: ITournament,
   roundIndex: number,
-): ITournamentRound {
-  const active = tournament.players.filter((p) => !p.withdrawn);
+): Promise<ITournamentRound> {
+  const candidates = tournament.players.filter((p) => !p.withdrawn);
+  const onlineFlags = await Promise.all(
+    candidates.map((p) => isUserOnline(p.user.toString())),
+  );
+  const onlineOnly = candidates.filter((_, i) => onlineFlags[i]);
+  const active = onlineOnly.length >= 2 ? onlineOnly : candidates;
+
   const priorOpponents = new Map<string, Set<string>>();
   for (const round of tournament.rounds) {
     for (const pairing of round.pairings) {
@@ -905,49 +1073,55 @@ function buildSwissRound(
 }
 
 // --- Starting the event / activating a round ------------------------------
+//
+// There's deliberately no manual "start now" export here anymore — every
+// tournament starts exactly at its announced scheduledStartAt (via
+// fireAutoStart above) or is called off and refunded if it doesn't reach
+// minPlayers by then. Letting the organizer force an early start meant the
+// announced start time wasn't actually reliable, which is worse the more
+// this matters — an arena that starts the moment the organizer feels like
+// it, rather than when everyone who saw the listing expected it to, isn't
+// a fair start for players still on their way in.
 
-export async function startTournament(
-  tournamentId: string,
-  requesterId: string,
-): Promise<ITournament> {
-  const tournament = await Tournament.findById(tournamentId);
-  if (!tournament) throw ApiError.notFound("Tournament not found");
-  if (tournament.createdBy.toString() !== requesterId)
-    throw ApiError.forbidden("Only the organizer can start this");
-  if (tournament.status !== "pending")
-    throw ApiError.conflict("This tournament has already started");
-  if (tournament.players.length < tournament.minPlayers) {
-    throw ApiError.badRequest(
-      `Needs at least ${tournament.minPlayers} players to start`,
-    );
-  }
-
-  // Manual early start — the creator doesn't have to wait out the full
-  // scheduledStartAt if the lobby's already ready to go.
-  await activateTournament(tournament);
-  return tournament;
-}
 
 /** Shared by both the manual "Start now" action and the scheduled
  *  auto-start timer firing — builds the first round's pairings and flips
  *  the tournament into 'active'. Assumes the caller has already checked
- *  authorization and minPlayers; this just does the state transition. */
+ *  authorization and minPlayers; this just does the state transition.
+ *
+ *  Arena is structurally different from every other format here: instead
+ *  of building a fixed schedule of rounds up front, it kicks off the
+ *  continuous pairing queue (see tryArenaPairings) and an end-of-arena
+ *  timer, then returns early — there's no "round 0" to activate the normal
+ *  way. */
 async function activateTournament(tournament: ITournament): Promise<void> {
   clearPendingAutoStart(tournament.id);
   tournament.status = "active";
   tournament.startedAt = new Date();
   tournament.scheduledStartAt = null;
 
+  if (tournament.format === "arena") {
+    const minutes = tournament.arenaMinutes ?? 60;
+    tournament.arenaEndsAt = new Date(Date.now() + minutes * 60_000);
+    await tournament.save();
+    broadcastUpdate(tournament, "tournament:started");
+    scheduleArenaEnd(tournament);
+    await tryArenaPairings(tournament);
+    return;
+  }
+
   const playerIds = tournament.players.map((p: ITournamentPlayer) => p.user);
   if (tournament.format === "normal") {
     tournament.rounds.push(buildKnockoutRound0(playerIds));
   } else if (tournament.format === "swiss") {
-    tournament.rounds.push(buildSwissRound(tournament, 0));
+    tournament.rounds.push(await buildSwissRound(tournament, 0));
   } else {
-    const doubled = tournament.format === "round_robin";
+    // 'robin' (legacy, always 1 lap) or 'round_robin' (robinRounds laps,
+    // defaulting to 1 if somehow unset on an older document).
+    const laps = tournament.format === "round_robin" ? (tournament.robinRounds ?? 1) : 1;
     const schedule = circleMethodSchedule(
       playerIds.map((id: any) => id.toString()),
-      doubled,
+      laps,
     );
     schedule.forEach((pairs, roundIdx) => {
       tournament.rounds.push({
@@ -1059,6 +1233,308 @@ function notifyPairingReady(
   }
 }
 
+// --- Arena: continuous pairing -----------------------------------------------
+//
+// Every other format builds its rounds as a synchronized batch (everyone
+// moves to the next round together). Arena doesn't: once it starts, players
+// get paired the instant both they and an opponent are free, independent of
+// anyone else's game — closer to a Lichess arena than a swiss round. This is
+// modeled by reusing the exact same rounds/pairings shape everything else
+// uses, just with each "round" holding exactly one pairing (one game). That
+// keeps a finished arena game advancing on its own the moment IT finishes
+// (via the ordinary maybeCompleteRound → advanceAfterRound path below)
+// instead of waiting on unrelated games from some shared "wave" to also
+// finish — which is what would happen if multiple simultaneous pairings
+// were grouped into one round the way a swiss round groups them.
+
+const pendingArenaEndTimers = new Map<string, NodeJS.Timeout>();
+
+function clearPendingArenaEnd(tournamentId: string): void {
+  const t = pendingArenaEndTimers.get(tournamentId);
+  if (t) {
+    clearTimeout(t);
+    pendingArenaEndTimers.delete(tournamentId);
+  }
+}
+
+/** Arms the timer that closes the arena's pairing queue once arenaEndsAt
+ *  passes. Doesn't necessarily finish the tournament itself at that
+ *  instant — games already in progress are allowed to complete naturally;
+ *  see fireArenaEnd. */
+function scheduleArenaEnd(tournament: ITournament): void {
+  clearPendingArenaEnd(tournament.id);
+  if (!tournament.arenaEndsAt) return;
+  const delay = tournament.arenaEndsAt.getTime() - Date.now();
+  const fire = () =>
+    fireArenaEnd(tournament.id).catch((err) =>
+      console.error("arena end failed:", err),
+    );
+  if (delay <= 0) {
+    fire();
+    return;
+  }
+  const timer = setTimeout(() => {
+    pendingArenaEndTimers.delete(tournament.id);
+    fire();
+  }, delay);
+  timer.unref?.();
+  pendingArenaEndTimers.set(tournament.id, timer);
+}
+
+function hasActivePairing(tournament: ITournament): boolean {
+  return tournament.rounds.some((round) =>
+    round.pairings.some((p) => p.status === "active"),
+  );
+}
+
+/** Fires right at arenaEndsAt: closes the pairing queue (tryArenaPairings
+ *  itself already refuses to pair once past this time, so there's nothing
+ *  extra to "turn off" here) and, if nothing is still being played, ends
+ *  the tournament immediately. If games ARE still in progress, this is a
+ *  no-op — whichever of those finishes last will notice (via
+ *  advanceAfterRound's arena branch) that time's up and no one else is
+ *  playing, and finish the tournament itself at that point. */
+async function fireArenaEnd(tournamentId: string): Promise<void> {
+  const tournament = await Tournament.findById(tournamentId);
+  if (!tournament || tournament.status !== "active" || tournament.format !== "arena")
+    return;
+  if (!hasActivePairing(tournament)) await finishTournament(tournament);
+}
+
+/** Smart pairing, arena half: every player currently eligible for a new
+ *  pairing — joined, not withdrawn, not paused (see the
+ *  ITournamentPlayer.paused doc comment), not already sitting in a still-
+ *  active pairing themselves, AND currently online. That last check is
+ *  what stops the arena from ever pairing someone against an opponent who
+ *  isn't actually there to play — an offline player is simply left out of
+ *  the pool until they reconnect (see retryArenaPairingsForUser, called on
+ *  socket connect, which re-checks them the moment they're back rather
+ *  than making them wait for some unrelated pairing event to happen to
+ *  pick them up). Unlike swiss's buildSwissRound, there's no "too few
+ *  online, pair everyone anyway" fallback needed here — arena tolerates an
+ *  empty pool fine, it just means nobody gets paired until the next
+ *  trigger. */
+async function arenaAvailablePlayers(
+  tournament: ITournament,
+): Promise<ITournamentPlayer[]> {
+  const busy = new Set<string>();
+  for (const round of tournament.rounds) {
+    for (const pairing of round.pairings) {
+      if (pairing.status !== "active") continue;
+      busy.add(pairing.player1.toString());
+      if (pairing.player2) busy.add(pairing.player2.toString());
+    }
+  }
+  const candidates = tournament.players.filter(
+    (p) => !p.withdrawn && !p.paused && !busy.has(p.user.toString()),
+  );
+  const onlineFlags = await Promise.all(
+    candidates.map((p) => isUserOnline(p.user.toString())),
+  );
+  return candidates.filter((_, i) => onlineFlags[i]);
+}
+
+/** Every current player's single most recent opponent, keyed by userId —
+ *  the "you can't immediately rematch this person" constraint for arena
+ *  pairing. Computed once per tryArenaPairings call rather than re-scanning
+ *  round history per player: walks rounds newest-first and stops as soon
+ *  as every player currently in the tournament has an entry, rather than
+ *  always scanning the tournament's entire history regardless of size. */
+function computeLastArenaOpponents(tournament: ITournament): Map<string, string> {
+  const lastOpponent = new Map<string, string>();
+  const total = tournament.players.length;
+  for (let i = tournament.rounds.length - 1; i >= 0 && lastOpponent.size < total; i--) {
+    const pairing = tournament.rounds[i].pairings[0];
+    if (!pairing?.player2) continue;
+    const a = pairing.player1.toString();
+    const b = pairing.player2.toString();
+    if (!lastOpponent.has(a)) lastOpponent.set(a, b);
+    if (!lastOpponent.has(b)) lastOpponent.set(b, a);
+  }
+  return lastOpponent;
+}
+
+/** True if pairing a against b would immediately repeat either of their
+ *  most recent games. Checked in both directions deliberately: if A played
+ *  someone else more recently than B did, A's own "last opponent" entry no
+ *  longer points at B even though B's still does (B hasn't played since) —
+ *  checking only a's side would let that stale-on-B's-end rematch slip
+ *  through. */
+function isImmediateArenaRematch(
+  lastOpponent: Map<string, string>,
+  a: ITournamentPlayer,
+  b: ITournamentPlayer,
+): boolean {
+  const aId = a.user.toString();
+  const bId = b.user.toString();
+  return lastOpponent.get(aId) === bId || lastOpponent.get(bId) === aId;
+}
+
+/** Greedily pairs off `pool` two at a time, skipping any candidate that
+ *  would recreate either player's immediately preceding game. Returns null
+ *  (rather than a partial result) if it gets stuck on a player whose only
+ *  remaining candidates are all forbidden — the caller retries with a
+ *  different shuffle order rather than accepting a worse pairing than
+ *  necessary. `allowRematch` is the escape hatch for when no shuffle order
+ *  can avoid it (see matchArenaPairs below); with it set, a stuck player is
+ *  paired with whoever's next rather than giving up. */
+function greedyArenaMatch(
+  pool: ITournamentPlayer[],
+  lastOpponent: Map<string, string>,
+  allowRematch: boolean,
+): [ITournamentPlayer, ITournamentPlayer][] | null {
+  const remaining = [...pool];
+  const pairs: [ITournamentPlayer, ITournamentPlayer][] = [];
+  while (remaining.length >= 2) {
+    const a = remaining.shift()!;
+    let idx = remaining.findIndex((b) => !isImmediateArenaRematch(lastOpponent, a, b));
+    if (idx === -1) {
+      if (!allowRematch) return null;
+      idx = 0;
+    }
+    const b = remaining.splice(idx, 1)[0];
+    pairs.push([a, b]);
+  }
+  return pairs;
+}
+
+// Shuffled retries before falling back to an allowed rematch — a single
+// greedy pass can paint itself into a corner (pair off two players early
+// that turn out to be the only valid partner for someone paired later)
+// even when a full rematch-free matching exists; reshuffling and retrying
+// finds one almost every time without needing a proper (and much more
+// code) maximum-matching algorithm.
+const ARENA_PAIRING_ATTEMPTS = 25;
+
+/** Pairs up `pool` two at a time with a hard guarantee against immediate
+ *  rematches — nobody plays the same opponent twice in a row — EXCEPT in
+ *  the rare case where it's mathematically unavoidable (most simply: only
+ *  two players are available at all, and they just played each other).
+ *  That's an explicit, narrow fallback rather than a silent one: it only
+ *  ever engages after every shuffled attempt at a clean matching has
+ *  failed. */
+function matchArenaPairs(
+  pool: ITournamentPlayer[],
+  lastOpponent: Map<string, string>,
+): [ITournamentPlayer, ITournamentPlayer][] {
+  for (let attempt = 0; attempt < ARENA_PAIRING_ATTEMPTS; attempt++) {
+    const result = greedyArenaMatch(shuffle(pool), lastOpponent, false);
+    if (result) return result;
+  }
+  return greedyArenaMatch(shuffle(pool), lastOpponent, true)!;
+}
+
+/** The heart of the arena format: pairs up every currently-available player
+ *  it can, two at a time, each pairing becoming its own new one-pairing
+ *  round (see the section comment above for why). Called right when the
+ *  arena starts (to pair up everyone waiting in the lobby at once) and
+ *  again every time a game finishes or a player un-pauses (to immediately
+ *  re-pair whoever just freed up, rather than making them wait for some
+ *  fixed tick). An odd one out just waits — there's no bye/point awarded
+ *  for simply not having a partner available this instant, unlike swiss. */
+async function tryArenaPairings(tournament: ITournament): Promise<void> {
+  if (tournament.status !== "active" || tournament.format !== "arena") return;
+  if (!tournament.arenaEndsAt || Date.now() >= tournament.arenaEndsAt.getTime())
+    return;
+
+  const pool = await arenaAvailablePlayers(tournament);
+  if (pool.length < 2) return;
+  const lastOpponent = computeLastArenaOpponents(tournament);
+  const pairs = matchArenaPairs(pool, lastOpponent);
+  const newRoundIndexes: number[] = [];
+
+  for (const [a, b] of pairs) {
+    const roundIndex = tournament.rounds.length;
+    tournament.rounds.push({
+      index: roundIndex,
+      status: "pending",
+      pairings: [emptyPairing(0, a.user, b.user)],
+    });
+    newRoundIndexes.push(roundIndex);
+  }
+
+  if (newRoundIndexes.length === 0) return;
+  tournament.currentRoundIndex = tournament.rounds.length - 1;
+  await tournament.save();
+  // Sequential, not Promise.all — each activateRound call creates a real
+  // Game document and re-saves the same in-memory tournament doc; running
+  // them concurrently would race that shared save.
+  for (const roundIndex of newRoundIndexes) {
+    await activateRound(tournament, roundIndex);
+  }
+}
+
+/** Toggles a player's arena pause state — see the ITournamentPlayer.paused
+ *  doc comment. Un-pausing immediately tries to find them a new opponent
+ *  rather than waiting for the next unrelated pairing event to happen to
+ *  pick them up. */
+export async function setArenaPause(
+  tournamentId: string,
+  userId: string,
+  paused: boolean,
+): Promise<ITournament> {
+  const tournament = await Tournament.findById(tournamentId);
+  if (!tournament) throw ApiError.notFound("Tournament not found");
+  if (tournament.format !== "arena")
+    throw ApiError.badRequest("Pausing is only available in arena tournaments");
+  if (tournament.status !== "active")
+    throw ApiError.conflict("This tournament isn't currently active");
+  const player = findPlayer(tournament, userId);
+  if (!player) throw ApiError.badRequest("You're not in this tournament");
+  if (player.withdrawn)
+    throw ApiError.badRequest("You've already withdrawn from this tournament");
+
+  player.paused = paused;
+  await tournament.save();
+
+  if (!paused) await tryArenaPairings(tournament);
+
+  return tournament;
+}
+
+/** Called when a user's socket connects (see presenceSocket.ts) — the
+ *  online-only filtering in arenaAvailablePlayers means a player who was
+ *  offline simply sat out of pairing consideration entirely, so nothing
+ *  else would notice they're back until some unrelated pairing event (a
+ *  different game finishing, someone else pausing/resuming) happened to
+ *  run tryArenaPairings again. This closes that gap: the moment they
+ *  reconnect, every active arena they're registered in gets an immediate
+ *  re-check specifically on their behalf. */
+export async function retryArenaPairingsForUser(userId: string): Promise<void> {
+  const tournaments = await Tournament.find({
+    status: "active",
+    format: "arena",
+    "players.user": userId,
+  });
+  for (const tournament of tournaments) {
+    await tryArenaPairings(tournament).catch((err) =>
+      console.error("arena re-pairing on reconnect failed:", err),
+    );
+  }
+}
+
+/** Finds the round/pairing a player is currently, actively playing in —
+ *  needed instead of just looking at tournament.currentRoundIndex because
+ *  arena can have many rounds "active" at once (each one a different pair
+ *  of players' game), so the single most-recently-created round isn't
+ *  necessarily the one THIS player is in. Round-based formats only ever
+ *  have one active round at a time, so this is equally correct (if
+ *  marginally more work) for them too. */
+function findActivePairingForPlayer(
+  tournament: ITournament,
+  userId: string,
+): { roundIndex: number; pairing: ITournamentPairing } | null {
+  for (let i = tournament.rounds.length - 1; i >= 0; i--) {
+    const pairing = tournament.rounds[i].pairings.find(
+      (p) =>
+        p.status === "active" &&
+        (p.player1.toString() === userId || p.player2?.toString() === userId),
+    );
+    if (pairing) return { roundIndex: i, pairing };
+  }
+  return null;
+}
+
 // --- Scoring ---------------------------------------------------------------
 
 function applyPairingScore(
@@ -1145,6 +1621,21 @@ async function advanceAfterRound(
   tournament: ITournament,
   roundIndex: number,
 ): Promise<void> {
+  if (tournament.format === "arena") {
+    const timeUp =
+      !tournament.arenaEndsAt || Date.now() >= tournament.arenaEndsAt.getTime();
+    if (timeUp) {
+      // Other games from this arena might still be in progress — the last
+      // one to finish is the one that actually triggers finishTournament,
+      // same idea as fireArenaEnd for the case where the clock runs out
+      // while nothing at all is being played.
+      if (!hasActivePairing(tournament)) await finishTournament(tournament);
+      return;
+    }
+    await tryArenaPairings(tournament);
+    return;
+  }
+
   if (tournament.format === "normal") {
     const round = tournament.rounds[roundIndex];
     const winners = round.pairings.map((p) =>
@@ -1175,7 +1666,7 @@ async function advanceAfterRound(
       await finishTournament(tournament);
       return;
     }
-    tournament.rounds.push(buildSwissRound(tournament, roundIndex + 1));
+    tournament.rounds.push(await buildSwissRound(tournament, roundIndex + 1));
     tournament.currentRoundIndex = roundIndex + 1;
     await tournament.save();
     await scheduleRoundStart(tournament, roundIndex + 1);
@@ -1196,6 +1687,7 @@ async function finishTournament(
   tournament: ITournament,
   explicitKnockoutWinner?: string,
 ): Promise<void> {
+  clearPendingArenaEnd(tournament.id);
   tournament.status = "finished";
   tournament.endedAt = new Date();
 
@@ -1476,12 +1968,8 @@ export async function withdrawFromTournament(
 
   player.withdrawn = true;
 
-  const round = tournament.rounds[tournament.currentRoundIndex];
-  const pairing = round?.pairings.find(
-    (p) =>
-      p.status === "active" &&
-      (p.player1.toString() === userId || p.player2?.toString() === userId),
-  );
+  const found = findActivePairingForPlayer(tournament, userId);
+  const pairing = found?.pairing;
 
   if (pairing?.gameId) {
     const gameId = pairing.gameId.toString();
@@ -1519,10 +2007,10 @@ export async function withdrawFromTournament(
 
   await tournament.save();
 
-  if (pairing) {
+  if (pairing && found) {
     await advanceTournamentIfPairing(
       tournament.id,
-      tournament.currentRoundIndex,
+      found.roundIndex,
       pairing.index,
       "draw",
       "withdrawn",
@@ -1572,7 +2060,17 @@ export async function listTournaments(
 }
 
 export async function listMyTournaments(userId: string) {
-  const tournaments = await Tournament.find({ "players.user": userId })
+  // Matches both "you're an entrant" (players.user) and "you organize it
+  // but don't play" (createdBy + organizerOnly) — an organizerOnly creator
+  // is deliberately never added to `players` (see createTournament), so
+  // without the second clause here their own tournament would never show
+  // up in their own "My tournaments" list.
+  const tournaments = await Tournament.find({
+    $or: [
+      { "players.user": userId },
+      { createdBy: userId, organizerOnly: true },
+    ],
+  })
     .sort({ createdAt: -1 })
     .limit(50)
     .lean();

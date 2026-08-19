@@ -31,7 +31,11 @@ import {
 } from "lucide-react";
 import { MoveList, MoveStrip } from "../components/MoveLog.js";
 import { PlayerPanelRow, panelMaterial } from "../components/PlayerPanels.js";
-import { GameOverModal, titleFor, reasonText } from "../components/GameOverModal.js";
+import {
+  GameOverModal,
+  titleFor,
+  reasonText,
+} from "../components/GameOverModal.js";
 import { CageMatchScoreboard } from "../components/CageMatchScoreboard.js";
 import { Card, Badge, Spinner, Button } from "../components/ui/index.js";
 import {
@@ -172,6 +176,11 @@ export function Game() {
   // Next snaps back to `null` once it reaches the live ply so newly
   // arriving moves resume being followed automatically.
   const [viewPly, setViewPly] = useState<number | null>(null);
+  // Mirror viewPly/moves for goToPly below — see that callback's own
+  // comment for why it needs refs instead of closing over the state
+  // directly.
+  const viewPlyRef = useRef<number | null>(viewPly);
+  const movesRef = useRef<MoveLogEntry[]>([]);
   // Spectator chat lives in a bottom-sheet modal on mobile (there's no
   // room for a persistent chat card next to a board that has to fit the
   // viewport) instead of always-visible inline like on desktop.
@@ -1126,16 +1135,29 @@ export function Game() {
    *  stable handleSelectMove reference across the page's many unrelated
    *  re-renders (chat input, move errors, etc.) instead of rebuilding
    *  their entire move-button list every time any of that state changes. */
-  const goToPly = useCallback(
-    (rawPly: number) => {
-      const currentPly = viewPly ?? liveViewPly;
-      const clamped = Math.max(0, Math.min(liveViewPly, rawPly));
-      if (clamped === currentPly) return;
-      setViewPly(clamped >= liveViewPly ? null : clamped);
-      if (clamped > 0) playSoundForMove(moves[clamped - 1]?.san);
-    },
-    [viewPly, liveViewPly, moves],
-  );
+  // Ref-based rather than closing over viewPly/liveViewPly/moves directly:
+  // those all change on every single navigation step, which used to give
+  // goToPly (and therefore handleSelectMove below) a fresh identity on
+  // every step too. MoveList/MoveStrip's per-button memoization (see
+  // MoveLog.tsx) depends on onSelectMove staying referentially stable —
+  // otherwise every move button would see a "changed" prop on every step
+  // and re-render regardless, defeating the whole point of that memo.
+  // This callback is now stable for the lifetime of the component.
+  useEffect(() => {
+    viewPlyRef.current = viewPly;
+  }, [viewPly]);
+  useEffect(() => {
+    movesRef.current = moves;
+  }, [moves]);
+  const goToPly = useCallback((rawPly: number) => {
+    const currentMoves = movesRef.current;
+    const liveViewPly = currentMoves.length;
+    const currentPly = viewPlyRef.current ?? liveViewPly;
+    const clamped = Math.max(0, Math.min(liveViewPly, rawPly));
+    if (clamped === currentPly) return;
+    setViewPly(clamped >= liveViewPly ? null : clamped);
+    if (clamped > 0) playSoundForMove(currentMoves[clamped - 1]?.san);
+  }, []);
 
   const handleSelectMove = useCallback(
     (ply: number) => goToPly(ply),
@@ -1166,6 +1188,130 @@ export function Game() {
     });
     setChatInput("");
   }
+
+  const isPlayer = role !== "spectator";
+  // Keyed off the position actually on screen (live, or historical while
+  // browsing — see displayFen above), not always the live `chess` object —
+  // otherwise the check highlight would keep showing the live game's check
+  // state while scrubbing through a history where a different (or no)
+  // check was in effect at that ply.
+  const inCheck = useMemo(
+    () => isInCheck(isViewingHistory ? new Chess(displayFen) : chess),
+    [isViewingHistory, displayFen, chess],
+  );
+
+  // Memoized — GameDetailsCard is React.memo'd below it, and a plain array
+  // literal here would be a fresh reference on every one of Game's many
+  // unrelated re-renders (chat input, move errors, banners…), which would
+  // make that memo boundary a no-op since one of its props would always
+  // look "changed".
+  const badges: ReactNode[] = useMemo(() => {
+    if (settings.zenMode) return [];
+    const list: ReactNode[] = [];
+    if (gameMeta?.timeControl)
+      list.push(
+        <Badge key="tc" variant="neutral">
+          {formatTimeControl(gameMeta.timeControl)}
+        </Badge>,
+      );
+    if (gameMeta?.variant === "chess960")
+      list.push(
+        <Badge key="960" variant="secondary">
+          Chess960
+        </Badge>,
+      );
+    if (gameMeta?.wagerTokens)
+      list.push(
+        <Badge key="wager" variant="warning">
+          {gameMeta.wagerTokens} R wager
+        </Badge>,
+      );
+    if (gameMeta?.tournamentId)
+      list.push(
+        <Link key="tourney" to={`/tournaments/${gameMeta.tournamentId.code}`}>
+          <Badge variant="glass" className="hover:brightness-110">
+            {gameMeta.tournamentId.name}
+          </Badge>
+        </Link>,
+      );
+    // White/black berserked badges now live on the player panels themselves,
+    // right next to the clock they actually affect — see PlayerPanels.tsx's
+    // BerserkBadge.
+    return list;
+  }, [
+    settings.zenMode,
+    gameMeta?.timeControl,
+    gameMeta?.variant,
+    gameMeta?.wagerTokens,
+    gameMeta?.tournamentId,
+  ]);
+
+  const showChat = !settings.zenMode && role === "spectator" && live;
+
+  // Persistent "White Wins — Timeout" style line for GameDetailsCard — see
+  // that component's doc comment on resultSummary for why this needs to
+  // exist separately from the modal (which only auto-pops once, right when
+  // a game ends live; it stays dismissed on every later visit).
+  const resultSummary = useMemo(
+    () =>
+      gameOver
+        ? {
+            text: `${titleFor(gameOver.result, myColor, isPlayer)} — ${reasonText(gameOver.reason)}`,
+            tone: (gameOver.result === null
+              ? "neutral"
+              : gameOver.result === "draw"
+                ? "draw"
+                : isPlayer && myColor
+                  ? gameOver.result === myColor
+                    ? "win"
+                    : "loss"
+                  : "neutral") as "win" | "loss" | "draw" | "neutral",
+            onClick: () => setGameOverModalDismissed(false),
+          }
+        : null,
+    [gameOver, myColor, isPlayer],
+  );
+
+  // Which ply is "selected" right now — the one being browsed, or the
+  // live move if nothing's being browsed. Drives the highlight below.
+  const currentPly = viewPly ?? liveViewPly;
+
+  // Both MoveList/MoveStrip are React.memo'd (see components/MoveLog.tsx)
+  // so they only actually re-render when `moves`/`currentPly`/
+  // `handleSelectMove` change — but wrapping the elements themselves in
+  // useMemo additionally keeps *this* reference stable across Game's many
+  // unrelated re-renders, which is what lets GameDetailsCard's own
+  // React.memo boundary actually bail instead of always seeing a "new"
+  // moveListEntries/moveStripEntries prop.
+  const moveListEntries = useMemo(
+    () =>
+      moves.length === 0 ? null : (
+        <MoveList
+          moves={annotatedMoves}
+          currentPly={currentPly}
+          onSelectMove={handleSelectMove}
+        />
+      ),
+    [moves.length, annotatedMoves, currentPly, handleSelectMove],
+  );
+  const moveStripEntries = useMemo(
+    () =>
+      moves.length === 0 ? null : (
+        <MoveStrip
+          moves={annotatedMoves}
+          currentPly={currentPly}
+          onSelectMove={handleSelectMove}
+          scrollRef={moveStripScrollRef}
+        />
+      ),
+    [
+      moves.length,
+      annotatedMoves,
+      currentPly,
+      handleSelectMove,
+      moveStripScrollRef,
+    ],
+  );
 
   if (loadError) {
     return (
@@ -1224,90 +1370,6 @@ export function Game() {
       </div>
     );
   }
-
-  const isPlayer = role !== "spectator";
-  const inCheck = isInCheck(chess);
-
-  const badges: ReactNode[] = [];
-  if (!settings.zenMode) {
-    if (gameMeta?.timeControl)
-      badges.push(
-        <Badge key="tc" variant="neutral">
-          {formatTimeControl(gameMeta.timeControl)}
-        </Badge>,
-      );
-    if (gameMeta?.variant === "chess960")
-      badges.push(
-        <Badge key="960" variant="secondary">
-          Chess960
-        </Badge>,
-      );
-    if (gameMeta?.wagerTokens)
-      badges.push(
-        <Badge key="wager" variant="warning">
-          {gameMeta.wagerTokens} R wager
-        </Badge>,
-      );
-    if (gameMeta?.tournamentId)
-      badges.push(
-        <Link key="tourney" to={`/tournaments/${gameMeta.tournamentId.code}`}>
-          <Badge variant="glass" className="hover:brightness-110">
-            {gameMeta.tournamentId.name}
-          </Badge>
-        </Link>,
-      );
-    // White/black berserked badges now live on the player panels themselves,
-    // right next to the clock they actually affect — see PlayerPanels.tsx's
-    // BerserkBadge.
-  }
-
-  const showChat = !settings.zenMode && role === "spectator" && live;
-
-  // Persistent "White Wins — Timeout" style line for GameDetailsCard — see
-  // that component's doc comment on resultSummary for why this needs to
-  // exist separately from the modal (which only auto-pops once, right when
-  // a game ends live; it stays dismissed on every later visit).
-  const resultSummary = gameOver
-    ? {
-        text: `${titleFor(gameOver.result, myColor, isPlayer)} — ${reasonText(gameOver.reason)}`,
-        tone: (gameOver.result === null
-          ? "neutral"
-          : gameOver.result === "draw"
-            ? "draw"
-            : isPlayer && myColor
-              ? gameOver.result === myColor
-                ? "win"
-                : "loss"
-              : "neutral") as "win" | "loss" | "draw" | "neutral",
-        onClick: () => setGameOverModalDismissed(false),
-      }
-    : null;
-
-  // Which ply is "selected" right now — the one being browsed, or the
-  // live move if nothing's being browsed. Drives the highlight below.
-  const currentPly = viewPly ?? liveViewPly;
-
-  // Rendered directly (not built as a JSX variable) further down — both are
-  // React.memo'd (see components/MoveLog.tsx) so they only actually re-render
-  // when `moves`/`currentPly`/`handleSelectMove` change, not on every one of
-  // the page's unrelated state updates.
-  const moveListEntries =
-    moves.length === 0 ? null : (
-      <MoveList
-        moves={annotatedMoves}
-        currentPly={currentPly}
-        onSelectMove={handleSelectMove}
-      />
-    );
-  const moveStripEntries =
-    moves.length === 0 ? null : (
-      <MoveStrip
-        moves={annotatedMoves}
-        currentPly={currentPly}
-        onSelectMove={handleSelectMove}
-        scrollRef={moveStripScrollRef}
-      />
-    );
 
   // Resign/draw/abort — the trio of "give up on the game" actions. Abort is
   // only for normal games during the idle phase (before either side has
