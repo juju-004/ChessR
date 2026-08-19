@@ -246,30 +246,33 @@ async function fireAutoStart(tournamentId: string): Promise<void> {
   } else {
     await refundAllEscrow(tournament);
     tournament.status = "cancelled";
+    tournament.cancelReason = "Not enough players to start the tournament";
+    tournament.cancelledAt = new Date();
     tournament.scheduledStartAt = null;
     await tournament.save();
     broadcastUpdate(tournament, "tournament:cancelled");
   }
 }
 
-// Every format has its own sane player-count bounds — knockout tolerates any
-// field size >= 2 (byes soak up the gap to the next power of two), swiss
-// wants enough players to make several rounds meaningful, and the two
-// round-robin formats are capped fairly low since game count grows
-// quadratically (double round-robin doubles that again).
-// Every format has its own sane player-count bounds — knockout tolerates any
-// field size >= 2 (byes soak up the gap to the next power of two), swiss
-// wants enough players to make several rounds meaningful, round-robin is
-// capped fairly low since game count grows quadratically (and again with
-// each extra robinRounds lap), and arena tolerates a much larger field
-// since players aren't all locked into synchronized rounds together — a
-// big arena just means more simultaneous games, not more rounds.
+// Every format has its own minimum before it's even worth running — a
+// knockout bracket or swiss event with fewer than 4 players barely
+// resembles either format, so both require 4; round-robin and arena are
+// still meaningful with as few as 3. fireAutoStart enforces this at the
+// scheduled start time (cancelling and refunding rather than starting
+// short-handed), and createTournament enforces maxPlayers can't be set
+// below it either. Max side: knockout tolerates any field size (byes soak
+// up the gap to the next power of two), swiss wants enough players to make
+// several rounds meaningful, round-robin is capped fairly low since game
+// count grows quadratically (and again with each extra robinRounds lap),
+// and arena tolerates a much larger field since players aren't all locked
+// into synchronized rounds together — a big arena just means more
+// simultaneous games, not more rounds.
 const FORMAT_BOUNDS: Record<TournamentFormat, { min: number; max: number }> = {
-  normal: { min: 2, max: 64 },
+  normal: { min: 4, max: 64 },
   swiss: { min: 4, max: 64 },
   robin: { min: 3, max: 20 },
   round_robin: { min: 3, max: 14 },
-  arena: { min: 4, max: 100 },
+  arena: { min: 3, max: 100 },
 };
 
 async function uniqueCode(): Promise<string> {
@@ -700,6 +703,8 @@ export async function leaveTournament(
   if (tournament.players.length === 0) {
     clearPendingAutoStart(tournament.id);
     tournament.status = "cancelled";
+    tournament.cancelReason = "Not enough players to start the tournament";
+    tournament.cancelledAt = new Date();
   } else if (wasCreator) {
     tournament.createdBy = tournament.players[0].user;
   }
@@ -752,6 +757,8 @@ export async function cancelTournament(
   clearPendingAutoStart(tournament.id);
   await refundAllEscrow(tournament);
   tournament.status = "cancelled";
+  tournament.cancelReason = "Cancelled by the organiser";
+  tournament.cancelledAt = new Date();
   await tournament.save();
   return tournament;
 }
@@ -2075,4 +2082,34 @@ export async function listMyTournaments(userId: string) {
     .limit(50)
     .lean();
   return tournaments.map(sanitizeForClient);
+}
+
+// --- Cancelled tournament cleanup -------------------------------------------
+//
+// A cancelled tournament never had a game played in it — there's no
+// standings, no history, nothing worth keeping around. Rather than let
+// every cancellation (every under-subscribed scheduled event, every
+// organizer who changes their mind) accumulate in the database forever,
+// they're deleted a short while after cancellation. The grace period is
+// purely so anyone already looking at the tournament page — or whose
+// client hasn't refetched yet — still gets to see the "cancelled, here's
+// why" message (see cancelReason) instead of the page abruptly 404ing out
+// from under them the instant cancelTournament runs; it's not meant as a
+// meaningful retention window beyond that.
+const CANCELLED_TOURNAMENT_RETENTION_MS = 10 * 60 * 1000; // 10 minutes
+
+/** Deletes any tournament that's been sitting cancelled for longer than the
+ *  grace period above. Called once on boot and then periodically alongside
+ *  reconcileActiveTournaments (see index.ts) — cheap either way, since
+ *  cancelledAt is indexed and most sweeps will find nothing to do. */
+export async function sweepCancelledTournaments(): Promise<{ deleted: number }> {
+  const cutoff = new Date(Date.now() - CANCELLED_TOURNAMENT_RETENTION_MS);
+  const result = await Tournament.deleteMany({
+    status: "cancelled",
+    // Also catches tournaments cancelled before cancelledAt existed on the
+    // schema (backfilled as null) — no reason to let those sit around
+    // forever just because we don't know exactly when they were cancelled.
+    $or: [{ cancelledAt: { $lte: cutoff } }, { cancelledAt: null }],
+  });
+  return { deleted: result.deletedCount ?? 0 };
 }

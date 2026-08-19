@@ -1,13 +1,9 @@
 import { apiFetch } from './http.js';
 
-export interface TokenPlan {
-  id: string;
-  tokens: number;
-  priceNaira: number;
-}
-
-export interface PlansResponse {
-  plans: TokenPlan[];
+export interface WalletConfigResponse {
+  // Fixed purchase rate — no more plan tiers, just "how much R" someone
+  // types in. See BuyTokens.tsx.
+  purchase: { nairaPerToken: number; minTokens: number; maxTokens: number };
   withdrawal: { nairaPerToken: number; minTokens: number };
   paystackPublicKey: string;
 }
@@ -48,18 +44,24 @@ export interface TransactionsResponse {
   totalPages: number;
 }
 
-export function getPlans() {
-  return apiFetch<PlansResponse>('/wallet/plans');
+// Kept at the same '/wallet/plans' path as before (renaming would be a
+// server-side route change too) — the response shape moved from a fixed
+// `plans` list to a flat `purchase` rate object, see WalletConfigResponse.
+export function getWalletConfig() {
+  return apiFetch<WalletConfigResponse>('/wallet/plans');
 }
 
 export function getBalance() {
   return apiFetch<{ tokenBalance: number }>('/wallet/balance');
 }
 
-export function initPurchase(planId: string) {
+// tokens replaces planId — there's no fixed plan to reference anymore,
+// the person just types how many R Coins they want (see BuyTokens.tsx)
+// and the server prices it at the fixed rate returned by getWalletConfig.
+export function initPurchase(tokens: number) {
   return apiFetch<{ reference: string; amountKobo: number; tokens: number; paystackPublicKey: string }>(
     '/wallet/purchase',
-    { method: 'POST', body: JSON.stringify({ planId }) },
+    { method: 'POST', body: JSON.stringify({ tokens }) },
   );
 }
 

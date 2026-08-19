@@ -419,7 +419,7 @@ export function Players() {
                       </Button>
 
                       <Link
-                        to={`/cage?challenge=${f.id}`}
+                        to={`/cage/new?challenge=${f.id}`}
                         className="block"
                         onClick={() => setChallengingFriendId(null)}
                       >

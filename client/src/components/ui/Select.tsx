@@ -1,9 +1,11 @@
-import { forwardRef, type SelectHTMLAttributes } from "react";
+import { forwardRef, type ReactNode, type SelectHTMLAttributes } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/cn.js";
 
 export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
-  label?: string;
+  /** Usually a string, but accepts any node — e.g. a label paired with a
+   *  HelpTip, same pattern as Input's label. */
+  label?: string | ReactNode;
   hint?: string;
 }
 
@@ -25,7 +27,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
             ref={ref}
             id={selectId}
             className={cn(
-              "h-10 w-full appearance-none rounded-xl border border-base-300 bg-base-200 px-3 pr-9 text-sm text-base-content",
+              "h-10 w-full appearance-none rounded-xl border border-base-300 bg-base-100/60 px-3 pr-9 text-sm text-base-content",
               "focus:outline-none focus:ring-2 focus:ring-(--primary) focus:border-transparent",
               className,
             )}

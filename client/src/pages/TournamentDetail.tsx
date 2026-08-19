@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Trophy, Clock, Share2, Lock, Pencil, Plus, X, ChevronDown, Pause, Play } from "lucide-react";
+import {
+  Clock,
+  Share2,
+  Lock,
+  Pencil,
+  ChevronDown,
+  Pause,
+  Play,
+  Medal,
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   getTournamentByCode,
@@ -8,7 +17,7 @@ import {
   usernameOf,
   gradientOf,
   formatTimeControl,
-  totalPrizePool,
+  ordinalSuffix,
   tokensLabel,
   FORMAT_LABEL,
   FORMAT_MAX_PLAYERS,
@@ -22,6 +31,8 @@ import { useSocket } from "../contexts/SocketContext.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import { useNotify } from "../contexts/NotificationContext.js";
 import { copyToClipboard } from "@/lib/utils.js";
+import { cn } from "@/lib/cn.js";
+import { PrizePoolEditor } from "../components/tournaments/PrizePoolEditor.js";
 import {
   Page,
   Card,
@@ -35,8 +46,7 @@ import {
   Switch,
   Avatar,
   Tabs,
-  Popover,
-  Modal,
+  ResponsiveOverlay,
 } from "../components/ui/index.js";
 
 const CLIENT_URL = import.meta.env.VITE_CLIENT_URL ?? "http://localhost:5173";
@@ -93,22 +103,6 @@ function EditTournamentForm({
     toDatetimeLocal(tournament.scheduledStartAt),
   );
   const [error, setError] = useState("");
-
-  function addPrizeTier() {
-    const nextRank = (prizeTiers[prizeTiers.length - 1]?.toRank ?? 0) + 1;
-    setPrizeTiers([
-      ...prizeTiers,
-      { fromRank: nextRank, toRank: nextRank, tokens: 0 },
-    ]);
-  }
-  function updatePrizeTier(i: number, patch: Partial<TournamentPrizeTier>) {
-    setPrizeTiers(
-      prizeTiers.map((t, idx) => (idx === i ? { ...t, ...patch } : t)),
-    );
-  }
-  function removePrizeTier(i: number) {
-    setPrizeTiers(prizeTiers.filter((_, idx) => idx !== i));
-  }
 
   function save() {
     if (!socket) return;
@@ -333,70 +327,15 @@ function EditTournamentForm({
       </div>
 
       <div className="space-y-2 border-t border-base-300 pt-3">
-        <div className="flex items-center justify-between">
-          <label className="text-sm font-medium text-base-content/80">
-            Prize pool
-          </label>
-          {totalPrizePool(prizeTiers) > 0 && (
-            <span className="text-xs text-base-content/50">
-              {totalPrizePool(prizeTiers)} R total
-            </span>
-          )}
-        </div>
         <p className="text-xs text-base-content/50">
-          Increasing this debits the difference from you now; decreasing it
+          Increasing the total debits the difference from you now; decreasing it
           refunds the difference.
         </p>
-        {prizeTiers.map((tier, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <span className="text-xs text-base-content/50">Rank</span>
-            <div className="w-16">
-              <Input
-                type="number"
-                min={1}
-                value={tier.fromRank}
-                onChange={(e) =>
-                  updatePrizeTier(i, { fromRank: Number(e.target.value) })
-                }
-              />
-            </div>
-            <span className="text-xs text-base-content/50">to</span>
-            <div className="w-16">
-              <Input
-                type="number"
-                min={1}
-                value={tier.toRank}
-                onChange={(e) =>
-                  updatePrizeTier(i, { toRank: Number(e.target.value) })
-                }
-              />
-            </div>
-            <span className="text-xs text-base-content/50">gets</span>
-            <div className="w-24">
-              <Input
-                type="number"
-                min={0}
-                value={tier.tokens}
-                onChange={(e) =>
-                  updatePrizeTier(i, { tokens: Number(e.target.value) })
-                }
-              />
-            </div>
-            <span className="text-xs text-base-content/50">
-              {tokensLabel(tier)}
-            </span>
-            <button
-              onClick={() => removePrizeTier(i)}
-              aria-label="Remove prize tier"
-              className="ml-auto rounded-md p-1 text-red-400 hover:bg-red-900/30"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        ))}
-        <Button size="sm" variant="secondary" onClick={addPrizeTier}>
-          <Plus className="h-4 w-4" /> Add prize tier
-        </Button>
+        <PrizePoolEditor
+          value={prizeTiers}
+          onChange={setPrizeTiers}
+          maxPlayers={maxPlayers}
+        />
       </div>
 
       <div className="flex gap-2 pt-2">
@@ -409,21 +348,6 @@ function EditTournamentForm({
       </div>
     </Card>
   );
-}
-
-function ordinalSuffix(n: number): string {
-  const mod100 = n % 100;
-  if (mod100 >= 11 && mod100 <= 13) return "th";
-  switch (n % 10) {
-    case 1:
-      return "st";
-    case 2:
-      return "nd";
-    case 3:
-      return "rd";
-    default:
-      return "th";
-  }
 }
 
 /** Live "next round starts in Ns" countdown, shown while the tournament is
@@ -559,7 +483,8 @@ function LateJoinRow({
   setJoinPassword: (v: string) => void;
   join: () => void;
 }) {
-  if (tournament.format !== "arena" && tournament.format !== "swiss") return null;
+  if (tournament.format !== "arena" && tournament.format !== "swiss")
+    return null;
 
   const stillOpen =
     tournament.format === "arena"
@@ -591,17 +516,6 @@ function LateJoinRow({
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-lg bg-base-200/60 px-2 py-1.5">
-      <p className="text-[10px] uppercase tracking-wide text-base-content/40">
-        {label}
-      </p>
-      <p className="font-semibold text-base-content">{value}</p>
-    </div>
-  );
-}
-
 /** Every pairing a given player was part of, across every round, in the
  *  order the rounds were played — the raw material for their round-by-round
  *  line in PlayerTournamentDetails. */
@@ -625,9 +539,41 @@ function pairingsForPlayer(
   return records;
 }
 
+const RANK_MEDAL_CLASSES: Record<number, string> = {
+  1: "bg-amber-400/15 text-amber-500",
+  2: "bg-slate-300/25 text-slate-400",
+  3: "bg-orange-400/15 text-orange-500",
+};
+
+/** Standings row-number cell — a plain rank for 4th and below, a small
+ *  colored medal icon for the top 3 so the podium reads at a glance
+ *  without needing to actually count down the column. */
+function RankBadge({ rank }: { rank: number }) {
+  const medalClass = RANK_MEDAL_CLASSES[rank];
+  if (!medalClass) {
+    return (
+      <span className="flex h-6 w-6 items-center justify-center text-sm font-medium text-base-content/50">
+        {rank}
+      </span>
+    );
+  }
+  return (
+    <span
+      className={cn(
+        "flex h-6 w-6 items-center justify-center rounded-full",
+        medalClass,
+      )}
+      title={`${rank}${ordinalSuffix(rank)} place`}
+    >
+      <Medal className="h-3.5 w-3.5" />
+    </span>
+  );
+}
+
 /** The full "player tournament details" content — shared verbatim between
- *  the desktop popover and the mobile modal (see the standings table below)
- *  so the two surfaces can never drift out of sync with each other. */
+ *  the desktop popover and the mobile bottom sheet (see the standings
+ *  table below, via ResponsiveOverlay) so the two surfaces can never drift
+ *  out of sync with each other. */
 function PlayerTournamentDetails({
   tournament,
   player,
@@ -637,105 +583,162 @@ function PlayerTournamentDetails({
 }) {
   const isPointsFormat = tournament.format !== "normal";
   const records = pairingsForPlayer(tournament, player.user);
+  const stats = [
+    { label: "Games", value: player.gamesPlayed },
+    { label: "Berserk wins", value: player.berserkWins },
+    isPointsFormat && { label: "Points", value: player.points },
+  ].filter(Boolean) as { label: string; value: number }[];
 
   return (
-    <div className="w-72 max-w-full space-y-3 p-1">
-      <div className="flex items-center gap-2.5">
-        <Avatar
-          username={player.username}
-          gradient={player.avatarGradient}
-          size="md"
-        />
-        <div className="min-w-0">
-          <p className="truncate font-semibold text-base-content">
-            {player.username}
-          </p>
-          {player.user === tournament.createdBy && (
-            <p className="text-xs text-amber-400">★ Organizer</p>
-          )}
+    <div className="w-full flex flex-col items-center max-w-full space-y-2">
+      <div className="w-full rounded-xl bg-base-200/70 px-2 py-2.5">
+        <div className="flex items-center gap-3 pb-3 pt-1">
+          <Avatar
+            username={player.username}
+            gradient={player.avatarGradient}
+            size="md"
+          />
+          <div className="min-w-0">
+            <p className="truncate text-base font-semibold text-base-content">
+              {player.username}
+            </p>
+            {player.user === tournament.createdBy && (
+              <p className="text-xs font-medium text-amber-400">★ Organizer</p>
+            )}
+          </div>
+        </div>
+
+        <div
+          className={`grid md:border-none border-t-2 border-base-300/35 gap-2 ${stats.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}
+        >
+          {stats.map((s) => (
+            <div
+              key={s.label}
+              className="rounded-xl md:bg-base-200/70 px-2 py-2.5 text-center"
+            >
+              <p
+                className={cn(
+                  "text-lg font-bold",
+                  s.label === "Points" ? "text-secondary" : "text-base-content",
+                )}
+              >
+                {s.value}
+              </p>
+              <p className="text-[11px] text-base-content/50">{s.label}</p>
+            </div>
+          ))}
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        {isPointsFormat && <Stat label="Points" value={player.points} />}
-        {isPointsFormat && <Stat label="Tiebreak" value={player.tiebreak} />}
-        <Stat label="Games played" value={player.gamesPlayed} />
-        <Stat label="Berserk wins" value={player.berserkWins} />
-      </div>
-
-      {(player.hadBye || player.withdrawn) && (
+      {player.withdrawn && (
         <div className="flex flex-wrap gap-1.5">
-          {player.hadBye && <Badge variant="neutral">Had a bye</Badge>}
           {player.withdrawn && <Badge variant="error">Withdrawn</Badge>}
         </div>
       )}
 
       {records.length > 0 && (
-        <div className="space-y-1.5 border-t border-base-300 pt-2.5">
-          <p className="text-xs font-medium text-base-content/50">
-            Round by round
-          </p>
-          {records.map(({ roundIndex, pairing, isP1 }) => {
-            const opponentId = isP1 ? pairing.player2 : pairing.player1;
-            const oppName = usernameOf(tournament, opponentId);
-            const berserked = isP1 ? pairing.berserk.p1 : pairing.berserk.p2;
+        <div className="space-y-1 w-full">
+          <div className="md:max-h-64 max-h-80 space-y-0.5 overflow-y-auto">
+            {records.map(({ roundIndex, pairing, isP1 }) => {
+              const opponentId = isP1 ? pairing.player2 : pairing.player1;
+              const oppName = usernameOf(tournament, opponentId);
+              const berserked = isP1 ? pairing.berserk.p1 : pairing.berserk.p2;
+              // Not set until the game is actually created (activateRound) —
+              // a pairing that's been built but is still waiting out its
+              // inter-round break has neither yet, so there's nothing to
+              // show; the color icon just doesn't render for that row.
+              const myColor: "white" | "black" | null =
+                pairing.whiteId === player.user
+                  ? "white"
+                  : pairing.blackId === player.user
+                    ? "black"
+                    : null;
 
-            let resultText = "·";
-            let resultColor = "text-base-content/40";
-            if (pairing.status === "finished") {
-              if (opponentId === null) {
-                resultText = "Bye";
-              } else if (pairing.result === "draw") {
-                resultText = "Draw";
-                resultColor = "text-base-content/70";
-              } else {
-                const won =
-                  (isP1 && pairing.result === "p1") ||
-                  (!isP1 && pairing.result === "p2");
-                resultText = won ? "Won" : "Lost";
-                resultColor = won ? "text-green-400" : "text-red-400";
+              let resultText = "·";
+              let resultColor = "text-base-content/40";
+              let inProgress = false;
+              if (pairing.status === "finished") {
+                if (opponentId === null) {
+                  resultText = "Bye";
+                } else if (pairing.result === "draw") {
+                  resultText = "Draw";
+                  resultColor = "text-base-content/70";
+                } else {
+                  const won =
+                    (isP1 && pairing.result === "p1") ||
+                    (!isP1 && pairing.result === "p2");
+                  resultText = won ? "Won" : "Lost";
+                  resultColor = won ? "text-green-400" : "text-red-400";
+                }
+              } else if (pairing.status === "active") {
+                resultText = "Playing";
+                resultColor = "text-amber-400";
+                inProgress = true;
               }
-            } else if (pairing.status === "active") {
-              resultText = "Playing";
-              resultColor = "text-amber-400";
-            }
 
-            return (
-              <div
-                key={roundIndex}
-                className="flex items-center justify-between gap-2 text-sm"
-              >
-                <span className="flex min-w-0 items-center gap-1.5 text-base-content/70">
-                  <span className="shrink-0 text-xs text-base-content/40">
-                    R{roundIndex + 1}
+              const rowContent = (
+                <>
+                  <span className="flex min-w-0 items-center gap-1.5 text-base-content/70">
+                    <span className="shrink-0 text-xs text-base-content/40">
+                      R{roundIndex + 1}
+                    </span>
+                    {myColor && (
+                      <span
+                        title={`You played ${myColor}`}
+                        aria-label={`Playing as ${myColor}`}
+                        className={`shrink-0 text-xs leading-none ${
+                          myColor === "white"
+                            ? "text-base-content"
+                            : "text-base-content/40"
+                        }`}
+                      >
+                        {myColor === "white" ? "♔" : "♚"}
+                      </span>
+                    )}
+                    {opponentId !== null && (
+                      <Avatar
+                        username={oppName}
+                        gradient={gradientOf(tournament, opponentId)}
+                        size="xs"
+                      />
+                    )}
+                    <span className="truncate">
+                      {opponentId === null ? "Bye" : oppName}
+                      {berserked && " ⚔"}
+                    </span>
                   </span>
-                  {opponentId !== null && (
-                    <Avatar
-                      username={oppName}
-                      gradient={gradientOf(tournament, opponentId)}
-                      size="xs"
-                    />
-                  )}
-                  <span className="truncate">
-                    {opponentId === null ? "Bye" : oppName}
-                    {berserked && " ⚔"}
-                  </span>
-                </span>
-                {pairing.joinCode ? (
-                  <Link
-                    to={`/game/${pairing.joinCode}`}
-                    className={`shrink-0 font-medium hover:underline ${resultColor}`}
+                  <span
+                    className={`flex shrink-0 items-center gap-1.5 font-medium ${resultColor}`}
                   >
-                    {resultText}
-                  </Link>
-                ) : (
-                  <span className={`shrink-0 font-medium ${resultColor}`}>
+                    {inProgress && (
+                      <span
+                        aria-hidden
+                        className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400"
+                      />
+                    )}
                     {resultText}
                   </span>
-                )}
-              </div>
-            );
-          })}
+                </>
+              );
+
+              return pairing.joinCode ? (
+                <Link
+                  key={roundIndex}
+                  to={`/game/${pairing.joinCode}`}
+                  className="flex items-center justify-between gap-2 rounded-lg px-1.5 py-1.5 text-sm transition-colors hover:bg-base-300/40"
+                >
+                  {rowContent}
+                </Link>
+              ) : (
+                <div
+                  key={roundIndex}
+                  className="flex items-center justify-between gap-2 rounded-lg px-1.5 py-1.5 text-sm"
+                >
+                  {rowContent}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
@@ -838,7 +841,6 @@ export function TournamentDetail() {
   const [joinPassword, setJoinPassword] = useState("");
   const [editing, setEditing] = useState(false);
   const [manualRoundIndex, setManualRoundIndex] = useState<number | null>(null);
-  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   // Collapsed by default — the tier breakdown is useful detail but not
   // something you need to see every time you land on the page, especially
   // once the header/card title already shows the total.
@@ -912,9 +914,6 @@ export function TournamentDetail() {
   const selectedRound =
     tournament.rounds[selectedRoundIndex] ??
     tournament.rounds[tournament.rounds.length - 1];
-  const selectedPlayer = selectedPlayerId
-    ? tournament.players.find((p) => p.user === selectedPlayerId)
-    : null;
 
   function join() {
     // Once you're a player, the server already knows it — the password is
@@ -978,7 +977,7 @@ export function TournamentDetail() {
         </div>
       }
     >
-      <div className="mx-auto max-w-3xl space-y-4">
+      <div className="mx-auto space-y-4">
         {status && (
           <p
             className={`text-sm ${status.isError ? "text-red-400" : "text-green-400"}`}
@@ -1086,7 +1085,12 @@ export function TournamentDetail() {
             )}
 
             {tournament.status === "active" && !isPlayer && (
-              <LateJoinRow tournament={tournament} joinPassword={joinPassword} setJoinPassword={setJoinPassword} join={join} />
+              <LateJoinRow
+                tournament={tournament}
+                joinPassword={joinPassword}
+                setJoinPassword={setJoinPassword}
+                join={join}
+              />
             )}
 
             {tournament.status === "active" && isPlayer && (
@@ -1114,20 +1118,12 @@ export function TournamentDetail() {
               </div>
             )}
 
-            {tournament.status === "finished" && (
-              <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-green-400">
-                <Trophy className="h-4 w-4" />
-                <Avatar
-                  username={usernameOf(tournament, tournament.winner)}
-                  gradient={gradientOf(tournament, tournament.winner)}
-                  size="xs"
-                />
-                {usernameOf(tournament, tournament.winner)} won
-              </p>
-            )}
             {tournament.status === "cancelled" && (
               <p className="text-sm text-red-400">
-                This tournament was cancelled.
+                This tournament was cancelled
+                {tournament.cancelReason
+                  ? ` — ${tournament.cancelReason}.`
+                  : "."}
               </p>
             )}
           </Card>
@@ -1191,109 +1187,82 @@ export function TournamentDetail() {
             <ArenaCountdown arenaEndsAt={tournament.arenaEndsAt} />
           )}
 
-        {tournament.status === "pending" && (
-          <Card variant="solid">
-            <CardHeader>
-              <CardTitle>Players ({tournament.players.length})</CardTitle>
-            </CardHeader>
-            <div className="flex flex-wrap gap-2">
-              {tournament.players.map((p) => (
-                <Badge key={p.user} variant="neutral" className="py-1!">
-                  <Avatar
-                    username={p.username}
-                    gradient={p.avatarGradient}
-                    size="xs"
-                  />
-                  {p.username}
-                  {p.user === tournament.createdBy && (
-                    <span className="text-amber-400">★</span>
-                  )}
-                </Badge>
-              ))}
-            </div>
-          </Card>
-        )}
-
         {isPointsFormat && standings.length > 0 && (
           <Card variant="solid">
             <CardHeader>
               <CardTitle>Standings</CardTitle>
             </CardHeader>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-base-content/50">
-                  <th className="pb-1">#</th>
-                  <th className="pb-1">Player</th>
-                  <th className="pb-1 text-right">Pts</th>
-                  <th className="pb-1 text-right">Games</th>
-                  <th className="pb-1 text-right">⚔ wins</th>
-                </tr>
-              </thead>
-              <tbody>
-                {standings.map((p, i) => (
-                  <tr
-                    key={p.user}
-                    className={
-                      p.user === myId
-                        ? "font-semibold text-(--secondary)"
-                        : "text-base-content"
-                    }
-                  >
-                    <td className="py-1">{i + 1}</td>
-                    <td className="py-1">
-                      {/* Desktop: anchored popover, opens right where you clicked. */}
-                      <span className="hidden md:inline-flex">
-                        <Popover
-                          align="start"
-                          trigger={
-                            <button className="flex items-center gap-1.5 text-left hover:underline">
-                              <Avatar
-                                username={p.username}
-                                gradient={p.avatarGradient}
-                                size="xs"
-                              />
-                              {p.username}
-                              {p.paused && (
-                                <Badge variant="neutral" className="py-0!">
-                                  paused
-                                </Badge>
-                              )}
-                            </button>
-                          }
-                        >
-                          <PlayerTournamentDetails
-                            tournament={tournament}
-                            player={p}
-                          />
-                        </Popover>
-                      </span>
-                      {/* Mobile: opens the shared full-screen modal below —
-                       *  a small anchored popover doesn't leave enough room
-                       *  on a phone for the round-by-round list. */}
-                      <button
-                        className="flex items-center gap-1.5 text-left md:hidden"
-                        onClick={() => setSelectedPlayerId(p.user)}
-                      >
-                        <Avatar
-                          username={p.username}
-                          gradient={p.avatarGradient}
-                          size="xs"
-                        />
-                        {p.username}
-                        {p.paused && (
-                          <Badge variant="neutral" className="py-0!">
-                            paused
-                          </Badge>
-                        )}
-                      </button>
-                    </td>
-                    <td className="py-1 text-right">{p.points}</td>
-                    <td className="py-1 text-right">{p.gamesPlayed}</td>
-                    <td className="py-1 text-right">{p.berserkWins}</td>
+            <div className="overflow-hidden rounded-xl border border-base-300">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-base-300/50 text-left text-[11px] font-semibold uppercase tracking-wide text-base-content/50">
+                    <th className="w-10 px-3 py-2">#</th>
+                    <th className="px-3 py-2">Player</th>
+                    <th className="px-3 py-2 text-right">Games</th>
+                    <th className="px-3 py-2 text-right">Pts</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {standings.map((p, i) => {
+                    const isMe = p.user === myId;
+                    return (
+                      <tr
+                        key={p.user}
+                        className={cn(
+                          "border-t border-base-300/60 transition-colors",
+                          isMe
+                            ? "bg-(--secondary)/10"
+                            : i % 2 === 0
+                              ? "bg-base-100/50"
+                              : "bg-base-200/50",
+                        )}
+                      >
+                        <td className="pl-3 py-2">
+                          <RankBadge rank={i + 1} />
+                        </td>
+                        <td
+                          className={cn(
+                            "px-3 py-2",
+                            isMe && "font-semibold text-(--secondary)",
+                          )}
+                        >
+                          <ResponsiveOverlay
+                            align="start"
+                            mobilePosition="bottom"
+                            trigger={
+                              <button className="flex items-center gap-1.5 text-left hover:scale-95 duration-150">
+                                <Avatar
+                                  username={p.username}
+                                  gradient={p.avatarGradient}
+                                  size="xs"
+                                />
+                                {p.username}
+                                {p.paused && (
+                                  <Badge variant="neutral" className="py-0!">
+                                    paused
+                                  </Badge>
+                                )}
+                              </button>
+                            }
+                          >
+                            <PlayerTournamentDetails
+                              tournament={tournament}
+                              player={p}
+                            />
+                          </ResponsiveOverlay>
+                        </td>
+                        <td className="px-3 py-2 text-right text-base-content/60">
+                          {p.gamesPlayed}
+                        </td>
+                        <td className="px-3 py-2 text-right font-semibold text-secondary">
+                          {p.points}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </Card>
         )}
 
@@ -1333,22 +1302,6 @@ export function TournamentDetail() {
           </Card>
         )}
       </div>
-
-      {/* Mobile counterpart to the desktop Popover above — same content,
-       *  full-screen treatment since a phone doesn't have room for a small
-       *  anchored panel with a round-by-round list in it. */}
-      <Modal
-        open={!!selectedPlayer}
-        onClose={() => setSelectedPlayerId(null)}
-        title={selectedPlayer?.username}
-      >
-        {selectedPlayer && (
-          <PlayerTournamentDetails
-            tournament={tournament}
-            player={selectedPlayer}
-          />
-        )}
-      </Modal>
     </Page>
   );
 }

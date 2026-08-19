@@ -1,20 +1,17 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
-interface TournamentPaginationProps {
+interface PaginationProps {
   page: number;
   pageCount: number;
   onPageChange: (page: number) => void;
 }
 
-/** Compact prev/current/next pager — used for the Open tournaments and
- *  Finished tourneys lists, which fetch their full set in one request
- *  (see Tournaments.tsx) and paginate client-side rather than needing a
- *  round trip per page. Not rendered at all for a single page. */
-export function TournamentPagination({
-  page,
-  pageCount,
-  onPageChange,
-}: TournamentPaginationProps) {
+/** Compact prev/current/next pager for client-side-paginated lists — used
+ *  by the Open tournaments / Finished tourneys lists (which fetch their
+ *  full set in one request, see Tournaments.tsx) and the cage match
+ *  history list (see CageMatches.tsx). Not rendered at all for a single
+ *  page. */
+export function Pagination({ page, pageCount, onPageChange }: PaginationProps) {
   if (pageCount <= 1) return null;
   return (
     <div className="flex items-center justify-center gap-3 pt-1">

@@ -52,7 +52,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
           ref={ref}
           id={inputId}
           className={cn(
-            "h-10 w-full rounded-lg border bg-base-200 px-3 text-sm text-base-content placeholder:text-base-content/40",
+            "h-10 w-full rounded-lg border bg-base-100/60 px-3 text-sm text-base-content placeholder:text-base-content/40",
             "border-base-300 transition-colors",
             "focus:outline-none focus:ring-2 focus:ring-(--primary) focus:border-transparent",
             error && "border-red-500 focus:ring-red-500",

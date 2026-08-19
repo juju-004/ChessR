@@ -1,24 +1,21 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Trophy, Plus, X } from "lucide-react";
+import { Trophy } from "lucide-react";
 import {
   FORMAT_LABEL,
   FORMAT_DESCRIPTION,
   FORMAT_MAX_PLAYERS,
   robinRoundsLabel,
-  totalPrizePool,
-  tokensLabel,
   type TournamentFormat,
   type TournamentPrizeTier,
 } from "../api/tournaments.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useRakePercent } from "../hooks/useRakePercent.js";
-import { HelpTip } from "../components/tournaments/HelpTip.js";
+import { HelpTip } from "../components/HelpTip.js";
+import { PrizePoolEditor } from "../components/tournaments/PrizePoolEditor.js";
 import {
   Page,
   Card,
-  CardHeader,
-  CardTitle,
   CardContent,
   Input,
   Select,
@@ -118,24 +115,6 @@ export function CreateTournament() {
     setMaxPlayers(FORMAT_DEFAULT_MAX[f]);
   }
 
-  function addPrizeTier() {
-    const nextRank = (prizeTiers[prizeTiers.length - 1]?.toRank ?? 0) + 1;
-    setPrizeTiers([
-      ...prizeTiers,
-      { fromRank: nextRank, toRank: nextRank, tokens: 0 },
-    ]);
-  }
-
-  function updatePrizeTier(i: number, patch: Partial<TournamentPrizeTier>) {
-    setPrizeTiers(
-      prizeTiers.map((t, idx) => (idx === i ? { ...t, ...patch } : t)),
-    );
-  }
-
-  function removePrizeTier(i: number) {
-    setPrizeTiers(prizeTiers.filter((_, idx) => idx !== i));
-  }
-
   function handleCreate() {
     if (!socket) return;
     if (name.trim().length < 3)
@@ -193,11 +172,9 @@ export function CreateTournament() {
     });
   }
 
-  const prizePoolTotal = totalPrizePool(prizeTiers);
-
   return (
     <Page title="Create a tournament" back="/tournaments">
-      <div className="mx-auto max-w-2xl space-y-4">
+      <div className="mx-auto space-y-4">
         <Card variant="solid">
           <CardContent className="space-y-5">
             {/* Basics */}
@@ -213,7 +190,7 @@ export function CreateTournament() {
                 <label className="mb-1.5 block text-sm font-medium text-base-content/80">
                   Format
                 </label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 mb-7 gap-2">
                   {(Object.keys(FORMAT_LABEL) as TournamentFormat[]).map(
                     (f) => (
                       <button
@@ -235,119 +212,136 @@ export function CreateTournament() {
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-3">
-                <div className="w-40">
-                  <Select
-                    label="Time control"
-                    value={presetIdx}
-                    onChange={(e) => setPresetIdx(Number(e.target.value))}
-                  >
-                    {TIME_PRESETS.map((p, i) => (
-                      <option key={p.label} value={i}>
-                        {p.label}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="w-28">
-                  <Select
-                    label="Variant"
-                    value={variant}
-                    onChange={(e) =>
-                      setVariant(e.target.value as "standard" | "chess960")
-                    }
-                  >
-                    <option value="standard">Standard</option>
-                    <option value="chess960">Chess960</option>
-                  </Select>
-                </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Select
+                  label="Time control"
+                  value={presetIdx}
+                  onChange={(e) => setPresetIdx(Number(e.target.value))}
+                >
+                  {TIME_PRESETS.map((p, i) => (
+                    <option key={p.label} value={i}>
+                      {p.label}
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  label="Variant"
+                  value={variant}
+                  onChange={(e) =>
+                    setVariant(e.target.value as "standard" | "chess960")
+                  }
+                >
+                  <option value="standard">Standard</option>
+                  <option value="chess960">Chess960</option>
+                </Select>
               </div>
             </section>
 
             {/* Players & schedule */}
             <section className="space-y-3 border-t border-base-300 pt-4">
-              <div className="flex flex-wrap gap-3">
-                <div className="w-28">
-                  <Input
-                    label="Max players"
-                    type="number"
-                    min={2}
-                    max={FORMAT_MAX_PLAYERS[format]}
-                    value={maxPlayers}
-                    onChange={(e) => setMaxPlayers(Number(e.target.value))}
-                  />
-                </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <Input
+                  label="Max players"
+                  type="number"
+                  min={2}
+                  max={FORMAT_MAX_PLAYERS[format]}
+                  value={maxPlayers}
+                  onChange={(e) => setMaxPlayers(Number(e.target.value))}
+                />
                 {format === "swiss" && (
-                  <div className="w-24">
-                    <Input
-                      label="Rounds"
-                      type="number"
-                      min={3}
-                      max={15}
-                      value={swissRounds}
-                      onChange={(e) => setSwissRounds(Number(e.target.value))}
-                    />
-                  </div>
+                  <Input
+                    label="Rounds"
+                    type="number"
+                    min={3}
+                    max={15}
+                    value={swissRounds}
+                    onChange={(e) => setSwissRounds(Number(e.target.value))}
+                  />
                 )}
                 {format === "round_robin" && (
-                  <div className="w-28 flex items-end gap-1">
-                    <Input
-                      label="Laps"
-                      type="number"
-                      min={1}
-                      max={4}
-                      value={robinRounds}
-                      onChange={(e) => setRobinRounds(Number(e.target.value))}
-                    />
-                    <div className="pb-2.5">
-                      <HelpTip>{robinRoundsLabel(robinRounds)}</HelpTip>
-                    </div>
-                  </div>
+                  <Input
+                    label={
+                      <span className="inline-flex items-center gap-1">
+                        Laps <HelpTip>{robinRoundsLabel(robinRounds)}</HelpTip>
+                      </span>
+                    }
+                    type="number"
+                    min={1}
+                    max={4}
+                    value={robinRounds}
+                    onChange={(e) => setRobinRounds(Number(e.target.value))}
+                  />
                 )}
                 {format === "arena" && (
-                  <div className="w-32">
-                    <Input
-                      label="Duration (min)"
-                      type="number"
-                      min={5}
-                      max={360}
-                      value={arenaMinutes}
-                      onChange={(e) => setArenaMinutes(Number(e.target.value))}
-                    />
-                  </div>
-                )}
-                <div className="w-24">
                   <Input
-                    label="Break (sec)"
+                    label="Duration (min)"
                     type="number"
-                    min={0}
-                    max={300}
-                    value={breakSeconds}
-                    onChange={(e) => setBreakSeconds(Number(e.target.value))}
+                    min={5}
+                    max={360}
+                    value={arenaMinutes}
+                    onChange={(e) => setArenaMinutes(Number(e.target.value))}
                   />
-                </div>
+                )}
+                <Input
+                  label="Break (sec)"
+                  type="number"
+                  min={0}
+                  max={300}
+                  value={breakSeconds}
+                  onChange={(e) => setBreakSeconds(Number(e.target.value))}
+                />
               </div>
 
-              <div className="flex items-end gap-1.5">
-                <div className="flex-1">
-                  <Input
-                    label="Start date and time"
-                    type="datetime-local"
-                    value={startInput}
-                    onChange={(e) => setStartInput(e.target.value)}
-                  />
-                </div>
-                <div className="pb-2.5">
-                  <HelpTip>
-                    Starts automatically at this time once enough players
-                    have joined. You can also start it early yourself once
-                    the lobby is ready.
-                  </HelpTip>
-                </div>
-              </div>
+              <Input
+                label={
+                  <span className="inline-flex items-center gap-1">
+                    Start date and time
+                    <HelpTip>
+                      Starts automatically at this time once enough players have
+                      joined.
+                    </HelpTip>
+                  </span>
+                }
+                type="datetime-local"
+                value={startInput}
+                onChange={(e) => setStartInput(e.target.value)}
+              />
             </section>
 
             {/* Access */}
+
+            {/* Money */}
+            <section className="space-y-3 border-t border-base-300 pt-4">
+              <Input
+                label={
+                  <span className="inline-flex items-center gap-1">
+                    Registration fee (R Coins)
+                    <HelpTip>
+                      {rakePercent !== null
+                        ? `Every entrant pays this to join. Held until the tournament ends, then the ${rakePercent}% platform fee is deducted and the rest is paid out to you as the organizer.`
+                        : "Every entrant pays this to join. Held until the tournament ends, then the platform fee is deducted and the rest is paid out to you as the organizer."}
+                    </HelpTip>
+                  </span>
+                }
+                type="number"
+                min={1}
+                value={regFeeInput}
+                onChange={(e) => setRegFeeInput(e.target.value)}
+              />
+
+              <PrizePoolEditor
+                value={prizeTiers}
+                onChange={setPrizeTiers}
+                maxPlayers={maxPlayers}
+              />
+              <Input
+                label="Password (optional)"
+                type="text"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Leave blank to allow anyone with the link"
+              />
+            </section>
             <section className="space-y-3 border-t border-base-300 pt-4">
               <Switch
                 checked={isPublic}
@@ -361,120 +355,13 @@ export function CreateTournament() {
                 label="Allow berserk"
                 description="Half clock, no increment, +0.5 point on a win."
               />
-              <Input
-                label="Password (optional)"
-                type="text"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Leave blank to allow anyone with the link"
-              />
-            </section>
 
-            {/* Money */}
-            <section className="space-y-3 border-t border-base-300 pt-4">
               <Switch
                 checked={organizerOnly}
                 onChange={setOrganizerOnly}
                 label="I'm organizing only"
-                description="You run the tournament but don't play in it — you won't take a player slot or pay the registration fee."
+                description="You run the tournament but don't play in it. You won't take a player slot or pay the registration fee."
               />
-
-              <div className="flex items-end gap-1.5">
-                <div className="flex-1">
-                  <Input
-                    label="Registration fee (R Coins)"
-                    type="number"
-                    min={1}
-                    value={regFeeInput}
-                    onChange={(e) => setRegFeeInput(e.target.value)}
-                  />
-                </div>
-                <div className="pb-2.5">
-                  <HelpTip>
-                    {rakePercent !== null
-                      ? `Every entrant pays this to join. Held until the tournament ends, then the ${rakePercent}% platform fee is deducted and the rest is paid out to you as the organizer.`
-                      : "Every entrant pays this to join. Held until the tournament ends, then the platform fee is deducted and the rest is paid out to you as the organizer."}
-                  </HelpTip>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1 text-sm font-medium text-base-content/80">
-                    Prize pool
-                    <HelpTip>
-                      Rewards by finishing position, deducted from your
-                      balance now and paid out from the final standings.
-                    </HelpTip>
-                  </span>
-                  {prizePoolTotal > 0 && (
-                    <span className="text-xs text-base-content/50">
-                      {prizePoolTotal} R total
-                    </span>
-                  )}
-                </div>
-                {prizeTiers.length === 0 && (
-                  <p className="text-sm text-base-content/40">
-                    No prize tiers yet — optional.
-                  </p>
-                )}
-                {prizeTiers.map((tier, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <span className="text-xs text-base-content/50">Rank</span>
-                    <div className="w-16">
-                      <Input
-                        type="number"
-                        min={1}
-                        value={tier.fromRank}
-                        onChange={(e) =>
-                          updatePrizeTier(i, {
-                            fromRank: Number(e.target.value),
-                          })
-                        }
-                      />
-                    </div>
-                    <span className="text-xs text-base-content/50">to</span>
-                    <div className="w-16">
-                      <Input
-                        type="number"
-                        min={1}
-                        value={tier.toRank}
-                        onChange={(e) =>
-                          updatePrizeTier(i, {
-                            toRank: Number(e.target.value),
-                          })
-                        }
-                      />
-                    </div>
-                    <span className="text-xs text-base-content/50">gets</span>
-                    <div className="w-24">
-                      <Input
-                        type="number"
-                        min={0}
-                        value={tier.tokens}
-                        onChange={(e) =>
-                          updatePrizeTier(i, {
-                            tokens: Number(e.target.value),
-                          })
-                        }
-                      />
-                    </div>
-                    <span className="text-xs text-base-content/50">
-                      {tokensLabel(tier)}
-                    </span>
-                    <button
-                      onClick={() => removePrizeTier(i)}
-                      aria-label="Remove prize tier"
-                      className="ml-auto rounded-md p-1 text-red-400 hover:bg-red-900/30"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ))}
-                <Button size="sm" variant="secondary" onClick={addPrizeTier}>
-                  <Plus className="h-4 w-4" /> Add prize tier
-                </Button>
-              </div>
             </section>
 
             {status && (

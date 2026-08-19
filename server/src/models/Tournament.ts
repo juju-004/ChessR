@@ -120,6 +120,18 @@ export interface ITournament extends Document {
   baseMinutes: number | null;
   incrementSeconds: number;
   status: TournamentStatus;
+  // Human-readable explanation for why status === 'cancelled', shown on the
+  // tournament page in place of the usual pending/active/finished content —
+  // e.g. "Cancelled by the organiser" or "Not enough players to start the
+  // tournament". Null for every non-cancelled status.
+  cancelReason: string | null;
+  // When cancellation happened — drives sweepCancelledTournaments' cleanup
+  // window (see tournament.service.ts): cancelled tournaments carry no
+  // lasting value (no games were played, there's no history worth keeping),
+  // so they're actually deleted from the database a short while after this
+  // timestamp rather than accumulating forever. Null for every
+  // non-cancelled status.
+  cancelledAt: Date | null;
   minPlayers: number;
   maxPlayers: number;
   players: ITournamentPlayer[];
@@ -269,6 +281,8 @@ const tournamentSchema = new Schema<ITournament>(
       default: 'pending',
       index: true,
     },
+    cancelReason: { type: String, default: null },
+    cancelledAt: { type: Date, default: null, index: true },
     minPlayers: { type: Number, required: true },
     maxPlayers: { type: Number, required: true },
     players: { type: [playerSchema], default: [] },

@@ -12,7 +12,7 @@ export interface PageProps {
    *  string, but accepts any node — e.g. a logo image standing in for
    *  the page name. */
   title?: ReactNode;
-  description?: string;
+  description?: ReactNode;
   /** Adds a back button before the title. Pass a specific route to navigate
    *  there directly, or `true` to just pop one entry off browser history. */
   back?: boolean | string;
@@ -69,7 +69,7 @@ export function Page({
     >
       {hasHeader && (
         <header className="mb-6 flex items-start justify-between gap-4">
-          <div className="flex items-start gap-3">
+          <div className="flex items-center gap-3">
             {back && (
               <motion.button
                 type="button"

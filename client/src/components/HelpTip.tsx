@@ -1,10 +1,11 @@
 import { HelpCircle } from "lucide-react";
-import { Popover } from "../ui/index.js";
+import { Popover } from "./ui/index.js";
 
 /** A small "?" icon that reveals a short explanation on click/tap. Used on
- *  the create-tournament form to move field-level explanations out of
- *  always-visible helper paragraphs (which made the form read like a wall
- *  of text) and into something you only see if you actually want it.
+ *  the create-tournament and create-cage-match forms to move field-level
+ *  explanations out of always-visible helper paragraphs (which made those
+ *  forms read like a wall of text) and into something you only see if you
+ *  actually want it.
  *
  *  Built on Popover rather than Tooltip: Tooltip is `whitespace-nowrap`
  *  and meant for short one-line labels, so a paragraph of help text would

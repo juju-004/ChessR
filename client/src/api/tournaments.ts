@@ -62,6 +62,10 @@ export interface Tournament {
   baseMinutes: number | null;
   incrementSeconds: number;
   status: TournamentStatus;
+  // Set when status === "cancelled" — a short human-readable reason, e.g.
+  // "Cancelled by the organiser" or "Not enough players to start the
+  // tournament". Null otherwise.
+  cancelReason: string | null;
   minPlayers: number;
   maxPlayers: number;
   players: TournamentPlayer[];
@@ -173,10 +177,10 @@ export const FORMAT_LABEL: Record<TournamentFormat, string> = {
 };
 
 export const FORMAT_DESCRIPTION: Record<TournamentFormat, string> = {
-  normal: "Single-elimination bracket. Lose once and you're out.",
+  normal: "Single elimination bracket. Lose once and you're out.",
   swiss: "A fixed number of rounds, paired by score each round.",
   round_robin: "Everyone plays everyone else a set number of times.",
-  arena: "Free-for-all — play as many games as you can before time runs out.",
+  arena: "Play as many games as you can before time runs out.",
 };
 
 // Upper bound on maxPlayers for each format, matching the server's
@@ -195,4 +199,118 @@ export function robinRoundsLabel(robinRounds: number | null): string {
   if (!robinRounds || robinRounds === 1) return "Everyone plays everyone once.";
   if (robinRounds === 2) return "Everyone plays everyone twice.";
   return `Everyone plays everyone ${robinRounds} times.`;
+}
+
+/** "1st", "2nd", "3rd", "4th"... */
+export function ordinalSuffix(n: number): string {
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 13) return "th";
+  switch (n % 10) {
+    case 1:
+      return "st";
+    case 2:
+      return "nd";
+    case 3:
+      return "rd";
+    default:
+      return "th";
+  }
+}
+
+/** Render a prize schedule back into the plain-text format
+ *  `parsePrizePoolText` understands — used to seed the textarea when
+ *  editing an existing schedule so the round trip stays lossless. */
+export function prizeTiersToText(tiers: TournamentPrizeTier[]): string {
+  return tiers
+    .slice()
+    .sort((a, b) => a.fromRank - b.fromRank)
+    .map((t) => {
+      const from = `${t.fromRank}${ordinalSuffix(t.fromRank)}`;
+      const range =
+        t.fromRank === t.toRank
+          ? from
+          : `${from}-${t.toRank}${ordinalSuffix(t.toRank)}`;
+      return `${range} - ${t.tokens}`;
+    })
+    .join("\n");
+}
+
+export interface PrizePoolParseResult {
+  tiers: TournamentPrizeTier[];
+  /** Raw lines that couldn't be understood, verbatim, for surfacing back
+   *  to whoever's typing. */
+  errors: string[];
+}
+
+/** Parses free-form prize pool text into a prize schedule. One tier per
+ *  line, each line either `rank - amount` (a single place) or
+ *  `fromRank - toRank - amount` (a range that all shares that amount).
+ *
+ *  Deliberately lenient about how a line is written, since this is meant
+ *  to be typed quickly rather than filled into a rigid template:
+ *   - Ordinal suffixes are fine and ignored: "1st", "10th".
+ *   - Hyphens and spaces are interchangeable as separators: "1st-500",
+ *     "1st 500", "1st - 500" all mean the same thing.
+ *   - Amounts can use a "k" shorthand for thousands: "4k" -> 4000.
+ *   - Stray punctuation (commas, #, extra spaces) is ignored, so
+ *     "5-10-4000#" and "5th-10th-4k" both resolve to the same tier: ranks
+ *     5 through 10 each receive 4000.
+ *
+ *  A line that doesn't reduce to exactly two or three numbers is reported
+ *  back in `errors` (trimmed, verbatim) rather than silently dropped, so
+ *  the caller can point out what it couldn't parse. */
+export function parsePrizePoolText(text: string): PrizePoolParseResult {
+  const tiers: TournamentPrizeTier[] = [];
+  const errors: string[] = [];
+
+  function parseAmount(s: string): number | null {
+    const m = s.match(/^(\d+(?:\.\d+)?)(k)?$/i);
+    if (!m) return null;
+    const n = parseFloat(m[1]);
+    return Math.round(m[2] ? n * 1000 : n);
+  }
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    // Strip everything but digits, a decimal point, "k", and the two
+    // separators (hyphen, whitespace) — quietly discards ordinal suffixes,
+    // stray punctuation, and thousands-separator commas in one pass.
+    const cleaned = line.replace(/[^0-9kK.\-\s]/g, " ");
+    const parts = cleaned
+      .split(/[-\s]+/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    if (parts.length === 2) {
+      const rank = parseAmount(parts[0]);
+      const tokens = parseAmount(parts[1]);
+      if (rank === null || tokens === null || rank < 1) {
+        errors.push(line);
+        continue;
+      }
+      tiers.push({ fromRank: rank, toRank: rank, tokens });
+    } else if (parts.length === 3) {
+      const fromRank = parseAmount(parts[0]);
+      const toRank = parseAmount(parts[1]);
+      const tokens = parseAmount(parts[2]);
+      if (
+        fromRank === null ||
+        toRank === null ||
+        tokens === null ||
+        fromRank < 1 ||
+        toRank < fromRank
+      ) {
+        errors.push(line);
+        continue;
+      }
+      tiers.push({ fromRank, toRank, tokens });
+    } else {
+      errors.push(line);
+    }
+  }
+
+  tiers.sort((a, b) => a.fromRank - b.fromRank);
+  return { tiers, errors };
 }

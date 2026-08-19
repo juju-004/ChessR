@@ -9,6 +9,7 @@ export {
   type CardProps,
 } from "./Card.js";
 export { Input, type InputProps } from "./Input.js";
+export { Textarea, type TextareaProps } from "./Textarea.js";
 export { Select, type SelectProps } from "./Select.js";
 export { Switch, type SwitchProps } from "./Switch.js";
 export { Badge, BADGE_VARIANT_CLASSES, type BadgeProps, type BadgeVariant } from "./Badge.js";

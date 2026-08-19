@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, Landmark, XCircle } from "lucide-react";
 import {
-  getPlans,
+  getWalletConfig,
   getBanks,
   resolveAccount,
   withdraw,
@@ -36,7 +36,7 @@ export function Withdraw() {
   const [successMessage, setSuccessMessage] = useState("");
 
   useEffect(() => {
-    getPlans().then((res) => {
+    getWalletConfig().then((res) => {
       setNairaPerToken(res.withdrawal.nairaPerToken);
       setMinTokens(res.withdrawal.minTokens);
     });

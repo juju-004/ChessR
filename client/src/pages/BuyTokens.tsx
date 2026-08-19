@@ -1,46 +1,58 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import {
-  getPlans,
+  getWalletConfig,
   initPurchase,
   verifyPurchase,
-  type TokenPlan,
 } from "../api/wallet.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import { openPaystackPopup } from "../paystack.js";
 import { refreshBalance } from "../api/walletStore.js";
-import {
-  Page,
-  Card,
-  Button,
-  RCoin,
-  Stagger,
-  StaggerItem,
-} from "@/components/ui/index.js";
+import { Page, Card, Button, Input, RCoin } from "@/components/ui/index.js";
+
+// Fallback used only until getWalletConfig() resolves — the server's
+// figure (still ₦10/R at time of writing, i.e. ₦100 for 10 R Coins) is
+// always what's actually charged; this just avoids a blank/zeroed price
+// preview for the one render before that request lands.
+const FALLBACK_NAIRA_PER_TOKEN = 10;
+const FALLBACK_MIN_TOKENS = 10;
+
+// One-tap shortcuts for common amounts — purely a UI convenience over the
+// same custom-amount flow everyone else uses, not a distinct purchasable
+// thing like the old fixed plan tiers were.
+const QUICK_AMOUNTS = [50, 100, 250, 500, 1000, 2500];
 
 export function BuyTokens() {
   const { user } = useAuth();
-  const [plans, setPlans] = useState<TokenPlan[]>([]);
+  const [nairaPerToken, setNairaPerToken] = useState(FALLBACK_NAIRA_PER_TOKEN);
+  const [minTokens, setMinTokens] = useState(FALLBACK_MIN_TOKENS);
   const [publicKey, setPublicKey] = useState("");
-  const [busyPlanId, setBusyPlanId] = useState<string | null>(null);
+  const [tokensInput, setTokensInput] = useState("100");
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
   useEffect(() => {
-    getPlans().then((res) => {
-      setPlans(res.plans);
+    getWalletConfig().then((res) => {
+      setNairaPerToken(res.purchase.nairaPerToken);
+      setMinTokens(res.purchase.minTokens);
       setPublicKey(res.paystackPublicKey);
     });
   }, []);
 
-  async function handleBuy(plan: TokenPlan) {
-    if (!user) return;
+  const tokens = Math.max(0, Math.floor(Number(tokensInput) || 0));
+  const priceNaira = tokens * nairaPerToken;
+  const isValidAmount = tokens >= minTokens;
+
+  async function handleBuy() {
+    if (!user || !isValidAmount) return;
     setError("");
     setSuccessMessage("");
-    setBusyPlanId(plan.id);
+    setBusy(true);
 
     try {
-      const { reference, amountKobo } = await initPurchase(plan.id);
+      const { reference, amountKobo, tokens: purchasedTokens } =
+        await initPurchase(tokens);
 
       openPaystackPopup({
         key: publicKey,
@@ -52,7 +64,7 @@ export function BuyTokens() {
             const result = await verifyPurchase(reference);
             if (result.status === "success") {
               setSuccessMessage(
-                `Success! ${plan.tokens} R Coins added — new balance: ${result.tokenBalance}.`,
+                `Success! ${purchasedTokens} R Coins added — new balance: ${result.tokenBalance}.`,
               );
               await refreshBalance();
             } else {
@@ -67,24 +79,24 @@ export function BuyTokens() {
               err instanceof Error ? err.message : "Could not verify payment",
             );
           } finally {
-            setBusyPlanId(null);
+            setBusy(false);
           }
         },
-        onCancel: () => setBusyPlanId(null),
+        onCancel: () => setBusy(false),
       });
     } catch (err) {
       console.error("Purchase failed:", err);
       setError(
         err instanceof Error ? err.message : "Could not start purchase",
       );
-      setBusyPlanId(null);
+      setBusy(false);
     }
   }
 
   return (
     <Page
       title="Buy R Coins"
-      description="Top up your balance to wager, berserk, and enter tournaments."
+      description={`Fixed rate — ₦${nairaPerToken} per R Coin.`}
       back="/"
       bare
     >
@@ -109,46 +121,67 @@ export function BuyTokens() {
         </div>
       )}
 
-      {plans.length === 0 && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {[0, 1, 2, 3].map((i) => (
-            <Card key={i} variant="solid" className="h-32 animate-pulse" />
+      <Card variant="solid">
+        <div className="mb-5 flex items-center gap-2.5">
+          <RCoin size={30} />
+          <div>
+            <p className="text-lg font-bold leading-tight text-base-content">
+              R Coins
+            </p>
+            <p className="text-xs text-base-content/50">
+              ₦{nairaPerToken} per R Coin · minimum {minTokens} R
+            </p>
+          </div>
+        </div>
+
+        <Input
+          label="How many R Coins"
+          type="number"
+          min={minTokens}
+          step={1}
+          value={tokensInput}
+          onChange={(e) => setTokensInput(e.target.value)}
+          error={
+            !isValidAmount && tokensInput !== ""
+              ? `Minimum purchase is ${minTokens} R Coins.`
+              : undefined
+          }
+        />
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          {QUICK_AMOUNTS.map((amount) => (
+            <button
+              key={amount}
+              type="button"
+              onClick={() => setTokensInput(String(amount))}
+              className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                tokens === amount
+                  ? "border-(--secondary)/50 bg-(--secondary)/10 text-base-content"
+                  : "border-base-300 bg-base-100/60 text-base-content/70 hover:border-(--secondary)/30"
+              }`}
+            >
+              {amount.toLocaleString()} R
+            </button>
           ))}
         </div>
-      )}
 
-      <Stagger className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {plans.map((plan) => {
-          const isBusy = busyPlanId === plan.id;
-          return (
-            <StaggerItem key={plan.id}>
-              <Card variant="solid" className="flex h-full flex-col">
-                <div className="mb-4 flex items-center gap-2.5">
-                  <RCoin size={30} />
-                  <div>
-                    <p className="text-lg font-bold leading-tight text-base-content">
-                      {plan.tokens.toLocaleString()}
-                    </p>
-                    <p className="text-xs text-base-content/50">R Coins</p>
-                  </div>
-                </div>
-                <p className="mb-4 text-sm text-base-content/60">
-                  ₦{plan.priceNaira.toLocaleString()}
-                </p>
-                <Button
-                  onClick={() => handleBuy(plan)}
-                  disabled={busyPlanId !== null || !publicKey}
-                  loading={isBusy}
-                  fullWidth
-                  className="mt-auto"
-                >
-                  {isBusy ? "Processing…" : "Buy"}
-                </Button>
-              </Card>
-            </StaggerItem>
-          );
-        })}
-      </Stagger>
+        <div className="mt-5 flex items-center justify-between rounded-xl border border-base-300 bg-base-100/60 px-3.5 py-3">
+          <span className="text-sm text-base-content/60">You'll pay</span>
+          <span className="text-lg font-bold text-base-content">
+            ₦{priceNaira.toLocaleString()}
+          </span>
+        </div>
+
+        <Button
+          onClick={handleBuy}
+          disabled={!isValidAmount || busy || !publicKey}
+          loading={busy}
+          fullWidth
+          className="mt-4"
+        >
+          {busy ? "Processing…" : `Buy ${tokens.toLocaleString()} R Coins`}
+        </Button>
+      </Card>
     </Page>
   );
 }

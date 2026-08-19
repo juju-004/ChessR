@@ -5,7 +5,7 @@ import { disconnectRedis } from './config/redis.js';
 import { createApp } from './app.js';
 import { initSocketServer } from './sockets/index.js';
 import { reconcileActiveGames } from './services/game.service.js';
-import { reconcileActiveTournaments } from './services/tournament.service.js';
+import { reconcileActiveTournaments, sweepCancelledTournaments } from './services/tournament.service.js';
 
 async function main() {
   await connectMongo();
@@ -42,6 +42,16 @@ async function main() {
     })
     .catch((err) => console.error('reconcileActiveTournaments failed on boot:', err));
 
+  // Cancelled tournaments carry no lasting value (no games were ever
+  // played), so they're deleted a short while after cancellation rather
+  // than accumulating forever — see sweepCancelledTournaments' own comment
+  // for the grace-period reasoning.
+  sweepCancelledTournaments()
+    .then(({ deleted }) => {
+      if (deleted) console.log(`🗑️  Swept ${deleted} cancelled tournament(s) on boot.`);
+    })
+    .catch((err) => console.error('sweepCancelledTournaments failed on boot:', err));
+
   // Runs much more often than IDLE_PHASE_ABANDON_MS (5 min, in game.service.ts)
   // on purpose — if this ran every 5 minutes too, a game that just missed one
   // sweep could sit idle for close to double the intended threshold before
@@ -51,6 +61,7 @@ async function main() {
   const reconcileInterval = setInterval(() => {
     reconcileActiveGames().catch((err) => console.error('periodic reconcileActiveGames failed:', err));
     reconcileActiveTournaments().catch((err) => console.error('periodic reconcileActiveTournaments failed:', err));
+    sweepCancelledTournaments().catch((err) => console.error('periodic sweepCancelledTournaments failed:', err));
   }, 60 * 1000);
   reconcileInterval.unref();
 

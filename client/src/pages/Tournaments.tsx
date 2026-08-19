@@ -10,7 +10,8 @@ import {
 } from "../api/tournaments.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useAuth } from "../contexts/AuthContext.js";
-import { TournamentPagination } from "../components/tournaments/TournamentPagination.js";
+import { Pagination } from "../components/Pagination.js";
+import { RefreshButton } from "../components/RefreshButton.js";
 import {
   Page,
   Card,
@@ -69,10 +70,16 @@ function PaginatedTournamentCard({
   title,
   tournaments,
   emptyMessage,
+  onRefresh,
+  refreshing,
 }: {
   title: string;
   tournaments: Tournament[];
   emptyMessage: string;
+  /** Omit to render the card without a refresh button (e.g. Finished
+   *  tourneys, which doesn't need one). */
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }) {
   const [page, setPage] = useState(0);
   const pageCount = Math.max(1, Math.ceil(tournaments.length / PAGE_SIZE));
@@ -89,6 +96,9 @@ function PaginatedTournamentCard({
     <Card variant="solid">
       <CardHeader>
         <CardTitle>{title}</CardTitle>
+        {onRefresh && (
+          <RefreshButton onRefresh={onRefresh} refreshing={!!refreshing} />
+        )}
       </CardHeader>
       <CardContent className="space-y-2">
         {tournaments.length === 0 && (
@@ -97,7 +107,7 @@ function PaginatedTournamentCard({
         {pageItems.map((t) => (
           <TournamentRow key={t._id} t={t} />
         ))}
-        <TournamentPagination
+        <Pagination
           page={safePage}
           pageCount={pageCount}
           onPageChange={setPage}
@@ -113,11 +123,20 @@ export function Tournaments() {
   const navigate = useNavigate();
   const [open, setOpen] = useState<Tournament[]>([]);
   const [mine, setMine] = useState<Tournament[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
 
   const refresh = useCallback(() => {
-    listOpenTournaments().then((res) => setOpen(res.tournaments));
-    if (user) listMyTournaments().then((res) => setMine(res.tournaments));
+    const tasks: Promise<unknown>[] = [
+      listOpenTournaments().then((res) => setOpen(res.tournaments)),
+    ];
+    if (user) tasks.push(listMyTournaments().then((res) => setMine(res.tournaments)));
+    return Promise.all(tasks);
   }, [user]);
+
+  const handleManualRefresh = useCallback(() => {
+    setRefreshing(true);
+    refresh().finally(() => setRefreshing(false));
+  }, [refresh]);
 
   useEffect(() => {
     refresh();
@@ -159,14 +178,20 @@ export function Tournaments() {
   return (
     <Page
       title="Tournaments"
-      description="Run a knockout bracket, a swiss or arena event, or a round-robin."
+      description={
+        <span className="hidden sm:inline">
+          Run a knockout bracket, a swiss or arena event, or a round-robin.
+        </span>
+      }
       actions={
         <Button
           variant="secondary"
           size="sm"
           onClick={() => navigate("/tournaments/new")}
         >
-          <Plus className="h-4 w-4" /> Create tournament
+          <Plus className="h-4 w-4" />
+          <span className="hidden sm:inline">Create tournament</span>
+          <span className="sm:hidden">New</span>
         </Button>
       }
     >
@@ -175,12 +200,15 @@ export function Tournaments() {
           title="Open tournaments"
           tournaments={openPending}
           emptyMessage="No public tournaments waiting for players right now."
+          onRefresh={handleManualRefresh}
+          refreshing={refreshing}
         />
 
         {mineActive.length > 0 && (
           <Card variant="solid">
             <CardHeader>
               <CardTitle>Active tourneys</CardTitle>
+              <RefreshButton onRefresh={handleManualRefresh} refreshing={refreshing} />
             </CardHeader>
             <CardContent className="space-y-2">
               {mineActive.map((t) => (
@@ -194,6 +222,7 @@ export function Tournaments() {
           <Card variant="solid">
             <CardHeader>
               <CardTitle>In progress</CardTitle>
+              <RefreshButton onRefresh={handleManualRefresh} refreshing={refreshing} />
             </CardHeader>
             <CardContent className="space-y-2">
               {openActive.map((t) => (

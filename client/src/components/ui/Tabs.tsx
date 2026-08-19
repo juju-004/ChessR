@@ -41,7 +41,7 @@ export const Tabs = memo(function Tabs({
             key={item.value}
             onClick={() => onChange(item.value)}
             className={cn(
-              "relative rounded-lg px-3.5 py-1.5 text-sm font-medium transition-colors",
+              "relative rounded-lg whitespace-nowrap px-3.5 flex py-1.5 text-sm font-medium transition-colors",
               active
                 ? "text-white gradient-brand"
                 : "text-base-content/60 hover:text-base-content",
