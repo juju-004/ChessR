@@ -106,7 +106,16 @@ function MaterialBadge({
   advantage: number;
   size?: "md" | "sm";
 }) {
-  if (advantage <= 0) return null;
+  // Piece icons and the point total are gated separately on purpose: which
+  // pieces THIS side captured shouldn't depend on the overall score. If
+  // you're up a bishop but down a rook elsewhere, `advantage` (the net
+  // point total) is negative even though you genuinely captured a bishop
+  // — the old `advantage <= 0` check hid the icons in that case too, which
+  // is the bug where a capture just silently didn't show on either panel
+  // whenever the two sides' captures happened to net out even overall.
+  // The "+N" point total, on the other hand, only makes sense on whichever
+  // side is actually ahead, so that part stays gated on advantage > 0.
+  if (pieceDiff.length === 0 && advantage <= 0) return null;
   return (
     <div
       className={cn(
@@ -123,14 +132,16 @@ function MaterialBadge({
           {glyphs[p.type].repeat(Math.min(p.count, 9))}
         </span>
       ))}
-      <span
-        className={cn(
-          "font-bold text-(--primary)",
-          size === "sm" ? "text-[10px]" : "ml-0.5 text-xs",
-        )}
-      >
-        +{advantage}
-      </span>
+      {advantage > 0 && (
+        <span
+          className={cn(
+            "font-bold text-(--primary)",
+            size === "sm" ? "text-[10px]" : "ml-0.5 text-xs",
+          )}
+        >
+          +{advantage}
+        </span>
+      )}
     </div>
   );
 }

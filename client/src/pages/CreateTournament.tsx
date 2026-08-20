@@ -339,7 +339,7 @@ export function CreateTournament() {
                 type="text"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Leave blank to allow anyone with the link"
+                placeholder="*******"
               />
             </section>
             <section className="space-y-3 border-t border-base-300 pt-4">

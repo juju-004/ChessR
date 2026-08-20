@@ -40,6 +40,7 @@ import {
   Badge,
   RCoin,
   ResponsiveOverlay,
+  Avatar,
 } from "../components/ui/index.js";
 
 /** A single tappable/clickable tile for the quick-links grid — one icon,
@@ -113,7 +114,10 @@ export function Dashboard() {
 
   const wagerTokens = Math.max(1, Math.floor(Number(wagerInput) || 0));
   const rakePercent = useRakePercent();
-  const wagerRake = rakePercent !== null ? Math.floor((wagerTokens * 2 * rakePercent) / 100) : null;
+  const wagerRake =
+    rakePercent !== null
+      ? Math.floor((wagerTokens * 2 * rakePercent) / 100)
+      : null;
 
   async function handleCreate() {
     const tc = TIME_CONTROLS[tcIndex];
@@ -145,14 +149,15 @@ export function Dashboard() {
   const activeCageMatches =
     cageMatches?.filter((m) => m.status === "active") ?? [];
   const recentCageMatches =
-    cageMatches
-      ?.filter((m) => m.status === "finished")
-      .slice(0, 3) ?? [];
+    cageMatches?.filter((m) => m.status === "finished").slice(0, 3) ?? [];
 
   return (
     <Page title={`Welcome, ${user?.username ?? ""}`}>
       <div className="space-y-4">
-        <Card variant="solid" className="elevated-responsive flex items-center justify-between">
+        <Card
+          variant="solid"
+          className="bg-black/0! border-black/0! from-primary/0 to-primary/10 bg-linear-to-tr flex items-center justify-between"
+        >
           <div className="flex items-center gap-3">
             <RCoin size={34} />
             <div>
@@ -224,7 +229,7 @@ export function Dashboard() {
                 </Button>
               }
             >
-              <div className="space-y-3">
+              <div className="space-y-3 px-4 md:px-2">
                 <Select
                   label="Time control"
                   value={tcIndex}
@@ -243,14 +248,9 @@ export function Dashboard() {
                   onChange={(e) =>
                     setVariant(e.target.value as "standard" | "chess960")
                   }
-                  hint={
-                    variant === "chess960"
-                      ? "Note: castling isn't available in Chess960 games yet — a limitation in the underlying chess library, not a bug."
-                      : undefined
-                  }
                 >
                   <option value="standard">Standard</option>
-                  <option value="chess960">Chess960 (Fischer Random)</option>
+                  <option value="chess960">Chess960 </option>
                 </Select>
 
                 <Input
@@ -268,7 +268,7 @@ export function Dashboard() {
                 />
 
                 <Button
-                  className="w-full"
+                  className="w-full mt-3"
                   onClick={handleCreate}
                   loading={creating}
                   disabled={wagerTokens < 1}
@@ -301,7 +301,10 @@ export function Dashboard() {
             <CardTitle className="flex items-center gap-2">
               <Trophy className="h-4 w-4 text-amber-400" /> Open tournaments
             </CardTitle>
-            <Link to="/tournaments" className="text-sm text-(--primary) hover:underline">
+            <Link
+              to="/tournaments"
+              className="text-sm text-(--primary) hover:underline"
+            >
               View all
             </Link>
           </CardHeader>
@@ -341,7 +344,10 @@ export function Dashboard() {
             <CardTitle className="flex items-center gap-2">
               <Swords className="h-4 w-4 text-rose-400" /> Cage matches
             </CardTitle>
-            <Link to="/cage" className="text-sm text-(--primary) hover:underline">
+            <Link
+              to="/cage"
+              className="text-sm text-(--primary) hover:underline"
+            >
               View all
             </Link>
           </CardHeader>
@@ -373,7 +379,9 @@ export function Dashboard() {
                       Leg {m.currentLegIndex + 1}/{m.legs.length}
                     </p>
                   </div>
-                  <Badge variant={m.status === "active" ? "success" : "neutral"}>
+                  <Badge
+                    variant={m.status === "active" ? "success" : "neutral"}
+                  >
                     {m.status === "active" ? "Active" : "Finished"}
                   </Badge>
                 </Link>
@@ -382,62 +390,81 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card variant="solid">
-          <CardHeader>
-            <CardTitle>Friends currently playing</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {gamesError && <p className="text-sm text-red-400">{gamesError}</p>}
-            {!gamesError && activeGames === null && (
-              <p className="text-sm text-base-content/60">Loading…</p>
-            )}
-            {activeGames && activeGames.length === 0 && (
-              <p className="text-sm text-base-content/60">
-                None of your friends are in a game right now.
-              </p>
-            )}
-            {activeGames &&
-              activeGames.map((g) => {
-                const toMove = turnColor(new Chess(g.fen));
-                return (
-                  <div
-                    key={g._id}
-                    className="flex items-center justify-between border-b border-base-300 py-2 last:border-none"
-                  >
-                    <div className="text-sm text-base-content">
-                      <Link
-                        to={`/profile/${g.white.username}`}
-                        className="hover:underline"
-                      >
-                        {g.white.username}
-                      </Link>{" "}
-                      vs{" "}
-                      <Link
-                        to={`/profile/${g.black.username}`}
-                        className="hover:underline"
-                      >
-                        {g.black.username}
+        {(gamesError || activeGames === null || activeGames.length > 0) && (
+          <Card variant="solid">
+            <CardHeader>
+              <CardTitle>Friends currently playing</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {gamesError && (
+                <p className="text-sm text-red-400">{gamesError}</p>
+              )}
+              {!gamesError && activeGames === null && (
+                <p className="text-sm text-base-content/60">Loading…</p>
+              )}
+              {activeGames &&
+                activeGames.map((g) => {
+                  const toMove = turnColor(new Chess(g.fen));
+                  return (
+                    <div
+                      key={g._id}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-base-300 bg-base-100/60 px-3 py-2.5"
+                    >
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <div className="flex shrink-0 -space-x-2">
+                          <Avatar
+                            username={g.white.username}
+                            gradient={g.white.avatarGradient}
+                            size="sm"
+                            className="ring-2 ring-base-100"
+                          />
+                          <Avatar
+                            username={g.black.username}
+                            gradient={g.black.avatarGradient}
+                            size="sm"
+                            className="ring-2 ring-base-100"
+                          />
+                        </div>
+                        <div className="min-w-0 text-sm text-base-content">
+                          <div className="truncate">
+                            <Link
+                              to={`/profile/${g.white.username}`}
+                              className="hover:underline"
+                            >
+                              {g.white.username}
+                            </Link>{" "}
+                            <span className="text-base-content/40">vs</span>{" "}
+                            <Link
+                              to={`/profile/${g.black.username}`}
+                              className="hover:underline"
+                            >
+                              {g.black.username}
+                            </Link>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-base-content/50">
+                            <span>
+                              Move {Math.ceil(g.moves.length / 2)} · {toMove} to
+                              move · {formatTimeControl(g.timeControl)}
+                            </span>
+                            {g.wagerTokens > 0 && (
+                              <Badge variant="warning">
+                                {g.wagerTokens} R wager
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <Link to={`/game/${g.joinCode}`} className="shrink-0">
+                        <Button variant="glass" size="sm">
+                          Watch
+                        </Button>
                       </Link>
-                      <span className="ml-2 text-base-content/50">
-                        · move {Math.ceil(g.moves.length / 2)} · {toMove} to
-                        move · {formatTimeControl(g.timeControl)}
-                      </span>
-                      {g.wagerTokens > 0 && (
-                        <Badge variant="warning" className="ml-2">
-                          {g.wagerTokens} R wager
-                        </Badge>
-                      )}
                     </div>
-                    <Link to={`/game/${g.joinCode}`}>
-                      <Button variant="glass" size="sm">
-                        Watch
-                      </Button>
-                    </Link>
-                  </div>
-                );
-              })}
-          </CardContent>
-        </Card>
+                  );
+                })}
+            </CardContent>
+          </Card>
+        )}
 
         <footer className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 pt-2 pb-2 text-xs text-base-content/50">
           <Link to="/about" className="hover:text-base-content hover:underline">

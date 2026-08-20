@@ -131,7 +131,11 @@ function PaginatedMatchCard({
         {pageItems.map((m) => (
           <CageMatchRow key={m._id} m={m} myId={myId} />
         ))}
-        <Pagination page={safePage} pageCount={pageCount} onPageChange={setPage} />
+        <Pagination
+          page={safePage}
+          pageCount={pageCount}
+          onPageChange={setPage}
+        />
       </CardContent>
     </Card>
   );
@@ -149,8 +153,11 @@ export function CageMatches() {
     message: string;
     isError: boolean;
   } | null>(
-    (location.state as { status?: { message: string; isError: boolean } } | null)
-      ?.status ?? null,
+    (
+      location.state as {
+        status?: { message: string; isError: boolean };
+      } | null
+    )?.status ?? null,
   );
 
   const activeMatches = matches.filter((m) => m.status === "active");
@@ -221,7 +228,7 @@ export function CageMatches() {
       }
       actions={
         <Button
-          variant="secondary"
+          variant="primary"
           size="sm"
           onClick={() => navigate("/cage/new")}
         >
@@ -243,7 +250,10 @@ export function CageMatches() {
         <Card variant="solid">
           <CardHeader>
             <CardTitle>Active cage matches</CardTitle>
-            <RefreshButton onRefresh={handleManualRefresh} refreshing={refreshing} />
+            <RefreshButton
+              onRefresh={handleManualRefresh}
+              refreshing={refreshing}
+            />
           </CardHeader>
           <CardContent className="space-y-2">
             {activeMatches.length === 0 && (

@@ -9,6 +9,7 @@ import {
   Pause,
   Play,
   Medal,
+  LocateFixed,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -33,6 +34,7 @@ import { useNotify } from "../contexts/NotificationContext.js";
 import { copyToClipboard } from "@/lib/utils.js";
 import { cn } from "@/lib/cn.js";
 import { PrizePoolEditor } from "../components/tournaments/PrizePoolEditor.js";
+import { Pagination } from "../components/Pagination.js";
 import {
   Page,
   Card,
@@ -614,11 +616,11 @@ function PlayerTournamentDetails({
           {stats.map((s) => (
             <div
               key={s.label}
-              className="rounded-xl md:bg-base-200/70 px-2 py-2.5 text-center"
+              className="rounded-xl  md:bg-base-200/70 px-2 py-2.5 text-center"
             >
               <p
                 className={cn(
-                  "text-lg font-bold",
+                  " text-base md:text-lg font-bold",
                   s.label === "Points" ? "text-secondary" : "text-base-content",
                 )}
               >
@@ -659,7 +661,7 @@ function PlayerTournamentDetails({
               let inProgress = false;
               if (pairing.status === "finished") {
                 if (opponentId === null) {
-                  resultText = "Bye";
+                  resultText = "-";
                 } else if (pairing.result === "draw") {
                   resultText = "Draw";
                   resultColor = "text-base-content/70";
@@ -686,24 +688,24 @@ function PlayerTournamentDetails({
                       <span
                         title={`You played ${myColor}`}
                         aria-label={`Playing as ${myColor}`}
-                        className={`shrink-0 text-xs leading-none ${
+                        className={`shrink-0 rounded-full w-2 h-2 text-xs border leading-none ${
                           myColor === "white"
-                            ? "text-base-content"
-                            : "text-base-content/40"
+                            ? "bg-white border-black"
+                            : "bg-black"
                         }`}
                       >
-                        {myColor === "white" ? "♔" : "♚"}
+                        {/* {myColor === "white" ? "♔" : "♚"} */}
                       </span>
                     )}
                     {opponentId !== null && (
                       <Avatar
                         username={oppName}
                         gradient={gradientOf(tournament, opponentId)}
-                        size="xs"
+                        size="sm"
                       />
                     )}
                     <span className="truncate">
-                      {opponentId === null ? "Bye" : oppName}
+                      {opponentId === null ? "-" : oppName}
                       {berserked && " ⚔"}
                     </span>
                   </span>
@@ -845,6 +847,7 @@ export function TournamentDetail() {
   // something you need to see every time you land on the page, especially
   // once the header/card title already shows the total.
   const [prizePoolOpen, setPrizePoolOpen] = useState(false);
+  const [standingsPage, setStandingsPage] = useState(0);
 
   const refresh = useCallback(() => {
     getTournamentByCode(code)
@@ -858,7 +861,8 @@ export function TournamentDetail() {
 
   useEffect(() => {
     if (!socket || !tournament) return;
-    socket.emit("tournament:watch", { tournamentId: tournament._id });
+    const tournamentId = tournament._id;
+    socket.emit("tournament:watch", { tournamentId });
     function onUpdate(payload: { code: string }) {
       if (payload.code === code) refresh();
     }
@@ -876,9 +880,36 @@ export function TournamentDetail() {
       socket.off("tournament:cancelled", onUpdate);
       socket.off("tournament:finished", onUpdate);
       socket.off("tournament:error", onError);
+      // The other half of tournament:watch — without this, leaving the
+      // page (without disconnecting entirely) left the server thinking
+      // this player was still watching, which is exactly the "counted as
+      // present even on a totally different page" bug arena/swiss
+      // pairing eligibility now depends on not having.
+      socket.emit("tournament:unwatch", { tournamentId });
     };
     // Re-subscribe once the tournament's Mongo _id is known.
   }, [socket, tournament?._id, code, refresh]);
+
+  // Tab-visibility tracking on top of the mount/unmount watch above — a
+  // background tab still has this page mounted, but nobody's actually
+  // looking at it, so it shouldn't count as "watching" for arena/swiss
+  // pairing purposes either. Only reacts to actual visibility *changes*
+  // (not a duplicate watch on mount, since the effect above already
+  // covers that and the page starts visible anyway).
+  useEffect(() => {
+    if (!socket || !tournament) return;
+    const sock = socket;
+    const tournamentId = tournament._id;
+    function handleVisibilityChange() {
+      sock.emit(document.hidden ? "tournament:unwatch" : "tournament:watch", {
+        tournamentId,
+      });
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [socket, tournament?._id]);
 
   if (error) {
     return (
@@ -906,6 +937,20 @@ export function TournamentDetail() {
   const isCreator = tournament.createdBy === myId;
   const isPointsFormat = tournament.format !== "normal";
   const standings = isPointsFormat ? rankTournamentPlayers(tournament) : [];
+  // 10 rows per page rather than the full field — arena/swiss standings can
+  // run into the dozens of players, and rendering all of them as one table
+  // was the thing making the page unwieldy to scan on a real field.
+  const STANDINGS_PAGE_SIZE = 10;
+  const standingsPageCount = Math.max(
+    1,
+    Math.ceil(standings.length / STANDINGS_PAGE_SIZE),
+  );
+  const safeStandingsPage = Math.min(standingsPage, standingsPageCount - 1);
+  const myStandingsIndex = standings.findIndex((p) => p.user === myId);
+  const pagedStandings = standings.slice(
+    safeStandingsPage * STANDINGS_PAGE_SIZE,
+    safeStandingsPage * STANDINGS_PAGE_SIZE + STANDINGS_PAGE_SIZE,
+  );
   const currentRound = tournament.rounds[tournament.currentRoundIndex];
   // Defaults to whichever round is actually current, but once someone picks
   // a different tab it stays there across refreshes rather than yanking
@@ -1191,6 +1236,26 @@ export function TournamentDetail() {
           <Card variant="solid">
             <CardHeader>
               <CardTitle>Standings</CardTitle>
+              <div className="flex items-center gap-2">
+                {myStandingsIndex !== -1 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setStandingsPage(
+                        Math.floor(myStandingsIndex / STANDINGS_PAGE_SIZE),
+                      )
+                    }
+                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-(--secondary) transition-colors hover:bg-(--secondary)/10"
+                  >
+                    <LocateFixed className="h-3.5 w-3.5" /> Me
+                  </button>
+                )}
+                <Pagination
+                  page={safeStandingsPage}
+                  pageCount={standingsPageCount}
+                  onPageChange={setStandingsPage}
+                />
+              </div>
             </CardHeader>
             <div className="overflow-hidden rounded-xl border border-base-300">
               <table className="w-full text-sm">
@@ -1203,7 +1268,9 @@ export function TournamentDetail() {
                   </tr>
                 </thead>
                 <tbody>
-                  {standings.map((p, i) => {
+                  {pagedStandings.map((p, i) => {
+                    const rank =
+                      safeStandingsPage * STANDINGS_PAGE_SIZE + i + 1;
                     const isMe = p.user === myId;
                     return (
                       <tr
@@ -1218,7 +1285,7 @@ export function TournamentDetail() {
                         )}
                       >
                         <td className="pl-3 py-2">
-                          <RankBadge rank={i + 1} />
+                          <RankBadge rank={rank} />
                         </td>
                         <td
                           className={cn(
@@ -1254,7 +1321,12 @@ export function TournamentDetail() {
                         <td className="px-3 py-2 text-right text-base-content/60">
                           {p.gamesPlayed}
                         </td>
-                        <td className="px-3 py-2 text-right font-semibold text-secondary">
+                        <td
+                          className={cn(
+                            isMe ? "text-secondary" : "text-base-content",
+                            "px-3 py-2 text-right font-semibold",
+                          )}
+                        >
                           {p.points}
                         </td>
                       </tr>

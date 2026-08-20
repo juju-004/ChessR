@@ -57,7 +57,6 @@ function TournamentRow({ t }: { t: Tournament }) {
           {t.prizePoolTokens > 0 && <> · {t.prizePoolTokens} R prize pool</>}
         </div>
       </div>
-      <span className="shrink-0 text-xs text-base-content/40">#{t.code}</span>
     </Link>
   );
 }
@@ -129,7 +128,8 @@ export function Tournaments() {
     const tasks: Promise<unknown>[] = [
       listOpenTournaments().then((res) => setOpen(res.tournaments)),
     ];
-    if (user) tasks.push(listMyTournaments().then((res) => setMine(res.tournaments)));
+    if (user)
+      tasks.push(listMyTournaments().then((res) => setMine(res.tournaments)));
     return Promise.all(tasks);
   }, [user]);
 
@@ -208,7 +208,10 @@ export function Tournaments() {
           <Card variant="solid">
             <CardHeader>
               <CardTitle>Active tourneys</CardTitle>
-              <RefreshButton onRefresh={handleManualRefresh} refreshing={refreshing} />
+              <RefreshButton
+                onRefresh={handleManualRefresh}
+                refreshing={refreshing}
+              />
             </CardHeader>
             <CardContent className="space-y-2">
               {mineActive.map((t) => (
@@ -222,7 +225,10 @@ export function Tournaments() {
           <Card variant="solid">
             <CardHeader>
               <CardTitle>In progress</CardTitle>
-              <RefreshButton onRefresh={handleManualRefresh} refreshing={refreshing} />
+              <RefreshButton
+                onRefresh={handleManualRefresh}
+                refreshing={refreshing}
+              />
             </CardHeader>
             <CardContent className="space-y-2">
               {openActive.map((t) => (

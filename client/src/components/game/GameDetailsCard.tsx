@@ -46,7 +46,7 @@ export const GameDetailsCard = memo(function GameDetailsCard({
   resultSummary,
 }: GameDetailsCardProps) {
   return (
-    <Card variant="solid">
+    <Card variant="solid" className="p-2! sm:p-3!">
       {/* min-h keeps this row's height stable whether 0 or several
        *  badges are showing — on phone this card is a flex-shrink:0
        *  sibling of the board, so any wobble here directly steals from
@@ -74,7 +74,7 @@ export const GameDetailsCard = memo(function GameDetailsCard({
         <button
           type="button"
           onClick={resultSummary.onClick}
-          className={`mt-2 w-full opacity-80 hover:opacity-100 text-left text-sm duration-300 font-bold cursor-pointer ${RESULT_TONE_CLASS[resultSummary.tone]}`}
+          className={`mt-2 w-full text-center opacity-80 hover:opacity-100  text-sm duration-300 font-bold cursor-pointer ${RESULT_TONE_CLASS[resultSummary.tone]}`}
         >
           {resultSummary.text}
         </button>

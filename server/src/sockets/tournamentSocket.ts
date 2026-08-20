@@ -9,9 +9,11 @@ import {
   withdrawFromTournament,
   updateTournament,
   setArenaPause,
+  retryArenaPairingsForUser,
   type CreateTournamentInput,
 } from '../services/tournament.service.js';
 import { User } from '../models/User.js';
+import { watchTournament, unwatchTournament } from '../services/presence.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
 const MAX_WAGER_TOKENS = 100_000;
@@ -85,7 +87,7 @@ function safeHandler<T>(socket: Socket, fn: (payload: T) => Promise<void>): (pay
   };
 }
 
-const tournamentRoom = (id: string) => `tournament:${id}`;
+export const tournamentRoom = (id: string) => `tournament:${id}`;
 
 export function registerTournamentHandlers(io: Server, socket: Socket) {
   const { userId } = socket.data as AuthedSocketData;
@@ -131,13 +133,36 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
   );
 
   // Lets a spectator or a just-loaded detail page subscribe to live updates
-  // for a tournament without actually joining it as a player.
+  // for a tournament without actually joining it as a player. Also marks
+  // this socket as "watching" it in Redis (see watchTournament) — that's
+  // the signal arena/swiss pairing actually gates on, separately from the
+  // Socket.IO room join above (which is just for live update delivery).
   socket.on(
     'tournament:watch',
     safeHandler(socket, async (raw: unknown) => {
       const parsed = idSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid payload');
       await socket.join(tournamentRoom(parsed.data.tournamentId));
+      await watchTournament(parsed.data.tournamentId, socket.id);
+      // Immediate re-check rather than waiting for some unrelated pairing
+      // event elsewhere to happen to pick this player up now that they're
+      // actually looking at the page — see retryArenaPairingsForUser.
+      await retryArenaPairingsForUser(userId);
+    }),
+  );
+
+  // The other half of tournament:watch — called when the detail page
+  // unmounts (tab closed, navigated away, or just switched to a different
+  // tournament). Without this, "who's watching this tournament" would
+  // silently accumulate everyone who'd ever opened the page this session
+  // instead of reflecting who's actually looking at it right now.
+  socket.on(
+    'tournament:unwatch',
+    safeHandler(socket, async (raw: unknown) => {
+      const parsed = idSchema.safeParse(raw);
+      if (!parsed.success) return emitError(socket, 'Invalid payload');
+      await socket.leave(tournamentRoom(parsed.data.tournamentId));
+      await unwatchTournament(socket.id);
     }),
   );
 

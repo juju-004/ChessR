@@ -16,6 +16,7 @@ export interface ResponsiveOverlayProps {
   align?: "start" | "end" | "center";
   side?: "bottom" | "top";
   className?: string;
+  icon?: ReactNode;
   /** Viewport width the phone/desktop split happens at. Defaults to
    *  Tailwind's `md` (768px) so this lines up with every other
    *  phone/desktop split in the app (Sidebar, the mobile dock, etc). */
@@ -56,6 +57,7 @@ export function ResponsiveOverlay({
   mobilePosition = "center",
   open: openProp,
   onOpenChange,
+  icon,
 }: ResponsiveOverlayProps) {
   const [isDesktop, setIsDesktop] = useState(
     () => typeof window !== "undefined" && window.innerWidth >= breakpoint,
@@ -96,6 +98,7 @@ export function ResponsiveOverlay({
         title={title}
         className={className}
         position={mobilePosition}
+        icon={icon}
       >
         {children}
       </Modal>

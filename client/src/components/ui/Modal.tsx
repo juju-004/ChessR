@@ -1,4 +1,4 @@
-import { type ReactNode, memo, useEffect, useState } from "react";
+import { type ReactNode, memo, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   AnimatePresence,
@@ -6,7 +6,6 @@ import {
   useDragControls,
   type PanInfo,
 } from "framer-motion";
-import { X } from "lucide-react";
 import { cn } from "@/lib/cn.js";
 import { modalBackdrop, modalContent, sheetContent } from "@/lib/motion.js";
 
@@ -31,6 +30,10 @@ export interface ModalProps {
   open: boolean;
   onClose: () => void;
   title?: string;
+  /** Renders to the left of the title, e.g. an alert triangle for a
+   *  destructive action or a trophy for a tournament prompt. Purely
+   *  decorative — sized and colored by the caller. */
+  icon?: ReactNode;
   children: ReactNode;
   className?: string;
   /** `center` (default) is the usual dialog, floating in the middle of the
@@ -60,6 +63,7 @@ export const Modal = memo(function Modal({
   open,
   onClose,
   title,
+  icon,
   children,
   className,
   position = "center",
@@ -79,9 +83,14 @@ export const Modal = memo(function Modal({
 
   const isSheet = isMobile || position === "bottom";
 
-  // Drag is scoped to the handle bar via dragControls/dragListener={false}
-  // rather than the whole sheet, so dragging inside scrollable content
-  // scrolls the content instead of fighting the sheet for the gesture.
+  // Manual drag start instead of the default listener: a pointer-down
+  // anywhere on the sheet can start the drag EXCEPT when it lands inside
+  // the scrollable body while that body is scrolled away from its top —
+  // there, the gesture is left alone so the browser scrolls the content
+  // instead of the two fighting over the same vertical swipe. Once the
+  // content is back at scrollTop 0 (or doesn't need to scroll at all), a
+  // pull from anywhere — content included — drags the sheet again.
+  const scrollRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
 
   const handleDragEnd = (_: unknown, info: PanInfo) => {
@@ -96,15 +105,9 @@ export const Modal = memo(function Modal({
   };
 
   const header = title && (
-    <div className="mb-4 flex items-center justify-between">
+    <div className="mb-4 flex rounded-2xl  justify-center bg-base-200 pt-5 pb-3 items-center gap-2">
+      {icon}
       <h2 className="text-lg font-semibold text-base-content">{title}</h2>
-      <button
-        onClick={onClose}
-        aria-label="Close"
-        className="rounded-lg p-1 text-base-content/50 transition-colors hover:bg-black/5 hover:text-base-content dark:hover:bg-white/10"
-      >
-        <X className="h-5 w-5" />
-      </button>
     </div>
   );
 
@@ -113,7 +116,7 @@ export const Modal = memo(function Modal({
       {open && (
         <div
           className={cn(
-            "fixed inset-0 z-50 flex",
+            "fixed inset-0  z-50 flex",
             isSheet
               ? "items-end justify-center"
               : "items-center justify-center p-4",
@@ -135,31 +138,61 @@ export const Modal = memo(function Modal({
             drag={isSheet ? "y" : false}
             dragListener={false}
             dragControls={dragControls}
+            onPointerDown={(e) => {
+              if (!isSheet) return;
+              const scrollEl = scrollRef.current;
+              if (
+                !scrollEl ||
+                !scrollEl.contains(e.target as Node) ||
+                scrollEl.scrollTop <= 0
+              ) {
+                dragControls.start(e);
+              }
+            }}
             dragConstraints={{ top: 0, bottom: 0 }}
-            dragElastic={{ top: 0, bottom: 0.6 }}
+            dragElastic={{ top: 0, bottom: 0.5 }}
             dragTransition={dragSpring}
             onDragEnd={isSheet ? handleDragEnd : undefined}
+            style={isSheet ? { willChange: "transform" } : undefined}
             role="dialog"
             aria-modal="true"
             aria-label={title}
             className={cn(
-              "elevated-strong relative w-full max-h-[85vh] overflow-y-auto px-2 py-1",
+              "relative w-full overflow-hidden",
+              // The centered dialog is static (only a brief, one-off
+              // entrance/exit) so its shadow is cheap. The sheet is
+              // continuously dragged and its entrance slides the full
+              // height of the screen, so it skips the shadow entirely
+              // (elevated-flat, same background with no box-shadow) — a
+              // moving box-shadow has to be blur-rasterized on every
+              // single frame it's on screen, which is exactly what was
+              // making the sheet feel laggy (same tradeoff index.css
+              // documents for Tabs/Dashboard's balance card, which reach
+              // for elevated-responsive's border swap; skipped that here
+              // instead since its shadow only kicks back in `sm` and up,
+              // which would still leave a range of "mobile" widths where
+              // this sheet is dragged with the shadow back on).
               isSheet
-                ? "rounded-t-3xl pb-[calc(1.25rem+env(safe-area-inset-bottom))]"
-                : "max-w-md rounded-2xl",
+                ? "elevated-flat border-t border-base-300 rounded-t-4xl"
+                : "elevated-strong max-w-md rounded-2xl",
               className,
             )}
           >
             {isSheet && (
-              <div
-                onPointerDown={(e) => dragControls.start(e)}
-                className="-mt-1 flex touch-none justify-center py-2 cursor-grab active:cursor-grabbing"
-              >
+              <div className="left-1/2 -translate-x-1/2 absolute flex justify-center py-2">
                 <div className="h-1 w-10 rounded-full bg-base-content/15" />
               </div>
             )}
-            {header}
-            {children}
+            <div
+              ref={scrollRef}
+              className={cn(
+                "max-h-[85vh] overflow-y-auto overscroll-contain px-2 ",
+                isSheet && "pb-[calc(1.25rem+env(safe-area-inset-bottom))]",
+              )}
+            >
+              {header}
+              {children}
+            </div>
           </motion.div>
         </div>
       )}

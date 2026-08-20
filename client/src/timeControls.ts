@@ -22,3 +22,20 @@ export function formatTimeControl(tc: {
   if (tc.baseSeconds === null) return "Unlimited";
   return `${Math.round(tc.baseSeconds / 60)}+${tc.incrementSeconds}`;
 }
+
+// Same bullet/blitz/rapid/classical buckets used for category labels
+// elsewhere (rating ladder, cage match badges) — reused here so a game's
+// piece-slide speed matches the pace of the time control it's actually
+// played at, rather than one fixed duration for every game. Faster time
+// controls get snappier, more immediate-feeling animation; slower ones get
+// a more deliberate, easier-to-follow one.
+export function animationDurationForTimeControl(
+  baseSeconds: number | null,
+): number {
+  if (baseSeconds === null) return 260; // unlimited/correspondence — treat as classical
+  const baseMinutes = baseSeconds / 60;
+  if (baseMinutes < 3) return 90; // bullet — quick snaps
+  if (baseMinutes < 10) return 140; // blitz — faster
+  if (baseMinutes < 30) return 200; // rapid — the old fixed default
+  return 260; // classical — normal, slower
+}

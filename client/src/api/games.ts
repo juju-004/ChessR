@@ -10,8 +10,8 @@ export type GameVariant = 'standard' | 'chess960';
 export interface ActiveFriendGame {
   _id: string;
   joinCode: string;
-  white: { _id: string; username: string };
-  black: { _id: string; username: string };
+  white: { _id: string; username: string; avatarGradient?: string | null };
+  black: { _id: string; username: string; avatarGradient?: string | null };
   timeControl: { baseSeconds: number | null; incrementSeconds: number };
   wagerTokens: number;
   moves: unknown[];

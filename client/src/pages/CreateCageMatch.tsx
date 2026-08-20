@@ -11,7 +11,14 @@ import { useSocket } from "../contexts/SocketContext.js";
 import { useRakePercent } from "../hooks/useRakePercent.js";
 import { HelpTip } from "../components/HelpTip.js";
 import { CageGamePlanEditor } from "../components/cage/CageGamePlanEditor.js";
-import { Page, Card, CardContent, Input, Select, Button } from "../components/ui/index.js";
+import {
+  Page,
+  Card,
+  CardContent,
+  Input,
+  Select,
+  Button,
+} from "../components/ui/index.js";
 
 export function CreateCageMatch() {
   const socket = useSocket();
@@ -54,7 +61,7 @@ export function CreateCageMatch() {
       navigate("/cage", {
         state: {
           status: {
-            message: "Cage match invite sent — waiting for a response…",
+            message: "Cage match invite sent. Waiting for a response…",
             isError: false,
           },
         },
@@ -75,7 +82,10 @@ export function CreateCageMatch() {
   function handleCreate() {
     if (!socket) return;
     if (!selectedFriend) {
-      return setStatus({ message: "Pick a friend to challenge.", isError: true });
+      return setStatus({
+        message: "Pick a friend to challenge.",
+        isError: true,
+      });
     }
     if (legs.length < 2) {
       return setStatus({
@@ -84,12 +94,15 @@ export function CreateCageMatch() {
       });
     }
     if (winnerMode === "first_to_n" && (!targetWins || targetWins < 1)) {
-      return setStatus({ message: "Choose a target win count.", isError: true });
+      return setStatus({
+        message: "Choose a target win count.",
+        isError: true,
+      });
     }
     const wagerTokens = Math.max(0, Math.floor(Number(wagerInput) || 0));
     if (wagerTokens <= 0) {
       return setStatus({
-        message: "Enter a wager amount — every cage match requires one.",
+        message: "Enter a wager amount. Every cage match requires one.",
         isError: true,
       });
     }
@@ -148,14 +161,12 @@ export function CreateCageMatch() {
                   </span>
                 }
                 value={winnerMode}
-                onChange={(e) => setWinnerMode(e.target.value as CageWinnerMode)}
+                onChange={(e) =>
+                  setWinnerMode(e.target.value as CageWinnerMode)
+                }
               >
-                <option value="total_score">
-                  Total score (win = 1, draw = 0.5)
-                </option>
-                <option value="most_categories">
-                  Most categories won (bullet/blitz/rapid/classical)
-                </option>
+                <option value="total_score">Total score</option>
+                <option value="most_categories">Most categories won</option>
                 <option value="first_to_n">First to N wins</option>
               </Select>
               {winnerMode === "first_to_n" && (
@@ -177,10 +188,10 @@ export function CreateCageMatch() {
                   <span className="inline-flex items-center gap-1">
                     Wager
                     <HelpTip>
-                      Winner takes all stakes the full amount once for the
-                      whole match. Per game stakes and settles the same
-                      amount as each game finishes. Split evenly divides the
-                      total across every game up front.
+                      Winner takes all stakes the full amount once for the whole
+                      match. Per game stakes and settles the same amount as each
+                      game finishes. Split evenly divides the total across every
+                      game up front.
                       {rakePercent !== null &&
                         ` A ${rakePercent}% platform fee is deducted from the payout either way.`}
                     </HelpTip>
@@ -189,15 +200,9 @@ export function CreateCageMatch() {
                 value={wagerMode}
                 onChange={(e) => setWagerMode(e.target.value as CageWagerMode)}
               >
-                <option value="winner_takes_all">
-                  Winner takes all — one stake for the whole match
-                </option>
-                <option value="per_leg">
-                  Per game — staked and settled as each game finishes
-                </option>
-                <option value="split_even">
-                  Split evenly — total stake divided across all games
-                </option>
+                <option value="winner_takes_all">Winner takes all</option>
+                <option value="per_leg">Per game</option>
+                <option value="split_even">Split evenly</option>
               </Select>
               <Input
                 label={

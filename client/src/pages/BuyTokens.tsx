@@ -33,11 +33,28 @@ export function BuyTokens() {
   const [successMessage, setSuccessMessage] = useState("");
 
   useEffect(() => {
-    getWalletConfig().then((res) => {
-      setNairaPerToken(res.purchase.nairaPerToken);
-      setMinTokens(res.purchase.minTokens);
-      setPublicKey(res.paystackPublicKey);
-    });
+    getWalletConfig()
+      .then((res) => {
+        // Guard against an old/partial response shape rather than crashing
+        // silently in the .then (which was the actual bug: the backend's
+        // /wallet/plans hasn't been migrated to the new `purchase` field
+        // yet, so `res.purchase` was undefined, the destructure threw, the
+        // rejected promise had no .catch, and publicKey — and therefore the
+        // button — never got set). Falls back to the constants above so the
+        // page still works with an old-shape response, just without
+        // treating that as fatal.
+        if (res.purchase) {
+          setNairaPerToken(res.purchase.nairaPerToken);
+          setMinTokens(res.purchase.minTokens);
+        }
+        setPublicKey(res.paystackPublicKey);
+      })
+      .catch((err) => {
+        console.error("Failed to load wallet config:", err);
+        setError(
+          "Couldn't load purchase settings. Try refreshing the page.",
+        );
+      });
   }, []);
 
   const tokens = Math.max(0, Math.floor(Number(tokensInput) || 0));

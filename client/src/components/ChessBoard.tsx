@@ -17,6 +17,12 @@ export interface ChessBoardProps {
   lastMove?: [string, string];
   onUserMove: (orig: string, dest: string) => void;
   animationEnabled?: boolean;
+  /** How long a piece slide takes, in ms — see
+   *  timeControls.ts's animationDurationForTimeControl, which buckets this
+   *  by the game's actual time control (bullet/blitz/rapid/classical) so
+   *  faster games feel snappier and slower games feel more deliberate,
+   *  rather than one fixed speed for every game. */
+  animationDurationMs?: number;
   showCoordinates?: boolean;
   showLegalMoves?: boolean;
 }
@@ -33,6 +39,7 @@ export const ChessBoard = memo(function ChessBoard({
   lastMove,
   onUserMove,
   animationEnabled = true,
+  animationDurationMs = 200,
   showCoordinates = true,
   showLegalMoves = true,
 }: ChessBoardProps) {
@@ -86,7 +93,7 @@ export const ChessBoard = memo(function ChessBoard({
       turnColor,
       check: inCheck,
       coordinates: showCoordinates,
-      animation: { enabled: animationEnabled, duration: 200 },
+      animation: { enabled: animationEnabled, duration: animationDurationMs },
       movable: {
         free: false,
         color: movableColor,
@@ -109,7 +116,17 @@ export const ChessBoard = memo(function ChessBoard({
       groundRef.current?.destroy();
       groundRef.current = null;
     };
-  }, [viewOnly, boardSize > 0]);
+    // Deliberately NOT depending on viewOnly (or any of the other config
+    // fields also present in the sync effect below) — those are already
+    // pushed through via groundRef.current.set() every time they change,
+    // so including them here just meant the entire Chessground instance
+    // got torn down and rebuilt from scratch on every toggle (viewOnly
+    // flips on literally every move-history navigation and every
+    // game-finish transition) instead of a cheap in-place update. That
+    // was a real, visible stutter source — this only rebuilds when the
+    // board first becomes measurable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardSize > 0]);
 
   useLayoutEffect(() => {
     const isFlip = orientationRef.current !== orientation;
@@ -132,7 +149,7 @@ export const ChessBoard = memo(function ChessBoard({
       // animation for just this one set() call fixes that; a real move
       // right after still gets the user's normal animationEnabled
       // setting on the very next update.
-      animation: { enabled: isFlip ? false : animationEnabled, duration: 200 },
+      animation: { enabled: isFlip ? false : animationEnabled, duration: animationDurationMs },
       movable: {
         color: movableColor,
         dests: dests as any,
@@ -153,6 +170,7 @@ export const ChessBoard = memo(function ChessBoard({
     inCheck,
     lastMove,
     animationEnabled,
+    animationDurationMs,
     showCoordinates,
     showLegalMoves,
   ]);

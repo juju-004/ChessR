@@ -51,7 +51,10 @@ interface CageGamePlanEditorProps {
  * game gets a full-width row with a category badge and larger tap targets
  * for reordering/removing.
  */
-export function CageGamePlanEditor({ legs, onChange }: CageGamePlanEditorProps) {
+export function CageGamePlanEditor({
+  legs,
+  onChange,
+}: CageGamePlanEditorProps) {
   const [presetIdx, setPresetIdx] = useState(2);
   const [variant, setVariant] = useState<CageVariant>("standard");
   const [count, setCount] = useState(5);
@@ -96,7 +99,7 @@ export function CageGamePlanEditor({ legs, onChange }: CageGamePlanEditorProps) 
 
         {legs.length === 0 ? (
           <p className="rounded-xl border border-dashed border-base-300 px-3 py-4 text-center text-sm text-base-content/50">
-            No games yet — add some below to build the match.
+            No games yet. Add some below to build the match.
           </p>
         ) : (
           <ol className="max-h-72 space-y-2 overflow-y-auto pr-1">
@@ -156,7 +159,7 @@ export function CageGamePlanEditor({ legs, onChange }: CageGamePlanEditorProps) 
         <h4 className="mb-2.5 text-sm font-semibold text-base-content">
           Add games
         </h4>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,0.7fr)]">
+        <div className="grid gap-3 grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,0.7fr)]">
           <Select
             label="Time control"
             value={presetIdx}

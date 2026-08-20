@@ -35,7 +35,7 @@ import {
 } from "./wallet.service.js";
 import { applyRatingForGame } from "./rating.service.js";
 import { getIo } from "../sockets/io.js";
-import { isUserOnline } from "./presence.service.js";
+import { isUserWatchingTournament } from "./presence.service.js";
 
 const generateCode = customAlphabet("ABCDEFGHJKMNPQRSTUVWXYZ23456789", 6);
 
@@ -1005,27 +1005,29 @@ function buildKnockoutRound0(playerIds: any[]): ITournamentRound {
  *  if literally everyone remaining has already played everyone else, it
  *  falls back to allowing a rematch rather than leaving someone unpaired. */
 /** Smart pairing, swiss half: builds the pairing set for a round using only
- *  players who are currently online, so nobody gets paired against someone
- *  who isn't actually around to play — an offline player simply sits this
- *  round out (no bye consumed, no points lost) and is reconsidered fresh
- *  the next time a round is built, whenever they're back.
+ *  players who currently have this tournament's detail page open, so
+ *  nobody gets paired against someone who isn't actually looking at it to
+ *  play — a player who's online elsewhere in the app (or not online at
+ *  all) simply sits this round out (no bye consumed, no points lost) and
+ *  is reconsidered fresh the next time a round is built, whenever they're
+ *  back on the page.
  *
- *  The one deliberate escape hatch: if fewer than 2 players are online
- *  right now, filtering by presence would leave nothing to pair at all —
+ *  The one deliberate escape hatch: if fewer than 2 players are watching
+ *  right now, filtering by that would leave nothing to pair at all —
  *  rather than stall the whole event indefinitely waiting for people to
- *  show up, this falls back to pairing everyone regardless of online
- *  status for that one round. Presence-based skipping is a fairness
- *  nicety, not something worth deadlocking a tournament over. */
+ *  show up, this falls back to pairing everyone regardless of presence for
+ *  that one round. Presence-based skipping is a fairness nicety, not
+ *  something worth deadlocking a tournament over. */
 async function buildSwissRound(
   tournament: ITournament,
   roundIndex: number,
 ): Promise<ITournamentRound> {
   const candidates = tournament.players.filter((p) => !p.withdrawn);
-  const onlineFlags = await Promise.all(
-    candidates.map((p) => isUserOnline(p.user.toString())),
+  const watchingFlags = await Promise.all(
+    candidates.map((p) => isUserWatchingTournament(p.user.toString(), tournament.id)),
   );
-  const onlineOnly = candidates.filter((_, i) => onlineFlags[i]);
-  const active = onlineOnly.length >= 2 ? onlineOnly : candidates;
+  const watchingOnly = candidates.filter((_, i) => watchingFlags[i]);
+  const active = watchingOnly.length >= 2 ? watchingOnly : candidates;
 
   const priorOpponents = new Map<string, Set<string>>();
   for (const round of tournament.rounds) {
@@ -1311,16 +1313,19 @@ async function fireArenaEnd(tournamentId: string): Promise<void> {
 /** Smart pairing, arena half: every player currently eligible for a new
  *  pairing — joined, not withdrawn, not paused (see the
  *  ITournamentPlayer.paused doc comment), not already sitting in a still-
- *  active pairing themselves, AND currently online. That last check is
- *  what stops the arena from ever pairing someone against an opponent who
- *  isn't actually there to play — an offline player is simply left out of
- *  the pool until they reconnect (see retryArenaPairingsForUser, called on
- *  socket connect, which re-checks them the moment they're back rather
- *  than making them wait for some unrelated pairing event to happen to
- *  pick them up). Unlike swiss's buildSwissRound, there's no "too few
- *  online, pair everyone anyway" fallback needed here — arena tolerates an
- *  empty pool fine, it just means nobody gets paired until the next
- *  trigger. */
+ *  active pairing themselves, AND currently watching this tournament's
+ *  detail page (not just online somewhere else in the app — see
+ *  isUserWatchingTournament). That last check is what stops the arena
+ *  from ever pairing someone against an opponent who isn't actually
+ *  looking at the tournament to play: a player idling on Game.tsx or
+ *  Settings with the app open in the background is left out of the pool
+ *  until they come back to this page (see retryArenaPairingsForUser,
+ *  called on tournament:watch, which re-checks them the instant they do
+ *  rather than making them wait for some unrelated pairing event to
+ *  happen to pick them up). Unlike swiss's buildSwissRound, there's no
+ *  "too few watching, pair everyone anyway" fallback needed here — arena
+ *  tolerates an empty pool fine, it just means nobody gets paired until
+ *  the next trigger. */
 async function arenaAvailablePlayers(
   tournament: ITournament,
 ): Promise<ITournamentPlayer[]> {
@@ -1335,10 +1340,10 @@ async function arenaAvailablePlayers(
   const candidates = tournament.players.filter(
     (p) => !p.withdrawn && !p.paused && !busy.has(p.user.toString()),
   );
-  const onlineFlags = await Promise.all(
-    candidates.map((p) => isUserOnline(p.user.toString())),
+  const watchingFlags = await Promise.all(
+    candidates.map((p) => isUserWatchingTournament(p.user.toString(), tournament.id)),
   );
-  return candidates.filter((_, i) => onlineFlags[i]);
+  return candidates.filter((_, i) => watchingFlags[i]);
 }
 
 /** Every current player's single most recent opponent, keyed by userId —
@@ -1499,14 +1504,17 @@ export async function setArenaPause(
   return tournament;
 }
 
-/** Called when a user's socket connects (see presenceSocket.ts) — the
- *  online-only filtering in arenaAvailablePlayers means a player who was
- *  offline simply sat out of pairing consideration entirely, so nothing
- *  else would notice they're back until some unrelated pairing event (a
- *  different game finishing, someone else pausing/resuming) happened to
- *  run tryArenaPairings again. This closes that gap: the moment they
- *  reconnect, every active arena they're registered in gets an immediate
- *  re-check specifically on their behalf. */
+/** Called both when a user's socket connects (see presenceSocket.ts) and
+ *  when they open a tournament's detail page (see tournamentSocket.ts's
+ *  tournament:watch) — the watching-only filtering in
+ *  arenaAvailablePlayers means a player who wasn't on the page simply sat
+ *  out of pairing consideration entirely, so nothing else would notice
+ *  they're back until some unrelated pairing event (a different game
+ *  finishing, someone else pausing/resuming) happened to run
+ *  tryArenaPairings again. This closes that gap: the moment they're back
+ *  (connected, or specifically looking at the page again), every active
+ *  arena they're registered in gets an immediate re-check on their
+ *  behalf. */
 export async function retryArenaPairingsForUser(userId: string): Promise<void> {
   const tournaments = await Tournament.find({
     status: "active",

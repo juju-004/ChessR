@@ -24,6 +24,7 @@ interface GameBoardAreaProps {
   displayLastMove: [string, string] | undefined;
   onUserMove: (orig: string, dest: string) => void;
   animationEnabled: boolean;
+  animationDurationMs: number;
   showCoordinates: boolean;
   showLegalMoves: boolean;
   isPlayer: boolean;
@@ -60,6 +61,7 @@ export const GameBoardArea = memo(function GameBoardArea({
   displayLastMove,
   onUserMove,
   animationEnabled,
+  animationDurationMs,
   showCoordinates,
   showLegalMoves,
   isPlayer,
@@ -78,7 +80,7 @@ export const GameBoardArea = memo(function GameBoardArea({
   const bottomPanelData = boardFlipped ? opponentPanelData : myPanelData;
 
   return (
-    <div className="game-area-board mt-6 md:mt-0 relative flex flex-col flex-1 items-center justify-center">
+    <div className="game-area-board mt-4 md:mt-0 relative flex flex-col flex-1 items-center justify-center">
       <div className=" md:hidden w-[95%]">
         <PlayerPanelRow {...topPanelData} />
       </div>
@@ -118,6 +120,7 @@ export const GameBoardArea = memo(function GameBoardArea({
             lastMove={displayLastMove}
             onUserMove={onUserMove}
             animationEnabled={animationEnabled}
+            animationDurationMs={animationDurationMs}
             showCoordinates={showCoordinates}
             showLegalMoves={showLegalMoves}
           />

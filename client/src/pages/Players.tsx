@@ -373,7 +373,7 @@ export function Players() {
                       </Button>
                     }
                   >
-                    <div className="space-y-3">
+                    <div className="space-y-3 px-4 md:px-2">
                       <Select
                         label="Time control"
                         value={tcIndex}

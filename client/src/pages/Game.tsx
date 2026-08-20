@@ -77,7 +77,7 @@ import {
   setSoundEnabled,
 } from "../sounds.js";
 import { copyToClipboard } from "@/lib/utils.js";
-import { formatTimeControl } from "../timeControls.js";
+import { formatTimeControl, animationDurationForTimeControl } from "../timeControls.js";
 
 export function Game() {
   const { code = "" } = useParams<{ code: string }>();
@@ -293,6 +293,14 @@ export function Game() {
   // "10 seconds left" doesn't mean the same thing in bullet vs. classical.
   const lowTimeThresholdMs = useMemo(
     () => computeLowTimeThresholdMs(gameMeta?.timeControl.baseSeconds ?? null),
+    [gameMeta?.timeControl.baseSeconds],
+  );
+
+  // Same idea, for the board's piece-slide speed — bullet games get quick
+  // snaps, classical games get a slower, easier-to-follow slide. See
+  // animationDurationForTimeControl's own comment for the bucket cutoffs.
+  const animationDurationMs = useMemo(
+    () => animationDurationForTimeControl(gameMeta?.timeControl.baseSeconds ?? null),
     [gameMeta?.timeControl.baseSeconds],
   );
 
@@ -1602,6 +1610,7 @@ export function Game() {
           displayLastMove={displayLastMove}
           onUserMove={handleUserMove}
           animationEnabled={settings.pieceAnimation}
+          animationDurationMs={animationDurationMs}
           showCoordinates={settings.showCoordinates}
           showLegalMoves={settings.showLegalMoves}
           isPlayer={isPlayer}

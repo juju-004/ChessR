@@ -47,11 +47,11 @@ export function PrizePoolEditor({
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-1 text-sm text-base-content/80">
-          <span className="opacity-80">Prize pool</span>
+          <span className="text-xs font-medium sm:text-sm">Prize pool</span>
           <HelpTip>
             One place (or range of places) per line: rank, then how much it
             pays. "1st - 500", "2nd - 200", or "5th-10th - 4k" for a range that
-            shares the same amount. Ordinal suffixes and spacing don't matter —
+            shares the same amount. Ordinal suffixes and spacing don't matter.
             "5-10-4000" parses exactly the same as "5th-10th-4k".
           </HelpTip>
         </span>
