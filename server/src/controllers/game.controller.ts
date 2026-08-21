@@ -17,7 +17,7 @@ import type { AuthedRequest } from "../middleware/auth.js";
 
 // Sanity ceiling on a single wager — not a business limit, just a guard
 // against fat-fingered/garbage input reaching the wallet layer.
-const MAX_WAGER_TOKENS = 100_000;
+const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
 
 const createSchema = z.object({
   isPrivate: z.boolean().optional().default(false),

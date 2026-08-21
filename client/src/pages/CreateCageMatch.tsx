@@ -9,6 +9,7 @@ import {
 } from "../api/cageMatches.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useRakePercent } from "../hooks/useRakePercent.js";
+import { MAX_WAGER_TOKENS } from "../lib/limits.js";
 import { HelpTip } from "../components/HelpTip.js";
 import { CageGamePlanEditor } from "../components/cage/CageGamePlanEditor.js";
 import {
@@ -18,6 +19,7 @@ import {
   Input,
   Select,
   Button,
+  RCoin,
 } from "../components/ui/index.js";
 
 export function CreateCageMatch() {
@@ -99,7 +101,10 @@ export function CreateCageMatch() {
         isError: true,
       });
     }
-    const wagerTokens = Math.max(0, Math.floor(Number(wagerInput) || 0));
+    const wagerTokens = Math.min(
+      MAX_WAGER_TOKENS,
+      Math.max(0, Math.floor(Number(wagerInput) || 0)),
+    );
     if (wagerTokens <= 0) {
       return setStatus({
         message: "Enter a wager amount. Every cage match requires one.",
@@ -206,12 +211,21 @@ export function CreateCageMatch() {
               </Select>
               <Input
                 label={
-                  wagerMode === "per_leg"
-                    ? "R Coins per game"
-                    : "Total R Coins for the whole match"
+                  <span className="inline-flex items-center gap-1">
+                    {wagerMode === "per_leg" ? (
+                      <>
+                        <RCoin size={12} /> Coins per game
+                      </>
+                    ) : (
+                      <>
+                        Total <RCoin size={12} /> Coins for the whole match
+                      </>
+                    )}
+                  </span>
                 }
                 type="number"
                 min={1}
+                max={MAX_WAGER_TOKENS}
                 step={1}
                 value={wagerInput}
                 onChange={(e) => setWagerInput(e.target.value)}

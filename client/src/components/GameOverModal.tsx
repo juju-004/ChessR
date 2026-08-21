@@ -1,6 +1,7 @@
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 import { Trophy, Frown, Handshake, Ban } from "lucide-react";
 import { Card, Button } from "./ui/index.js";
+import { RCoin } from "./ui/RCoin.js";
 import { RatingBadge } from "./RatingBadge.js";
 import type { RatingSideUpdate } from "./game/types.js";
 
@@ -53,15 +54,31 @@ export const GameOverModal = memo(function GameOverModal({
   const isLoss = isPlayer && myColor && result !== null && result !== 'draw' && result !== myColor;
   const Icon = result === null ? Ban : isWin ? Trophy : isLoss ? Frown : Handshake;
 
-  const wagerText = (() => {
+  const wagerText: ReactNode = (() => {
     if (!isPlayer || !wagerSettlement || wagerSettlement.wagerTokens <= 0) return null;
     if (wagerSettlement.winnerId === null) {
-      return `Draw — your ${wagerSettlement.wagerTokens} R Coin stake was refunded.`;
+      return (
+        <>
+          Draw — your {wagerSettlement.wagerTokens}{" "}
+          <RCoin size={14} className="inline align-[-2px]" /> stake was
+          refunded.
+        </>
+      );
     }
     if (wagerSettlement.winnerId === myUserId) {
-      return `You won ${wagerSettlement.payoutTokens} R Coins!`;
+      return (
+        <>
+          You won {wagerSettlement.payoutTokens}{" "}
+          <RCoin size={14} className="inline align-[-2px]" />!
+        </>
+      );
     }
-    return `You lost your ${wagerSettlement.wagerTokens} R Coin stake.`;
+    return (
+      <>
+        You lost your {wagerSettlement.wagerTokens}{" "}
+        <RCoin size={14} className="inline align-[-2px]" /> stake.
+      </>
+    );
   })();
 
   // Only worth a line when the tier actually changed — a same-tier result

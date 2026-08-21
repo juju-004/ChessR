@@ -16,10 +16,10 @@ export async function signup(username: string, email: string, password: string) 
   return data.user;
 }
 
-export async function signin(email: string, password: string) {
+export async function signin(identifier: string, password: string) {
   const data = await apiFetch<AuthResponse>('/auth/signin', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ identifier, password }),
   });
   setAuth(data.accessToken, data.user);
   return data.user;

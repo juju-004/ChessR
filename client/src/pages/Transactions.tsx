@@ -130,10 +130,12 @@ export function Transactions() {
                       {typeLabels[t.type]}
                       <span
                         className={`inline-flex items-center gap-1 text-xs font-normal ${
-                          typeAddsTokens[t.type] ? "text-green-400" : "text-red-400"
+                          typeAddsTokens[t.type]
+                            ? "text-green-400"
+                            : "text-red-400"
                         }`}
                       >
-                        · {typeAddsTokens[t.type] ? "+" : "-"}
+                        {typeAddsTokens[t.type] ? "+" : "-"}
                         <RCoin size={12} /> {t.tokens}
                       </span>
                     </p>

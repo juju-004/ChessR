@@ -20,6 +20,8 @@ import { ApiRequestError } from "../api/http.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import { TIME_CONTROLS, formatTimeControl } from "../timeControls.js";
 import { turnColor } from "../chessUtils.js";
+import { extractGameCode } from "../lib/utils.js";
+import { MAX_WAGER_TOKENS } from "../lib/limits.js";
 import { useTokenBalance } from "../hooks/useTokenBalance.js";
 import { useRakePercent } from "../hooks/useRakePercent.js";
 import {
@@ -112,7 +114,10 @@ export function Dashboard() {
     };
   }, []);
 
-  const wagerTokens = Math.max(1, Math.floor(Number(wagerInput) || 0));
+  const wagerTokens = Math.min(
+    MAX_WAGER_TOKENS,
+    Math.max(1, Math.floor(Number(wagerInput) || 0)),
+  );
   const rakePercent = useRakePercent();
   const wagerRake =
     rakePercent !== null
@@ -142,7 +147,7 @@ export function Dashboard() {
   }
 
   function handleJoinByCode() {
-    const code = joinCodeInput.trim().toUpperCase();
+    const code = extractGameCode(joinCodeInput);
     if (code) navigate(`/game/${code}`);
   }
 
@@ -254,9 +259,14 @@ export function Dashboard() {
                 </Select>
 
                 <Input
-                  label="R Coin wager (per player)"
+                  label={
+                    <span className="inline-flex items-center gap-1">
+                      <RCoin size={12} /> Coin wager (per player)
+                    </span>
+                  }
                   type="number"
                   min={1}
+                  max={MAX_WAGER_TOKENS}
                   step={1}
                   value={wagerInput}
                   onChange={(e) => setWagerInput(e.target.value)}
@@ -282,10 +292,10 @@ export function Dashboard() {
             <div className="flex flex-1 gap-2">
               <Input
                 type="text"
-                placeholder="Join by code, e.g. 7K3M9P"
+                placeholder="Join by code or link, e.g. 7K3M9P"
                 maxLength={10}
                 value={joinCodeInput}
-                onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
+                onChange={(e) => setJoinCodeInput(e.target.value)}
                 className="uppercase"
                 leadingIcon={<Hash className="h-4 w-4" />}
               />
@@ -448,7 +458,9 @@ export function Dashboard() {
                             </span>
                             {g.wagerTokens > 0 && (
                               <Badge variant="warning">
-                                {g.wagerTokens} R wager
+                                <span className="inline-flex items-center gap-1">
+                                  {g.wagerTokens} <RCoin size={10} /> wager
+                                </span>
                               </Badge>
                             )}
                           </div>

@@ -31,7 +31,10 @@ const signupSchema = z.object({
 });
 
 const signinSchema = z.object({
-  email: z.string().trim().email(),
+  // Accepts either an email or a username — signin() below sniffs which
+  // one it's looking at and queries accordingly. Not further validated
+  // as an email/username shape here since it might be either.
+  identifier: z.string().trim().min(1),
   password: z.string().min(1),
 });
 
@@ -98,15 +101,21 @@ export const signup = asyncHandler(async (req, res) => {
 });
 
 export const signin = asyncHandler(async (req, res) => {
-  const { email, password } = signinSchema.parse(req.body);
+  const { identifier, password } = signinSchema.parse(req.body);
 
-  const user = await User.findOne({ email: email.toLowerCase() }).select(
-    "+passwordHash",
-  );
-  if (!user) throw ApiError.unauthorized("Invalid email or password");
+  // A bare heuristic ("contains an @") is enough to tell email and
+  // username apart here — usernames are restricted to
+  // [a-zA-Z0-9_] at signup, so they can never contain one.
+  const isEmail = identifier.includes("@");
+  const user = await User.findOne(
+    isEmail
+      ? { email: identifier.toLowerCase() }
+      : { usernameLower: identifier.toLowerCase() },
+  ).select("+passwordHash");
+  if (!user) throw ApiError.unauthorized("Invalid username/email or password");
 
   const valid = await bcrypt.compare(password, user.passwordHash);
-  if (!valid) throw ApiError.unauthorized("Invalid email or password");
+  if (!valid) throw ApiError.unauthorized("Invalid username/email or password");
 
   const accessToken = signAccessToken({
     sub: user.id,

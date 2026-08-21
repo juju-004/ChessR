@@ -31,6 +31,10 @@ export interface TournamentPairing {
   index: number;
   player1: string;
   player2: string | null;
+  // Knockout-only: true for the bonus match between the two semifinal
+  // losers, played alongside the final. See tournament.service.ts's
+  // ITournamentPairing doc comment.
+  isThirdPlace?: boolean;
   whiteId: string | null;
   blackId: string | null;
   gameId: string | null;
@@ -90,6 +94,12 @@ export interface Tournament {
   scheduledStartAt: string | null;
   winner: string | null;
   runnerUp: string | null;
+  // Knockout-only — see tournament.service.ts's CreateTournamentInput doc
+  // comment for thirdPlaceMatch, and ITournament's for thirdPlace/
+  // fourthPlace. All null/false for every other format.
+  thirdPlaceMatch: boolean;
+  thirdPlace: string | null;
+  fourthPlace: string | null;
   createdAt: string;
   startedAt?: string;
   endedAt?: string;

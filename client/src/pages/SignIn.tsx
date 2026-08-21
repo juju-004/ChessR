@@ -5,7 +5,7 @@ import { isLoggedIn } from "../api/authStore.js";
 import { ApiRequestError } from "../api/http.js";
 import { Input, Button } from "../components/ui/index.js";
 import { AuthLayout } from "../components/AuthLayout.js";
-import { Mail, LockOpen, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { User2, LockOpen, Eye, EyeOff, AlertCircle } from "lucide-react";
 
 export function SignIn() {
   const navigate = useNavigate();
@@ -14,7 +14,7 @@ export function SignIn() {
   // do here.
   if (isLoggedIn()) return <Navigate to="/" replace />;
 
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -25,7 +25,7 @@ export function SignIn() {
     setError("");
     setLoading(true);
     try {
-      await signin(email, password);
+      await signin(identifier, password);
       navigate("/");
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Sign in failed");
@@ -49,14 +49,14 @@ export function SignIn() {
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
-          label="Email"
-          type="email"
-          leadingIcon={<Mail className="size-4" />}
-          placeholder="you@example.com"
+          label="Username or email"
+          type="text"
+          leadingIcon={<User2 className="size-4" />}
+          placeholder="you@example.com or your_username"
           required
-          autoComplete="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          autoComplete="username"
+          value={identifier}
+          onChange={(e) => setIdentifier(e.target.value)}
         />
         <Input
           label="Password"

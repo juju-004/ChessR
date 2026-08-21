@@ -75,6 +75,13 @@ export interface ITournamentPlayer {
   // pause button. They keep their points/standing and can toggle this
   // back off at any time to resume being paired. Meaningless for every
   // other format (there's no continuous pairing queue to step out of).
+  // Arena-only: when this player most recently became free to be paired
+  // again (joined, un-paused, or their last game ended) — null while
+  // they're mid-game/paused/not yet joined. tryArenaPairings sorts its
+  // pool by this ascending so whoever's been waiting longest gets first
+  // pick of their nearest-standing opponent, ahead of someone who only
+  // just became free.
+  arenaAvailableSince: Date | null;
   paused: boolean;
 }
 
@@ -84,6 +91,12 @@ export interface ITournamentPairing {
   // mid-event, or knockout when the bracket has more slots than players).
   player1: Types.ObjectId;
   player2: Types.ObjectId | null;
+  // Knockout ('normal') only: true for the bonus match between the two
+  // semifinal losers, played alongside the final. Its winner/loser don't
+  // feed into any further bracket round — see advanceAfterRound and
+  // finishTournament, which both special-case this pairing to keep it
+  // from being mistaken for a second still-live bracket branch.
+  isThirdPlace?: boolean;
   whiteId: Types.ObjectId | null;
   blackId: Types.ObjectId | null;
   gameId: Types.ObjectId | null;
@@ -202,6 +215,15 @@ export interface ITournament extends Document {
   scheduledStartAt: Date | null;
   winner: Types.ObjectId | null;
   runnerUp: Types.ObjectId | null;
+  // Knockout ('normal') only: config flag set at creation, and the
+  // resulting placements once the 3rd-place match (if enabled) has been
+  // played. Both null/false for every other format, and for knockout
+  // events created without it enabled, or ones where the semifinal round
+  // didn't produce exactly two real losers to play it (see
+  // advanceAfterRound's normal-format branch).
+  thirdPlaceMatch: boolean;
+  thirdPlace: Types.ObjectId | null;
+  fourthPlace: Types.ObjectId | null;
   createdAt: Date;
   startedAt?: Date;
   endedAt?: Date;
@@ -212,6 +234,7 @@ const pairingSchema = new Schema<ITournamentPairing>(
     index: { type: Number, required: true },
     player1: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     player2: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    isThirdPlace: { type: Boolean, default: false },
     whiteId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     blackId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     gameId: { type: Schema.Types.ObjectId, ref: 'Game', default: null },
@@ -261,6 +284,7 @@ const playerSchema = new Schema<ITournamentPlayer>(
     hadBye: { type: Boolean, default: false },
     withdrawn: { type: Boolean, default: false },
     paused: { type: Boolean, default: false },
+    arenaAvailableSince: { type: Date, default: null },
   },
   { _id: false },
 );
@@ -306,6 +330,9 @@ const tournamentSchema = new Schema<ITournament>(
     scheduledStartAt: { type: Date, default: null },
     winner: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     runnerUp: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    thirdPlaceMatch: { type: Boolean, default: false },
+    thirdPlace: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    fourthPlace: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     startedAt: { type: Date },
     endedAt: { type: Date },
   },

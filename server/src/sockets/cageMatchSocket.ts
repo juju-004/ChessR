@@ -29,7 +29,7 @@ const PAUSE_REQUEST_TTL_SECONDS = 60;
 const pauseRequestKey = (matchId: string) => `cagePauseReq:${matchId}`;
 const resumeRequestKey = (matchId: string) => `cageResumeReq:${matchId}`;
 
-const MAX_WAGER_TOKENS = 100_000;
+const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
 
 const legSchema = z.object({
   variant: z.enum(['standard', 'chess960']).default('standard'),

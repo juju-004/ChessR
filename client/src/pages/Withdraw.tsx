@@ -109,24 +109,28 @@ export function Withdraw() {
   return (
     <Page
       title="Withdraw"
-      description="Cash out R Coins to your bank account."
+      description={
+        <span className="inline-flex items-center gap-1">
+          Cash out <RCoin size={13} /> Coins to your bank account.
+        </span>
+      }
       back="/"
       bare
     >
       <Card variant="solid" className="w-full space-y-3">
-        <p className="mb-4 text-xs text-base-content/50">
-          Rate: ₦{nairaPerToken} per R Coin · Minimum withdrawal: {minTokens} R
-          Coins
+        <p className="mb-4 flex flex-wrap items-center gap-1 text-xs text-base-content/50">
+          Rate: ₦{nairaPerToken} per <RCoin size={11} /> Coin · Minimum
+          withdrawal: {minTokens} <RCoin size={11} /> Coins
         </p>
 
         <Input
-          label="R Coins to withdraw"
+          label="Coins to withdraw"
           type="number"
           min={minTokens}
           max={balance ?? undefined}
           value={tokens}
           onChange={(e) => setTokens(e.target.value)}
-          leadingIcon={<RCoin size={16} />}
+          leadingIcon={<RCoin size={16} className="mb-3" />}
           hint={
             tokensNum > 0 ? `≈ ₦${estimatedNaira.toLocaleString()}` : undefined
           }
@@ -154,7 +158,7 @@ export function Withdraw() {
           maxLength={10}
           value={accountNumber}
           onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ""))}
-          leadingIcon={<Landmark className="h-4 w-4" />}
+          leadingIcon={<Landmark className="h-4 w-4 mb-1.5" />}
           trailingIcon={resolving ? <Spinner size="sm" /> : undefined}
           error={resolveError || undefined}
           hint={

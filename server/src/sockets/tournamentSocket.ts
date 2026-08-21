@@ -16,7 +16,7 @@ import { User } from '../models/User.js';
 import { watchTournament, unwatchTournament } from '../services/presence.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
-const MAX_WAGER_TOKENS = 100_000;
+const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
 
 const MAX_BREAK_SECONDS = 300;
 
@@ -36,6 +36,10 @@ const createSchema = z.object({
   berserkAllowed: z.boolean().default(true),
   isPublic: z.boolean().default(false),
   organizerOnly: z.boolean().default(false),
+  // Knockout-only — see CreateTournamentInput's doc comment. Immutable
+  // after creation, same as organizerOnly, so this isn't in editSchema
+  // below.
+  thirdPlaceMatch: z.boolean().default(false),
   prizeSchedule: z.array(prizeTierSchema).max(20).optional().default([]),
   regFeeTokens: z.number().int().min(1, 'A registration fee is required for every tournament').max(MAX_WAGER_TOKENS),
   swissRounds: z.number().int().min(3).max(15).nullable().optional().default(null),

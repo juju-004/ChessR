@@ -1,7 +1,18 @@
 import { Link } from "react-router-dom";
-import { Swords, ShieldCheck, Trophy, Coins } from "lucide-react";
+import {
+  Swords,
+  ShieldCheck,
+  Trophy,
+  Coins,
+  Building2,
+  ExternalLink,
+} from "lucide-react";
 import { Page } from "@/components/ui/Page.js";
 import { Card } from "@/components/ui/Card.js";
+
+// Set this to RabahTech's actual site before shipping — placeholder for
+// now so the About page has somewhere real to point once it's ready.
+const RABAHTECH_URL = "https://rabah-tech.onrender.com";
 
 const PILLARS = [
   {
@@ -68,6 +79,26 @@ export function About() {
             </Card>
           ))}
         </div>
+
+        <Card variant="solid">
+          <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-base-content">
+            <Building2 className="h-4 w-4 text-base-content/50" />
+            Our companies
+          </h2>
+          <p className="mb-3 text-sm text-base-content/70">
+            Chessr is a product of RabahTech, our parent company building
+            real-money gaming and fintech products.
+          </p>
+          <a
+            href={RABAHTECH_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-(--primary) hover:underline"
+          >
+            Visit RabahTech
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        </Card>
 
         <Card variant="solid">
           <h2 className="mb-2 text-sm font-semibold text-base-content">

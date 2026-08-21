@@ -15,7 +15,7 @@ const MIN_LEGS = 2;
 const MAX_LEGS = 30;
 // Sanity ceiling mirroring MAX_WAGER_TOKENS in game.controller.ts — same
 // reasoning: not a business limit, just a guard against garbage input.
-const MAX_WAGER_TOKENS = 100_000;
+const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
 
 async function uniqueMatchCode(): Promise<string> {
   for (let attempt = 0; attempt < 5; attempt++) {

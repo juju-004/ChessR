@@ -9,13 +9,18 @@ import { useAuth } from "../contexts/AuthContext.js";
 import { openPaystackPopup } from "../paystack.js";
 import { refreshBalance } from "../api/walletStore.js";
 import { Page, Card, Button, Input, RCoin } from "@/components/ui/index.js";
+import { MAX_WAGER_TOKENS } from "@/lib/limits.js";
 
 // Fallback used only until getWalletConfig() resolves — the server's
-// figure (still ₦10/R at time of writing, i.e. ₦100 for 10 R Coins) is
+// figure (still ₦10/R Coin at time of writing, i.e. ₦100 for 10 R Coins) is
 // always what's actually charged; this just avoids a blank/zeroed price
 // preview for the one render before that request lands.
 const FALLBACK_NAIRA_PER_TOKEN = 10;
 const FALLBACK_MIN_TOKENS = 10;
+// 7-digit sanity ceiling on a single purchase, mirroring MAX_WAGER_TOKENS
+// server-side — overridden below by whatever getWalletConfig actually
+// returns, if it returns a tighter one.
+const FALLBACK_MAX_TOKENS = MAX_WAGER_TOKENS;
 
 // One-tap shortcuts for common amounts — purely a UI convenience over the
 // same custom-amount flow everyone else uses, not a distinct purchasable
@@ -26,6 +31,7 @@ export function BuyTokens() {
   const { user } = useAuth();
   const [nairaPerToken, setNairaPerToken] = useState(FALLBACK_NAIRA_PER_TOKEN);
   const [minTokens, setMinTokens] = useState(FALLBACK_MIN_TOKENS);
+  const [maxTokens, setMaxTokens] = useState(FALLBACK_MAX_TOKENS);
   const [publicKey, setPublicKey] = useState("");
   const [tokensInput, setTokensInput] = useState("100");
   const [busy, setBusy] = useState(false);
@@ -46,20 +52,27 @@ export function BuyTokens() {
         if (res.purchase) {
           setNairaPerToken(res.purchase.nairaPerToken);
           setMinTokens(res.purchase.minTokens);
+          // Still clamp to our own 7-digit sanity ceiling even if the
+          // server ever sent something looser — this is a UI guard, not
+          // the actual source of truth (that's server-side validation on
+          // the purchase endpoint itself).
+          setMaxTokens(
+            res.purchase.maxTokens
+              ? Math.min(res.purchase.maxTokens, MAX_WAGER_TOKENS)
+              : FALLBACK_MAX_TOKENS,
+          );
         }
         setPublicKey(res.paystackPublicKey);
       })
       .catch((err) => {
         console.error("Failed to load wallet config:", err);
-        setError(
-          "Couldn't load purchase settings. Try refreshing the page.",
-        );
+        setError("Couldn't load purchase settings. Try refreshing the page.");
       });
   }, []);
 
   const tokens = Math.max(0, Math.floor(Number(tokensInput) || 0));
   const priceNaira = tokens * nairaPerToken;
-  const isValidAmount = tokens >= minTokens;
+  const isValidAmount = tokens >= minTokens && tokens <= maxTokens;
 
   async function handleBuy() {
     if (!user || !isValidAmount) return;
@@ -68,8 +81,11 @@ export function BuyTokens() {
     setBusy(true);
 
     try {
-      const { reference, amountKobo, tokens: purchasedTokens } =
-        await initPurchase(tokens);
+      const {
+        reference,
+        amountKobo,
+        tokens: purchasedTokens,
+      } = await initPurchase(tokens);
 
       openPaystackPopup({
         key: publicKey,
@@ -103,17 +119,23 @@ export function BuyTokens() {
       });
     } catch (err) {
       console.error("Purchase failed:", err);
-      setError(
-        err instanceof Error ? err.message : "Could not start purchase",
-      );
+      setError(err instanceof Error ? err.message : "Could not start purchase");
       setBusy(false);
     }
   }
 
   return (
     <Page
-      title="Buy R Coins"
-      description={`Fixed rate — ₦${nairaPerToken} per R Coin.`}
+      title={
+        <span className="inline-flex items-center gap-1">
+          Buy <RCoin size={18} /> Coins
+        </span>
+      }
+      description={
+        <span className="inline-flex items-center gap-1">
+          Fixed rate — ₦{nairaPerToken} per <RCoin size={13} /> Coin.
+        </span>
+      }
       back="/"
       bare
     >
@@ -143,24 +165,32 @@ export function BuyTokens() {
           <RCoin size={30} />
           <div>
             <p className="text-lg font-bold leading-tight text-base-content">
-              R Coins
+              Coins
             </p>
-            <p className="text-xs text-base-content/50">
-              ₦{nairaPerToken} per R Coin · minimum {minTokens} R
+            <p className="flex flex-wrap items-center gap-1 text-xs text-base-content/50">
+              ₦{nairaPerToken} per <RCoin size={10} /> Coin · minimum{" "}
+              {minTokens} <RCoin size={10} />
             </p>
           </div>
         </div>
 
         <Input
-          label="How many R Coins"
+          label={
+            <span className="inline-flex items-center gap-1">
+              How many <RCoin size={12} /> Coins
+            </span>
+          }
           type="number"
           min={minTokens}
+          max={maxTokens}
           step={1}
           value={tokensInput}
           onChange={(e) => setTokensInput(e.target.value)}
           error={
             !isValidAmount && tokensInput !== ""
-              ? `Minimum purchase is ${minTokens} R Coins.`
+              ? tokens > maxTokens
+                ? `Maximum purchase is ${maxTokens.toLocaleString()} R Coins.`
+                : `Minimum purchase is ${minTokens} R Coins.`
               : undefined
           }
         />
@@ -171,13 +201,13 @@ export function BuyTokens() {
               key={amount}
               type="button"
               onClick={() => setTokensInput(String(amount))}
-              className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+              className={`rounded-full flex gap-1 items-center border px-3 py-1 text-xs font-medium transition-colors ${
                 tokens === amount
                   ? "border-(--secondary)/50 bg-(--secondary)/10 text-base-content"
                   : "border-base-300 bg-base-100/60 text-base-content/70 hover:border-(--secondary)/30"
               }`}
             >
-              {amount.toLocaleString()} R
+              {amount.toLocaleString()} <RCoin size={10} />
             </button>
           ))}
         </div>
@@ -196,7 +226,13 @@ export function BuyTokens() {
           fullWidth
           className="mt-4"
         >
-          {busy ? "Processing…" : `Buy ${tokens.toLocaleString()} R Coins`}
+          {busy ? (
+            "Processing…"
+          ) : (
+            <span className="inline-flex items-center gap-1">
+              Buy {tokens.toLocaleString()} <RCoin size={13} /> Coins
+            </span>
+          )}
         </Button>
       </Card>
     </Page>

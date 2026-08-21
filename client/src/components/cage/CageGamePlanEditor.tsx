@@ -9,20 +9,16 @@ import {
 } from "../../api/cageMatches.js";
 import { HelpTip } from "../HelpTip.js";
 import { Select, Input, Button, Badge } from "../ui/index.js";
+// Shared with every other time-control select in the app (see
+// ../../timeControls.js) instead of keeping its own list — a cage leg's
+// base time must be 1-180 minutes (or unlimited) server-side, so Hyper
+// Bullet's ½-minute preset is filtered out here since it isn't a valid
+// leg length, everything else from the shared list is fair game.
+import { TIME_CONTROLS } from "../../timeControls.js";
 
-const QUICK_ADD_PRESETS: {
-  label: string;
-  baseMinutes: number | null;
-  incrementSeconds: number;
-}[] = [
-  { label: "Bullet · 1+0", baseMinutes: 1, incrementSeconds: 0 },
-  { label: "Bullet · 2+1", baseMinutes: 2, incrementSeconds: 1 },
-  { label: "Blitz · 3+2", baseMinutes: 3, incrementSeconds: 2 },
-  { label: "Blitz · 5+0", baseMinutes: 5, incrementSeconds: 0 },
-  { label: "Rapid · 10+0", baseMinutes: 10, incrementSeconds: 0 },
-  { label: "Rapid · 15+10", baseMinutes: 15, incrementSeconds: 10 },
-  { label: "Classical · 30+0", baseMinutes: 30, incrementSeconds: 0 },
-];
+const QUICK_ADD_PRESETS = TIME_CONTROLS.filter(
+  (tc) => tc.baseMinutes === null || tc.baseMinutes >= 1,
+);
 
 // Client-side-only bucketing so each row in the plan can wear the same
 // bullet/blitz/rapid/classical badge the finished match uses (see

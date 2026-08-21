@@ -34,6 +34,7 @@ import { useNotify } from "../contexts/NotificationContext.js";
 import { copyToClipboard } from "@/lib/utils.js";
 import { cn } from "@/lib/cn.js";
 import { PrizePoolEditor } from "../components/tournaments/PrizePoolEditor.js";
+import { KnockoutBracket } from "../components/tournaments/KnockoutBracket.js";
 import { Pagination } from "../components/Pagination.js";
 import {
   Page,
@@ -49,6 +50,7 @@ import {
   Avatar,
   Tabs,
   ResponsiveOverlay,
+  RCoin,
 } from "../components/ui/index.js";
 
 const CLIENT_URL = import.meta.env.VITE_CLIENT_URL ?? "http://localhost:5173";
@@ -163,6 +165,7 @@ function EditTournamentForm({
         label="Name"
         value={name}
         onChange={(e) => setName(e.target.value)}
+        maxLength={60}
       />
 
       <div className="flex flex-wrap gap-3">
@@ -316,7 +319,11 @@ function EditTournamentForm({
 
       <div className="space-y-2 border-t border-base-300 pt-3">
         <Input
-          label="Registration fee — R Coins"
+          label={
+            <span className="inline-flex items-center gap-1">
+              Registration fee — <RCoin size={12} /> Coins
+            </span>
+          }
           type="number"
           min={1}
           value={regFeeInput}
@@ -1059,10 +1066,18 @@ export function TournamentDetail() {
                 <> · {tournament.arenaMinutes} min arena</>
               )}
               {tournament.regFeeTokens > 0 && (
-                <> · {tournament.regFeeTokens} R to join</>
+                <>
+                  {" "}
+                  · {tournament.regFeeTokens}{" "}
+                  <RCoin size={11} className="inline align-[-1px]" /> to join
+                </>
               )}
               {tournament.prizePoolTokens > 0 && (
-                <> · {tournament.prizePoolTokens} R prize pool</>
+                <>
+                  {" "}
+                  · {tournament.prizePoolTokens}{" "}
+                  <RCoin size={11} className="inline align-[-1px]" /> prize pool
+                </>
               )}
               {tournament.berserkAllowed && <> · Berserk allowed ⚔</>}
               {tournament.hasPassword && (
@@ -1231,6 +1246,10 @@ export function TournamentDetail() {
           tournament.arenaEndsAt && (
             <ArenaCountdown arenaEndsAt={tournament.arenaEndsAt} />
           )}
+
+        {tournament.format === "normal" && (
+          <KnockoutBracket tournament={tournament} myId={myId} />
+        )}
 
         {isPointsFormat && standings.length > 0 && (
           <Card variant="solid">

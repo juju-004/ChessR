@@ -39,7 +39,7 @@ import { isUserWatchingTournament } from "./presence.service.js";
 
 const generateCode = customAlphabet("ABCDEFGHJKMNPQRSTUVWXYZ23456789", 6);
 
-const MAX_WAGER_TOKENS = 100_000;
+const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
 const PASSWORD_BCRYPT_ROUNDS = 10;
 const MIN_START_DELAY_MS = 10_000; // scheduled start must be at least 10s out
 const MAX_START_DELAY_MS = 30 * 24 * 60 * 60 * 1000; // and at most 30 days
@@ -347,6 +347,12 @@ export interface CreateTournamentInput {
   // fund the prize pool, if any, same as any other creator). Defaults to
   // false. Immutable after creation — see the ITournament doc comment.
   organizerOnly?: boolean;
+  // Only meaningful for format === 'normal' (knockout) — whether to play a
+  // bonus match between the two semifinal losers for 3rd place, alongside
+  // the final. Defaults to false. Immutable after creation, same as
+  // organizerOnly — changing it mid-bracket wouldn't have anywhere sane to
+  // retroactively apply to.
+  thirdPlaceMatch?: boolean;
   // Prize pool: creator-funded, paid out by final rank. Empty/omitted = no
   // prize pool. See the ITournament doc comment in Tournament.ts.
   prizeSchedule?: { fromRank: number; toRank: number; tokens: number }[];
@@ -541,6 +547,7 @@ export async function createTournament(
         ],
     berserkAllowed: input.berserkAllowed,
     isPublic: input.isPublic ?? false,
+    thirdPlaceMatch: input.format === "normal" ? (input.thirdPlaceMatch ?? false) : false,
     prizeSchedule,
     prizePoolTokens,
     regFeeTokens,
@@ -648,6 +655,7 @@ export async function joinTournament(
     withdrawn: false,
     paused: false,
     joinedAt: dateObject,
+    arenaAvailableSince: dateObject,
   });
   await tournament.save();
 
@@ -1018,6 +1026,90 @@ function buildKnockoutRound0(playerIds: any[]): ITournamentRound {
  *  show up, this falls back to pairing everyone regardless of presence for
  *  that one round. Presence-based skipping is a fairness nicety, not
  *  something worth deadlocking a tournament over. */
+// ---------------------------------------------------------------------
+// Color balancing — shared by swiss and arena (round-robin doesn't need
+// this: circleMethodSchedule already produces a fixed, provably-balanced
+// player1/player2 order for every lap, see the comment there).
+// ---------------------------------------------------------------------
+
+interface ColorState {
+  white: number;
+  black: number;
+  lastColor: "white" | "black" | null;
+  /** Length of the current streak of `lastColor` in a row. */
+  streak: number;
+}
+
+const EMPTY_COLOR_STATE: ColorState = {
+  white: 0,
+  black: 0,
+  lastColor: null,
+  streak: 0,
+};
+
+/** Walks every pairing that's actually been given colors so far (i.e. has
+ *  been activated — byes and still-pending pairings have no whiteId/
+ *  blackId yet) in chronological round order, and tallies each player's
+ *  white/black counts and current same-color streak. */
+function computeColorState(tournament: ITournament): Map<string, ColorState> {
+  const state = new Map<string, ColorState>();
+  function record(userId: string, color: "white" | "black") {
+    const s = state.get(userId) ?? { ...EMPTY_COLOR_STATE };
+    if (color === "white") s.white++;
+    else s.black++;
+    s.streak = s.lastColor === color ? s.streak + 1 : 1;
+    s.lastColor = color;
+    state.set(userId, s);
+  }
+  for (const round of tournament.rounds) {
+    for (const pairing of round.pairings) {
+      if (!pairing.whiteId || !pairing.blackId) continue;
+      record(pairing.whiteId.toString(), "white");
+      record(pairing.blackId.toString(), "black");
+    }
+  }
+  return state;
+}
+
+/** Decides who of `aId`/`bId` should get white this pairing. In order of
+ *  priority: (1) never hand a player a 3rd consecutive same color if the
+ *  other orientation avoids it, (2) otherwise give white to whoever has
+ *  the more negative white-minus-black differential so far (balances
+ *  each player's overall color split), (3) otherwise alternate off
+ *  whoever's last color was white. Returns [whiteId, blackId]. */
+function assignColors(
+  aId: string,
+  bId: string,
+  colorState: Map<string, ColorState>,
+): [string, string] {
+  const a = colorState.get(aId) ?? EMPTY_COLOR_STATE;
+  const b = colorState.get(bId) ?? EMPTY_COLOR_STATE;
+
+  const [penalty1, penalty2] = colorPenalties(aId, bId, colorState);
+  if (penalty1 !== penalty2) return penalty1 < penalty2 ? [aId, bId] : [bId, aId];
+
+  const aDiff = a.white - a.black;
+  const bDiff = b.white - b.black;
+  if (aDiff !== bDiff) return aDiff < bDiff ? [aId, bId] : [bId, aId];
+
+  if (a.lastColor === "white" && b.lastColor !== "white") return [bId, aId];
+  if (b.lastColor === "white" && a.lastColor !== "white") return [aId, bId];
+
+  return [aId, bId];
+}
+
+/** Same as assignColors, but takes/returns the two player objects
+ *  directly (rather than bare ids) so callers can go straight into
+ *  emptyPairing(index, white.user, black.user) without an id round-trip. */
+function orderByColor<T extends { user: Types.ObjectId }>(
+  a: T,
+  b: T,
+  colorState: Map<string, ColorState>,
+): [T, T] {
+  const [whiteId] = assignColors(a.user.toString(), b.user.toString(), colorState);
+  return whiteId === a.user.toString() ? [a, b] : [b, a];
+}
+
 async function buildSwissRound(
   tournament: ITournament,
   roundIndex: number,
@@ -1041,6 +1133,7 @@ async function buildSwissRound(
       priorOpponents.get(b)!.add(a);
     }
   }
+  const colorState = computeColorState(tournament);
 
   const sorted = [...active].sort(
     (a, b) => b.points - a.points || Math.random() - 0.5,
@@ -1072,9 +1165,10 @@ async function buildSwissRound(
     pairs.push([a, b]);
   }
 
-  const pairings: ITournamentPairing[] = pairs.map(([a, b], i) =>
-    emptyPairing(i, a.user, b.user),
-  );
+  const pairings: ITournamentPairing[] = pairs.map(([a, b], i) => {
+    const [white, black] = orderByColor(a, b, colorState);
+    return emptyPairing(i, white.user, black.user);
+  });
   if (byePlayer)
     pairings.push(emptyPairing(pairings.length, byePlayer.user, null));
 
@@ -1112,6 +1206,8 @@ async function activateTournament(tournament: ITournament): Promise<void> {
   if (tournament.format === "arena") {
     const minutes = tournament.arenaMinutes ?? 60;
     tournament.arenaEndsAt = new Date(Date.now() + minutes * 60_000);
+    const now = new Date();
+    for (const p of tournament.players) p.arenaAvailableSince = now;
     await tournament.save();
     broadcastUpdate(tournament, "tournament:started");
     scheduleArenaEnd(tournament);
@@ -1147,12 +1243,16 @@ async function activateTournament(tournament: ITournament): Promise<void> {
 }
 
 /** Turns a round's pending pairings into reality: creates the actual Game for
- *  every real pairing (randomizing colors, same convention as cage match
- *  legs), and immediately resolves any bye as a full point with no game
- *  needed. If every pairing in the round happens to be a bye, the round
- *  completes itself right away and cascades into the next one. Also notifies
- *  each paired-up player individually (see notifyPairingReady) so they land
- *  on their game — or at least hear about it — the moment it's ready. */
+ *  every real pairing — colors come from pairing.player1/player2 directly
+ *  for round_robin/swiss/arena (deliberately pre-ordered upstream to keep
+ *  each player's colors balanced, see the ColorState helpers above), or a
+ *  coin flip for knockout ('normal', where there's no rematch to balance
+ *  colors across) — and immediately resolves any bye as a full point with
+ *  no game needed. If every pairing in the round happens to be a bye, the
+ *  round completes itself right away and cascades into the next one. Also
+ *  notifies each paired-up player individually (see notifyPairingReady) so
+ *  they land on their game — or at least hear about it — the moment it's
+ *  ready. */
 async function activateRound(
   tournament: ITournament,
   roundIndex: number,
@@ -1188,10 +1288,19 @@ async function activateRound(
       continue;
     }
 
+    // Colors: for round_robin, swiss, and arena, pairing.player1/player2
+    // have already been deliberately ordered (player1 = intended white)
+    // by circleMethodSchedule / buildSwissRound / tryArenaPairings
+    // specifically to balance each player's color history — randomizing
+    // here would silently throw that work away. Knockout ('normal') has
+    // no repeat pairings to balance colors across, so a coin flip is
+    // still fine there.
     const [whiteId, blackId] =
-      Math.random() < 0.5
-        ? [pairing.player1.toString(), pairing.player2.toString()]
-        : [pairing.player2.toString(), pairing.player1.toString()];
+      tournament.format === "normal"
+        ? Math.random() < 0.5
+          ? [pairing.player1.toString(), pairing.player2.toString()]
+          : [pairing.player2.toString(), pairing.player1.toString()]
+        : [pairing.player1.toString(), pairing.player2.toString()];
     const game = await createDirectGame(
       whiteId,
       blackId,
@@ -1346,6 +1455,27 @@ async function arenaAvailablePlayers(
   return candidates.filter((_, i) => watchingFlags[i]);
 }
 
+/** Given two candidate colorings (a=white/b=black vs b=white/a=black),
+ *  returns a penalty for each — >0 meaning that orientation would hand
+ *  someone a 3rd consecutive same color. Shared by assignColors (which
+ *  picks the lower-penalty orientation) and the arena matcher (which
+ *  uses "are both penalties >0" to decide a pairing is a same-color
+ *  dead end no matter how colors are assigned, and should be skipped in
+ *  favor of a different candidate entirely). */
+function colorPenalties(
+  aId: string,
+  bId: string,
+  colorState: Map<string, ColorState>,
+): [number, number] {
+  const a = colorState.get(aId) ?? EMPTY_COLOR_STATE;
+  const b = colorState.get(bId) ?? EMPTY_COLOR_STATE;
+  const threeInARow = (s: ColorState, color: "white" | "black") =>
+    s.lastColor === color && s.streak >= 2;
+  const penalty1 = (threeInARow(a, "white") ? 1 : 0) + (threeInARow(b, "black") ? 1 : 0);
+  const penalty2 = (threeInARow(b, "white") ? 1 : 0) + (threeInARow(a, "black") ? 1 : 0);
+  return [penalty1, penalty2];
+}
+
 /** Every current player's single most recent opponent, keyed by userId —
  *  the "you can't immediately rematch this person" constraint for arena
  *  pairing. Computed once per tryArenaPairings call rather than re-scanning
@@ -1382,58 +1512,77 @@ function isImmediateArenaRematch(
   return lastOpponent.get(aId) === bId || lastOpponent.get(bId) === aId;
 }
 
-/** Greedily pairs off `pool` two at a time, skipping any candidate that
- *  would recreate either player's immediately preceding game. Returns null
- *  (rather than a partial result) if it gets stuck on a player whose only
- *  remaining candidates are all forbidden — the caller retries with a
- *  different shuffle order rather than accepting a worse pairing than
- *  necessary. `allowRematch` is the escape hatch for when no shuffle order
- *  can avoid it (see matchArenaPairs below); with it set, a stuck player is
- *  paired with whoever's next rather than giving up. */
-function greedyArenaMatch(
+/** Smart arena pairing: greedily works through `pool` in tenure order
+ *  (whoever's been free longest gets first pick of a partner — see
+ *  ITournamentPlayer.arenaAvailableSince), and for each player in turn
+ *  picks the *closest available opponent by current standings position*
+ *  (3rd reaches for 8th before 16th, but only if 8th actually clears the
+ *  other conditions below — otherwise it skips to the next-closest, e.g.
+ *  16th) subject to two soft constraints, tried in this order across the
+ *  whole pool before relaxing either:
+ *   1. strict: no immediate rematch, no forced 3rd-consecutive-same-color
+ *   2. relax color: rematch still forbidden, same-color streak allowed
+ *   3. relax both: last resort, same as the old fallback
+ *  Each relaxation level is a single deterministic pass — no shuffling —
+ *  since the whole point here is that the ordering (tenure, then rank
+ *  proximity) is deliberate, not something to randomize away. */
+function matchArenaPairsSmart(
   pool: ITournamentPlayer[],
   lastOpponent: Map<string, string>,
-  allowRematch: boolean,
-): [ITournamentPlayer, ITournamentPlayer][] | null {
-  const remaining = [...pool];
-  const pairs: [ITournamentPlayer, ITournamentPlayer][] = [];
-  while (remaining.length >= 2) {
-    const a = remaining.shift()!;
-    let idx = remaining.findIndex((b) => !isImmediateArenaRematch(lastOpponent, a, b));
-    if (idx === -1) {
-      if (!allowRematch) return null;
-      idx = 0;
-    }
-    const b = remaining.splice(idx, 1)[0];
-    pairs.push([a, b]);
-  }
-  return pairs;
-}
-
-// Shuffled retries before falling back to an allowed rematch — a single
-// greedy pass can paint itself into a corner (pair off two players early
-// that turn out to be the only valid partner for someone paired later)
-// even when a full rematch-free matching exists; reshuffling and retrying
-// finds one almost every time without needing a proper (and much more
-// code) maximum-matching algorithm.
-const ARENA_PAIRING_ATTEMPTS = 25;
-
-/** Pairs up `pool` two at a time with a hard guarantee against immediate
- *  rematches — nobody plays the same opponent twice in a row — EXCEPT in
- *  the rare case where it's mathematically unavoidable (most simply: only
- *  two players are available at all, and they just played each other).
- *  That's an explicit, narrow fallback rather than a silent one: it only
- *  ever engages after every shuffled attempt at a clean matching has
- *  failed. */
-function matchArenaPairs(
-  pool: ITournamentPlayer[],
-  lastOpponent: Map<string, string>,
+  colorState: Map<string, ColorState>,
+  rankIndex: Map<string, number>,
 ): [ITournamentPlayer, ITournamentPlayer][] {
-  for (let attempt = 0; attempt < ARENA_PAIRING_ATTEMPTS; attempt++) {
-    const result = greedyArenaMatch(shuffle(pool), lastOpponent, false);
-    if (result) return result;
+  function attempt(
+    allowRematch: boolean,
+    allowColorClash: boolean,
+  ): [ITournamentPlayer, ITournamentPlayer][] | null {
+    const tenureOrder = [...pool].sort(
+      (a, b) =>
+        (a.arenaAvailableSince?.getTime() ?? 0) -
+        (b.arenaAvailableSince?.getTime() ?? 0),
+    );
+    const byId = new Map(tenureOrder.map((p) => [p.user.toString(), p]));
+    const remaining = new Set(byId.keys());
+    const pairs: [ITournamentPlayer, ITournamentPlayer][] = [];
+
+    for (const a of tenureOrder) {
+      const aId = a.user.toString();
+      if (!remaining.has(aId)) continue;
+      remaining.delete(aId);
+
+      const aRank = rankIndex.get(aId) ?? 0;
+      const candidates = [...remaining]
+        .map((id) => byId.get(id)!)
+        .sort(
+          (x, y) =>
+            Math.abs((rankIndex.get(x.user.toString()) ?? 0) - aRank) -
+            Math.abs((rankIndex.get(y.user.toString()) ?? 0) - aRank),
+        );
+
+      // No candidates at all left in the pool (odd player out) is fine —
+      // just leave them unpaired for this pass, same as the pre-smart-
+      // pairing behavior. Only a genuine "there WAS someone left but every
+      // constraint rejected them" case is a real failure that needs the
+      // caller to retry at a relaxed level.
+      if (candidates.length === 0) continue;
+
+      const chosen = candidates.find((b) => {
+        const bId = b.user.toString();
+        if (!allowRematch && isImmediateArenaRematch(lastOpponent, a, b)) return false;
+        if (!allowColorClash) {
+          const [p1, p2] = colorPenalties(aId, bId, colorState);
+          if (p1 > 0 && p2 > 0) return false;
+        }
+        return true;
+      });
+      if (!chosen) return null;
+      remaining.delete(chosen.user.toString());
+      pairs.push([a, chosen]);
+    }
+    return pairs;
   }
-  return greedyArenaMatch(shuffle(pool), lastOpponent, true)!;
+
+  return attempt(false, false) ?? attempt(false, true) ?? attempt(true, true)!;
 }
 
 /** The heart of the arena format: pairs up every currently-available player
@@ -1452,15 +1601,20 @@ async function tryArenaPairings(tournament: ITournament): Promise<void> {
   const pool = await arenaAvailablePlayers(tournament);
   if (pool.length < 2) return;
   const lastOpponent = computeLastArenaOpponents(tournament);
-  const pairs = matchArenaPairs(pool, lastOpponent);
+  const colorState = computeColorState(tournament);
+  const rankIndex = new Map(
+    rankPlayers(tournament).map((p, i) => [p.user.toString(), i]),
+  );
+  const pairs = matchArenaPairsSmart(pool, lastOpponent, colorState, rankIndex);
   const newRoundIndexes: number[] = [];
 
   for (const [a, b] of pairs) {
     const roundIndex = tournament.rounds.length;
+    const [white, black] = orderByColor(a, b, colorState);
     tournament.rounds.push({
       index: roundIndex,
       status: "pending",
-      pairings: [emptyPairing(0, a.user, b.user)],
+      pairings: [emptyPairing(0, white.user, black.user)],
     });
     newRoundIndexes.push(roundIndex);
   }
@@ -1497,6 +1651,7 @@ export async function setArenaPause(
     throw ApiError.badRequest("You've already withdrawn from this tournament");
 
   player.paused = paused;
+  if (!paused) player.arenaAvailableSince = new Date();
   await tournament.save();
 
   if (!paused) await tryArenaPairings(tournament);
@@ -1637,6 +1792,21 @@ async function advanceAfterRound(
   roundIndex: number,
 ): Promise<void> {
   if (tournament.format === "arena") {
+    // The two players from the pairing that just finished are newly free
+    // — stamp them now so they go to the front of tryArenaPairings' queue
+    // (longest-waiting-first) rather than being treated as having been
+    // available this whole time.
+    const finishedRound = tournament.rounds[roundIndex];
+    const now = new Date();
+    for (const pairing of finishedRound.pairings) {
+      const p1 = findPlayer(tournament, pairing.player1);
+      if (p1) p1.arenaAvailableSince = now;
+      if (pairing.player2) {
+        const p2 = findPlayer(tournament, pairing.player2);
+        if (p2) p2.arenaAvailableSince = now;
+      }
+    }
+
     const timeUp =
       !tournament.arenaEndsAt || Date.now() >= tournament.arenaEndsAt.getTime();
     if (timeUp) {
@@ -1653,7 +1823,11 @@ async function advanceAfterRound(
 
   if (tournament.format === "normal") {
     const round = tournament.rounds[roundIndex];
-    const winners = round.pairings.map((p) =>
+    // The 3rd-place pairing (if this round has one) is a side match, not
+    // part of the bracket itself — exclude it here so its winner is never
+    // mistaken for someone who's advanced to yet another round.
+    const bracketPairings = round.pairings.filter((p) => !p.isThirdPlace);
+    const winners = bracketPairings.map((p) =>
       p.result === "p1" ? p.player1 : p.player2!,
     );
     if (winners.length === 1) {
@@ -1664,6 +1838,26 @@ async function advanceAfterRound(
     for (let i = 0; i < winners.length; i += 2) {
       nextPairings.push(emptyPairing(i / 2, winners[i], winners[i + 1]));
     }
+
+    // Down to the final two bracket winners means the round that just
+    // finished was the semifinal — if the organizer opted into a 3rd-
+    // place match, append it as a second pairing in the SAME round as
+    // the final so both games run side by side. Needs exactly two real
+    // (non-bye) semifinal pairings to have exactly two losers to play it;
+    // a bye-riddled bracket (e.g. 3 players) can reach the final without
+    // ever producing two, so this is skipped gracefully rather than
+    // erroring in that case.
+    if (winners.length === 2 && tournament.thirdPlaceMatch) {
+      const losers = bracketPairings
+        .filter((p) => p.player2 !== null)
+        .map((p) => (p.result === "p1" ? p.player2! : p.player1));
+      if (losers.length === 2) {
+        const thirdPlacePairing = emptyPairing(nextPairings.length, losers[0], losers[1]);
+        thirdPlacePairing.isThirdPlace = true;
+        nextPairings.push(thirdPlacePairing);
+      }
+    }
+
     tournament.rounds.push({
       index: roundIndex + 1,
       status: "pending",
@@ -1717,6 +1911,19 @@ async function finishTournament(
           : finalPairing.player1
       ) as any;
     }
+    const thirdPlacePairing = finalRound.pairings.find((p) => p.isThirdPlace);
+    if (thirdPlacePairing?.player2 && thirdPlacePairing.result) {
+      tournament.thirdPlace = (
+        thirdPlacePairing.result === "p1"
+          ? thirdPlacePairing.player1
+          : thirdPlacePairing.player2
+      ) as any;
+      tournament.fourthPlace = (
+        thirdPlacePairing.result === "p1"
+          ? thirdPlacePairing.player2
+          : thirdPlacePairing.player1
+      ) as any;
+    }
   } else {
     const ranked = rankPlayers(tournament);
     tournament.winner = (ranked[0]?.user as any) ?? null;
@@ -1734,21 +1941,25 @@ async function finishTournament(
  *  on the end (they're excluded from rankPlayers, but still occupy a rank
  *  for schedule purposes if the schedule happens to reach that far).
  *  Knockout has no points table, so it's built from bracket position
- *  instead: winner, runner-up, then everyone else grouped by which round
- *  eliminated them (later round = better placement) — ties within a group
- *  (e.g. two people both lost in the semifinal) aren't distinguishable by
- *  this system, so they're ordered by username just to be deterministic. */
+ *  instead: winner, runner-up, [3rd, 4th if a 3rd-place match was played],
+ *  then everyone else grouped by which round eliminated them (later round
+ *  = better placement) — ties within a group (e.g. two people both lost in
+ *  the semifinal, and there was no 3rd-place match to break the tie)
+ *  aren't distinguishable by this system, so they're ordered by username
+ *  just to be deterministic. */
 function computeFinalRanking(tournament: ITournament): Types.ObjectId[] {
   if (tournament.format === "normal") {
     const order: Types.ObjectId[] = [];
     const seen = new Set<string>();
-    if (tournament.winner) {
-      order.push(tournament.winner);
-      seen.add(tournament.winner.toString());
-    }
-    if (tournament.runnerUp) {
-      order.push(tournament.runnerUp);
-      seen.add(tournament.runnerUp.toString());
+    for (const id of [
+      tournament.winner,
+      tournament.runnerUp,
+      tournament.thirdPlace,
+      tournament.fourthPlace,
+    ]) {
+      if (!id || seen.has(id.toString())) continue;
+      order.push(id);
+      seen.add(id.toString());
     }
     const rest = tournament.players
       .filter((p: ITournamentPlayer) => !seen.has(p.user.toString()))

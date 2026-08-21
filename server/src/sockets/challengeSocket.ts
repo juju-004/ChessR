@@ -17,7 +17,7 @@ const challengeKey = (id: string) => `challenge:${id}`;
 // just hiding the resulting notifications on the receiving end.
 const pendingPairKey = (fromId: string, toId: string) => `challenge:pending:${fromId}:${toId}`;
 
-const MAX_WAGER_TOKENS = 100_000;
+const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
 
 const sendSchema = z.object({
   toUserId: z.string().refine(mongoose.isValidObjectId),

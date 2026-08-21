@@ -12,12 +12,14 @@ import {
 } from "../api/friends.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { TIME_CONTROLS } from "../timeControls.js";
+import { MAX_WAGER_TOKENS } from "../lib/limits.js";
 import { Page } from "@/components/ui/Page.js";
 import { Card } from "@/components/ui/Card.js";
 import { Select } from "@/components/ui/Select.js";
 import { Input } from "@/components/ui/Input.js";
 import { Button } from "@/components/ui/Button.js";
 import { Avatar } from "@/components/ui/Avatar.js";
+import { RCoin } from "@/components/ui/RCoin.js";
 import { ResponsiveOverlay } from "@/components/ui/ResponsiveOverlay.js";
 import { RatingBadge } from "@/components/RatingBadge.js";
 
@@ -112,7 +114,10 @@ export function Players() {
   function handleChallenge(friendId: string) {
     if (!socket) return;
     const tc = TIME_CONTROLS[tcIndex];
-    const wagerTokens = Math.max(1, Math.floor(Number(wagerInput) || 0));
+    const wagerTokens = Math.min(
+      MAX_WAGER_TOKENS,
+      Math.max(1, Math.floor(Number(wagerInput) || 0)),
+    );
     socket.emit("challenge:send", {
       toUserId: friendId,
       baseMinutes: tc.baseMinutes,
@@ -400,9 +405,14 @@ export function Players() {
                       </Select>
 
                       <Input
-                        label="R Coin wager (per player)"
+                        label={
+                          <span className="inline-flex items-center gap-1">
+                            <RCoin size={12} /> Coin wager (per player)
+                          </span>
+                        }
                         type="number"
                         min={1}
+                        max={MAX_WAGER_TOKENS}
                         step={1}
                         value={wagerInput}
                         onChange={(e) => setWagerInput(e.target.value)}

@@ -21,25 +21,14 @@ import {
   Select,
   Button,
   Switch,
+  RCoin,
 } from "../components/ui/index.js";
-
-const TIME_PRESETS: {
-  label: string;
-  baseMinutes: number | null;
-  incrementSeconds: number;
-}[] = [
-  { label: "Hyper Bullet · ½+0", baseMinutes: 0.5, incrementSeconds: 0 },
-  { label: "Bullet · 1+0", baseMinutes: 1, incrementSeconds: 0 },
-  { label: "Bullet · 2+1", baseMinutes: 2, incrementSeconds: 1 },
-  { label: "Blitz · 3+0", baseMinutes: 3, incrementSeconds: 0 },
-  { label: "Blitz · 3+2", baseMinutes: 3, incrementSeconds: 2 },
-  { label: "Blitz · 5+0", baseMinutes: 5, incrementSeconds: 0 },
-  { label: "Rapid · 8+0", baseMinutes: 8, incrementSeconds: 0 },
-  { label: "Rapid · 10+0", baseMinutes: 10, incrementSeconds: 0 },
-  { label: "Rapid · 10+5", baseMinutes: 10, incrementSeconds: 5 },
-  { label: "Rapid · 15+10", baseMinutes: 15, incrementSeconds: 10 },
-  { label: "Classical · 30+0", baseMinutes: 30, incrementSeconds: 0 },
-];
+// The global time-control list (../timeControls.js) is now the single
+// source of truth — this page used to keep its own near-duplicate list,
+// which is exactly what let it drift out of sync with every other select
+// in the app.
+import { TIME_CONTROLS as TIME_PRESETS } from "../timeControls.js";
+import { MAX_WAGER_TOKENS, MAX_EVENT_NAME_LENGTH } from "../lib/limits.js";
 
 const FORMAT_DEFAULT_MAX: Record<TournamentFormat, number> = {
   normal: 16,
@@ -90,6 +79,7 @@ export function CreateTournament() {
 
   // --- Money ---
   const [organizerOnly, setOrganizerOnly] = useState(false);
+  const [thirdPlaceMatch, setThirdPlaceMatch] = useState(false);
   const [regFeeInput, setRegFeeInput] = useState("10");
   const [prizeTiers, setPrizeTiers] = useState<TournamentPrizeTier[]>([]);
 
@@ -122,7 +112,10 @@ export function CreateTournament() {
         message: "Give it a name (3+ characters).",
         isError: true,
       });
-    const regFeeTokens = Math.max(0, Math.floor(Number(regFeeInput) || 0));
+    const regFeeTokens = Math.min(
+      MAX_WAGER_TOKENS,
+      Math.max(0, Math.floor(Number(regFeeInput) || 0)),
+    );
     if (regFeeTokens < 1) {
       return setStatus({
         message: "Set a registration fee — every tournament requires one.",
@@ -161,6 +154,7 @@ export function CreateTournament() {
       berserkAllowed,
       isPublic,
       organizerOnly,
+      thirdPlaceMatch: format === "normal" ? thirdPlaceMatch : false,
       prizeSchedule: prizeTiers,
       regFeeTokens,
       swissRounds: format === "swiss" ? swissRounds : null,
@@ -184,6 +178,7 @@ export function CreateTournament() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Friday Night Blitz"
+                maxLength={MAX_EVENT_NAME_LENGTH}
               />
 
               <div>
@@ -315,7 +310,7 @@ export function CreateTournament() {
               <Input
                 label={
                   <span className="inline-flex items-center gap-1">
-                    Registration fee (R Coins)
+                    Registration fee (<RCoin size={12} /> Coins)
                     <HelpTip>
                       {rakePercent !== null
                         ? `Every entrant pays this to join. Held until the tournament ends, then the ${rakePercent}% platform fee is deducted and the rest is paid out to you as the organizer.`
@@ -325,6 +320,7 @@ export function CreateTournament() {
                 }
                 type="number"
                 min={1}
+                max={MAX_WAGER_TOKENS}
                 value={regFeeInput}
                 onChange={(e) => setRegFeeInput(e.target.value)}
               />
@@ -362,6 +358,15 @@ export function CreateTournament() {
                 label="I'm organizing only"
                 description="You run the tournament but don't play in it. You won't take a player slot or pay the registration fee."
               />
+
+              {format === "normal" && (
+                <Switch
+                  checked={thirdPlaceMatch}
+                  onChange={setThirdPlaceMatch}
+                  label="3rd place playoff"
+                  description="The two semifinal losers play each other for 3rd place, alongside the final."
+                />
+              )}
             </section>
 
             {status && (

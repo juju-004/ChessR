@@ -8,6 +8,7 @@ import {
   type TournamentPrizeTier,
 } from "../../api/tournaments.js";
 import { HelpTip } from "../HelpTip.js";
+import { RCoin } from "../ui/RCoin.js";
 import { Textarea } from "../ui/index.js";
 
 interface PrizePoolEditorProps {
@@ -56,7 +57,9 @@ export function PrizePoolEditor({
           </HelpTip>
         </span>
         {total > 0 && (
-          <span className="text-xs text-base-content/50">{total} R total</span>
+          <span className="inline-flex items-center gap-1 text-xs text-base-content/50">
+            {total} <RCoin size={12} /> total
+          </span>
         )}
       </div>
 

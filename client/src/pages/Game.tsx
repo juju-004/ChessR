@@ -37,7 +37,7 @@ import {
   reasonText,
 } from "../components/GameOverModal.js";
 import { CageMatchScoreboard } from "../components/CageMatchScoreboard.js";
-import { Card, Badge, Spinner, Button } from "../components/ui/index.js";
+import { Card, Badge, Spinner, Button, RCoin } from "../components/ui/index.js";
 import {
   type GameMeta,
   type MoveLogEntry,
@@ -1231,7 +1231,9 @@ export function Game() {
     if (gameMeta?.wagerTokens)
       list.push(
         <Badge key="wager" variant="warning">
-          {gameMeta.wagerTokens} R wager
+          <span className="inline-flex items-center gap-1">
+            {gameMeta.wagerTokens} <RCoin size={10} /> wager
+          </span>
         </Badge>,
       );
     if (gameMeta?.tournamentId)
@@ -1364,8 +1366,11 @@ export function Game() {
               className="mb-4 border-amber-900/40 bg-amber-950/20 text-left text-sm text-amber-300"
             >
               This is a wagered game — joining will stake{" "}
-              <strong>{gameMeta.wagerTokens} R Coins</strong> from your balance.
-              The winner takes the full {gameMeta.wagerTokens * 2}.
+              <strong className="inline-flex items-center gap-1">
+                {gameMeta.wagerTokens} <RCoin size={13} />
+              </strong>{" "}
+              from your balance. The winner takes the full{" "}
+              {gameMeta.wagerTokens * 2}.
             </Card>
           )}
           {loadError && (

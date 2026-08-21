@@ -1,14 +1,14 @@
-import { nanoid } from 'nanoid';
-import { User } from '../models/User.js';
-import { Transaction, type ITransaction } from '../models/Transaction.js';
-import { PlatformRevenue } from '../models/PlatformRevenue.js';
-import { ApiError } from '../utils/ApiError.js';
-import { env } from '../config/env.js';
+import { nanoid } from "nanoid";
+import { User } from "../models/User.js";
+import { Transaction, type ITransaction } from "../models/Transaction.js";
+import { PlatformRevenue } from "../models/PlatformRevenue.js";
+import { ApiError } from "../utils/ApiError.js";
+import { env } from "../config/env.js";
 import {
   verifyTransaction,
   createTransferRecipient,
   initiateTransfer,
-} from './paystack.service.js';
+} from "./paystack.service.js";
 
 // --- Token economy constants -------------------------------------------------
 // Deliberately a spread between buy and withdraw rates (standard practice) —
@@ -23,18 +23,18 @@ export interface TokenPlan {
 }
 
 export const TOKEN_PLANS: TokenPlan[] = [
-  { id: 'starter', tokens: 100, priceNaira: 1000 },
-  { id: 'value', tokens: 550, priceNaira: 5000 },
-  { id: 'pro', tokens: 1200, priceNaira: 10000 },
-  { id: 'elite', tokens: 3000, priceNaira: 22500 },
+  { id: "starter", tokens: 100, priceNaira: 1000 },
+  { id: "value", tokens: 550, priceNaira: 5000 },
+  { id: "pro", tokens: 1200, priceNaira: 10000 },
+  { id: "elite", tokens: 3000, priceNaira: 22500 },
 ];
 
-export const WITHDRAWAL_NAIRA_PER_TOKEN = 8;
-export const MIN_WITHDRAWAL_TOKENS = 100;
+export const WITHDRAWAL_NAIRA_PER_TOKEN = 10;
+export const MIN_WITHDRAWAL_TOKENS = 10;
 
 function getPlan(planId: string): TokenPlan {
   const plan = TOKEN_PLANS.find((p) => p.id === planId);
-  if (!plan) throw ApiError.badRequest('Unknown plan');
+  if (!plan) throw ApiError.badRequest("Unknown plan");
   return plan;
 }
 
@@ -53,8 +53,8 @@ export async function createPendingPurchase(
 
   await Transaction.create({
     user: userId,
-    type: 'purchase',
-    status: 'pending',
+    type: "purchase",
+    status: "pending",
     tokens: plan.tokens,
     amountKobo,
     reference,
@@ -70,32 +70,42 @@ export async function createPendingPurchase(
  * post-popup verify request AND the charge.success webhook, whichever
  * happens to arrive first. The second caller is a no-op.
  */
-export async function completePurchase(reference: string): Promise<ITransaction | null> {
-  const pending = await Transaction.findOne({ reference, type: 'purchase' });
+export async function completePurchase(
+  reference: string,
+): Promise<ITransaction | null> {
+  const pending = await Transaction.findOne({ reference, type: "purchase" });
   if (!pending) return null;
-  if (pending.status !== 'pending') return pending; // already resolved by the other path
+  if (pending.status !== "pending") return pending; // already resolved by the other path
 
   const verified = await verifyTransaction(reference);
 
-  if (verified.status !== 'success' || verified.amount !== pending.amountKobo) {
+  if (verified.status !== "success" || verified.amount !== pending.amountKobo) {
     // Atomic guard: only flip it if it's still pending (avoids a race where
     // the webhook and the client verify call both reach this point at once).
     const updated = await Transaction.findOneAndUpdate(
-      { _id: pending._id, status: 'pending' },
-      { $set: { status: 'failed', failureReason: `Paystack status: ${verified.status}` } },
+      { _id: pending._id, status: "pending" },
+      {
+        $set: {
+          status: "failed",
+          failureReason: `Paystack status: ${verified.status}`,
+        },
+      },
       { new: true },
     );
     return updated;
   }
 
   const updated = await Transaction.findOneAndUpdate(
-    { _id: pending._id, status: 'pending' },
-    { $set: { status: 'success' } },
+    { _id: pending._id, status: "pending" },
+    { $set: { status: "success" } },
     { new: true },
   );
   if (!updated) return pending; // someone else already resolved it between our read and write
 
-  await User.updateOne({ _id: pending.user }, { $inc: { tokenBalance: pending.tokens } });
+  await User.updateOne(
+    { _id: pending.user },
+    { $inc: { tokenBalance: pending.tokens } },
+  );
   return updated;
 }
 
@@ -108,21 +118,28 @@ export interface WithdrawParams {
   accountName: string;
 }
 
-export async function initiateWithdrawal(userId: string, params: WithdrawParams): Promise<ITransaction> {
+export async function initiateWithdrawal(
+  userId: string,
+  params: WithdrawParams,
+): Promise<ITransaction> {
   const { tokens, accountNumber, bankCode, accountName } = params;
 
   if (tokens < MIN_WITHDRAWAL_TOKENS) {
-    throw ApiError.badRequest(`Minimum withdrawal is ${MIN_WITHDRAWAL_TOKENS} tokens`);
+    throw ApiError.badRequest(
+      `Minimum withdrawal is ${MIN_WITHDRAWAL_TOKENS} tokens`,
+    );
   }
 
   // A pending report against this account blocks withdrawals the instant
   // it's filed — before anyone's actually looked into it — so funds can't
   // be pulled out ahead of a review. Cleared only by an admin, from the
   // report review screen, once they've looked into it. See User.withdrawalBlocked.
-  const reportedUser = await User.findById(userId).select('withdrawalBlocked').lean();
+  const reportedUser = await User.findById(userId)
+    .select("withdrawalBlocked")
+    .lean();
   if (reportedUser?.withdrawalBlocked) {
     throw ApiError.forbidden(
-      'Withdrawals are on hold for this account pending a review. Contact support if you believe this is a mistake.',
+      "Withdrawals are on hold for this account pending a review. Contact support if you believe this is a mistake.",
     );
   }
 
@@ -134,15 +151,15 @@ export async function initiateWithdrawal(userId: string, params: WithdrawParams)
     { $inc: { tokenBalance: -tokens } },
     { new: true },
   );
-  if (!debited) throw ApiError.badRequest('Insufficient token balance');
+  if (!debited) throw ApiError.badRequest("Insufficient token balance");
 
   const amountKobo = tokens * WITHDRAWAL_NAIRA_PER_TOKEN * 100;
   const reference = `WD-${nanoid(20)}`;
 
   const transaction = await Transaction.create({
     user: userId,
-    type: 'withdrawal',
-    status: 'pending',
+    type: "withdrawal",
+    status: "pending",
     tokens,
     amountKobo,
     reference,
@@ -152,11 +169,15 @@ export async function initiateWithdrawal(userId: string, params: WithdrawParams)
   });
 
   try {
-    const recipient = await createTransferRecipient({ name: accountName, accountNumber, bankCode });
+    const recipient = await createTransferRecipient({
+      name: accountName,
+      accountNumber,
+      bankCode,
+    });
     const transfer = await initiateTransfer({
       amountKobo,
       recipientCode: recipient.recipient_code,
-      reason: 'R token withdrawal',
+      reason: "R token withdrawal",
       reference,
     });
 
@@ -165,8 +186,8 @@ export async function initiateWithdrawal(userId: string, params: WithdrawParams)
     // Paystack itself may report 'success' immediately (common in test mode)
     // or 'pending' (finalized later via webhook, or stuck on 'otp' if Transfer
     // OTP is enabled on the account — see README for what that means here).
-    if (transfer.status === 'success') {
-      transaction.status = 'success';
+    if (transfer.status === "success") {
+      transaction.status = "success";
     }
     await transaction.save();
     return transaction;
@@ -174,8 +195,9 @@ export async function initiateWithdrawal(userId: string, params: WithdrawParams)
     // Recipient creation or transfer initiation failed outright — refund
     // immediately rather than leaving the user's tokens stuck in limbo.
     await User.updateOne({ _id: userId }, { $inc: { tokenBalance: tokens } });
-    transaction.status = 'failed';
-    transaction.failureReason = err instanceof Error ? err.message : 'Transfer failed';
+    transaction.status = "failed";
+    transaction.failureReason =
+      err instanceof Error ? err.message : "Transfer failed";
     await transaction.save();
     throw ApiError.badRequest(transaction.failureReason);
   }
@@ -187,21 +209,27 @@ export async function initiateWithdrawal(userId: string, params: WithdrawParams)
  *  acts on transactions still in 'pending'. */
 export async function resolveWithdrawalFromWebhook(
   transferCode: string,
-  outcome: 'success' | 'failed' | 'reversed',
+  outcome: "success" | "failed" | "reversed",
 ): Promise<void> {
-  const transaction = await Transaction.findOne({ paystackTransferCode: transferCode, type: 'withdrawal' });
-  if (!transaction || transaction.status !== 'pending') return; // already resolved, or not ours
+  const transaction = await Transaction.findOne({
+    paystackTransferCode: transferCode,
+    type: "withdrawal",
+  });
+  if (!transaction || transaction.status !== "pending") return; // already resolved, or not ours
 
-  if (outcome === 'success') {
-    transaction.status = 'success';
+  if (outcome === "success") {
+    transaction.status = "success";
     await transaction.save();
     return;
   }
 
-  transaction.status = 'failed';
+  transaction.status = "failed";
   transaction.failureReason = `Paystack transfer ${outcome}`;
   await transaction.save();
-  await User.updateOne({ _id: transaction.user }, { $inc: { tokenBalance: transaction.tokens } });
+  await User.updateOne(
+    { _id: transaction.user },
+    { $inc: { tokenBalance: transaction.tokens } },
+  );
 }
 
 // --- Platform rake ---------------------------------------------------------------
@@ -236,7 +264,7 @@ export function computeRake(grossTokens: number): RakeSplit {
  *  settleWager, settleWinnerTakesAll, and distributePrize, the only three
  *  callers. */
 export async function recordRake(
-  source: 'game' | 'cage_match' | 'tournament',
+  source: "game" | "cage_match" | "tournament",
   sourceId: string,
   rakeTokens: number,
   grossPotTokens: number,
@@ -263,7 +291,11 @@ export async function recordRake(
  *  Throws if their balance can't cover it — callers should surface this as a
  *  clear "insufficient balance" error rather than silently failing to seat
  *  the player. */
-export async function debitWagerStake(userId: string, gameId: string, tokens: number): Promise<void> {
+export async function debitWagerStake(
+  userId: string,
+  gameId: string,
+  tokens: number,
+): Promise<void> {
   if (tokens <= 0) return;
 
   const debited = await User.findOneAndUpdate(
@@ -271,12 +303,13 @@ export async function debitWagerStake(userId: string, gameId: string, tokens: nu
     { $inc: { tokenBalance: -tokens } },
     { new: true },
   );
-  if (!debited) throw ApiError.badRequest('Insufficient R token balance for this wager');
+  if (!debited)
+    throw ApiError.badRequest("Insufficient R token balance for this wager");
 
   await Transaction.create({
     user: userId,
-    type: 'wager_stake',
-    status: 'success',
+    type: "wager_stake",
+    status: "success",
     tokens,
     amountKobo: 0,
     reference: `WGR-STK-${gameId}-${userId}`,
@@ -292,7 +325,7 @@ export async function creditWagerReturn(
   userId: string,
   gameId: string,
   tokens: number,
-  kind: 'wager_refund' | 'wager_payout',
+  kind: "wager_refund" | "wager_payout",
 ): Promise<void> {
   if (tokens <= 0) return;
 
@@ -301,10 +334,10 @@ export async function creditWagerReturn(
   await Transaction.create({
     user: userId,
     type: kind,
-    status: 'success',
+    status: "success",
     tokens,
     amountKobo: 0,
-    reference: `WGR-${kind === 'wager_payout' ? 'WIN' : 'RFD'}-${gameId}-${userId}`,
+    reference: `WGR-${kind === "wager_payout" ? "WIN" : "RFD"}-${gameId}-${userId}`,
     game: gameId,
   });
 }
@@ -320,7 +353,11 @@ export async function creditWagerReturn(
 /** Debits a player's registration fee when they join a tournament (creator
  *  included, if the tournament they're creating charges one). Throws if
  *  their balance can't cover it. */
-export async function debitTournamentRegFee(userId: string, tournamentId: string, tokens: number): Promise<void> {
+export async function debitTournamentRegFee(
+  userId: string,
+  tournamentId: string,
+  tokens: number,
+): Promise<void> {
   if (tokens <= 0) return;
 
   const debited = await User.findOneAndUpdate(
@@ -328,12 +365,15 @@ export async function debitTournamentRegFee(userId: string, tournamentId: string
     { $inc: { tokenBalance: -tokens } },
     { new: true },
   );
-  if (!debited) throw ApiError.badRequest('Insufficient R token balance for that registration fee');
+  if (!debited)
+    throw ApiError.badRequest(
+      "Insufficient R token balance for that registration fee",
+    );
 
   await Transaction.create({
     user: userId,
-    type: 'tournament_reg_fee',
-    status: 'success',
+    type: "tournament_reg_fee",
+    status: "success",
     tokens,
     amountKobo: 0,
     reference: `TRN-REG-${tournamentId}-${userId}`,
@@ -346,7 +386,11 @@ export async function debitTournamentRegFee(userId: string, tournamentId: string
  *  is never blocked on the creator still having the funds. Throws if their
  *  balance can't cover it (the tournament creation itself should be rolled
  *  back by the caller if this throws). */
-export async function debitTournamentPrizeFund(userId: string, tournamentId: string, tokens: number): Promise<void> {
+export async function debitTournamentPrizeFund(
+  userId: string,
+  tournamentId: string,
+  tokens: number,
+): Promise<void> {
   if (tokens <= 0) return;
 
   const debited = await User.findOneAndUpdate(
@@ -354,12 +398,15 @@ export async function debitTournamentPrizeFund(userId: string, tournamentId: str
     { $inc: { tokenBalance: -tokens } },
     { new: true },
   );
-  if (!debited) throw ApiError.badRequest('Insufficient R token balance to fund that prize pool');
+  if (!debited)
+    throw ApiError.badRequest(
+      "Insufficient R token balance to fund that prize pool",
+    );
 
   await Transaction.create({
     user: userId,
-    type: 'tournament_prize_fund',
-    status: 'success',
+    type: "tournament_prize_fund",
+    status: "success",
     tokens,
     amountKobo: 0,
     reference: `TRN-PRZ-${tournamentId}-${userId}`,
@@ -379,21 +426,26 @@ export async function creditTournamentReturn(
   userId: string,
   tournamentId: string,
   tokens: number,
-  kind: 'tournament_refund' | 'tournament_payout' | 'tournament_reg_revenue',
-  suffix = '',
+  kind: "tournament_refund" | "tournament_payout" | "tournament_reg_revenue",
+  suffix = "",
 ): Promise<void> {
   if (tokens <= 0) return;
 
   await User.updateOne({ _id: userId }, { $inc: { tokenBalance: tokens } });
 
-  const prefix = kind === 'tournament_payout' ? 'WIN' : kind === 'tournament_reg_revenue' ? 'REV' : 'RFD';
+  const prefix =
+    kind === "tournament_payout"
+      ? "WIN"
+      : kind === "tournament_reg_revenue"
+        ? "REV"
+        : "RFD";
   await Transaction.create({
     user: userId,
     type: kind,
-    status: 'success',
+    status: "success",
     tokens,
     amountKobo: 0,
-    reference: `TRN-${prefix}-${tournamentId}-${userId}${suffix ? `-${suffix}` : ''}`,
+    reference: `TRN-${prefix}-${tournamentId}-${userId}${suffix ? `-${suffix}` : ""}`,
     tournament: tournamentId,
   });
 }
@@ -412,11 +464,11 @@ export async function adjustTournamentEscrow(
   userId: string,
   tournamentId: string,
   deltaTokens: number,
-  kind: 'tournament_prize_fund' | 'tournament_reg_fee',
+  kind: "tournament_prize_fund" | "tournament_reg_fee",
 ): Promise<void> {
   if (deltaTokens === 0) return;
 
-  const label = kind === 'tournament_prize_fund' ? 'PRZ' : 'REG';
+  const label = kind === "tournament_prize_fund" ? "PRZ" : "REG";
   const reference = `TRN-EDIT-${label}-${tournamentId}-${userId}-${Date.now()}`;
 
   if (deltaTokens > 0) {
@@ -425,22 +477,26 @@ export async function adjustTournamentEscrow(
       { $inc: { tokenBalance: -deltaTokens } },
       { new: true },
     );
-    if (!debited) throw ApiError.badRequest('Insufficient R token balance for that change');
+    if (!debited)
+      throw ApiError.badRequest("Insufficient R token balance for that change");
     await Transaction.create({
       user: userId,
       type: kind,
-      status: 'success',
+      status: "success",
       tokens: deltaTokens,
       amountKobo: 0,
       reference,
       tournament: tournamentId,
     });
   } else {
-    await User.updateOne({ _id: userId }, { $inc: { tokenBalance: -deltaTokens } });
+    await User.updateOne(
+      { _id: userId },
+      { $inc: { tokenBalance: -deltaTokens } },
+    );
     await Transaction.create({
       user: userId,
-      type: 'tournament_refund',
-      status: 'success',
+      type: "tournament_refund",
+      status: "success",
       tokens: -deltaTokens,
       amountKobo: 0,
       reference,
@@ -449,7 +505,11 @@ export async function adjustTournamentEscrow(
   }
 }
 
-export async function listTransactions(userId: string, page: number, limit: number) {
+export async function listTransactions(
+  userId: string,
+  page: number,
+  limit: number,
+) {
   const filter = { user: userId };
   const [transactions, total] = await Promise.all([
     Transaction.find(filter)
@@ -459,5 +519,11 @@ export async function listTransactions(userId: string, page: number, limit: numb
       .lean(),
     Transaction.countDocuments(filter),
   ]);
-  return { transactions, page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) };
+  return {
+    transactions,
+    page,
+    limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+  };
 }

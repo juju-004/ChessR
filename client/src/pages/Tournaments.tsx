@@ -20,6 +20,7 @@ import {
   CardContent,
   Button,
   Badge,
+  RCoin,
 } from "../components/ui/index.js";
 
 // Client-side page size for the Open tournaments and Finished tourneys
@@ -53,8 +54,18 @@ function TournamentRow({ t }: { t: Tournament }) {
         <div className="mt-0.5 text-xs text-base-content/50">
           {FORMAT_LABEL[t.format]} · {formatTimeControl(t)} · {t.players.length}
           /{t.maxPlayers} players
-          {t.regFeeTokens > 0 && <> · {t.regFeeTokens} R to join</>}
-          {t.prizePoolTokens > 0 && <> · {t.prizePoolTokens} R prize pool</>}
+          {t.regFeeTokens > 0 && (
+            <>
+              {" "}
+              · {t.regFeeTokens} <RCoin size={11} className="inline align-[-1px]" /> to join
+            </>
+          )}
+          {t.prizePoolTokens > 0 && (
+            <>
+              {" "}
+              · {t.prizePoolTokens} <RCoin size={11} className="inline align-[-1px]" /> prize pool
+            </>
+          )}
         </div>
       </div>
     </Link>
