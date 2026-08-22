@@ -42,6 +42,9 @@ const SignUp = lazy(() =>
 const VerifyEmail = lazy(() =>
   import("./pages/VerifyEmail.js").then((m) => ({ default: m.VerifyEmail })),
 );
+const ChooseUsername = lazy(() =>
+  import("./pages/ChooseUsername.js").then((m) => ({ default: m.ChooseUsername })),
+);
 const Dashboard = lazy(() =>
   import("./pages/Dashboard.js").then((m) => ({ default: m.Dashboard })),
 );
@@ -222,6 +225,17 @@ function AppBody() {
                *  whether or not this browser/device happens to be signed
                *  in (see VerifyEmail.tsx). */}
               <Route path="/verify-email" element={<VerifyEmail />} />
+              {/* Protected, not listed in any nav — only ever reached via
+               *  the redirect from SignIn/SignUp's Google flow right after
+               *  a brand-new account is created (see ChooseUsername.tsx). */}
+              <Route
+                path="/choose-username"
+                element={
+                  <ProtectedRoute>
+                    <ChooseUsername />
+                  </ProtectedRoute>
+                }
+              />
               {/* Public — reachable pre-login from the signup form, and
                *  linked from the dashboard footer once signed in. */}
               <Route path="/about" element={<About />} />

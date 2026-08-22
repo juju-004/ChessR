@@ -12,7 +12,12 @@ export interface Friend {
 
 export interface IncomingRequest {
   _id: string;
-  from: { _id: string; username: string };
+  from: {
+    _id: string;
+    username: string;
+    avatarGradient?: string | null;
+    ratingCategory: string | null;
+  };
 }
 
 export function listFriends() {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Search, Swords, UserPlus, Check, TvMinimalPlay } from "lucide-react";
+import { Search, Swords, UserPlus, Check, X, TvMinimalPlay } from "lucide-react";
 import { searchUsers, type UserSearchResult } from "../api/users.js";
 import {
   listFriends,
@@ -269,24 +269,42 @@ export function Players() {
           {requests.map((r) => (
             <div
               key={r._id}
-              className="flex items-center justify-between border-b border-base-300 py-2 last:border-none"
+              onClick={() => navigate(`/profile/${r.from.username}`)}
+              className="-mx-2 flex cursor-pointer flex-wrap items-center justify-between gap-2 rounded-lg border-b border-base-300 px-2 py-2 transition-colors last:border-none hover:bg-base-100/60"
             >
-              <span className="text-sm text-base-content">
-                {r.from.username}
+              <span className="flex min-w-0 items-center gap-2.5 text-sm text-base-content">
+                <Avatar
+                  username={r.from.username}
+                  size="sm"
+                  gradient={r.from.avatarGradient}
+                />
+                <span className="truncate">{r.from.username}</span>
+                <RatingBadge
+                  className="md:hidden"
+                  compact
+                  category={r.from.ratingCategory}
+                />
+                <RatingBadge
+                  className="hidden! md:flex!"
+                  category={r.from.ratingCategory}
+                />
               </span>
-              <span className="flex gap-2">
-                <button
-                  onClick={() => handleAccept(r._id)}
-                  className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-500"
-                >
-                  Accept
-                </button>
-                <button
+              <span
+                className="flex flex-wrap gap-2"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Button size="sm" onClick={() => handleAccept(r._id)}>
+                  <Check className="h-4 w-4" />
+                  <span className="hidden sm:flex">Accept</span>
+                </Button>
+                <Button
+                  variant="glass"
+                  size="sm"
                   onClick={() => handleDecline(r._id)}
-                  className="rounded-md bg-base-300 px-3 py-1.5 text-sm font-semibold text-base-content hover:bg-base-300"
                 >
-                  Decline
-                </button>
+                  <X className="h-4 w-4" />
+                  <span className="hidden sm:flex">Decline</span>
+                </Button>
               </span>
             </div>
           ))}

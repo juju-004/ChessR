@@ -41,8 +41,9 @@ export function SignUp() {
     setError("");
     setLoading(true);
     try {
-      await googleSignin(credential);
-      navigate("/");
+      const { isNewUser } = await googleSignin(credential);
+      // See SignIn.tsx's identical handler for why this branches.
+      navigate(isNewUser ? "/choose-username" : "/");
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Google sign up failed");
     } finally {

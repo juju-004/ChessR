@@ -18,9 +18,17 @@ const VALID_AVATAR_GRADIENTS = [
   'brand', 'sunset', 'ocean', 'forest', 'berry', 'fire', 'midnight', 'gold', 'rose', 'ice',
 ] as const;
 
+const usernameSchema = z
+  .string()
+  .trim()
+  .min(3)
+  .max(24)
+  .regex(/^[a-zA-Z0-9_]+$/, 'Username may only contain letters, numbers, underscores');
+
 const updateProfileSchema = z.object({
   avatarGradient: z.enum(VALID_AVATAR_GRADIENTS).optional(),
   bio: z.string().trim().max(160).optional(),
+  username: usernameSchema.optional(),
 });
 
 export const updateMyProfile = asyncHandler(async (req: AuthedRequest, res) => {
@@ -29,6 +37,16 @@ export const updateMyProfile = asyncHandler(async (req: AuthedRequest, res) => {
   const update: Record<string, unknown> = {};
   if (body.avatarGradient !== undefined) update.avatarGradient = body.avatarGradient;
   if (body.bio !== undefined) update.bio = body.bio;
+  if (body.username !== undefined) {
+    const usernameLower = body.username.toLowerCase();
+    const taken = await User.exists({
+      usernameLower,
+      _id: { $ne: req.user!.id },
+    });
+    if (taken) throw ApiError.conflict('That username is already taken');
+    update.username = body.username;
+    update.usernameLower = usernameLower;
+  }
 
   const user = await User.findByIdAndUpdate(req.user!.id, update, { new: true })
     .select('username avatarUrl avatarGradient bio')

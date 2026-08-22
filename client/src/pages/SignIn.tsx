@@ -39,8 +39,13 @@ export function SignIn() {
     setError("");
     setLoading(true);
     try {
-      await googleSignin(credential);
-      navigate("/");
+      const { isNewUser } = await googleSignin(credential);
+      // Fresh account: its username was auto-generated from the Google
+      // profile name/email, never actually chosen by them — send them
+      // through the one-time picker before the dashboard. An existing
+      // account signing in with Google for the first time already has a
+      // real username, so it skips straight through.
+      navigate(isNewUser ? "/choose-username" : "/");
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Google sign in failed");
     } finally {

@@ -63,7 +63,7 @@ export function getUserGames(username: string, page = 1, limit = 20) {
   );
 }
 
-export function updateMyProfile(body: { avatarGradient?: string; bio?: string }) {
+export function updateMyProfile(body: { avatarGradient?: string; bio?: string; username?: string }) {
   return apiFetch<{ username: string; avatarUrl?: string | null; avatarGradient?: string | null; bio?: string | null }>(
     '/users/me',
     { method: 'PATCH', body: JSON.stringify(body) },

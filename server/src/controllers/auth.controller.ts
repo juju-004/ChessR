@@ -197,6 +197,12 @@ export const googleSignin = asyncHandler(async (req, res) => {
   const profile = await verifyGoogleCredential(credential);
 
   let user = await User.findOne({ googleId: profile.googleId });
+  // Only true for the "brand new account, just this instant" branch below
+  // — an existing account (found by googleId OR linked by email) is never
+  // "new" even on its first-ever Google sign-in. Told to the client so it
+  // knows whether to route through the one-time "pick a username" step
+  // (see ChooseUsername.tsx) rather than straight to the dashboard.
+  let isNewUser = false;
 
   if (!user) {
     // Not seen this Google account before — but if the email matches an
@@ -221,6 +227,7 @@ export const googleSignin = asyncHandler(async (req, res) => {
         // the same way every "Sign in with Google" button elsewhere does.
         emailVerified: profile.emailVerified,
       });
+      isNewUser = true;
     }
   }
 
@@ -229,6 +236,7 @@ export const googleSignin = asyncHandler(async (req, res) => {
   res.json({
     accessToken,
     user: userFields(user),
+    isNewUser,
   });
 });
 
