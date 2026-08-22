@@ -1,7 +1,7 @@
 import bcrypt from "bcrypt";
 import type { Response } from "express";
 import { z } from "zod";
-import { User } from "../models/User.js";
+import { User, type IUser } from "../models/User.js";
 import { ApiError } from "../utils/ApiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import {
@@ -11,6 +11,11 @@ import {
 } from "../services/token.service.js";
 import { env, isProd } from "../config/env.js";
 import { getRatingCategory, gamesUntilRanked } from "../services/rating.service.js";
+import {
+  issueEmailVerification,
+  consumeEmailVerificationToken,
+} from "../services/verification.service.js";
+import { verifyGoogleCredential } from "../services/googleAuth.service.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 
 const BCRYPT_ROUNDS = 12;
@@ -38,6 +43,16 @@ const signinSchema = z.object({
   password: z.string().min(1),
 });
 
+const verifyEmailSchema = z.object({
+  token: z.string().min(1),
+});
+
+const googleSigninSchema = z.object({
+  // The ID token JWT Google Identity Services hands the client directly —
+  // see googleAuth.service.ts for what actually happens to it server-side.
+  credential: z.string().min(1),
+});
+
 function setRefreshCookie(res: Response, token: string) {
   // Local dev: frontend and backend look same-origin (Vite proxies /api), so
   // 'lax' + non-secure works over plain http://localhost. In production,
@@ -62,6 +77,52 @@ function ratingFields(user: { rating: number; ratedGamesPlayed: number }) {
   };
 }
 
+function userFields(user: IUser) {
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    avatarGradient: user.avatarGradient ?? null,
+    emailVerified: user.emailVerified,
+    ...ratingFields(user),
+  };
+}
+
+function issueSession(res: Response, user: IUser) {
+  const accessToken = signAccessToken({
+    sub: user.id,
+    username: user.username,
+  });
+  const refreshToken = signRefreshToken(user.id, user.tokenVersion);
+  setRefreshCookie(res, refreshToken);
+  return accessToken;
+}
+
+/** Turns "Ada Lovelace" / "ada.lovelace@site.com" into a username-shaped,
+ *  available slug — strips anything outside [a-zA-Z0-9_], pads short
+ *  results, truncates long ones, and appends a numeric suffix until it
+ *  finds one nobody's taken yet. Used only for brand-new Google sign-ins,
+ *  where there's no username the person typed themselves to fall back on. */
+async function generateAvailableUsername(seed: string): Promise<string> {
+  const base =
+    seed
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9_]/g, "")
+      .slice(0, 20) || "player";
+  const padded = base.length >= 3 ? base : `${base}player`.slice(0, 20);
+
+  for (let suffix = 0; suffix < 1000; suffix++) {
+    const candidate = suffix === 0 ? padded : `${padded}${suffix}`.slice(0, 24);
+    const usernameLower = candidate.toLowerCase();
+    // eslint-disable-next-line no-await-in-loop
+    const taken = await User.exists({ usernameLower });
+    if (!taken) return candidate;
+  }
+  // Astronomically unlikely to be reached, but keeps the function total.
+  return `player${Date.now()}`;
+}
+
 export const signup = asyncHandler(async (req, res) => {
   const { username, email, password } = signupSchema.parse(req.body);
 
@@ -81,22 +142,19 @@ export const signup = asyncHandler(async (req, res) => {
     passwordHash,
   });
 
-  const accessToken = signAccessToken({
-    sub: user.id,
-    username: user.username,
-  });
-  const refreshToken = signRefreshToken(user.id, user.tokenVersion);
-  setRefreshCookie(res, refreshToken);
+  // Fire off the verification email, but don't let a mail-provider hiccup
+  // fail account creation — the account exists either way, and "resend
+  // verification" (see resendVerification below) covers this if the first
+  // send silently drops.
+  issueEmailVerification(user).catch((err) =>
+    console.error("Failed to send verification email on signup:", err),
+  );
+
+  const accessToken = issueSession(res, user);
 
   res.status(201).json({
     accessToken,
-    user: {
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      avatarGradient: user.avatarGradient ?? null,
-      ...ratingFields(user),
-    },
+    user: userFields(user),
   });
 });
 
@@ -114,25 +172,63 @@ export const signin = asyncHandler(async (req, res) => {
   ).select("+passwordHash");
   if (!user) throw ApiError.unauthorized("Invalid username/email or password");
 
+  if (!user.passwordHash) {
+    // A Google-only account trying the password form — bcrypt.compare
+    // against nothing isn't meaningful, and "invalid password" would be a
+    // confusing dead end for someone who's never set one.
+    throw ApiError.unauthorized(
+      "This account signs in with Google. Use \"Continue with Google\" instead.",
+    );
+  }
+
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) throw ApiError.unauthorized("Invalid username/email or password");
 
-  const accessToken = signAccessToken({
-    sub: user.id,
-    username: user.username,
-  });
-  const refreshToken = signRefreshToken(user.id, user.tokenVersion);
-  setRefreshCookie(res, refreshToken);
+  const accessToken = issueSession(res, user);
 
   res.json({
     accessToken,
-    user: {
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      avatarGradient: user.avatarGradient ?? null,
-      ...ratingFields(user),
-    },
+    user: userFields(user),
+  });
+});
+
+export const googleSignin = asyncHandler(async (req, res) => {
+  const { credential } = googleSigninSchema.parse(req.body);
+  const profile = await verifyGoogleCredential(credential);
+
+  let user = await User.findOne({ googleId: profile.googleId });
+
+  if (!user) {
+    // Not seen this Google account before — but if the email matches an
+    // existing local (password) account, link Google onto it rather than
+    // creating a duplicate account under the same address (the unique
+    // index on email would reject that anyway, but this gives a much
+    // better outcome: one account, now signable-into either way).
+    user = await User.findOne({ email: profile.email.toLowerCase() });
+    if (user) {
+      user.googleId = profile.googleId;
+      if (profile.emailVerified) user.emailVerified = true;
+      await user.save();
+    } else {
+      const username = await generateAvailableUsername(profile.name);
+      user = await User.create({
+        username,
+        usernameLower: username.toLowerCase(),
+        email: profile.email,
+        googleId: profile.googleId,
+        // Google already owns and verifies this address, so there's no
+        // "click the link" step needed on top of that — trust its claim
+        // the same way every "Sign in with Google" button elsewhere does.
+        emailVerified: profile.emailVerified,
+      });
+    }
+  }
+
+  const accessToken = issueSession(res, user);
+
+  res.json({
+    accessToken,
+    user: userFields(user),
   });
 });
 
@@ -162,13 +258,7 @@ export const refresh = asyncHandler(async (req, res) => {
 
   res.json({
     accessToken,
-    user: {
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      avatarGradient: user.avatarGradient ?? null,
-      ...ratingFields(user),
-    },
+    user: userFields(user),
   });
 });
 
@@ -185,8 +275,29 @@ export const me = asyncHandler(async (req: AuthedRequest, res) => {
     username: user.username,
     email: user.email,
     avatarGradient: user.avatarGradient ?? null,
+    emailVerified: user.emailVerified,
     tokenBalance: user.tokenBalance,
     friendCount: user.friends.length,
     ...ratingFields(user),
   });
+});
+
+export const verifyEmail = asyncHandler(async (req, res) => {
+  const { token } = verifyEmailSchema.parse(req.body);
+  const user = await consumeEmailVerificationToken(token);
+  if (!user) {
+    throw ApiError.badRequest("This verification link is invalid or has expired.");
+  }
+  res.json({ verified: true });
+});
+
+export const resendVerification = asyncHandler(async (req: AuthedRequest, res) => {
+  const user = await User.findById(req.user!.id);
+  if (!user) throw ApiError.notFound("User not found");
+  if (user.emailVerified) {
+    res.json({ alreadyVerified: true });
+    return;
+  }
+  await issueEmailVerification(user);
+  res.json({ sent: true });
 });

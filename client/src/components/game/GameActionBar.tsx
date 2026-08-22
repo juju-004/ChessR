@@ -1,4 +1,4 @@
-import { Home, MoreVertical } from "lucide-react";
+import { ArrowLeftCircle, MoreVertical } from "lucide-react";
 import { Button, Tooltip, Dropdown, DropdownItem } from "../ui/index.js";
 import { cn } from "../../lib/cn.js";
 import { useNavigate } from "react-router-dom";
@@ -70,9 +70,9 @@ export function GameActionBarDesktop({
  *  the only thing rendered there).
  *
  *  Three zones so nothing important can get squeezed off-screen: a pinned
- *  Dashboard link on the left (so you're never stuck without a way back
- *  to the rest of the site mid-game — the old version dropped nav
- *  entirely here), a horizontally-scrollable middle for the
+ *  back button on the left (so you're never stuck without a way out of a
+ *  game mid-match — the old version dropped nav entirely here), a
+ *  horizontally-scrollable middle for the
  *  reached-for-constantly items (flip/prev/next/share/etc — however many
  *  there are, they scroll rather than shrinking to illegible slivers),
  *  and a pinned "More" dropup on the right for resign/draw/abort/etc so
@@ -89,15 +89,26 @@ export function GameActionBarMobile({
   nextHold: HoldHandlers;
 }) {
   const navigate = useNavigate();
+
+  function handleBack() {
+    const idx = (window.history.state as { idx?: number } | null)?.idx;
+    if (typeof idx === "number" && idx > 0) {
+      navigate(-1);
+    } else {
+      navigate("/");
+    }
+  }
+
   if (primaryItems.length === 0) return null;
   return (
     <nav aria-label="Game actions" className="docker game flex md:hidden">
       <button
         type="button"
+        aria-label="Back"
         className={"docker-item docker-item-grow"}
-        onClick={() => navigate("/")}
+        onClick={handleBack}
       >
-        <Home className="h-5 w-5" />
+        <ArrowLeftCircle className="h-5 w-5 text-primary" />
       </button>
 
       {primaryItems.map((item) => {

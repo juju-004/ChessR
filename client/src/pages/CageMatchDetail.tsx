@@ -11,6 +11,7 @@ import {
 import { useAuth } from "../contexts/AuthContext.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useNotify } from "../contexts/NotificationContext.js";
+import { useConfirm } from "../contexts/ConfirmContext.js";
 import {
   Page,
   Card,
@@ -47,6 +48,7 @@ export function CageMatchDetail() {
   const socket = useSocket();
   const navigate = useNavigate();
   const { notify } = useNotify();
+  const confirmDialog = useConfirm();
 
   const [match, setMatch] = useState<CageMatch | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -103,15 +105,15 @@ export function CageMatchDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, match?._id]);
 
-  function handleForfeit() {
+  async function handleForfeit() {
     if (!socket || !match) return;
-    if (
-      !window.confirm(
-        "Forfeit the rest of this cage match? Your opponent will be declared the overall winner.",
-      )
-    ) {
-      return;
-    }
+    const ok = await confirmDialog({
+      title: "Forfeit the rest of this cage match?",
+      description: "Your opponent will be declared the overall winner.",
+      variant: "danger",
+      confirmLabel: "Forfeit match",
+    });
+    if (!ok) return;
     socket.emit("cage:forfeit", { matchId: match._id });
   }
 

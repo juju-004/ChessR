@@ -12,10 +12,9 @@ import { Page, Card, Button, Input, RCoin } from "@/components/ui/index.js";
 import { MAX_WAGER_TOKENS } from "@/lib/limits.js";
 
 // Fallback used only until getWalletConfig() resolves — the server's
-// figure (still ₦10/R Coin at time of writing, i.e. ₦100 for 10 R Coins) is
-// always what's actually charged; this just avoids a blank/zeroed price
-// preview for the one render before that request lands.
-const FALLBACK_NAIRA_PER_TOKEN = 10;
+// figure (₦5/R Coin) is always what's actually charged; this just avoids
+// a blank/zeroed price preview for the one render before that request lands.
+const FALLBACK_NAIRA_PER_TOKEN = 5;
 const FALLBACK_MIN_TOKENS = 10;
 // 7-digit sanity ceiling on a single purchase, mirroring MAX_WAGER_TOKENS
 // server-side — overridden below by whatever getWalletConfig actually

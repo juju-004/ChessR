@@ -4,6 +4,8 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { env, isProd } from './config/env.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
 import authRoutes from './routes/auth.routes.js';
@@ -28,6 +30,25 @@ export function createApp() {
     cors({
       origin: env.CLIENT_ORIGIN,
       credentials: true,
+    }),
+  );
+
+  // Static assets referenced by absolute URL from generated HTML — currently
+  // just the default Open Graph preview image (see og.controller.ts). Not
+  // behind CORS/auth on purpose: link-preview crawlers (WhatsApp, Twitter/X,
+  // Discord, etc.) fetch og:image directly and unauthenticated, the same way
+  // a plain <img> tag would.
+  const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '../public');
+  app.use(
+    express.static(publicDir, {
+      maxAge: '1d',
+      immutable: true,
+      // Helmet (above) defaults Cross-Origin-Resource-Policy to
+      // 'same-origin', which is meant to stop random third-party pages
+      // from embedding this API's resources — the opposite of what's
+      // wanted here, since the entire point is that WhatsApp/Twitter/
+      // Discord/etc.'s own servers need to fetch and embed this image.
+      setHeaders: (res) => res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'),
     }),
   );
 

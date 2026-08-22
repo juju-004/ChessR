@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, memo } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, memo, type CSSProperties } from "react";
 import { Chessground } from "@lichess-org/chessground";
 import { Key } from "@lichess-org/chessground/types";
 
@@ -43,6 +43,7 @@ export const ChessBoard = memo(function ChessBoard({
   showCoordinates = true,
   showLegalMoves = true,
 }: ChessBoardProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const groundRef = useRef<CgApi | null>(null);
   const onUserMoveRef = useRef(onUserMove);
@@ -52,13 +53,22 @@ export const ChessBoard = memo(function ChessBoard({
   // effect for why the distinction matters.
   const orientationRef = useRef(orientation);
 
-  // No separate wrapper div — this measures the caller's own parent
-  // element directly (e.g. Game.tsx's themed board container) via
-  // `containerRef.current.parentElement`. That parent is expected to be a
-  // true square (fixed via a non-conflicting CSS aspect-ratio — see
-  // Game.tsx) and a flex container with items-center/justify-center, so
-  // that cg-wrap gets centered inside it if its box is ever not perfectly
-  // square during a transient reflow.
+  // No separate wrapper div around cg-wrap and Game.tsx's own container —
+  // this measures the CALLER's container directly (e.g. Game.tsx's themed
+  // board box) via `rootRef.current.parentElement`, i.e. one level above
+  // this component's own root. `rootRef` is on the outer wrapper (below)
+  // rather than `containerRef` (the inner cg-wrap chessground owns)
+  // specifically so that measurement targets the real caller-sized box —
+  // measuring via containerRef.current.parentElement would instead measure
+  // the wrapper this component renders around itself, which is sized OFF
+  // boardSize (see the JSX below), a self-referential 0×0 loop that reads
+  // as "the board silently never appears" (boardSize starts at 0, so its
+  // own parent is measured at 0×0 forever, so boardSize never leaves 0).
+  //
+  // That parent is expected to be a true square (fixed via a
+  // non-conflicting CSS aspect-ratio — see Game.tsx) and a flex container
+  // with items-center/justify-center, so that cg-wrap gets centered inside
+  // it if its box is ever not perfectly square during a transient reflow.
   //
   // `boardSize` here is what keeps chessground's internal <cg-container>
   // (sized off cg-wrap via a pure-CSS 12.5%/800% percentage trick) from
@@ -67,7 +77,7 @@ export const ChessBoard = memo(function ChessBoard({
   // lands on a whole pixel instead of drifting apart over the board.
   const [boardSize, setBoardSize] = useState(0);
   useLayoutEffect(() => {
-    const parent = containerRef.current?.parentElement;
+    const parent = rootRef.current?.parentElement;
     if (!parent) return;
     function measure() {
       const box = parent!.getBoundingClientRect();
@@ -92,7 +102,14 @@ export const ChessBoard = memo(function ChessBoard({
       viewOnly,
       turnColor,
       check: inCheck,
-      coordinates: showCoordinates,
+      // Always false: chessground's own coordinate labels are the ones
+      // that render deformed/scattered on some mobile browsers (see the
+      // now-removed .cg-wrap text-size-adjust hack this used to lean on
+      // in index.css) — coordinates are drawn ourselves instead, as a
+      // plain React overlay below, which sidesteps that rendering path
+      // entirely. `showCoordinates` still controls whether that overlay
+      // renders at all.
+      coordinates: false,
       animation: { enabled: animationEnabled, duration: animationDurationMs },
       movable: {
         free: false,
@@ -139,7 +156,8 @@ export const ChessBoard = memo(function ChessBoard({
       turnColor,
       lastMove: lastMove as Key[] | undefined,
       check: inCheck,
-      coordinates: showCoordinates,
+      // See the construction effect above — always off, drawn ourselves.
+      coordinates: false,
       // A flip repositions every piece on the board at once (their pixel
       // target changed because the axes flipped, not because anything
       // moved) — chessground's animation system can't tell that apart
@@ -185,10 +203,111 @@ export const ChessBoard = memo(function ChessBoard({
   }, [boardSize]);
 
   return (
-    <div
-      ref={containerRef}
-      className="cg-wrap rounded-lg overflow-hidden"
-      style={{ width: boardSize, height: boardSize }}
-    />
+    <div ref={rootRef} className="relative" style={{ width: boardSize, height: boardSize }}>
+      <div
+        ref={containerRef}
+        className="cg-wrap rounded-lg overflow-hidden"
+        style={{ width: boardSize, height: boardSize }}
+      />
+      {showCoordinates && boardSize > 0 && (
+        <BoardCoordinates orientation={orientation} boardSize={boardSize} />
+      )}
+    </div>
+  );
+});
+
+const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
+
+// True for the traditionally-dark square at (file, rank) — a1 is dark,
+// b1 is light, etc: standard alternation is "dark when file+rank is even",
+// using file a=1..h=8. Used purely to pick a legible label color, not to
+// draw the squares themselves (chessground/CSS already own that).
+function isDarkSquare(fileIndex: number, rank: number): boolean {
+  const fileNum = fileIndex + 1; // a=1..h=8
+  return (fileNum + rank) % 2 === 0;
+}
+
+/**
+ * Our own rank/file labels, replacing chessground's built-in ones — those
+ * render at a small fixed CSS-px font size that mobile Safari/Chrome's
+ * automatic text-size-adjust inflates per-element rather than uniformly,
+ * which is what made them look randomly scattered/deformed on phone no
+ * matter what `text-size-adjust: 100%` override got thrown at `.cg-wrap`
+ * (see the old comment this replaced in index.css). This is a plain React
+ * overlay instead — a rem-sized, ordinarily-laid-out <span> per label —
+ * so it's simply not exposed to that mobile rendering quirk at all.
+ *
+ * Ranks sit in the top-left corner of the left-edge squares; files sit in
+ * the bottom-right corner of the bottom-edge squares — the same corner
+ * convention lichess/chess.com use. Label color alternates with the
+ * square's own light/dark color for contrast, the same way theirs does,
+ * rather than one fixed color that would wash out on a same-toned square.
+ */
+const BoardCoordinates = memo(function BoardCoordinates({
+  orientation,
+  boardSize,
+}: {
+  orientation: "white" | "black";
+  boardSize: number;
+}) {
+  const squareSize = boardSize / 8;
+  const fontSize = Math.max(9, Math.round(boardSize * 0.022));
+  const inset = Math.max(2, Math.round(boardSize * 0.006));
+
+  const { files, ranks } = useMemo(() => {
+    // Left-to-right file order and top-to-bottom rank order, accounting
+    // for which side is facing the viewer.
+    const files = orientation === "white" ? FILES : [...FILES].reverse();
+    const ranks =
+      orientation === "white"
+        ? [8, 7, 6, 5, 4, 3, 2, 1]
+        : [1, 2, 3, 4, 5, 6, 7, 8];
+    return { files, ranks };
+  }, [orientation]);
+
+  const labelStyle = (dark: boolean): CSSProperties => ({
+    fontSize,
+    lineHeight: 1,
+    fontWeight: 600,
+    color: dark ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.55)",
+    textShadow: dark ? "0 1px 1px rgba(0,0,0,0.35)" : "none",
+  });
+
+  return (
+    <div className="pointer-events-none absolute inset-0 select-none">
+      {ranks.map((rank, row) => {
+        const leftFileIndex = FILES.indexOf(files[0]);
+        return (
+          <span
+            key={`rank-${rank}`}
+            className="absolute"
+            style={{
+              top: row * squareSize + inset,
+              left: inset,
+              ...labelStyle(isDarkSquare(leftFileIndex, rank)),
+            }}
+          >
+            {rank}
+          </span>
+        );
+      })}
+      {files.map((file, col) => {
+        const bottomRank = ranks[ranks.length - 1];
+        const fileIndex = FILES.indexOf(file);
+        return (
+          <span
+            key={`file-${file}`}
+            className="absolute"
+            style={{
+              top: 7 * squareSize + squareSize - fontSize - inset,
+              left: col * squareSize + squareSize - fontSize * 0.65 - inset,
+              ...labelStyle(isDarkSquare(fileIndex, bottomRank)),
+            }}
+          >
+            {file}
+          </span>
+        );
+      })}
+    </div>
   );
 });

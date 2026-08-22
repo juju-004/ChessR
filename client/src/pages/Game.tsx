@@ -28,6 +28,7 @@ import {
   RefreshCw,
   Trophy,
   FlipVertical,
+  Settings,
 } from "lucide-react";
 import { MoveList, MoveStrip } from "../components/MoveLog.js";
 import { PlayerPanelRow, panelMaterial } from "../components/PlayerPanels.js";
@@ -77,7 +78,10 @@ import {
   setSoundEnabled,
 } from "../sounds.js";
 import { copyToClipboard } from "@/lib/utils.js";
-import { formatTimeControl, animationDurationForTimeControl } from "../timeControls.js";
+import {
+  formatTimeControl,
+  animationDurationForTimeControl,
+} from "../timeControls.js";
 
 export function Game() {
   const { code = "" } = useParams<{ code: string }>();
@@ -300,7 +304,10 @@ export function Game() {
   // snaps, classical games get a slower, easier-to-follow slide. See
   // animationDurationForTimeControl's own comment for the bucket cutoffs.
   const animationDurationMs = useMemo(
-    () => animationDurationForTimeControl(gameMeta?.timeControl.baseSeconds ?? null),
+    () =>
+      animationDurationForTimeControl(
+        gameMeta?.timeControl.baseSeconds ?? null,
+      ),
     [gameMeta?.timeControl.baseSeconds],
   );
 
@@ -1003,13 +1010,16 @@ export function Game() {
     setPromoPending(null);
   }
 
-  function handleForfeitCageMatch() {
+  async function handleForfeitCageMatch() {
     if (!gameMeta?.cageMatchId || !socket) return;
-    if (
-      confirm(
-        "Forfeit the ENTIRE cage match — not just this game? Your opponent will be declared the overall winner and any remaining games will be skipped.",
-      )
-    ) {
+    const ok = await confirmDialog({
+      title: "Forfeit the entire cage match?",
+      description:
+        "Not just this game — your opponent will be declared the overall winner and any remaining games will be skipped.",
+      variant: "danger",
+      confirmLabel: "Forfeit match",
+    });
+    if (ok) {
       socket.emit("cage:forfeit", { matchId: gameMeta.cageMatchId });
     }
   }
@@ -1232,7 +1242,7 @@ export function Game() {
       list.push(
         <Badge key="wager" variant="warning">
           <span className="inline-flex items-center gap-1">
-            {gameMeta.wagerTokens} <RCoin size={10} /> wager
+            {gameMeta.wagerTokens} <RCoin size={10} />
           </span>
         </Badge>,
       );
@@ -1457,6 +1467,13 @@ export function Game() {
       danger: false,
       disabled: viewPly === null,
       mobilePrimary: true,
+    },
+    {
+      label: "Settings",
+      icon: Settings,
+      id: "settings",
+      onClick: () => navigate("/settings"),
+      danger: false,
     },
     ...(canBerserk
       ? [

@@ -67,7 +67,7 @@ export function AuthLayout({
 
           {children}
 
-          <div className="mt-6 border-t border-base-300 pt-5 text-center text-sm text-base-content/60">
+          <div className="pt-5 text-center text-sm text-base-content/60">
             {footer}
           </div>
         </Card>

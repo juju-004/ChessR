@@ -90,7 +90,7 @@ export function Settings() {
         </Button>
       }
     >
-      <div className="grid gap-4 md:grid-cols-[1fr_240px]">
+      <div className="grid gap-4 lg:grid-cols-[1fr_240px]">
         <div className="space-y-4">
           <Card variant="solid">
             <CardHeader>

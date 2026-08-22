@@ -21,13 +21,6 @@ export interface ResponsiveOverlayProps {
    *  Tailwind's `md` (768px) so this lines up with every other
    *  phone/desktop split in the app (Sidebar, the mobile dock, etc). */
   breakpoint?: number;
-  /** Passed straight through to the phone Modal's `position` prop, but
-   *  Modal now always renders as a bottom sheet on phone regardless of
-   *  what's passed here, so this has no visible effect below the
-   *  breakpoint. Kept for API compatibility / in case that changes again.
-   *  Ignored on desktop, where the Popover is always anchored to the
-   *  trigger. */
-  mobilePosition?: "center" | "bottom";
   /** Pass both to drive the open state externally (e.g. auto-opening
    *  after some other action); omit to let this manage its own state. */
   open?: boolean;
@@ -54,7 +47,6 @@ export function ResponsiveOverlay({
   side = "bottom",
   className,
   breakpoint = 768,
-  mobilePosition = "center",
   open: openProp,
   onOpenChange,
   icon,
@@ -97,7 +89,6 @@ export function ResponsiveOverlay({
         onClose={() => setOpen(false)}
         title={title}
         className={className}
-        position={mobilePosition}
         icon={icon}
       >
         {children}

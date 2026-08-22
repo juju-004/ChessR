@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { Chess } from "chess.js";
 import {
   Swords,
   Trophy,
@@ -19,7 +18,6 @@ import {
 import { ApiRequestError } from "../api/http.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import { TIME_CONTROLS, formatTimeControl } from "../timeControls.js";
-import { turnColor } from "../chessUtils.js";
 import { extractGameCode } from "../lib/utils.js";
 import { MAX_WAGER_TOKENS } from "../lib/limits.js";
 import { useTokenBalance } from "../hooks/useTokenBalance.js";
@@ -306,6 +304,83 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
+        {(gamesError || activeGames === null || activeGames.length > 0) && (
+          <Card variant="solid">
+            <CardHeader>
+              <CardTitle>Friends currently playing</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {gamesError && (
+                <p className="text-sm text-red-400">{gamesError}</p>
+              )}
+              {!gamesError && activeGames === null && (
+                <p className="text-sm text-base-content/60">Loading…</p>
+              )}
+              {activeGames &&
+                activeGames.map((g) => {
+                  return (
+                    <div
+                      key={g._id}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-base-300 bg-base-100/60 px-3 py-2.5"
+                    >
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <div className="flex shrink-0 -space-x-2">
+                          <Avatar
+                            username={g.white.username}
+                            gradient={g.white.avatarGradient}
+                            size="sm"
+                            className="ring-2 rounded-full ring-base-100"
+                          />
+                          <Avatar
+                            username={g.black.username}
+                            gradient={g.black.avatarGradient}
+                            size="sm"
+                            className="ring-2 rounded-full ring-base-100"
+                          />
+                        </div>
+                        <div className="min-w-0 text-sm text-base-content">
+                          <div className="truncate">
+                            <Link
+                              to={`/profile/${g.white.username}`}
+                              className="hover:underline"
+                            >
+                              {g.white.username}
+                            </Link>{" "}
+                            <span className="text-base-content/40">vs</span>{" "}
+                            <Link
+                              to={`/profile/${g.black.username}`}
+                              className="hover:underline"
+                            >
+                              {g.black.username}
+                            </Link>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-base-content/50">
+                            <span>
+                              Move {Math.ceil(g.moves.length / 2)} ·{" "}
+                              {formatTimeControl(g.timeControl)}
+                            </span>
+                            {g.wagerTokens > 0 && (
+                              <Badge variant="warning">
+                                <span className="inline-flex items-center gap-1">
+                                  {g.wagerTokens} <RCoin size={10} />
+                                </span>
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <Link to={`/game/${g.joinCode}`} className="shrink-0">
+                        <Button variant="glass" size="sm">
+                          Watch
+                        </Button>
+                      </Link>
+                    </div>
+                  );
+                })}
+            </CardContent>
+          </Card>
+        )}
+
         <Card variant="solid">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -399,84 +474,6 @@ export function Dashboard() {
             })}
           </CardContent>
         </Card>
-
-        {(gamesError || activeGames === null || activeGames.length > 0) && (
-          <Card variant="solid">
-            <CardHeader>
-              <CardTitle>Friends currently playing</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {gamesError && (
-                <p className="text-sm text-red-400">{gamesError}</p>
-              )}
-              {!gamesError && activeGames === null && (
-                <p className="text-sm text-base-content/60">Loading…</p>
-              )}
-              {activeGames &&
-                activeGames.map((g) => {
-                  const toMove = turnColor(new Chess(g.fen));
-                  return (
-                    <div
-                      key={g._id}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-base-300 bg-base-100/60 px-3 py-2.5"
-                    >
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <div className="flex shrink-0 -space-x-2">
-                          <Avatar
-                            username={g.white.username}
-                            gradient={g.white.avatarGradient}
-                            size="sm"
-                            className="ring-2 ring-base-100"
-                          />
-                          <Avatar
-                            username={g.black.username}
-                            gradient={g.black.avatarGradient}
-                            size="sm"
-                            className="ring-2 ring-base-100"
-                          />
-                        </div>
-                        <div className="min-w-0 text-sm text-base-content">
-                          <div className="truncate">
-                            <Link
-                              to={`/profile/${g.white.username}`}
-                              className="hover:underline"
-                            >
-                              {g.white.username}
-                            </Link>{" "}
-                            <span className="text-base-content/40">vs</span>{" "}
-                            <Link
-                              to={`/profile/${g.black.username}`}
-                              className="hover:underline"
-                            >
-                              {g.black.username}
-                            </Link>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-base-content/50">
-                            <span>
-                              Move {Math.ceil(g.moves.length / 2)} · {toMove} to
-                              move · {formatTimeControl(g.timeControl)}
-                            </span>
-                            {g.wagerTokens > 0 && (
-                              <Badge variant="warning">
-                                <span className="inline-flex items-center gap-1">
-                                  {g.wagerTokens} <RCoin size={10} /> wager
-                                </span>
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <Link to={`/game/${g.joinCode}`} className="shrink-0">
-                        <Button variant="glass" size="sm">
-                          Watch
-                        </Button>
-                      </Link>
-                    </div>
-                  );
-                })}
-            </CardContent>
-          </Card>
-        )}
 
         <footer className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 pt-2 pb-2 text-xs text-base-content/50">
           <Link to="/about" className="hover:text-base-content hover:underline">

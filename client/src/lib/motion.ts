@@ -116,15 +116,6 @@ export const modalContent: Variants = {
   exit: { opacity: 0, scale: 0.98, y: 3, transition: overlayOut },
 };
 
-// Bottom-sheet entrance for Modal's `position="bottom"` — slides up from
-// off-screen instead of scaling in place, since a sheet is anchored to an
-// edge rather than floating in the middle of the viewport.
-export const sheetContent: Variants = {
-  hidden: { opacity: 0, y: "100%" },
-  visible: { opacity: 1, y: 0, transition: overlayIn },
-  exit: { opacity: 0, y: "100%", transition: overlayOut },
-};
-
 // Popover's own entrance — deliberately not reusing the general-purpose
 // scaleIn below (Card/badge "pop in" entrances elsewhere in the app),
 // since those didn't need to get faster and shouldn't change just because

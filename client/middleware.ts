@@ -26,6 +26,13 @@
  *      VITE_-prefixed vars are baked into the built JS at compile time and
  *      aren't readable at Edge Middleware runtime, which executes
  *      per-request server-side on Vercel's edge, separate from that build.
+ *      The BACKEND, separately, needs its own API_ORIGIN env var set (see
+ *      server/.env.example) so the HTML this fetches can point og:image at
+ *      a real fetchable URL — without it, WhatsApp/Discord/etc. render no
+ *      preview card at all (no title, no description, nothing), since most
+ *      of them simply skip an image-less preview rather than falling back
+ *      to text-only. That was the actual cause of a shared game link
+ *      showing nothing in WhatsApp even once this middleware was working.
  *   2. Confirm this file's location/name/export shape still matches
  *      Vercel's current Edge Middleware conventions for a non-Next.js
  *      (Vite) project — check https://vercel.com/docs/functions/edge-middleware

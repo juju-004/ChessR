@@ -1314,7 +1314,6 @@ export function TournamentDetail() {
                         >
                           <ResponsiveOverlay
                             align="start"
-                            mobilePosition="bottom"
                             trigger={
                               <button className="flex items-center gap-1.5 text-left hover:scale-95 duration-150">
                                 <Avatar

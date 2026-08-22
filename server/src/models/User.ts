@@ -5,7 +5,32 @@ export interface IUser extends Document {
   username: string;
   usernameLower: string;
   email: string;
-  passwordHash: string;
+  /** Absent for accounts created via Google sign-in that have never set a
+   *  local password — see auth.controller.ts's signin, which rejects a
+   *  password attempt with a "use Google sign-in instead" message rather
+   *  than a generic bcrypt failure when this is unset. */
+  passwordHash?: string;
+  /** Google's stable per-account subject id ("sub" claim), set the first
+   *  time someone signs in with Google — either on a brand-new account or
+   *  linked onto an existing email/password one. Sparse+unique so at most
+   *  one User can ever claim a given Google account, while leaving it
+   *  undefined on every account that's never used Google sign-in. */
+  googleId?: string;
+  /** True once the address in `email` has been confirmed — via clicking
+   *  the emailed link (see verification.service.ts) or, for Google
+   *  sign-in, inherited directly from Google's own `email_verified` claim.
+   *  Gates nothing server-side yet beyond the client's "verify your email"
+   *  banner, but keeping it a real field (not inferred from token
+   *  presence) means that can grow into an enforced gate later without a
+   *  migration. */
+  emailVerified: boolean;
+  /** sha256 hex digest of the current outstanding verification token —
+   *  the raw token itself is only ever in the emailed link, never stored,
+   *  so a database read alone can't be used to verify someone else's
+   *  address. select:false alongside passwordHash since neither should
+   *  ride along on normal user reads. */
+  emailVerificationTokenHash?: string;
+  emailVerificationExpires?: Date;
   tokenBalance: number;
   friends: Types.ObjectId[];
   avatarUrl?: string;
@@ -46,17 +71,30 @@ const userSchema = new Schema<IUser>(
   {
     username: { type: String, required: true, trim: true, minlength: 3, maxlength: 24 },
     // Store a normalized lowercase copy so lookups/uniqueness are case-insensitive
-    // without needing a collation on every query.
-    usernameLower: { type: String, required: true, unique: true, index: true },
+    // without needing a collation on every query. `unique: true` alone
+    // already creates the index — no need for an `index: true` here too
+    // (that combination, or a duplicate `schema.index()` call below, is
+    // exactly what trips Mongoose's "Duplicate schema index" warning on
+    // every server restart).
+    usernameLower: { type: String, required: true, unique: true },
     email: {
       type: String,
       required: true,
       unique: true,
       lowercase: true,
       trim: true,
-      index: true,
     },
-    passwordHash: { type: String, required: true, select: false },
+    // Not required at the schema level: a Google-only account has nothing
+    // to put here (see IUser.passwordHash doc comment above).
+    passwordHash: { type: String, select: false },
+    // sparse: true is what actually matters here — it means the unique
+    // constraint only applies to documents where googleId is *set*, so any
+    // number of local-only accounts (where it's undefined) can coexist.
+    // unique: true alone already creates the index.
+    googleId: { type: String, unique: true, sparse: true },
+    emailVerified: { type: Boolean, default: false },
+    emailVerificationTokenHash: { type: String, select: false },
+    emailVerificationExpires: { type: Date, select: false },
     tokenBalance: { type: Number, default: 0, min: 0 },
     friends: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     avatarUrl: { type: String },
@@ -72,8 +110,5 @@ const userSchema = new Schema<IUser>(
   },
   { timestamps: true },
 );
-
-// Supports prefix search for the "look up other user profiles" feature.
-userSchema.index({ usernameLower: 1 });
 
 export const User = mongoose.model<IUser>('User', userSchema);

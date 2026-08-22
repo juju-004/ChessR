@@ -8,6 +8,10 @@ export interface CurrentUser {
    *  never the hidden underlying number. */
   ratingCategory?: string | null;
   ratedGamesUntilRanked?: number;
+  /** Whether `email` has been confirmed yet — see the "verify your email"
+   *  banner in App.tsx and the /verify-email page. Always true for a
+   *  Google sign-in account. */
+  emailVerified?: boolean;
 }
 
 interface AuthSnapshot {

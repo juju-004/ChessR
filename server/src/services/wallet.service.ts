@@ -22,6 +22,16 @@ export interface TokenPlan {
   priceNaira: number;
 }
 
+// Fixed custom-amount purchase rate — replaced the old fixed-tier TOKEN_PLANS
+// list (below, now unused by the purchase flow itself but left in place in
+// case anything still imports the type/shape). ₦5 per R Coin.
+export const PURCHASE_NAIRA_PER_TOKEN = 5;
+export const MIN_PURCHASE_TOKENS = 10;
+// 7-digit sanity ceiling, mirroring MAX_WAGER_TOKENS elsewhere in the
+// codebase (game.controller.ts, cageMatch.service.ts) — same convention of
+// a local constant per file rather than a shared import.
+const MAX_PURCHASE_TOKENS = 9_999_999;
+
 export const TOKEN_PLANS: TokenPlan[] = [
   { id: "starter", tokens: 100, priceNaira: 1000 },
   { id: "value", tokens: 550, priceNaira: 5000 },
@@ -32,36 +42,40 @@ export const TOKEN_PLANS: TokenPlan[] = [
 export const WITHDRAWAL_NAIRA_PER_TOKEN = 10;
 export const MIN_WITHDRAWAL_TOKENS = 10;
 
-function getPlan(planId: string): TokenPlan {
-  const plan = TOKEN_PLANS.find((p) => p.id === planId);
-  if (!plan) throw ApiError.badRequest("Unknown plan");
-  return plan;
-}
-
 // --- Purchases ----------------------------------------------------------------
 
 /** Creates the pending ledger entry and returns what the client needs to open
- *  the Paystack popup. The amount is always derived from the server's own
- *  plan list — never trust a client-submitted amount. */
+ *  the Paystack popup. The amount is always computed server-side from
+ *  PURCHASE_NAIRA_PER_TOKEN — the client only ever sends how many tokens it
+ *  wants, never a price, so there's nothing for a tampered request to lie
+ *  about beyond the token count itself, which this still clamps. */
 export async function createPendingPurchase(
   userId: string,
-  planId: string,
+  tokens: number,
 ): Promise<{ reference: string; amountKobo: number; tokens: number }> {
-  const plan = getPlan(planId);
+  if (
+    !Number.isInteger(tokens) ||
+    tokens < MIN_PURCHASE_TOKENS ||
+    tokens > MAX_PURCHASE_TOKENS
+  ) {
+    throw ApiError.badRequest(
+      `Purchase must be between ${MIN_PURCHASE_TOKENS} and ${MAX_PURCHASE_TOKENS.toLocaleString()} R Coins`,
+    );
+  }
+
   const reference = `TKN-${nanoid(20)}`;
-  const amountKobo = plan.priceNaira * 100;
+  const amountKobo = tokens * PURCHASE_NAIRA_PER_TOKEN * 100;
 
   await Transaction.create({
     user: userId,
     type: "purchase",
     status: "pending",
-    tokens: plan.tokens,
+    tokens,
     amountKobo,
     reference,
-    planId: plan.id,
   });
 
-  return { reference, amountKobo, tokens: plan.tokens };
+  return { reference, amountKobo, tokens };
 }
 
 /**

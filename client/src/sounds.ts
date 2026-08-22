@@ -37,6 +37,10 @@ interface Tone {
   duration: number; // seconds
   type?: OscillatorType;
   gain?: number;
+  /** If set, the oscillator sweeps from `freq` up/down to this frequency
+   *  over `duration` instead of holding steady — used for the berserk
+   *  siren's rising/falling "whoop". */
+  freqEnd?: number;
 }
 
 function playTones(tones: Tone[]) {
@@ -48,9 +52,13 @@ function playTones(tones: Tone[]) {
     const osc = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
     osc.type = tone.type ?? 'sine';
-    osc.frequency.value = tone.freq;
 
     const start = now + tone.startOffset;
+    osc.frequency.setValueAtTime(tone.freq, start);
+    if (tone.freqEnd) {
+      osc.frequency.exponentialRampToValueAtTime(tone.freqEnd, start + tone.duration);
+    }
+
     const peakGain = tone.gain ?? 0.18;
     gainNode.gain.setValueAtTime(0, start);
     gainNode.gain.linearRampToValueAtTime(peakGain, start + 0.008);
@@ -102,16 +110,17 @@ export function playMoveSound() {
   playTones([{ freq: 520, startOffset: 0, duration: 0.09, type: 'triangle' }]);
 }
 
-/** A woodier "knock-knock" impact — a short square-wave rap immediately
- *  followed by two descending low thuds, evoking a captured piece being
- *  knocked over and set down off the board. Deliberately busier/lower than
- *  the old single click-thud so it reads as distinct from a normal move
- *  even with the sound played back-to-back in a fast exchange. */
+/** A sharp "snap" — a brief filtered-noise crack (the actual transient a
+ *  pure oscillator can't produce) landing right on top of a single low
+ *  thud, like a piece being struck off the board and set down in one
+ *  motion. Deliberately one clean hit rather than the previous
+ *  double-knock, so it stays punchy and reads instantly as "different
+ *  from a normal move" even in a fast flurry of captures. */
 export function playCaptureSound() {
+  playNoiseBurst(0, 0.035, 0.17, 2400);
   playTones([
-    { freq: 1100, startOffset: 0, duration: 0.03, type: 'square', gain: 0.13 },
-    { freq: 196, startOffset: 0.02, duration: 0.1, type: 'triangle', gain: 0.22 },
-    { freq: 123, startOffset: 0.1, duration: 0.16, type: 'triangle', gain: 0.17 },
+    { freq: 1500, startOffset: 0, duration: 0.02, type: 'square', gain: 0.1 },
+    { freq: 150, startOffset: 0.012, duration: 0.15, type: 'triangle', gain: 0.25 },
   ]);
 }
 
@@ -132,21 +141,18 @@ export function playGameStartSound() {
   ]);
 }
 
-/** A short battle-horn "clash" — a bright noise transient (the sound a pure
- *  oscillator can't make on its own) layered under a low percussive thud
- *  and two descending sawtooth horn stabs, with a faint high "ring-out" as
- *  it settles. Aiming for the same kind of punchy, instantly-recognizable
- *  alarm Lichess's berserk cue goes for, while staying built entirely from
- *  this file's own oscillator/noise toolkit rather than borrowing anything.
- *  Deliberately the loudest, busiest sound here — berserking is a loud,
- *  once-per-game declaration, so it should cut through everything else. */
+/** A rising-then-falling siren "whoop" — a noise-burst crack up front, then
+ *  two sawtooth sweeps (low-to-high, then high-to-low) instead of the old
+ *  fixed-pitch horn stabs, closer to an actual alarm klaxon than a chord.
+ *  A faint high ring-out on top as it settles. Still the loudest, busiest
+ *  sound in this file on purpose — berserking is a loud, once-per-game
+ *  declaration, so it should cut through everything else. */
 export function playBerserkSound() {
-  playNoiseBurst(0, 0.05, 0.18, 1500);
+  playNoiseBurst(0, 0.05, 0.18, 1200);
   playTones([
-    { freq: 90, startOffset: 0, duration: 0.18, type: 'square', gain: 0.22 },
-    { freq: 659, startOffset: 0.01, duration: 0.1, type: 'sawtooth', gain: 0.2 },
-    { freq: 494, startOffset: 0.1, duration: 0.16, type: 'sawtooth', gain: 0.2 },
-    { freq: 1318, startOffset: 0.15, duration: 0.14, type: 'sawtooth', gain: 0.07 },
+    { freq: 220, freqEnd: 880, startOffset: 0, duration: 0.16, type: 'sawtooth', gain: 0.22 },
+    { freq: 880, freqEnd: 220, startOffset: 0.16, duration: 0.18, type: 'sawtooth', gain: 0.2 },
+    { freq: 1760, startOffset: 0.02, duration: 0.12, type: 'square', gain: 0.06 },
   ]);
 }
 

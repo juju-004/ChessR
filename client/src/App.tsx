@@ -19,6 +19,7 @@ import { Navbar } from "./components/Navbar.js";
 import { Sidebar, MobileDock } from "./components/Sidebar.js";
 import { ProtectedRoute } from "./components/ProtectedRoute.js";
 import { AdminProtectedRoute } from "./components/AdminProtectedRoute.js";
+import { VerifyEmailBanner } from "./components/VerifyEmailBanner.js";
 import { PageLoader } from "./components/PageLoader.js";
 import { tryRestoreSession } from "./api/auth.js";
 
@@ -37,6 +38,9 @@ const SignIn = lazy(() =>
 );
 const SignUp = lazy(() =>
   import("./pages/SignUp.js").then((m) => ({ default: m.SignUp })),
+);
+const VerifyEmail = lazy(() =>
+  import("./pages/VerifyEmail.js").then((m) => ({ default: m.VerifyEmail })),
 );
 const Dashboard = lazy(() =>
   import("./pages/Dashboard.js").then((m) => ({ default: m.Dashboard })),
@@ -153,6 +157,10 @@ function TournamentDetailRoute() {
 function AppBody() {
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith("/admin");
+  // Skip the banner on the game page itself — vertical space there is
+  // already tight on mobile (board + panels + the in-game action dock),
+  // and it'll still show right back up on every other page.
+  const isGameRoute = location.pathname.startsWith("/game/");
 
   // The admin console renders on its own, without the player Navbar/
   // Sidebar chrome — it's not a player surface, and shouldn't ever look
@@ -197,6 +205,7 @@ function AppBody() {
          *  padding is needed everywhere on mobile, not just on the game
          *  page. Irrelevant from md up, where the dock doesn't render. */}
         <main className="min-w-0 flex-1 pb-24 md:pb-12">
+          {!isGameRoute && <VerifyEmailBanner />}
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route
@@ -209,6 +218,10 @@ function AppBody() {
               />
               <Route path="/signin" element={<SignIn />} />
               <Route path="/signup" element={<SignUp />} />
+              {/* Public — the emailed verification link lands here; works
+               *  whether or not this browser/device happens to be signed
+               *  in (see VerifyEmail.tsx). */}
+              <Route path="/verify-email" element={<VerifyEmail />} />
               {/* Public — reachable pre-login from the signup form, and
                *  linked from the dashboard footer once signed in. */}
               <Route path="/about" element={<About />} />

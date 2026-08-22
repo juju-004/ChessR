@@ -5,7 +5,8 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import type { AuthedRequest } from '../middleware/auth.js';
 import { env } from '../config/env.js';
 import {
-  TOKEN_PLANS,
+  PURCHASE_NAIRA_PER_TOKEN,
+  MIN_PURCHASE_TOKENS,
   WITHDRAWAL_NAIRA_PER_TOKEN,
   MIN_WITHDRAWAL_TOKENS,
   createPendingPurchase,
@@ -16,9 +17,20 @@ import {
 } from '../services/wallet.service.js';
 import { listBanks, resolveAccountNumber, verifyWebhookSignature } from '../services/paystack.service.js';
 
+// 7-digit sanity ceiling, same convention/value as MAX_PURCHASE_TOKENS in
+// wallet.service.ts (kept as a separate local constant here rather than
+// exported, matching how MAX_WAGER_TOKENS is duplicated per-file elsewhere
+// in this codebase) — only used here to report the ceiling to the client,
+// the actual enforcement lives in wallet.service.ts.
+const MAX_PURCHASE_TOKENS = 9_999_999;
+
 export const getPlans = asyncHandler(async (_req, res) => {
   res.json({
-    plans: TOKEN_PLANS,
+    purchase: {
+      nairaPerToken: PURCHASE_NAIRA_PER_TOKEN,
+      minTokens: MIN_PURCHASE_TOKENS,
+      maxTokens: MAX_PURCHASE_TOKENS,
+    },
     withdrawal: { nairaPerToken: WITHDRAWAL_NAIRA_PER_TOKEN, minTokens: MIN_WITHDRAWAL_TOKENS },
     paystackPublicKey: env.PAYSTACK_PUBLIC_KEY,
   });
@@ -30,11 +42,17 @@ export const getBalance = asyncHandler(async (req: AuthedRequest, res) => {
   res.json({ tokenBalance: user.tokenBalance });
 });
 
-const initPurchaseSchema = z.object({ planId: z.string() });
+// tokens replaces the old planId — see wallet.service.ts's
+// createPendingPurchase for why this was "Validation failed"-ing before:
+// this schema still required `planId` from a fixed-tier system the client
+// (BuyTokens.tsx) had already moved off of, so every request — which only
+// ever sent `{ tokens }` — failed to parse before it got anywhere near
+// Paystack.
+const initPurchaseSchema = z.object({ tokens: z.number().int().positive() });
 
 export const initPurchase = asyncHandler(async (req: AuthedRequest, res) => {
-  const { planId } = initPurchaseSchema.parse(req.body);
-  const result = await createPendingPurchase(req.user!.id, planId);
+  const { tokens } = initPurchaseSchema.parse(req.body);
+  const result = await createPendingPurchase(req.user!.id, tokens);
   res.status(201).json({ ...result, paystackPublicKey: env.PAYSTACK_PUBLIC_KEY });
 });
 

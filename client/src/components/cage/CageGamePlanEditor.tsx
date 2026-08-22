@@ -176,7 +176,14 @@ export function CageGamePlanEditor({
             <option value="chess960">Chess960</option>
           </Select>
           <Input
-            label="How many"
+            label={
+              <>
+                Nō
+                <HelpTip className="translate-y-0.5">
+                  Number of games to be added
+                </HelpTip>
+              </>
+            }
             type="number"
             min={1}
             max={30}

@@ -5,99 +5,74 @@
 @import "@fontsource/poppins/700.css";
 
 /* ---------------------------------------------------------------------------
-   daisyUI + theming
+   Theming
    -------------------------------------------------------------------------
-   Tailwind v4 config is CSS-first (no tailwind.config.js), so daisyUI is
-   wired up the same way: `@plugin "daisyui"` registers the plugin itself,
-   and each `@plugin "daisyui/theme"` block defines one selectable theme.
+   Plain Tailwind v4 CSS-first theming — no daisyUI. `@theme` below
+   registers a handful of color tokens (base-100/200/300, base-content,
+   primary, secondary, accent, neutral, info/success/warning/error, each
+   with a -content pairing) as first-class Tailwind colors, which is what
+   makes utilities like `bg-base-100`, `text-base-content/50`,
+   `border-base-300` etc. exist at all — Tailwind generates those from
+   any `--color-*` name it finds in `@theme`, opacity modifiers included.
+
+   Each token here points at a plain CSS custom property (`var(--base-100)`
+   etc.) rather than a literal value, and those plain properties are what
+   actually differ between light/dark — defined once under `:root` /
+   `[data-theme="light"]` and overridden under `[data-theme="dark"]`.
    `data-theme="light"` / `data-theme="dark"` on <html> (see
-   contexts/ThemeContext.tsx) is what actually switches between them.
-
-   NOTE: this was written against daisyUI v5's documented CSS-variable theme
-   API from memory (no network access while building this) — if your
-   installed daisyui version expects slightly different variable names,
-   the fix is just adjusting the names in the two blocks below; everything
-   else in this file (the gradient/glass utilities, the `@/components/ui`
-   kit) is plain CSS/Tailwind and doesn't depend on daisyUI internals at all.
+   contexts/ThemeContext.tsx) is what switches between them: since the
+   `@theme` tokens are indirections, the browser's own cascade re-resolves
+   every `bg-base-100` etc. the instant that attribute changes — no JS
+   re-render needed.
    --------------------------------------------------------------------- */
-@plugin "daisyui" {
-  themes:
-    light --default,
-    dark --prefersdark;
-}
-
-@plugin "daisyui/theme" {
-  name: "light";
-  default: true;
-  prefersdark: false;
-  color-scheme: light;
-  --color-base-100: #f8fafc;
-  --color-base-200: #eef1f6;
-  --color-base-300: #e2e6ee;
-  --color-base-content: #1c1c1e;
-  --color-primary: #3b82f6;
-  --color-primary-content: #ffffff;
-  --color-secondary: #8b5cf6;
-  --color-secondary-content: #ffffff;
-  --color-accent: #60a5fa;
-  --color-accent-content: #ffffff;
-  --color-neutral: #e2e6ee;
-  --color-neutral-content: #1c1c1e;
-  --color-info: #60a5fa;
-  --color-info-content: #ffffff;
-  --color-success: #22c55e;
-  --color-success-content: #ffffff;
-  --color-warning: #f59e0b;
-  --color-warning-content: #1c1c1e;
-  --color-error: #ef4444;
-  --color-error-content: #ffffff;
-  --radius-selector: 0.75rem;
-  --radius-field: 0.75rem;
-  --radius-box: 1rem;
-  --border: 1px;
-  --depth: 1;
-  --noise: 0;
-}
-
-@plugin "daisyui/theme" {
-  name: "dark";
-  default: false;
-  prefersdark: true;
-  color-scheme: dark;
-  --color-base-100: #14141a;
-  --color-base-200: #0e0e13;
-  --color-base-300: #09090c;
-  --color-base-content: #f2f2f5;
-  --color-primary: #3b82f6;
-  --color-primary-content: #ffffff;
-  --color-secondary: #8b5cf6;
-  --color-secondary-content: #ffffff;
-  --color-accent: #a78bfa;
-  --color-accent-content: #ffffff;
-  --color-neutral: #1c1c24;
-  --color-neutral-content: #f2f2f5;
-  --color-info: #60a5fa;
-  --color-info-content: #0e0e13;
-  --color-success: #22c55e;
-  --color-success-content: #06170c;
-  --color-warning: #f59e0b;
-  --color-warning-content: #1c1c1e;
-  --color-error: #ef4444;
-  --color-error-content: #ffffff;
-  --radius-selector: 0.75rem;
-  --radius-field: 0.75rem;
-  --radius-box: 1rem;
-  --border: 1px;
-  --depth: 1;
-  --noise: 0;
+@theme {
+  --color-base-100: var(--base-100);
+  --color-base-200: var(--base-200);
+  --color-base-300: var(--base-300);
+  --color-base-content: var(--base-content);
+  --color-primary: var(--primary);
+  --color-primary-content: var(--primary-content);
+  --color-secondary: var(--secondary);
+  --color-secondary-content: var(--secondary-content);
+  --color-accent: var(--accent);
+  --color-accent-content: var(--accent-content);
+  --color-neutral: var(--neutral);
+  --color-neutral-content: var(--neutral-content);
+  --color-info: var(--info);
+  --color-info-content: var(--info-content);
+  --color-success: var(--success);
+  --color-success-content: var(--success-content);
+  --color-warning: var(--warning);
+  --color-warning-content: var(--warning-content);
+  --color-error: var(--error);
+  --color-error-content: var(--error-content);
 }
 
 :root,
 [data-theme="light"] {
+  color-scheme: light;
+  --base-100: #f8fafc;
+  --base-200: #eef1f6;
+  --base-300: #e2e6ee;
+  --base-content: #1c1c1e;
   --primary: #3b82f6;
+  --primary-content: #ffffff;
   --primary-light: #60a5fa;
   --secondary: #8b5cf6;
+  --secondary-content: #ffffff;
   --secondary-light: #a78bfa;
+  --accent: #60a5fa;
+  --accent-content: #ffffff;
+  --neutral: #e2e6ee;
+  --neutral-content: #1c1c1e;
+  --info: #60a5fa;
+  --info-content: #ffffff;
+  --success: #22c55e;
+  --success-content: #ffffff;
+  --warning: #f59e0b;
+  --warning-content: #1c1c1e;
+  --error: #ef4444;
+  --error-content: #ffffff;
 
   /* Elevated-surface tokens — solid, no gradient. The card and the page
      itself are both essentially white (--surface-bg vs. bg-base-100 on
@@ -120,10 +95,29 @@
 }
 
 [data-theme="dark"] {
+  color-scheme: dark;
+  --base-100: #14141a;
+  --base-200: #0e0e13;
+  --base-300: #09090c;
+  --base-content: #f2f2f5;
   --primary: #3b82f6;
+  --primary-content: #ffffff;
   --primary-light: #60a5fa;
   --secondary: #8b5cf6;
+  --secondary-content: #ffffff;
   --secondary-light: #a78bfa;
+  --accent: #a78bfa;
+  --accent-content: #ffffff;
+  --neutral: #1c1c24;
+  --neutral-content: #f2f2f5;
+  --info: #60a5fa;
+  --info-content: #0e0e13;
+  --success: #22c55e;
+  --success-content: #06170c;
+  --warning: #f59e0b;
+  --warning-content: #1c1c1e;
+  --error: #ef4444;
+  --error-content: #ffffff;
 
   --surface-bg: #1b1b23;
   --surface-bg-strong: #202029;
@@ -360,31 +354,13 @@ body {
   display: block;
 }
 
-/* Chessground draws the rank/file coordinate labels at a small fixed
-   font-size (a handful of CSS px). Mobile Safari/Chrome's automatic text
-   inflation ("text size adjust") — the feature that boosts small text so
-   pinch-zoomed-out pages stay legible — kicks in specifically for text
-   that small, and does so per-element rather than uniformly, so each
-   coordinate label gets inflated by a slightly different amount depending
-   on its surrounding layout. That's what makes them look randomly
-   "scattered" on phone while sitting perfectly on desktop, where that
-   inflation behavior doesn't apply at all. Opting the whole board out of
-   it makes every label render at its actual authored size, so they line
-   up with the squares exactly the same way on every device. */
-.cg-wrap,
-.cg-wrap * {
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-}
-
-/* File coordinates (a-h) should read as lowercase, matching standard chess
-   notation — algebraic squares are always written "e4", never "E4". Forced
-   explicitly rather than relying on whatever case chessground happens to
-   render its labels in, since that can vary by version/theme and isn't
-   worth depending on. Rank numbers are unaffected either way. */
-.cg-wrap coords coord {
-  text-transform: lowercase;
-}
+/* Coordinates (rank/file labels) are drawn ourselves now — see
+   BoardCoordinates in ChessBoard.tsx — instead of relying on
+   chessground's own `coordinates` option, which is always passed `false`.
+   That used to need a `text-size-adjust: 100%` override here plus a
+   lowercase-transform rule for its `coords coord` elements; neither is
+   needed anymore since our own overlay is plain React-rendered text that
+   was never subject to either issue. */
 
 /* Board themes — real square colors, not a color-shifted copy of the brown
    texture. `cg-board`'s own default rule (from the imported

@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, Navigate, Link } from "react-router-dom";
-import { signup } from "../api/auth.js";
+import { signup, googleSignin } from "../api/auth.js";
 import { isLoggedIn } from "../api/authStore.js";
 import { ApiRequestError } from "../api/http.js";
 import { Input, Button } from "../components/ui/index.js";
 import { AuthLayout } from "../components/AuthLayout.js";
+import { GoogleSignInButton } from "../components/GoogleSignInButton.js";
 import { LockOpen, Mail, User2, Eye, EyeOff, AlertCircle } from "lucide-react";
 
 export function SignUp() {
@@ -31,6 +32,19 @@ export function SignUp() {
       navigate("/");
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Sign up failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleGoogleCredential(credential: string) {
+    setError("");
+    setLoading(true);
+    try {
+      await googleSignin(credential);
+      navigate("/");
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.message : "Google sign up failed");
     } finally {
       setLoading(false);
     }
@@ -111,6 +125,14 @@ export function SignUp() {
           everyone else does too.
         </p>
       </form>
+
+      <div className="my-5 flex items-center gap-3 text-xs text-base-content/40">
+        <div className="h-px flex-1 bg-base-300" />
+        or
+        <div className="h-px flex-1 bg-base-300" />
+      </div>
+
+      <GoogleSignInButton text="signup_with" onCredential={handleGoogleCredential} />
     </AuthLayout>
   );
 }
