@@ -7,7 +7,8 @@ import { useInstallPrompt } from "../hooks/useInstallPrompt.js";
  *  - Currently running standalone (already inside the installed app) →
  *    renders nothing, there's nothing to offer.
  *  - Installed, but this tab is a normal browser tab → "Open app" instead
- *    of disappearing or re-offering an install that's already done.
+ *    of disappearing or re-offering an install that's already done, unless
+ *    `installOnly` is set (see below).
  *  - Not installed, Chrome/Edge/Android (real `beforeinstallprompt`
  *    support) → a button that triggers the native install prompt directly.
  *  - Not installed, iOS Safari (no such event exists there) → a button
@@ -16,15 +17,28 @@ import { useInstallPrompt } from "../hooks/useInstallPrompt.js";
  *  - Anything else with none of the above signals → renders nothing rather
  *    than showing a button that can't do anything.
  */
-export function InstallAppButton({ compact = false }: { compact?: boolean }) {
+export function InstallAppButton({
+  compact = false,
+  installOnly = false,
+}: {
+  compact?: boolean;
+  /** Ignores the "already installed elsewhere" state entirely — never
+   *  offers to jump to the installed app, only ever the install flow (or
+   *  nothing, if there's genuinely no install path available). Used on
+   *  the Settings page, which already has its own "✓ Installed" message
+   *  for the standalone case and doesn't need a second, separate "open in
+   *  app" control alongside it. */
+  installOnly?: boolean;
+}) {
   const {
     canPromptInstall,
     isInstalled,
-    isInstalledElsewhere,
+    isInstalledElsewhere: isInstalledElsewhereRaw,
     isIos,
     promptInstall,
     openInstalledApp,
   } = useInstallPrompt();
+  const isInstalledElsewhere = installOnly ? false : isInstalledElsewhereRaw;
   const [showIosSteps, setShowIosSteps] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 

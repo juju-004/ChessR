@@ -32,7 +32,9 @@ export function ChooseUsername() {
   const trimmed = username.trim();
   const isUnchanged = trimmed === user?.username;
   const isValid =
-    trimmed.length >= 3 && trimmed.length <= 24 && USERNAME_PATTERN.test(trimmed);
+    trimmed.length >= 3 &&
+    trimmed.length <= 24 &&
+    USERNAME_PATTERN.test(trimmed);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -48,7 +50,9 @@ export function ChooseUsername() {
       navigate("/", { replace: true });
     } catch (err) {
       setError(
-        err instanceof ApiRequestError ? err.message : "Could not save that username",
+        err instanceof ApiRequestError
+          ? err.message
+          : "Could not save that username",
       );
     } finally {
       setSaving(false);
@@ -59,7 +63,7 @@ export function ChooseUsername() {
     <AuthLayout
       title="Pick a username"
       subtitle={`We started you off with "${user?.username ?? ""}" from your Google account — make it yours, or keep it.`}
-      footer="You can always change this later from Settings."
+      footer=""
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <Input
@@ -76,7 +80,13 @@ export function ChooseUsername() {
 
         {error && <p className="text-sm text-red-500">{error}</p>}
 
-        <Button type="submit" fullWidth loading={saving} disabled={!isValid} size="lg">
+        <Button
+          type="submit"
+          fullWidth
+          loading={saving}
+          disabled={!isValid}
+          size="lg"
+        >
           {isUnchanged ? "Continue" : "Save and continue"}
         </Button>
 
