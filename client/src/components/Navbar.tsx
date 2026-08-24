@@ -26,7 +26,7 @@ export const Navbar = memo(function Navbar() {
       >
         <img src="/logo.png" className="w-20 md:w-22" alt="App Logo" />
 
-        <span className="pointer-events-none absolute top-[90%] left-[88%] -translate-x-1/2 rounded-full gradient-brand px-1.5 py-px text-[6px] font-bold uppercase tracking-wider text-white shadow-sm shadow-(--primary)/30">
+        <span className="pointer-events-none absolute top-[98%] left-[88%] -translate-x-1/2 rounded-full gradient-brand px-1.5 py-px text-[6px] font-bold uppercase tracking-wider text-white shadow-sm shadow-(--primary)/30">
           Beta
         </span>
       </Link>

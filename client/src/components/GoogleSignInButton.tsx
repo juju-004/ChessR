@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { useTheme } from "../contexts/ThemeContext.js";
 import { cn } from "../lib/cn.js";
 
@@ -76,25 +77,35 @@ const LABEL: Record<NonNullable<GoogleSignInButtonProps["text"]>, string> = {
 };
 
 /**
- * A custom-styled, full-width "Continue with Google" button that still
- * performs the actual sign-in through Google's own hosted button.
+ * A responsive "Continue with Google" button that renders Google's own
+ * hosted button — the real, actually-clickable one, not a lookalike.
  *
- * Google's stock `renderButton` only ships a handful of fixed themes
- * (`outline` renders a solid white pill, `filled_black` a solid black one)
- * and a fixed pixel `width` — there's no "transparent" or "match my site"
- * option, and no percentage width. That meant a hard-coded white box in
- * production regardless of the app's theme, sized for a 320px card and
- * clipped/overflowing anywhere narrower.
+ * An earlier version of this rendered Google's real button into an
+ * `opacity-0` layer and drew a purely decorative, full-width, theme-matched
+ * button on top of it, on the theory that clicks would just pass through
+ * to the invisible one underneath. That doesn't hold up in practice:
+ * Google's iframe renders at its own fixed intrinsic size *inside* that
+ * layer — it doesn't stretch to fill it — so only the exact pixels the
+ * iframe actually occupies were ever clickable, not the full visible
+ * button drawn on top of it. That's what showed up as "keep clicking and
+ * nothing happens": most taps were landing on dead space around the real
+ * button, not on it.
  *
- * Instead, Google's real button is rendered into an invisible (`opacity-0`)
- * layer stretched to fill this container via a `ResizeObserver`, so it's
- * always exactly as wide as its parent and never shows its own background.
- * A purely decorative button — built from this app's own theme tokens,
- * using Google's official "G" mark per Google's branding guidelines for
- * custom sign-in buttons — sits visually on top but with
- * `pointer-events-none`, so every real click/tap lands on the invisible
- * official button underneath and Google's own iframe still owns the actual
- * OAuth flow.
+ * This version renders Google's real button directly (visible, so every
+ * pixel of it is genuinely clickable), just measured and re-rendered at
+ * the container's actual width via `ResizeObserver` — width is the one
+ * thing `renderButton` won't do responsively on its own, it only accepts
+ * a fixed pixel number. A rounded/clipped wrapper keeps its edges tidy
+ * against the rest of the form instead of leaving Google's default square
+ * corners butted up against everything else. Google's fixed color themes
+ * (`outline` white / `filled_black` black) are otherwise left alone —
+ * there's no third-party "transparent" or "match my site" option to lean
+ * on, and no reliable way to fake one without breaking clicks again.
+ *
+ * Until Google's button has actually finished loading and rendering, a
+ * disabled-looking skeleton with a spinner sits in its place — same size,
+ * same border — so there's nothing to click yet rather than a button that
+ * looks ready but silently does nothing while the script is still loading.
  *
  * Renders nothing (not even a placeholder) if VITE_GOOGLE_CLIENT_ID isn't
  * set, so an unconfigured deployment just quietly has one fewer sign-in
@@ -107,16 +118,16 @@ export function GoogleSignInButton({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
+  const [ready, setReady] = useState(false);
   const [width, setWidth] = useState(0);
   const { theme } = useTheme();
   const domId = useId();
 
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
-  // Track the wrapper's actual rendered width so the invisible Google
-  // button underneath is always re-rendered at exactly that width — this
-  // is what makes the whole thing responsive instead of stuck at a fixed
-  // 320px.
+  // Track the wrapper's actual rendered width so Google's button is always
+  // re-rendered at exactly that width — this is what makes it responsive
+  // instead of stuck at a fixed 320px.
   useEffect(() => {
     if (!wrapperRef.current) return;
     const observer = new ResizeObserver(([entry]) => {
@@ -130,13 +141,14 @@ export function GoogleSignInButton({
   useEffect(() => {
     if (!clientId || !containerRef.current || width === 0) return;
     let cancelled = false;
+    setReady(false);
 
     loadGsiScript()
       .then(() => {
         if (cancelled || !containerRef.current || !window.google) return;
         // Cleared first — renderButton() appends rather than replaces, so
         // without this every width/theme change would stack another
-        // hidden iframe on top of the last one.
+        // button underneath the last one.
         containerRef.current.innerHTML = "";
         window.google.accounts.id.initialize({
           client_id: clientId,
@@ -152,6 +164,7 @@ export function GoogleSignInButton({
           shape: "pill",
           width,
         });
+        setReady(true);
       })
       .catch(() => {
         if (!cancelled) setFailed(true);
@@ -166,51 +179,39 @@ export function GoogleSignInButton({
   if (!clientId || failed) return null;
 
   return (
-    <div ref={wrapperRef} className="relative w-full">
-      {/* Decorative button — matches the app's theme, never shows Google's
-       *  own white/black fill. Purely visual: clicks pass through to the
-       *  real button beneath it. */}
-      <div
-        aria-hidden="true"
-        className={cn(
-          "pointer-events-none flex h-12 w-full items-center justify-center gap-3 rounded-full",
-          "border border-base-300 bg-transparent text-sm font-semibold text-base-content",
-        )}
-      >
-        <GoogleGlyph className="size-[18px] shrink-0" />
-        {LABEL[text]}
-      </div>
-      {/* Google's real, official button — kept fully functional and
-       *  accessible, just visually invisible and stretched to match the
-       *  decorative button above via `width`. */}
+    <div ref={wrapperRef} className="relative h-12 w-full">
+      {/* Loading skeleton — same footprint as the real button, visibly
+       *  disabled (muted, spinner, not-allowed cursor) so it's obvious
+       *  there's nothing to click yet rather than a button that looks
+       *  ready and just silently eats taps while the script loads. */}
+      {!ready && (
+        <div
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute inset-0 flex items-center justify-center gap-2 rounded-full",
+            "border border-base-300 bg-base-200/50 text-sm font-medium text-base-content/40",
+            "cursor-not-allowed select-none",
+          )}
+        >
+          <Loader2 className="size-4 shrink-0 animate-spin" />
+          {LABEL[text]}
+        </div>
+      )}
+      {/* Google's real, official, fully clickable button. Visible only
+       *  once it's actually rendered (see `ready` above) — kept mounted
+       *  underneath the skeleton the whole time so `containerRef` is
+       *  always attached for the effect above to render into, just
+       *  invisible and non-interactive until there's really something
+       *  there to click. */}
       <div
         id={domId}
         ref={containerRef}
-        className="absolute inset-0 overflow-hidden rounded-full opacity-0"
+        className={cn(
+          "absolute inset-0 flex items-center justify-center overflow-hidden rounded-full transition-opacity",
+          ready ? "opacity-100" : "pointer-events-none opacity-0",
+        )}
       />
     </div>
   );
 }
 
-function GoogleGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 48 48" className={className} aria-hidden="true">
-      <path
-        fill="#FFC107"
-        d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"
-      />
-      <path
-        fill="#FF3D00"
-        d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"
-      />
-      <path
-        fill="#4CAF50"
-        d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0124 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"
-      />
-      <path
-        fill="#1976D2"
-        d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 01-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"
-      />
-    </svg>
-  );
-}

@@ -8,6 +8,10 @@ import {
   Hash,
   Wallet,
   ArrowRight,
+  ArrowDownToLine,
+  History,
+  Eye,
+  EyeOff,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -21,6 +25,7 @@ import { TIME_CONTROLS, formatTimeControl } from "../timeControls.js";
 import { extractGameCode } from "../lib/utils.js";
 import { MAX_WAGER_TOKENS } from "../lib/limits.js";
 import { useTokenBalance } from "../hooks/useTokenBalance.js";
+import { useBalanceVisibility } from "../hooks/useBalanceVisibility.js";
 import { useRakePercent } from "../hooks/useRakePercent.js";
 import {
   listOpenTournaments,
@@ -90,6 +95,7 @@ export function Dashboard() {
   );
   const [gamesError, setGamesError] = useState("");
   const { balance, refresh } = useTokenBalance();
+  const { hidden: balanceHidden, toggle: toggleBalanceHidden } = useBalanceVisibility();
 
   const [openTournaments, setOpenTournaments] = useState<Tournament[] | null>(
     null,
@@ -159,31 +165,58 @@ export function Dashboard() {
       <div className="space-y-4">
         <Card
           variant="solid"
-          className="bg-black/0! border-black/0! from-primary/0 to-primary/10 bg-linear-to-tr flex items-center justify-between"
+          className="bg-black/0! border-black/0! from-primary/0 to-primary/10 bg-linear-to-tr relative overflow-hidden p-5"
         >
-          <div className="flex items-center gap-3">
-            <RCoin size={34} />
-            <div>
-              <p className="text-sm text-(--primary)">R Coin Balance</p>
-              <p className="text-2xl font-bold text-base-content">
-                {balance ?? "…"}
-              </p>
-            </div>
+          {/* A faint oversized coin watermark, bleeding off the top-right
+           *  corner — the kind of restrained brand flourish an actual
+           *  fintech balance card leans on instead of a flat, un-styled
+           *  block. Purely decorative: aria-hidden, and pointer-events-none
+           *  so it never intercepts the buttons below it. */}
+          <RCoin
+            size={140}
+            className="pointer-events-none absolute -top-8 -right-8 opacity-[0.07]"
+          />
+
+          <div className="relative flex items-center justify-between gap-2">
+            <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-base-content/50 uppercase">
+              <RCoin size={14} /> R Coin Balance
+            </p>
+            <button
+              type="button"
+              onClick={toggleBalanceHidden}
+              aria-label={balanceHidden ? "Show balance" : "Hide balance"}
+              className="flex h-7 w-7 items-center justify-center rounded-full text-base-content/40 transition-colors hover:bg-base-content/10 hover:text-base-content/70"
+            >
+              {balanceHidden ? (
+                <Eye className="h-4 w-4" />
+              ) : (
+                <EyeOff className="h-4 w-4" />
+              )}
+            </button>
           </div>
-          <div className="flex gap-2">
-            <Link to="/wallet/buy">
-              <Button size="sm">
+
+          <p className="relative mt-1 text-4xl font-bold tracking-tight text-base-content tabular-nums">
+            {balanceHidden ? (
+              <span aria-label="Balance hidden">••••••</span>
+            ) : (
+              (balance ?? "…")
+            )}
+          </p>
+
+          <div className="relative mt-5 flex flex-wrap gap-2">
+            <Link to="/wallet/buy" className="flex-1 sm:flex-none">
+              <Button size="sm" fullWidth className="sm:w-auto">
                 <Wallet className="h-4 w-4" /> Buy
               </Button>
             </Link>
-            <Link className="hidden sm:flex" to="/wallet/withdraw">
-              <Button variant="glass" size="sm">
-                Withdraw
+            <Link to="/wallet/withdraw" className="flex-1 sm:flex-none">
+              <Button variant="glass" size="sm" fullWidth className="sm:w-auto">
+                <ArrowDownToLine className="h-4 w-4" /> Withdraw
               </Button>
             </Link>
-            <Link className="hidden sm:flex" to="/wallet/transactions">
-              <Button variant="glass" size="sm">
-                History
+            <Link to="/wallet/transactions" className="flex-1 sm:flex-none">
+              <Button variant="glass" size="sm" fullWidth className="sm:w-auto">
+                <History className="h-4 w-4" /> History
               </Button>
             </Link>
           </div>

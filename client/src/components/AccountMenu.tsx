@@ -1,7 +1,8 @@
 import { useNavigate } from "react-router-dom";
-import { ChevronDown, User, Coins, LogOut, Moon, Sun } from "lucide-react";
+import { ChevronDown, User, Coins, LogOut, Moon, Sun, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext.js";
 import { useTokenBalance } from "../hooks/useTokenBalance.js";
+import { useBalanceVisibility } from "../hooks/useBalanceVisibility.js";
 import { logout } from "../api/auth.js";
 import { Avatar } from "./ui/Avatar.js";
 import { Dropdown, type DropdownItem } from "./ui/Dropdown.js";
@@ -17,6 +18,7 @@ export function AccountMenu() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { balance } = useTokenBalance();
+  const { hidden: balanceHidden, toggle: toggleBalanceHidden } = useBalanceVisibility();
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === "dark";
 
@@ -63,9 +65,43 @@ export function AccountMenu() {
             size="xs"
           />
           <span className="hidden sm:inline">{user.username}</span>
-          <span className="items-center gap-1 flex  rounded-full bg-(--primary)/15 px-2 py-0.5 text-xs font-semibold text-(--primary) sm:flex">
+          <span className="flex items-center gap-1 rounded-full bg-(--primary)/15 py-0.5 pr-1 pl-2 text-xs font-semibold text-(--primary)">
             <RCoin size={12} />
-            {balance ?? "…"}
+            {balanceHidden ? (
+              <span className="tracking-widest" aria-label="Balance hidden">
+                •••
+              </span>
+            ) : (
+              (balance ?? "…")
+            )}
+            {/* Own click target, stopping propagation so it toggles
+             *  visibility instead of also firing the trigger's onClick
+             *  (Popover attaches that to a wrapping <span> around the
+             *  whole trigger, which would otherwise open the dropdown
+             *  every time this is tapped). */}
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label={balanceHidden ? "Show balance" : "Hide balance"}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleBalanceHidden();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggleBalanceHidden();
+                }
+              }}
+              className="-mr-0.5 flex h-4 w-4 items-center justify-center rounded-full text-(--primary)/70 transition-colors hover:bg-(--primary)/20 hover:text-(--primary)"
+            >
+              {balanceHidden ? (
+                <Eye className="h-3 w-3" />
+              ) : (
+                <EyeOff className="h-3 w-3" />
+              )}
+            </span>
           </span>
           <ChevronDown className="h-3.5 w-3.5 text-base-content/50" />
         </button>
