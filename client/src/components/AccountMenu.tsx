@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { ChevronDown, User, Coins, LogOut, Moon, Sun, Eye, EyeOff } from "lucide-react";
+import { ChevronDown, User, Coins, LogOut, Moon, Sun } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext.js";
 import { useTokenBalance } from "../hooks/useTokenBalance.js";
 import { useBalanceVisibility } from "../hooks/useBalanceVisibility.js";
@@ -18,7 +18,7 @@ export function AccountMenu() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { balance } = useTokenBalance();
-  const { hidden: balanceHidden, toggle: toggleBalanceHidden } = useBalanceVisibility();
+  const { hidden: balanceHidden } = useBalanceVisibility();
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === "dark";
 
@@ -74,34 +74,6 @@ export function AccountMenu() {
             ) : (
               (balance ?? "…")
             )}
-            {/* Own click target, stopping propagation so it toggles
-             *  visibility instead of also firing the trigger's onClick
-             *  (Popover attaches that to a wrapping <span> around the
-             *  whole trigger, which would otherwise open the dropdown
-             *  every time this is tapped). */}
-            <span
-              role="button"
-              tabIndex={0}
-              aria-label={balanceHidden ? "Show balance" : "Hide balance"}
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleBalanceHidden();
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  toggleBalanceHidden();
-                }
-              }}
-              className="-mr-0.5 flex h-4 w-4 items-center justify-center rounded-full text-(--primary)/70 transition-colors hover:bg-(--primary)/20 hover:text-(--primary)"
-            >
-              {balanceHidden ? (
-                <Eye className="h-3 w-3" />
-              ) : (
-                <EyeOff className="h-3 w-3" />
-              )}
-            </span>
           </span>
           <ChevronDown className="h-3.5 w-3.5 text-base-content/50" />
         </button>

@@ -38,9 +38,16 @@ export const Modal = memo(function Modal({
   className,
 }: ModalProps) {
   const header = title && (
-    <div className="mb-4 flex items-center justify-center gap-2.5 pt-1">
-      {icon}
-      <h2 className="text-lg font-semibold text-base-content">{title}</h2>
+    <div className="mb-5 flex w-full items-center gap-3 pt-2 px-2 pb-3">
+      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        {icon}
+      </div>
+
+      <h2 className="text-[17px] font-semibold tracking-tight text-base-content">
+        {title}
+      </h2>
+
+      <div className="ml-auto h-px flex-1 bg-linear-to-r from-primary/60 to-transparent" />
     </div>
   );
 

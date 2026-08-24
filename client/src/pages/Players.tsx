@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Search, Swords, UserPlus, Check, X, TvMinimalPlay } from "lucide-react";
+import {
+  Search,
+  Swords,
+  UserPlus,
+  Check,
+  X,
+  TvMinimalPlay,
+} from "lucide-react";
 import { searchUsers, type UserSearchResult } from "../api/users.js";
 import {
   listFriends,
@@ -389,6 +396,7 @@ export function Players() {
                     onOpenChange={(open) =>
                       setChallengingFriendId(open ? f.id : null)
                     }
+                    icon={<Swords></Swords>}
                     trigger={
                       <Button size="sm" variant="secondary">
                         <Swords className="size-3" />
@@ -438,6 +446,7 @@ export function Players() {
 
                       <Button
                         className="w-full"
+                        variant="secondary"
                         onClick={() => handleChallenge(f.id)}
                         disabled={
                           !f.online || Math.floor(Number(wagerInput) || 0) < 1

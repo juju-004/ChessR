@@ -95,7 +95,8 @@ export function Dashboard() {
   );
   const [gamesError, setGamesError] = useState("");
   const { balance, refresh } = useTokenBalance();
-  const { hidden: balanceHidden, toggle: toggleBalanceHidden } = useBalanceVisibility();
+  const { hidden: balanceHidden, toggle: toggleBalanceHidden } =
+    useBalanceVisibility();
 
   const [openTournaments, setOpenTournaments] = useState<Tournament[] | null>(
     null,
@@ -214,7 +215,7 @@ export function Dashboard() {
                 <ArrowDownToLine className="h-4 w-4" /> Withdraw
               </Button>
             </Link>
-            <Link to="/wallet/transactions" className="flex-1 sm:flex-none">
+            <Link to="/wallet/transactions" className="flex-1 hidden sm:flex">
               <Button variant="glass" size="sm" fullWidth className="sm:w-auto">
                 <History className="h-4 w-4" /> History
               </Button>
@@ -258,6 +259,7 @@ export function Dashboard() {
             <ResponsiveOverlay
               title="Create a new game"
               align="start"
+              icon={<Plus></Plus>}
               className="w-80 max-w-[calc(100vw-2rem)]"
               trigger={
                 <Button className="w-full sm:w-auto">
