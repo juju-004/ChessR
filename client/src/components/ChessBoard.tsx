@@ -99,7 +99,26 @@ export const ChessBoard = memo(function ChessBoard({
     const config: CgConfig = {
       fen,
       orientation,
-      viewOnly,
+      // ALWAYS false here, regardless of the real `viewOnly` prop — see
+      // chessground's own api.ts: `set()` "accepts all config options,
+      // except for viewOnly" (its literal doc comment). bindBoard/
+      // bindDocument (events.ts) only attach the mousedown/touchstart/
+      // mousemove listeners at all if `state.viewOnly` was false at THIS
+      // construction call; `.set()` later updates state.viewOnly but never
+      // re-runs that binding step. Since the effect below deliberately
+      // does NOT depend on `viewOnly` (to avoid tearing down/rebuilding
+      // the whole board on every history-nav / game-finish toggle — see
+      // that effect's comment), a board first constructed while
+      // `viewOnly` was true (e.g. this player loaded the page before an
+      // opponent had joined) would otherwise never get its listeners
+      // bound at all, even after the real value flips to false and a
+      // `.set()` pushes it through — the board looks normal but silently
+      // never responds to a click or drag again for the life of that
+      // instance. Chessground's actual interactivity check happens at
+      // handler-call time (`if (!s.viewOnly) ...` in events.ts), not at
+      // bind time, so it's safe to always bind and let the very next
+      // `.set()` in the sync effect below establish the real value.
+      viewOnly: false,
       turnColor,
       check: inCheck,
       // Always false: chessground's own coordinate labels are the ones
@@ -141,7 +160,12 @@ export const ChessBoard = memo(function ChessBoard({
     // flips on literally every move-history navigation and every
     // game-finish transition) instead of a cheap in-place update. That
     // was a real, visible stutter source — this only rebuilds when the
-    // board first becomes measurable.
+    // board first becomes measurable. This is safe specifically because
+    // `config.viewOnly` above is hardcoded to false at construction (see
+    // that field's own comment) rather than derived from the real prop —
+    // otherwise a board built while genuinely view-only would never
+    // receive its click/drag listeners at all, no matter what a later
+    // `.set()` call pushed through.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardSize > 0]);
 

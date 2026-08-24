@@ -53,19 +53,32 @@ const googleSigninSchema = z.object({
   credential: z.string().min(1),
 });
 
+// Local dev: frontend and backend look same-origin (Vite proxies /api), so
+// 'lax' + non-secure works over plain http://localhost. In production,
+// frontend (Vercel) and backend (Railway) are genuinely different origins —
+// browsers will not send a 'lax' cookie on that cross-site request at all,
+// which is exactly what silently breaks session restore after a real deploy.
+// 'none' requires secure:true (HTTPS), which both platforms provide by default.
+//
+// Pulled out as one shared object (rather than inlined separately in
+// setRefreshCookie and logout) so the two can never drift apart. A
+// clearCookie() whose attributes don't match the cookie's original
+// secure/sameSite is not guaranteed to actually remove it — some browsers
+// (Safari in particular) end up leaving the old `SameSite=None; Secure`
+// refresh_token cookie in place, which is exactly what caused logout to
+// "work" (local state cleared, redirected to /signin) right up until the
+// next page refresh silently signed you back in via /auth/refresh.
+const crossOrigin = isProd;
+const REFRESH_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: env.COOKIE_SECURE || crossOrigin,
+  sameSite: (crossOrigin ? "none" : "lax") as "none" | "lax",
+  path: "/api/auth",
+};
+
 function setRefreshCookie(res: Response, token: string) {
-  // Local dev: frontend and backend look same-origin (Vite proxies /api), so
-  // 'lax' + non-secure works over plain http://localhost. In production,
-  // frontend (Vercel) and backend (Railway) are genuinely different origins —
-  // browsers will not send a 'lax' cookie on that cross-site request at all,
-  // which is exactly what silently breaks session restore after a real deploy.
-  // 'none' requires secure:true (HTTPS), which both platforms provide by default.
-  const crossOrigin = isProd;
   res.cookie(REFRESH_COOKIE, token, {
-    httpOnly: true,
-    secure: env.COOKIE_SECURE || crossOrigin,
-    sameSite: crossOrigin ? "none" : "lax",
-    path: "/api/auth",
+    ...REFRESH_COOKIE_OPTIONS,
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   });
 }
@@ -271,7 +284,7 @@ export const refresh = asyncHandler(async (req, res) => {
 });
 
 export const logout = asyncHandler(async (_req, res) => {
-  res.clearCookie(REFRESH_COOKIE, { path: "/api/auth" });
+  res.clearCookie(REFRESH_COOKIE, REFRESH_COOKIE_OPTIONS);
   res.status(204).send();
 });
 

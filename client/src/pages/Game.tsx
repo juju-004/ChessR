@@ -1066,7 +1066,7 @@ export function Game() {
     const ok = await confirmDialog({
       title: "Cancel this game?",
       description: gameMeta.wagerTokens
-        ? `Your ${gameMeta.wagerTokens} R Coin stake will be refunded.`
+        ? `Your ${gameMeta.wagerTokens} R stake will be refunded.`
         : "You can create a new one any time.",
       variant: "danger",
       confirmLabel: "Cancel game",
