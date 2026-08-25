@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 export interface AvatarGradientPreset {
   id: string;
   label: string;
-  /** CSS color stops — can be a hex value or a `var(--...)` reference. */
+  /** CSS color stops, can be a hex value or a `var(--...)` reference. */
   from: string;
   to: string;
 }
@@ -31,7 +31,7 @@ export function findAvatarGradient(id?: string | null): AvatarGradientPreset {
 
 export function avatarGradientStyle(id?: string | null): CSSProperties | undefined {
   // "brand" (and anything unrecognized) just falls back to the existing
-  // .gradient-brand class — no inline style needed, and it means old rows
+  // .gradient-brand class, no inline style needed, and it means old rows
   // without an avatarGradient at all render exactly as they did before.
   if (!id || id === "brand") return undefined;
   const preset = findAvatarGradient(id);

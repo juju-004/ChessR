@@ -58,7 +58,7 @@ const typeIcons: Record<Transaction["type"], LucideIcon> = {
 };
 
 // Whether a transaction type ADDS to the balance (+) or REMOVES from it (-)
-// — shown as a colored sign next to the token amount so it's clear at a
+//, shown as a colored sign next to the token amount so it's clear at a
 // glance which way the tokens moved, not just how many.
 const typeAddsTokens: Record<Transaction["type"], boolean> = {
   purchase: true,

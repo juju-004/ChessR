@@ -6,10 +6,10 @@ export interface AvatarProps {
   src?: string | null;
   username: string;
   size?: "xs" | "sm" | "md" | "lg";
-  /** Small colored dot in the corner — typically online/offline presence. */
+  /** Small colored dot in the corner, typically online/offline presence. */
   status?: "online" | "offline" | null;
   /** Preset id from avatarGradients.ts. Omit (or "brand") for the default
-   *  look — falls back to the existing .gradient-brand class so old data
+   *  look, falls back to the existing .gradient-brand class so old data
    *  without this field renders exactly as it always did. */
   gradient?: string | null;
   className?: string;

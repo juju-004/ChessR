@@ -82,7 +82,7 @@ export function ReportUserModal({ open, onClose, username }: ReportUserModalProp
       <div className="flex flex-col gap-4">
         <p className="text-sm text-base-content/60">
           Reports are reviewed by our team. If this involves a specific game,
-          include its code below so we can pull it up directly — the
+          include its code below so we can pull it up directly. The
           account's withdrawals are put on hold automatically while we look
           into it.
         </p>
@@ -128,7 +128,7 @@ export function ReportUserModal({ open, onClose, username }: ReportUserModalProp
             value={description}
             onChange={(e) => setDescription(e.target.value.slice(0, 2000))}
             rows={4}
-            placeholder="Describe what you noticed — timing, specific moves, chat messages, etc."
+            placeholder="Describe what you noticed: timing, specific moves, chat messages, etc."
             className="w-full resize-none rounded-lg border border-base-300 bg-base-200/60 px-3 py-2 text-sm text-base-content outline-none focus:border-(--primary)"
           />
           <p className="mt-1 text-right text-xs text-base-content/40">

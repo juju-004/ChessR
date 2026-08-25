@@ -1,14 +1,14 @@
 import type { Variants, Transition, TargetAndTransition } from "framer-motion";
 
 /**
- * GPU-accelerated animation helpers — the only ones the `@/components/ui`
+ * GPU-accelerated animation helpers, the only ones the `@/components/ui`
  * kit uses, and the ones you should reach for everywhere else too.
  *
  * Hard rule this whole file follows: every variant/transition here only
  * ever animates `opacity`, plus framer-motion's `x` / `y` / `scale` /
  * `rotate` props. Those four all resolve to a single CSS `transform`
  * declaration under the hood, and `transform` + `opacity` are the two CSS
- * properties a browser can animate purely on the compositor thread — no
+ * properties a browser can animate purely on the compositor thread, no
  * layout recalculation, no repaint of surrounding content. That's what
  * keeps these smooth on a five-year-old Android phone, not just on a dev
  * machine.
@@ -16,11 +16,11 @@ import type { Variants, Transition, TargetAndTransition } from "framer-motion";
  * Never add a variant here that animates width/height/top/left/margin/
  * padding (triggers layout) or backgroundColor/boxShadow/color (triggers
  * paint). If you need one of those visually, fake it with a transform-scale
- * or an opacity cross-fade instead — e.g. a "growing" card is a `scale`
+ * or an opacity cross-fade instead, e.g. a "growing" card is a `scale`
  * animation on a pre-sized box, not an actual `width`/`height` tween.
  */
 
-// "Expo out" — fast start, gentle settle, no overshoot. Good default for
+// "Expo out", fast start, gentle settle, no overshoot. Good default for
 // anything entering the screen.
 export const EASE_OUT: Transition = [0.16, 1, 0.3, 1];
 export const EASE_IN_OUT: Transition = [0.65, 0, 0.35, 1];
@@ -102,7 +102,7 @@ export const modalBackdrop: Variants = {
   exit: { opacity: 0, transition: tweenFast },
 };
 
-// A tween, not a spring — springSnappy settles in ~250-300ms even though
+// A tween, not a spring, springSnappy settles in ~250-300ms even though
 // it "looks" fast because of the initial overshoot; a modal/popover
 // opening or closing is a frequent, high-traffic interaction where that
 // extra settle time reads as lag, not polish. Fixed, short durations here
@@ -116,7 +116,7 @@ export const modalContent: Variants = {
   exit: { opacity: 0, scale: 0.98, y: 3, transition: overlayOut },
 };
 
-// Popover's own entrance — deliberately not reusing the general-purpose
+// Popover's own entrance, deliberately not reusing the general-purpose
 // scaleIn below (Card/badge "pop in" entrances elsewhere in the app),
 // since those didn't need to get faster and shouldn't change just because
 // Popover did.

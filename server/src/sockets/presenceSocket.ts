@@ -17,7 +17,7 @@ export function registerPresenceHandlers(io: Server, socket: Socket) {
     await socket.join(`user:${userId}`);
     await notifyFriends(io, userId, 'friend:presence', { userId, online: true });
     // Smart pairing (see arenaAvailablePlayers) skips offline players
-    // entirely rather than pairing them against someone who isn't there —
+    // entirely rather than pairing them against someone who isn't there, 
     // this is what picks them back up the instant they're actually back,
     // instead of leaving them waiting for an unrelated game elsewhere to
     // finish first.
@@ -28,7 +28,7 @@ export function registerPresenceHandlers(io: Server, socket: Socket) {
     void (async () => {
       const { wasLast } = await unregisterSocket(socket.id);
       // A closed tab / dropped connection never gets to send the client's
-      // normal tournament:unwatch — clean up here instead so this socket
+      // normal tournament:unwatch, clean up here instead so this socket
       // doesn't linger as a phantom "watcher" of whatever tournament page
       // it last had open (see unwatchTournament's own doc comment).
       await unwatchTournament(socket.id);

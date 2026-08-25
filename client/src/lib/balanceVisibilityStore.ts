@@ -1,7 +1,7 @@
 // Plain (non-React) store for whether the R Coin balance is currently
 // masked, same pattern as api/walletStore.ts and the same reasoning: the
 // navbar pill and the dashboard wallet card both show the balance, and a
-// toggle on either one needs to be reflected on the other immediately —
+// toggle on either one needs to be reflected on the other immediately, 
 // a plain per-component useState would leave them out of sync until a
 // reload. Persisted to localStorage (like ThemeContext) so the choice
 // survives a refresh instead of defaulting back to visible every time,
@@ -13,7 +13,7 @@ function readInitial(): boolean {
   try {
     return localStorage.getItem(STORAGE_KEY) === '1';
   } catch {
-    // localStorage unavailable (private browsing, etc.) — default visible.
+    // localStorage unavailable (private browsing, etc.), default visible.
     return false;
   }
 }
@@ -30,7 +30,7 @@ export function setBalanceHidden(next: boolean): void {
   try {
     localStorage.setItem(STORAGE_KEY, next ? '1' : '0');
   } catch {
-    // Non-fatal — just won't persist across reloads in this session.
+    // Non-fatal, just won't persist across reloads in this session.
   }
   listeners.forEach((l) => l());
 }

@@ -7,7 +7,7 @@ export interface AdminRequest extends Request {
 }
 
 /** Guards admin-only routes. Deliberately separate from requireAuth/
- *  AuthedRequest — an admin token is never a stand-in for a player session
+ *  AuthedRequest, an admin token is never a stand-in for a player session
  *  (it can't join games, fund a wallet, etc), so keeping the two checks
  *  apart means a bug in one can't accidentally grant the other. */
 export function requireAdmin(req: AdminRequest, _res: Response, next: NextFunction) {

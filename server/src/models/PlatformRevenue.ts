@@ -2,7 +2,7 @@ import mongoose, { Schema, type Document, type Types } from 'mongoose';
 
 // Every time a wagered game, cage match, or tournament registration-fee pool
 // settles, the platform's cut (see wallet.service.ts's computeRake) is
-// recorded here rather than credited to any User — there's no "platform
+// recorded here rather than credited to any User, there's no "platform
 // user" account, just this ledger. The admin page's running "admin wallet"
 // balance is the sum of every row's `tokens` field (see admin.controller.ts's
 // getRevenueSummary), the same way a bank statement's balance is a running
@@ -19,7 +19,7 @@ export interface IPlatformRevenue extends Document {
   sourceId: Types.ObjectId;
   tokens: number; // the rake actually taken
   grossPotTokens: number; // the full pot/pool it was taken from, for auditability
-  ratePercent: number; // RAKE_PERCENT at the moment this was cut — env can change later, this can't
+  ratePercent: number; // RAKE_PERCENT at the moment this was cut, env can change later, this can't
   createdAt: Date;
   updatedAt: Date;
 }

@@ -3,7 +3,7 @@ import { User } from '../models/User.js';
 import { ApiError } from '../utils/ApiError.js';
 
 // Spam controls, all per-reporter. None of these are about whether a
-// report is *true* — that's what admin review is for — only about making
+// report is *true*, that's what admin review is for, only about making
 // it cost more than a click to flood the queue with them.
 //
 // - a short cooldown stops a double-click or a script from firing the
@@ -11,13 +11,13 @@ import { ApiError } from '../utils/ApiError.js';
 // - a rolling daily cap bounds how much queue space one account can eat
 //   even spread out over a day
 // - the duplicate guard stops re-reporting the same person again and
-//   again before anyone's even looked at the first one — a second report
+//   again before anyone's even looked at the first one, a second report
 //   about NEW information is still fine once the first is resolved
 const REPORT_COOLDOWN_MS = 60_000;
 const REPORT_DAILY_LIMIT = 10;
 
 /** Accepts either a bare join code or a full/partial game URL pasted into
- *  the report form and normalizes down to just the code — mirrors the
+ *  the report form and normalizes down to just the code, mirrors the
  *  client-side extraction in ReportUserModal.tsx so a direct API call
  *  gets the same behavior, not just the UI. */
 function normalizeGameCode(input: string): string {
@@ -80,7 +80,7 @@ export async function createReport(params: CreateReportParams): Promise<IReport>
     gameCode: gameCode?.trim() ? normalizeGameCode(gameCode) : undefined,
   });
 
-  // Instant and automatic, independent of whether the report holds up —
+  // Instant and automatic, independent of whether the report holds up, 
   // see User.withdrawalBlocked. An admin clears it after review.
   await User.updateOne({ _id: reportedUser._id }, { $set: { withdrawalBlocked: true } });
 

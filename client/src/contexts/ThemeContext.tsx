@@ -9,7 +9,7 @@ function getInitialTheme(): ThemeMode {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored === 'light' || stored === 'dark') return stored;
   } catch {
-    // localStorage unavailable (private browsing, etc.) — fall through to system preference.
+    // localStorage unavailable (private browsing, etc.), fall through to system preference.
   }
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
@@ -38,7 +38,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     try {
       localStorage.setItem(STORAGE_KEY, theme);
     } catch {
-      // Non-fatal — theme just won't persist across reloads in this session.
+      // Non-fatal, theme just won't persist across reloads in this session.
     }
   }, [theme]);
 
@@ -50,7 +50,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setThemeState((prev) => (prev === 'dark' ? 'light' : 'dark'));
   }
 
-  // Memoized so every consumer (which is most of the app — this provider
+  // Memoized so every consumer (which is most of the app, this provider
   // sits above everything) doesn't re-render just because ThemeProvider
   // itself re-rendered; only an actual theme change produces a new object.
   const value = useMemo<ThemeContextValue>(

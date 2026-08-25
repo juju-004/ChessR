@@ -1,7 +1,7 @@
 import type { Chess } from 'chess.js';
 
 /**
- * Hand-rolled Chess960 castling — chess.js has no support for it at all (long
+ * Hand-rolled Chess960 castling, chess.js has no support for it at all (long
  * standing, unresolved upstream limitation), so this implements the FIDE 960
  * castling rules directly against chess.js's board-manipulation primitives
  * (which DO exist and are solid: .get/.put/.remove/.isAttacked/.inCheck).
@@ -116,7 +116,7 @@ export interface CastleResult {
 /** Validates and, if legal, executes a Chess960 castle directly on `chess`'s
  *  board state. Returns the resulting FEN for the caller to load into a fresh
  *  Chess instance (this function leaves `chess` itself in a transitional,
- *  not-fully-corrected state — piece positions are right, but turn/clock
+ *  not-fully-corrected state, piece positions are right, but turn/clock
  *  fields are not; see resultFen). */
 export function attemptCastle(
   chess: Chess,
@@ -176,7 +176,7 @@ export function attemptCastle(
   parts[1] = cgColor === 'w' ? 'b' : 'w'; // flip turn
   parts[2] = '-'; // castling rights tracked separately by us; avoid an inconsistent field
   parts[3] = '-'; // castling never creates an en passant target
-  parts[4] = String(Number(parts[4]) + 1); // halfmove clock — not a pawn move or capture
+  parts[4] = String(Number(parts[4]) + 1); // halfmove clock, not a pawn move or capture
   if (cgColor === 'b') parts[5] = String(Number(parts[5]) + 1); // fullmove increments after black
 
   return {
@@ -190,7 +190,7 @@ export function attemptCastle(
 }
 
 /** Call after every successfully applied move (castling or not) to keep the
- *  "has this piece ever moved" tracking correct — this is what prevents,
+ *  "has this piece ever moved" tracking correct, this is what prevents,
  *  e.g., a king that moved away and back from castling again. */
 export function updateCastlingRights(
   rights: CastlingRightsState,

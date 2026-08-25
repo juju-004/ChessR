@@ -15,7 +15,7 @@ export async function connectMongo(): Promise<void> {
   });
 
   await mongoose.connect(env.MONGO_URI, {
-    // Connection pool sizing — tune based on load testing.
+    // Connection pool sizing, tune based on load testing.
     maxPoolSize: 50,
     minPoolSize: 5,
     serverSelectionTimeoutMS: 10000,

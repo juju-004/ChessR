@@ -10,7 +10,7 @@ export interface ModalProps {
   title?: string;
   /** Renders to the left of the title, e.g. an alert triangle for a
    *  destructive action or a trophy for a tournament prompt. Purely
-   *  decorative — sized and colored by the caller. */
+   *  decorative, sized and colored by the caller. */
   icon?: ReactNode;
   children: ReactNode;
   className?: string;
@@ -19,11 +19,11 @@ export interface ModalProps {
 /**
  * Portal-rendered so it always sits above everything regardless of where
  * it's mounted, with a solid darkened backdrop and an elevated content
- * panel (no backdrop-filter — see the .elevated comment in index.css).
- * Backdrop and content each animate on their own opacity/scale/y — no
+ * panel (no backdrop-filter, see the .elevated comment in index.css).
+ * Backdrop and content each animate on their own opacity/scale/y, no
  * layout-affecting properties, per @/lib/motion.ts.
  *
- * Always centered, on every viewport including phone — there used to be a
+ * Always centered, on every viewport including phone, there used to be a
  * `position="bottom"` variant that docked this as a draggable bottom
  * sheet instead, but that's gone now (see ResponsiveOverlay.tsx, which
  * used to opt into it for its phone-width Popover replacement and now

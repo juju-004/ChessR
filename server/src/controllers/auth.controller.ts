@@ -36,7 +36,7 @@ const signupSchema = z.object({
 });
 
 const signinSchema = z.object({
-  // Accepts either an email or a username — signin() below sniffs which
+  // Accepts either an email or a username, signin() below sniffs which
   // one it's looking at and queries accordingly. Not further validated
   // as an email/username shape here since it might be either.
   identifier: z.string().trim().min(1),
@@ -48,14 +48,14 @@ const verifyEmailSchema = z.object({
 });
 
 const googleSigninSchema = z.object({
-  // The ID token JWT Google Identity Services hands the client directly —
+  // The ID token JWT Google Identity Services hands the client directly, 
   // see googleAuth.service.ts for what actually happens to it server-side.
   credential: z.string().min(1),
 });
 
 // Local dev: frontend and backend look same-origin (Vite proxies /api), so
 // 'lax' + non-secure works over plain http://localhost. In production,
-// frontend (Vercel) and backend (Railway) are genuinely different origins —
+// frontend (Vercel) and backend (Railway) are genuinely different origins, 
 // browsers will not send a 'lax' cookie on that cross-site request at all,
 // which is exactly what silently breaks session restore after a real deploy.
 // 'none' requires secure:true (HTTPS), which both platforms provide by default.
@@ -63,7 +63,7 @@ const googleSigninSchema = z.object({
 // Pulled out as one shared object (rather than inlined separately in
 // setRefreshCookie and logout) so the two can never drift apart. A
 // clearCookie() whose attributes don't match the cookie's original
-// secure/sameSite is not guaranteed to actually remove it — some browsers
+// secure/sameSite is not guaranteed to actually remove it, some browsers
 // (Safari in particular) end up leaving the old `SameSite=None; Secure`
 // refresh_token cookie in place, which is exactly what caused logout to
 // "work" (local state cleared, redirected to /signin) right up until the
@@ -112,7 +112,7 @@ function issueSession(res: Response, user: IUser) {
 }
 
 /** Turns "Ada Lovelace" / "ada.lovelace@site.com" into a username-shaped,
- *  available slug — strips anything outside [a-zA-Z0-9_], pads short
+ *  available slug, strips anything outside [a-zA-Z0-9_], pads short
  *  results, truncates long ones, and appends a numeric suffix until it
  *  finds one nobody's taken yet. Used only for brand-new Google sign-ins,
  *  where there's no username the person typed themselves to fall back on. */
@@ -156,7 +156,7 @@ export const signup = asyncHandler(async (req, res) => {
   });
 
   // Fire off the verification email, but don't let a mail-provider hiccup
-  // fail account creation — the account exists either way, and "resend
+  // fail account creation, the account exists either way, and "resend
   // verification" (see resendVerification below) covers this if the first
   // send silently drops.
   issueEmailVerification(user).catch((err) =>
@@ -175,7 +175,7 @@ export const signin = asyncHandler(async (req, res) => {
   const { identifier, password } = signinSchema.parse(req.body);
 
   // A bare heuristic ("contains an @") is enough to tell email and
-  // username apart here — usernames are restricted to
+  // username apart here, usernames are restricted to
   // [a-zA-Z0-9_] at signup, so they can never contain one.
   const isEmail = identifier.includes("@");
   const user = await User.findOne(
@@ -186,7 +186,7 @@ export const signin = asyncHandler(async (req, res) => {
   if (!user) throw ApiError.unauthorized("Invalid username/email or password");
 
   if (!user.passwordHash) {
-    // A Google-only account trying the password form — bcrypt.compare
+    // A Google-only account trying the password form, bcrypt.compare
     // against nothing isn't meaningful, and "invalid password" would be a
     // confusing dead end for someone who's never set one.
     throw ApiError.unauthorized(
@@ -211,14 +211,14 @@ export const googleSignin = asyncHandler(async (req, res) => {
 
   let user = await User.findOne({ googleId: profile.googleId });
   // Only true for the "brand new account, just this instant" branch below
-  // — an existing account (found by googleId OR linked by email) is never
+  //, an existing account (found by googleId OR linked by email) is never
   // "new" even on its first-ever Google sign-in. Told to the client so it
   // knows whether to route through the one-time "pick a username" step
   // (see ChooseUsername.tsx) rather than straight to the dashboard.
   let isNewUser = false;
 
   if (!user) {
-    // Not seen this Google account before — but if the email matches an
+    // Not seen this Google account before, but if the email matches an
     // existing local (password) account, link Google onto it rather than
     // creating a duplicate account under the same address (the unique
     // index on email would reject that anyway, but this gives a much
@@ -236,7 +236,7 @@ export const googleSignin = asyncHandler(async (req, res) => {
         email: profile.email,
         googleId: profile.googleId,
         // Google already owns and verifies this address, so there's no
-        // "click the link" step needed on top of that — trust its claim
+        // "click the link" step needed on top of that, trust its claim
         // the same way every "Sign in with Google" button elsewhere does.
         emailVerified: profile.emailVerified,
       });

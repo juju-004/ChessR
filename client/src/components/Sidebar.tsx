@@ -17,7 +17,7 @@ interface NavItem {
   to: string;
   label: string;
   icon: LucideIcon;
-  /** Passed straight through to NavLink's `end` prop — required for the
+  /** Passed straight through to NavLink's `end` prop, required for the
    *  Dashboard item since it now lives at "/", which (without `end`) would
    *  otherwise match and light up for every other route too. */
   end?: boolean;
@@ -33,7 +33,7 @@ const NAV_ITEMS: NavItem[] = [
 
 /**
  * The desktop-only vertical elevated rail (md and up). The mobile
- * equivalent — MobileDock, exported below — is a fixed bottom tab bar
+ * equivalent. MobileDock, exported below, is a fixed bottom tab bar
  * rendered separately in App.tsx, not here.
  */
 export const Sidebar = memo(function Sidebar() {
@@ -42,7 +42,7 @@ export const Sidebar = memo(function Sidebar() {
   if (!isAuthed) return null;
 
   // The board is the one place screen width is actually precious, so only
-  // the game page gets the icon-only collapse-on-hover treatment — every
+  // the game page gets the icon-only collapse-on-hover treatment, every
   // other page keeps the rail fully expanded (labels always visible, no
   // hover behavior at all).
   const collapsible = pathname.startsWith("/game/");
@@ -71,7 +71,7 @@ export const Sidebar = memo(function Sidebar() {
 });
 
 /**
- * The mobile bottom dock — site navigation, phone only. Renders as a
+ * The mobile bottom dock, site navigation, phone only. Renders as a
  * full-width tab bar fixed to the bottom of the screen (see `.dock` in
  * index.css). Deliberately hides itself on `/game/:code`: the game page's
  * own action bar (GameActionBarMobile in components/game/GameActionBar.tsx)

@@ -36,7 +36,23 @@ import type { AuthedSocketData } from './socketAuth.js';
 const gameRoom = (gameId: string) => `game:${gameId}`;
 const spectatorRoom = (gameId: string) => `game:${gameId}:spectators`;
 
+/** Counts *distinct users* currently in a game's spectator room (not raw
+ *  sockets, someone with two tabs open shouldn't count twice) and
+ *  broadcasts it to the whole game room, players included, since the
+ *  spectator-count badge on the game page is visible to everyone there.
+ *  excludeSocketId is for the disconnecting case: Socket.IO's
+ *  'disconnecting' event fires just before it actually removes room
+ *  membership, so without this the departing socket would still be
+ *  counted as present in the room snapshot fetched here. */
+async function broadcastSpectatorCount(io: Server, gameId: string, excludeSocketId?: string): Promise<void> {
+  const sockets = await io.in(spectatorRoom(gameId)).fetchSockets();
+  const remaining = excludeSocketId ? sockets.filter((s) => s.id !== excludeSocketId) : sockets;
+  const uniqueUserIds = new Set(remaining.map((s) => (s.data as AuthedSocketData).userId));
+  io.to(gameRoom(gameId)).emit('game:spectator_count', { gameId, count: uniqueUserIds.size });
+}
+
 const joinSchema = z.object({ gameId: z.string().refine(mongoose.isValidObjectId) });
+const leaveSchema = joinSchema;
 const moveSchema = z.object({
   gameId: z.string().refine(mongoose.isValidObjectId),
   from: z.string().length(2),
@@ -66,7 +82,7 @@ function emitError(socket: Socket, message: string) {
 
 // Swaps a populated white/black sub-doc's raw rating/ratedGamesPlayed for
 // the computed, client-safe category. Populate queries in this file select
-// those two fields purely so this can compute from them — neither should
+// those two fields purely so this can compute from them, neither should
 // ever reach a client payload.
 function withRatingCategory<T extends { rating?: number; ratedGamesPlayed?: number } | null>(
   player: T,
@@ -152,10 +168,10 @@ async function advanceCageMatchIfLeg(
 ) {
   const gameDoc = await Game.findById(gameId).select('cageMatchId legIndex').lean();
   if (!gameDoc?.cageMatchId || gameDoc.legIndex === undefined) return;
-  await advanceCageMatchLeg(gameDoc.cageMatchId.toString(), gameDoc.legIndex, result, endReason);
+  await advanceCageMatchLeg(gameDoc.cageMatchId.toString(), gameDoc.legIndex, result, endReason, gameId);
 }
 
-// Mirror of advanceCageMatchIfLeg, but for tournament pairings — a game tagged
+// Mirror of advanceCageMatchIfLeg, but for tournament pairings, a game tagged
 // with tournamentId/roundIndex/pairingIndex advances that pairing's round the
 // same way a cage leg advances its match.
 async function advanceTournamentIfPairingLeg(
@@ -182,10 +198,10 @@ export function registerClockTimeoutHandler(io: Server) {
 
 // A first-move timeout means different things depending on what the game
 // actually is. A plain 1-on-1 game has no series riding on it, so it just
-// gets aborted and any wager refunded — same outcome as the manual Abort
+// gets aborted and any wager refunded, same outcome as the manual Abort
 // button. A cage match leg or tournament pairing is part of something bigger
 // that shouldn't stall out for everyone else, so the side that never showed
-// up simply loses that one game — endGameAndBroadcast already knows how to
+// up simply loses that one game, endGameAndBroadcast already knows how to
 // advance a cage match / tournament pairing off the back of an ordinary
 // result, so this reuses that path rather than duplicating it.
 export function registerFirstMoveTimeoutHandler(io: Server) {
@@ -223,7 +239,7 @@ export function registerFirstMoveTimeoutHandler(io: Server) {
 // (page refreshes and flaky wifi happen). Instead: wait a short debounce period
 // to rule out a quick refresh, then start a longer grace period during which the
 // disconnected player can still come back. Only after the grace period expires
-// can the opponent actively claim a win or draw — nothing resolves automatically.
+// can the opponent actively claim a win or draw, nothing resolves automatically.
 const DISCONNECT_DEBOUNCE_MS = 3000;
 const DISCONNECT_GRACE_MS = 60_000;
 
@@ -238,14 +254,14 @@ function clearPendingDisconnect(gameId: string) {
 }
 
 // --- Rematches ---------------------------------------------------------------
-// Keyed by the *original* game's id. A rematch offer expires if not answered —
+// Keyed by the *original* game's id. A rematch offer expires if not answered, 
 // there's no point letting a stale offer linger once one side has moved on.
 const REMATCH_OFFER_TTL_MS = 30_000;
 const pendingRematches = new Map<string, { fromUserId: string; expiresAt: number }>();
 
 // --- Move rate limiting -------------------------------------------------------
 // Cheap defense against a scripted client flooding moves. The threshold is
-// deliberately low — even the fastest legitimate bullet/premove play rarely
+// deliberately low, even the fastest legitimate bullet/premove play rarely
 // produces two distinct move submissions under ~60ms apart, since each one
 // requires a real network round trip.
 const MIN_MS_BETWEEN_MOVES = 60;
@@ -268,8 +284,8 @@ async function handlePotentialDisconnect(io: Server, gameId: string, userId: str
   if (!state || state.status !== 'active') return;
   const isPlayer = state.whiteId === userId || state.blackId === userId;
   if (!isPlayer) return; // spectators leaving is a non-event
-  // Idle-phase abandonment already has its own escape hatch — Abort for a
-  // normal game, Pause for a cage match leg — so the claim-after-disconnect
+  // Idle-phase abandonment already has its own escape hatch. Abort for a
+  // normal game, Pause for a cage match leg, so the claim-after-disconnect
   // flow only kicks in once the game is actually underway.
   if (state.moveCount < 2) return;
 
@@ -335,9 +351,10 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       await socket.join(gameRoom(gameId));
       if (role === 'spectator') {
         // Kept separate from the main game room so spectator chat traffic
-        // never reaches the players — they don't get a chat UI at all, and
+        // never reaches the players, they don't get a chat UI at all, and
         // this means they never even receive the events for one.
         await socket.join(spectatorRoom(gameId));
+        broadcastSpectatorCount(io, gameId).catch((err) => console.error('broadcastSpectatorCount failed:', err));
       }
 
       // Reconnecting clears any pending "opponent disconnected" state for this game.
@@ -349,7 +366,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
 
       const liveState = await getLiveState(gameId);
 
-      // Snapshot of who's actually connected right now — combined with the
+      // Snapshot of who's actually connected right now, combined with the
       // opponent_connected/disconnected/reconnected events for live updates,
       // this is what drives the connection dot next to each player's name.
       const roomSockets = await io.in(gameRoom(gameId)).fetchSockets();
@@ -359,13 +376,19 @@ export function registerGameHandlers(io: Server, socket: Socket) {
 
       // Cheap self-healing measure: (re)scheduling on every join/reconnect
       // means the timer recovers on its own the moment anyone next touches
-      // the game, rather than only being set at creation and after moves —
+      // the game, rather than only being set at creation and after moves, 
       // which left a window where a lost timer (process restart, etc.) would
       // sit silently until someone tried to move.
       if (liveState?.status === 'active') {
         scheduleGameTimer(gameId).catch((err) => console.error('scheduleGameTimer on join failed:', err));
         scheduleFirstMoveTimer(gameId).catch((err) => console.error('scheduleFirstMoveTimer on join failed:', err));
       }
+
+      // So a freshly-joining client (player or spectator) has the current
+      // spectator count immediately, rather than waiting for the next
+      // broadcastSpectatorCount triggered by someone else joining/leaving.
+      const spectatorSockets = await io.in(spectatorRoom(gameId)).fetchSockets();
+      const spectatorCount = new Set(spectatorSockets.map((s) => (s.data as AuthedSocketData).userId)).size;
 
       socket.emit('game:sync', {
         gameId,
@@ -381,6 +404,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         black: withRatingCategory(game.black as any),
         whiteConnected,
         blackConnected,
+        spectatorCount,
         moves: game.moves,
         timeControl: game.timeControl,
         wagerTokens: game.wagerTokens,
@@ -410,6 +434,26 @@ export function registerGameHandlers(io: Server, socket: Socket) {
     }),
   );
 
+  // The counterpart to game:join above. Room membership doesn't clear
+  // itself on navigation (only on disconnect), so without this a spectator
+  // who moves on to a different page would stay in this game's
+  // spectatorRoom indefinitely, and things like the rematch-redirect below
+  // would keep firing for them long after they've left.
+  socket.on(
+    'game:leave',
+    safeHandler(socket, async (raw: unknown) => {
+      const parsed = leaveSchema.safeParse(raw);
+      if (!parsed.success) return;
+      const { gameId } = parsed.data;
+      const wasSpectator = socket.rooms.has(spectatorRoom(gameId));
+      await socket.leave(gameRoom(gameId));
+      await socket.leave(spectatorRoom(gameId));
+      if (wasSpectator) {
+        broadcastSpectatorCount(io, gameId).catch((err) => console.error('broadcastSpectatorCount failed:', err));
+      }
+    }),
+  );
+
   socket.on(
     'game:move',
     safeHandler(socket, async (raw: unknown) => {
@@ -423,7 +467,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         const moveTimestampMs = Date.now();
         const result = await applyMove(gameId, userId, { from, to, promotion }, lagCompensationMs);
 
-        // Broadcast first — Mongo persistence is for history/reconnect sync, it
+        // Broadcast first. Mongo persistence is for history/reconnect sync, it
         // doesn't need to gate how fast the opponent sees the move land.
         io.to(gameRoom(gameId)).emit('game:move', {
           gameId,
@@ -437,7 +481,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           blackRemainingMs: result.blackRemainingMs,
           turnStartedAtMs: Date.now(),
           // Same timestamp persisted via appendMove below (not two separate
-          // Date.now() calls) — this is what lets a client reconstruct a
+          // Date.now() calls), this is what lets a client reconstruct a
           // per-move clock/think-time reading without a full refetch, same
           // as it already can for a finished game's persisted moves.
           timestampMs: moveTimestampMs,
@@ -459,7 +503,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           scheduleGameTimer(gameId).catch((err) => console.error('scheduleGameTimer failed:', err));
           // A move landing re-arms the window for whoever's first move is
           // still pending (or clears it for good once both sides have
-          // moved) — cheap no-op via scheduleFirstMoveTimer's own guards.
+          // moved), cheap no-op via scheduleFirstMoveTimer's own guards.
           scheduleFirstMoveTimer(gameId).catch((err) => console.error('scheduleFirstMoveTimer failed:', err));
         }
       } catch (err) {
@@ -625,7 +669,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         return;
       }
 
-      // Swap colors for the rematch — standard etiquette, and it means the same
+      // Swap colors for the rematch, standard etiquette, and it means the same
       // player isn't stuck playing white (or black) twice in a row.
       const newWhite = isWhite ? game.black!.toString() : game.white.toString();
       const newBlack = isWhite ? game.white.toString() : game.black!.toString();
@@ -666,7 +710,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           game.wagerTokens,
         );
       } catch (err) {
-        // Same wager as the original game — if either side can no longer
+        // Same wager as the original game, if either side can no longer
         // cover it, no tokens move and both players just hear why.
         const message = err instanceof Error ? err.message : 'Could not start the rematch';
         emitError(socket, message);
@@ -677,14 +721,21 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       const payload = { gameId: newGame.id, joinCode: newGame.joinCode, wagerTokens: newGame.wagerTokens };
       io.to(`user:${game.white.toString()}`).emit('game:rematch_accepted', payload);
       io.to(`user:${game.black!.toString()}`).emit('game:rematch_accepted', payload);
+      // Anyone still sitting on the just-finished game's page as a
+      // spectator gets swept along to the rematch too, rather than being
+      // left behind watching a game that's already over.
+      io.to(spectatorRoom(gameId)).emit('game:rematch_started', {
+        gameId: newGame.id,
+        joinCode: newGame.joinCode,
+      });
     }),
   );
 
-  // Lets either player back out cleanly before the game has really started —
+  // Lets either player back out cleanly before the game has really started, 
   // deliberately separate from resign: no winner is recorded, and it never
   // shows up in either player's W/L/D stats or game history (those only count
   // status: 'finished' games). Cage match legs and tournament pairings don't
-  // get this — a cage leg has "pause" as its idle-phase escape hatch instead,
+  // get this, a cage leg has "pause" as its idle-phase escape hatch instead,
   // and a tournament pairing has neither, since walking away from a bracket
   // game shouldn't be this cheap.
   socket.on(
@@ -705,7 +756,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         return emitError(socket, 'You are not a player in this game');
       }
       if (state.moveCount >= 2) {
-        return emitError(socket, 'This game can no longer be aborted — both sides have moved');
+        return emitError(socket, 'This game can no longer be aborted. Both sides have moved');
       }
 
       clearGameTimer(gameId);
@@ -725,7 +776,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
   );
 
   // Deliberately spectator-only, and never persisted anywhere (no Mongo, no
-  // Redis) — purely a live relay through Socket.IO. Refresh the page and the
+  // Redis), purely a live relay through Socket.IO. Refresh the page and the
   // history is gone, by design.
   socket.on(
     'spectator_chat:send',
@@ -754,6 +805,18 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       const gameId = room.slice('game:'.length);
       handlePotentialDisconnect(io, gameId, userId).catch((err) =>
         console.error('handlePotentialDisconnect failed:', err),
+      );
+    }
+    // Same spectator-count refresh as game:leave above, for the case where
+    // someone just closes the tab/loses connection instead of navigating
+    // away normally. excludeSocketId matters here specifically because
+    // 'disconnecting' fires just before Socket.IO removes this socket from
+    // its rooms, so a same-tick fetchSockets() would still count it.
+    const spectatorRooms = Array.from(socket.rooms).filter((r) => r.endsWith(':spectators'));
+    for (const room of spectatorRooms) {
+      const gameId = room.slice('game:'.length, -':spectators'.length);
+      broadcastSpectatorCount(io, gameId, socket.id).catch((err) =>
+        console.error('broadcastSpectatorCount failed:', err),
       );
     }
   });

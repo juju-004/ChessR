@@ -9,7 +9,7 @@ interface AuthResponse {
 
 interface GoogleAuthResponse extends AuthResponse {
   /** True only for a brand-new account created by this sign-in (not an
-   *  existing account's first-ever Google link) — see auth.controller.ts's
+   *  existing account's first-ever Google link), see auth.controller.ts's
    *  googleSignin. Used to route straight to /choose-username instead of
    *  the dashboard, since a fresh account's username was auto-generated
    *  from their Google name/email and hasn't been chosen by them at all. */
@@ -34,8 +34,8 @@ export async function signin(identifier: string, password: string) {
   return data.user;
 }
 
-/** Signs in (or silently creates an account for) whoever `credential` — a
- *  Google Identity Services ID token — belongs to. See
+/** Signs in (or silently creates an account for) whoever `credential`, a
+ *  Google Identity Services ID token, belongs to. See
  *  GoogleSignInButton.tsx for where `credential` comes from and
  *  auth.controller.ts's googleSignin for the server-side verification.
  *  Returns `isNewUser` alongside the user so the caller can route a fresh

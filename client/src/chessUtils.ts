@@ -20,7 +20,7 @@ export function turnColor(chess: Chess): 'white' | 'black' {
   return chess.turn() === 'w' ? 'white' : 'black';
 }
 
-/** Fixed cutoff for switching the clock display into deciseconds — this one
+/** Fixed cutoff for switching the clock display into deciseconds, this one
  *  is intentionally NOT time-control-scaled (unlike LOW_TIME threshold
  *  below): the point of showing tenths is purely "the flag is about to
  *  fall", which is the same visual moment regardless of whether this was a
@@ -30,7 +30,7 @@ const DECISECONDS_DISPLAY_MS = 10_000;
 /**
  * "MM:SS" normally; switches to "MM:SS:D" (tenths of a second) once under
  * DECISECONDS_DISPLAY_MS remain, e.g. "05:30" most of the game, "00:07:4"
- * right at the end — so the last few seconds read as smoothly counting
+ * right at the end, so the last few seconds read as smoothly counting
  * down to zero instead of visibly freezing on a whole second for however
  * much of it is left.
  */
@@ -50,13 +50,13 @@ export function formatClock(ms: number): string {
 
 /**
  * The "you're running low" threshold used for both the red clock styling
- * and the low-time warning sound — scaled to the time control instead of a
+ * and the low-time warning sound, scaled to the time control instead of a
  * single flat number, since 10 seconds left means something very different
  * in a 1-minute bullet game vs. a 30-minute classical one. Defined as 5% of
  * the starting time, floored at 5s (so even bullet games get *some*
  * warning) and capped at 60s (so classical games aren't warned a full
  * minute out, before it's actually urgent). `null` (unlimited time control)
- * returns 0, meaning "never low" — there's no flag to worry about.
+ * returns 0, meaning "never low", there's no flag to worry about.
  */
 export function computeLowTimeThresholdMs(baseSeconds: number | null): number {
   if (baseSeconds === null || baseSeconds <= 0) return 0;
@@ -66,7 +66,7 @@ export function computeLowTimeThresholdMs(baseSeconds: number | null): number {
 
 /**
  * How long a player gets to make their first move before it counts against
- * them. Deliberately a flat window rather than scaled to time control —
+ * them. Deliberately a flat window rather than scaled to time control, 
  * simpler to reason about and communicate than the old per-time-control
  * scaling, and 25/30s is generous even for bullet while still catching a
  * genuinely absent player quickly. Plain games get the shorter window since
@@ -92,13 +92,13 @@ export interface CapturedPieceCount {
 }
 
 export interface MaterialDiff {
-  /** Pieces missing from black's side, i.e. captured BY white — shown on
+  /** Pieces missing from black's side, i.e. captured BY white, shown on
    *  white's panel. */
   capturedByWhite: CapturedPieceCount[];
-  /** Pieces missing from white's side, i.e. captured BY black — shown on
+  /** Pieces missing from white's side, i.e. captured BY black, shown on
    *  black's panel. */
   capturedByBlack: CapturedPieceCount[];
-  /** Net, already-cancelled per-type imbalance — e.g. if white has
+  /** Net, already-cancelled per-type imbalance, e.g. if white has
    *  captured 2 pawns and black has captured 1, this is 1 pawn for white,
    *  not 2. This (not the raw capturedByWhite/Black above) is what a
    *  material-diff display should actually render as piece icons, same
@@ -127,23 +127,23 @@ const MATERIAL_PIECE_VALUE: Record<MaterialPieceType, number> = {
   p: 1,
 };
 
-/** Display order — most valuable first, matches how lichess/chess.com lay
+/** Display order, most valuable first, matches how lichess/chess.com lay
  *  out the captured-pieces tray. */
 const MATERIAL_DISPLAY_ORDER: MaterialPieceType[] = ['q', 'r', 'b', 'n', 'p'];
 
 /**
  * Derives per-side captured pieces + point advantage purely from the current
- * FEN's piece counts (starting counts minus what's left on the board) — no
+ * FEN's piece counts (starting counts minus what's left on the board), no
  * move-history bookkeeping needed, so it works identically for a live game,
  * a replay scrubbed to any position, or a freshly-loaded spectate.
  *
  * Known simplification (same one lichess/chess.com make): a pawn that's been
- * promoted looks identical, count-wise, to a pawn that's been captured — the
+ * promoted looks identical, count-wise, to a pawn that's been captured, the
  * board just has one fewer pawn and one extra piece of the promoted type
  * either way. So on the rare game with a promotion, the captured-pieces
  * *icons* can be slightly off (may show a "captured pawn" that was actually
  * promoted, or miss counting the piece it promoted into as unusual). The
- * point-value `advantage` figure is unaffected by this — it's computed
+ * point-value `advantage` figure is unaffected by this, it's computed
  * directly from what's actually on the board, not by tallying captures.
  */
 export function computeMaterialDiff(fen: string): MaterialDiff {
@@ -194,7 +194,7 @@ export function computeMaterialDiff(fen: string): MaterialDiff {
 interface ClockReconstructionInput {
   baseSeconds: number | null;
   incrementSeconds: number;
-  /** Each move's server timestamp — same `timestampMs` recorded on
+  /** Each move's server timestamp, same `timestampMs` recorded on
    *  IMove server-side. */
   moveTimestampsMs: number[];
   berserk?: { white: boolean; black: boolean };
@@ -202,10 +202,10 @@ interface ClockReconstructionInput {
 
 export interface PlyClock {
   /** Remaining time for the side that just moved, immediately after this
-   *  move — null for an untimed game. Mirrors what lichess shows next to
+   *  move, null for an untimed game. Mirrors what lichess shows next to
    *  each move in the move list. */
   remainingMs: number | null;
-  /** How long this move actually took to play — null for the first move
+  /** How long this move actually took to play, null for the first move
    *  of each side (the clock is "free" until both sides have moved once,
    *  same rule the server enforces; see finalizeMove in
    *  gameState.service.ts), and null for an untimed game. This is what a
@@ -216,20 +216,20 @@ export interface PlyClock {
 
 /**
  * Reconstructs, for every ply, the mover's remaining clock immediately
- * after that move — client-side, from data already on hand (move
+ * after that move, client-side, from data already on hand (move
  * timestamps + the game's time control), so replay/history-browsing needs
  * no separate server round trip or persisted per-ply clock log.
  *
  * Deliberately mirrors finalizeMove's server-side accounting exactly:
  *   - the first move of EACH side is free (nothing charged, no increment)
- *     — the clock only starts truly running once both sides have moved
+ *, the clock only starts truly running once both sides have moved
  *     once, same as lichess and same as this server enforces live.
  *   - increment is added only alongside a real deduction, never on its
  *     own (so it can't be exploited by, say, aborting before it's live).
  *
  * One necessary approximation: the server also subtracts a small, capped
  * lag-compensation estimate (network round-trip) before charging the
- * clock (see latency.service.ts) — that per-move figure isn't persisted,
+ * clock (see latency.service.ts), that per-move figure isn't persisted,
  * so this reconstruction can't replicate it exactly and will read a few
  * tens of ms slower per move than the authoritative server clock did in
  * the moment. Cosmetic only; doesn't change which move actually cost the
@@ -290,11 +290,11 @@ function getChess960StartingFiles(initialFen: string): Chess960StartingFiles {
 
 /**
  * Adds Chess960 castling as extra destinations for the king, so chessground's
- * `dests` map actually permits the drag in the first place — chess.js has no
+ * `dests` map actually permits the drag in the first place, chess.js has no
  * concept of Chess960 castling, so it never includes these in `.moves()`.
  * This is purely a UI affordance: offered whenever the king is still on its
  * starting square, regardless of whether castling rights have technically been
- * lost elsewhere (e.g. the rook already moved) — the server independently
+ * lost elsewhere (e.g. the rook already moved), the server independently
  * enforces full legality and will reject an illegal attempt with a clear
  * error, consistent with how every other move in this app works.
  *
@@ -314,7 +314,7 @@ export function addChess960CastlingDests(
 
   const king = chess.get(kingSquare as any);
   if (!king || king.type !== 'k' || king.color !== color) return dests; // king already moved off its start square
-  if (chess.inCheck()) return dests; // can't castle out of check — don't offer it as a hint
+  if (chess.inCheck()) return dests; // can't castle out of check, don't offer it as a hint
 
   const extra: string[] = [];
   for (const rookFile of [files.queensideRookFile, files.kingsideRookFile]) {
@@ -333,7 +333,7 @@ export function addChess960CastlingDests(
 
 // ================= PREMOVE LOGIC =================
 /**
- * Premove destinations for chessground's `premovable.customDests` — confirmed
+ * Premove destinations for chessground's `premovable.customDests`, confirmed
  * via chessground's actual source (src/board.ts) to be a `Map<Key, Key[]>`,
  * the same shape as `movable.dests`, NOT the flat array some older docs/forks
  * describe.
@@ -341,7 +341,7 @@ export function addChess960CastlingDests(
  * This deliberately does NOT ask chess.js "what's legal here" the way
  * computeDests does for real moves. An earlier version built a hypothetical
  * position with the turn flipped and asked chess.js for legal moves against
- * the CURRENT board — but that means a square still occupied by your own
+ * the CURRENT board, but that means a square still occupied by your own
  * piece can never appear as a destination, since chess.js (correctly) never
  * generates a "capture" of your own piece. That broke the single most common
  * real premove: capturing on a square your own piece currently sits on,
@@ -350,7 +350,7 @@ export function addChess960CastlingDests(
  *
  * The fix is to compute premoves the way lichess/chessground actually do:
  * pure geometric piece-movement patterns, completely ignoring what's
- * currently sitting on the board — not just the destination square, but
+ * currently sitting on the board, not just the destination square, but
  * every square along a sliding piece's path too, since any of those pieces
  * (friend or foe) might also have moved on by the time the premove fires.
  * This deliberately overshoots real legality; that's fine, because
@@ -418,7 +418,7 @@ export function computePremoveDests(chess: Chess, color: 'white' | 'black'): Map
 }
 
 /** Castling premove targets (g1/c1 or g8/c8), offered whenever that color
- *  still has the corresponding castling right in the FEN — same speculative
+ *  still has the corresponding castling right in the FEN, same speculative
  *  spirit as the rest of premove: we don't check whether the path is
  *  currently clear, only whether castling hasn't already been forfeited. */
 function castlingPremoveTargets(chess: Chess, color: 'white' | 'black'): string[] {

@@ -38,7 +38,7 @@ const socketWatchingKey = (socketId: string) => `presence:socket:${socketId}:wat
 /** Call when a socket's tournament detail page mounts (the client's
  *  `tournament:watch` handler). Deliberately Redis-backed rather than
  *  reusing the Socket.IO room the same event also joins them to
- *  (tournamentSocket.ts's tournamentRoom) — this app runs Socket.IO with
+ *  (tournamentSocket.ts's tournamentRoom), this app runs Socket.IO with
  *  the Redis adapter (see sockets/index.ts), and that adapter only
  *  populates `io.sockets.adapter.rooms` with sockets connected to *this*
  *  process; a socket connected to a different instance in a multi-node
@@ -46,7 +46,7 @@ const socketWatchingKey = (socketId: string) => `presence:socket:${socketId}:wat
  *  same as the rest of this file, are what's actually queryable
  *  cluster-wide. */
 export async function watchTournament(tournamentId: string, socketId: string): Promise<void> {
-  // A socket only ever watches one tournament page at a time — if it was
+  // A socket only ever watches one tournament page at a time, if it was
   // already marked as watching a different one (e.g. a client-side route
   // change from one tournament straight to another, without a full
   // unmount in between), clear that stale membership first so it doesn't
@@ -61,7 +61,7 @@ export async function watchTournament(tournamentId: string, socketId: string): P
   ]);
 }
 
-/** The other half of watchTournament — call on the client's explicit
+/** The other half of watchTournament, call on the client's explicit
  *  `tournament:unwatch` (page unmounted normally) AND on socket disconnect
  *  (tab closed / connection dropped, where the client never gets a chance
  *  to send that event). Looks up which tournament this socket was
@@ -76,10 +76,10 @@ export async function unwatchTournament(socketId: string): Promise<void> {
 }
 
 /** True if any of this user's currently-connected sockets (they can have
- *  several — multiple tabs, phone + desktop) currently has the given
+ *  several, multiple tabs, phone + desktop) currently has the given
  *  tournament's detail page open. General online status (isUserOnline)
  *  answers "is this user connected at all", which isn't the same
- *  question — someone idling on Game.tsx or Settings with the app open in
+ *  question, someone idling on Game.tsx or Settings with the app open in
  *  the background is "online" but not watching this tournament, and
  *  shouldn't be eligible for arena/swiss pairing into it (see
  *  arenaAvailablePlayers / buildSwissRound in tournament.service.ts). */

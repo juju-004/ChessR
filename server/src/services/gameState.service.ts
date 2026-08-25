@@ -39,10 +39,10 @@ export interface LiveGameState {
   blackRemainingMs: number | null;
   turnStartedAtMs: number;
   // True only for the brief, mutually-agreed pause window at the very start
-  // of a cage match leg (before both sides have moved) — see pauseLiveClock/
+  // of a cage match leg (before both sides have moved), see pauseLiveClock/
   // resumeLiveClock. Both clocks and moves are frozen while true.
   paused: boolean;
-  // Tournament berserk flags — true once that side has berserked. Purely
+  // Tournament berserk flags, true once that side has berserked. Purely
   // informational for the client (the halved-time effect already happened to
   // whiteRemainingMs/blackRemainingMs below); onTournamentGameFinished reads
   // the Game document's own berserk field, not this, when scoring bonuses.
@@ -50,10 +50,10 @@ export interface LiveGameState {
   blackBerserk: boolean;
   castlingRights: CastlingRightsState;
   /** Repetition-relevant position keys (piece placement + turn + castling
-   *  rights + en-passant target — the four FEN fields FIDE rules actually
+   *  rights + en-passant target, the four FEN fields FIDE rules actually
    *  compare for "same position"), one per position reached including the
    *  start. Needed because chess.js's own threefold-repetition tracker relies
-   *  on move history accumulated through a persistent instance — since we
+   *  on move history accumulated through a persistent instance, since we
    *  reload a fresh Chess instance from FEN on every move (deliberately, to
    *  keep move application stateless/idempotent), it never has any history to
    *  check against and would never detect a repetition on its own. */
@@ -61,7 +61,7 @@ export interface LiveGameState {
 }
 
 /** The four FEN fields that define "the same position" for repetition
- *  purposes — explicitly excludes halfmove clock and fullmove number. */
+ *  purposes, explicitly excludes halfmove clock and fullmove number. */
 function repetitionKey(fen: string): string {
   return fen.split(' ').slice(0, 4).join(' ');
 }
@@ -76,9 +76,9 @@ export function getSideToMove(fen: string): 'white' | 'black' {
   return new Chess(fen).turn() === 'w' ? 'white' : 'black';
 }
 
-/** Pure clock check — does not mutate anything. Returns the winning side if time has run out.
+/** Pure clock check, does not mutate anything. Returns the winning side if time has run out.
  *  Also returns null during the "idle" phase (before both sides have made
- *  their first move) — the real clock doesn't start counting down until
+ *  their first move), the real clock doesn't start counting down until
  *  then, same as Lichess. See finalizeMove for where time stops being free. */
 export function computeTimeoutWinner(state: LiveGameState): 'white' | 'black' | null {
   if (state.status !== 'active' || state.paused || state.timeControl.baseMs === null || state.moveCount < 2) {
@@ -168,7 +168,7 @@ async function finalizeMove(
 ): Promise<MoveResult> {
   let whiteRemainingMs = state.whiteRemainingMs;
   let blackRemainingMs = state.blackRemainingMs;
-  // The clock is "free" for each side's very first move — nothing is charged
+  // The clock is "free" for each side's very first move, nothing is charged
   // until BOTH sides have made their first move (same as Lichess). This move
   // being applied is White's 1st when state.moveCount is 0, or Black's 1st
   // when it's 1; only from state.moveCount >= 2 onward does real time get
@@ -183,7 +183,7 @@ async function finalizeMove(
     // that round trip rather than any real thinking time. `lagCompensationMs`
     // is a small, server-measured, capped estimate of that unavoidable
     // network cost (see latency.service.ts) subtracted before charging the
-    // clock — same idea Lichess calls lag compensation.
+    // clock, same idea Lichess calls lag compensation.
     const elapsed = Math.max(0, Date.now() - state.turnStartedAtMs - lagCompensationMs);
     if (moverSide === 'white') {
       const increment = state.whiteBerserk ? 0 : state.timeControl.incrementMs;
@@ -202,7 +202,7 @@ async function finalizeMove(
   let result: MoveResult['result'] = null;
   let endReason: string | null = null;
   // chess.js's own isGameOver() internally checks threefold repetition too,
-  // but via the same broken (history-less) mechanism — so it can say "false"
+  // but via the same broken (history-less) mechanism, so it can say "false"
   // even when our reliable check says otherwise. OR them together.
   const isGameOver = chess.isGameOver() || isThreefoldRepetition;
 
@@ -256,7 +256,7 @@ async function finalizeMove(
 }
 
 /**
- * Applies a move server-side. This is the single source of truth for legality —
+ * Applies a move server-side. This is the single source of truth for legality, 
  * the client's board (chessground) is purely a renderer; it must never be trusted.
  * Also the single source of truth for the clock: elapsed time is charged against
  * the mover's remaining time before the move is even validated.
@@ -270,7 +270,7 @@ export async function applyMove(
   const state = await getLiveState(gameId);
   if (!state) throw ApiError.notFound('Game is not active');
   if (state.status !== 'active') throw ApiError.conflict('Game has already ended');
-  if (state.paused) throw ApiError.conflict('Game is paused — resume it first');
+  if (state.paused) throw ApiError.conflict('Game is paused. Resume it first');
 
   const isWhite = state.whiteId === userId;
   const isBlack = state.blackId === userId;
@@ -358,7 +358,7 @@ export async function endGame(
   if (!state) throw ApiError.notFound('Game is not active');
 
   // Bank the real elapsed time on whoever's clock was actually running,
-  // same as pauseLiveClock does — without this, whiteRemainingMs/
+  // same as pauseLiveClock does, without this, whiteRemainingMs/
   // blackRemainingMs are left at whatever they were as of the *previous*
   // move (e.g. still showing 3s left on a timeout), and since the client
   // only ever ticks those down live while the game is active, the instant
@@ -385,10 +385,10 @@ export async function endGame(
   return newState;
 }
 
-/** Freezes the clock — banks whatever time has elapsed on the current side's
+/** Freezes the clock, banks whatever time has elapsed on the current side's
  *  clock so it isn't lost, then marks the game paused (which also blocks
  *  applyMove). Meaningful any time before BOTH sides have made their first
- *  move (moveCount < 2) — see cageMatch.service.ts's pause request flow,
+ *  move (moveCount < 2), see cageMatch.service.ts's pause request flow,
  *  which is the only caller. During that window the real clock isn't even
  *  running yet (see computeTimeoutWinner/finalizeMove), so there's nothing
  *  to bank; time is only actually deducted once moveCount >= 2. */
@@ -416,7 +416,7 @@ export async function pauseLiveClock(gameId: string): Promise<LiveGameState | nu
   return newState;
 }
 
-/** Un-freezes the clock — restarts the current side's clock counting down
+/** Un-freezes the clock, restarts the current side's clock counting down
  *  from whatever was banked at pause time (none of the paused duration
  *  counts against them). Caller is responsible for rescheduling the flag-fall
  *  timer and any grace timer afterward. */
@@ -438,10 +438,10 @@ export class BerserkNotAllowedError extends Error {
 /** Lichess-style berserk: halves the berserking side's own remaining base
  *  time in exchange for a shot at a bonus point if they go on to win (the
  *  bonus itself is awarded by tournament.service.ts when the game concludes,
- *  based on the Game document's `berserk` field — this function just applies
+ *  based on the Game document's `berserk` field, this function just applies
  *  the clock cut and flips that field).
  *
- *  Only ever allowed before that side has made their own first move — once
+ *  Only ever allowed before that side has made their own first move, once
  *  you've moved, the decision window is closed. Untimed games (baseMs ===
  *  null) can't berserk since there's no clock to cut. */
 export async function applyBerserk(
@@ -461,10 +461,10 @@ export async function applyBerserk(
   const side: 'white' | 'black' = isWhite ? 'white' : 'black';
 
   if (side === 'white' && (state.whiteBerserk || state.moveCount > 0)) {
-    throw new BerserkNotAllowedError('Too late to berserk — make your move');
+    throw new BerserkNotAllowedError('Too late to berserk. Make your move');
   }
   if (side === 'black' && (state.blackBerserk || state.moveCount > 1)) {
-    throw new BerserkNotAllowedError('Too late to berserk — make your move');
+    throw new BerserkNotAllowedError('Too late to berserk. Make your move');
   }
 
   const newState: LiveGameState = {

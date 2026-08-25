@@ -13,9 +13,12 @@ const generateCode = customAlphabet("ABCDEFGHJKMNPQRSTUVWXYZ23456789", 6);
 
 const MIN_LEGS = 2;
 const MAX_LEGS = 30;
-// Sanity ceiling mirroring MAX_WAGER_TOKENS in game.controller.ts — same
+// Sanity ceiling mirroring MAX_WAGER_TOKENS in game.controller.ts, same
 // reasoning: not a business limit, just a guard against garbage input.
 const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
+// Floor on any single wager/stake/fee amount, kept in sync with
+// MIN_STAKE_TOKENS in client/src/lib/limits.ts.
+const MIN_STAKE_TOKENS = 20;
 
 async function uniqueMatchCode(): Promise<string> {
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -103,7 +106,7 @@ export function computeStandings(match: ICageMatch): CageStandings {
     else categoriesTied += 1;
   }
 
-  // 'paused' legs still count as remaining — they haven't been decided yet,
+  // 'paused' legs still count as remaining, they haven't been decided yet,
   // just temporarily frozen.
   const legsRemaining = match.legs.filter(
     (l) => l.status === "pending" || l.status === "active" || l.status === "paused",
@@ -124,7 +127,7 @@ function decideOutcome(match: ICageMatch, standings: CageStandings): Outcome {
     if (standings.p1Wins >= match.targetWins) return { decided: true, winner: "p1" };
     if (standings.p2Wins >= match.targetWins) return { decided: true, winner: "p2" };
     if (!allLegsDone) return { decided: false, winner: null };
-    // Ran out of legs before either side reached the target — fall back to
+    // Ran out of legs before either side reached the target, fall back to
     // whoever's ahead on wins so the match still resolves to something.
     if (standings.p1Wins > standings.p2Wins) return { decided: true, winner: "p1" };
     if (standings.p2Wins > standings.p1Wins) return { decided: true, winner: "p2" };
@@ -136,7 +139,7 @@ function decideOutcome(match: ICageMatch, standings: CageStandings): Outcome {
   if (match.winnerMode === "most_categories") {
     if (standings.categoriesWonP1 > standings.categoriesWonP2) return { decided: true, winner: "p1" };
     if (standings.categoriesWonP2 > standings.categoriesWonP1) return { decided: true, winner: "p2" };
-    // Tied on categories won — total score breaks the tie before calling it
+    // Tied on categories won, total score breaks the tie before calling it
     // an outright draw.
     if (standings.p1Score > standings.p2Score) return { decided: true, winner: "p1" };
     if (standings.p2Score > standings.p1Score) return { decided: true, winner: "p2" };
@@ -169,7 +172,7 @@ async function escrowWinnerTakesAll(match: ICageMatch): Promise<void> {
   }
 }
 
-/** Pays out (or refunds) a winner-takes-all pot exactly once — guarded the
+/** Pays out (or refunds) a winner-takes-all pot exactly once, guarded the
  *  same way settleWager guards a normal game's wager. */
 async function settleWinnerTakesAll(match: ICageMatch, winner: "p1" | "p2" | "draw"): Promise<void> {
   if (match.wagerMode !== "winner_takes_all" || match.wagerTokens <= 0) return;
@@ -195,7 +198,7 @@ async function settleWinnerTakesAll(match: ICageMatch, winner: "p1" | "p2" | "dr
   await recordRake("cage_match", matchId, rakeTokens, pot);
 }
 
-/** Refunds an escrowed winner-takes-all pot without paying anyone — used when
+/** Refunds an escrowed winner-takes-all pot without paying anyone, used when
  *  a match is cancelled/forfeited in a way that shouldn't produce a winner
  *  payout (e.g. the very first leg fails to start). */
 async function refundWinnerTakesAll(match: ICageMatch): Promise<void> {
@@ -215,7 +218,7 @@ async function refundWinnerTakesAll(match: ICageMatch): Promise<void> {
 // --- Forfeit ---------------------------------------------------------------
 //
 // Note: a player simply never showing up for their first move is no longer
-// a special whole-match forfeit case — it's handled by the same universal
+// a special whole-match forfeit case, it's handled by the same universal
 // first-move timer every game gets (see clock.service.ts's
 // scheduleFirstMoveTimer + gameSocket.ts's registerFirstMoveTimeoutHandler),
 // which just loses that one leg, same as any other timeout. This section is
@@ -223,7 +226,7 @@ async function refundWinnerTakesAll(match: ICageMatch): Promise<void> {
 
 /** Ends the whole cage match immediately in favor of whoever DIDN'T forfeit.
  *  If a leg is currently in progress, closes it out too (settles its wager
- *  if any, stops its clocks/timers) — otherwise its clock and socket room
+ *  if any, stops its clocks/timers), otherwise its clock and socket room
  *  would keep running even after the match itself has ended. Backs the
  *  manual "forfeit entire match" action. */
 async function finalizeCageMatchForfeit(
@@ -243,7 +246,7 @@ async function finalizeCageMatchForfeit(
     const liveState = await getLiveState(gameId);
     if (liveState && liveState.status === "active") {
       // If neither side has really gotten going yet (fewer than both sides'
-      // first moves played), there's no game to award a "win" for — treat
+      // first moves played), there's no game to award a "win" for, treat
       // this leg as a no-decision abort and refund any per-leg wager,
       // exactly like the manual "Abort game" button would. Only once both
       // sides have actually made a move does forfeiting count as a genuine
@@ -254,7 +257,7 @@ async function finalizeCageMatchForfeit(
         try {
           getIo().to(`game:${gameId}`).emit("game:over", { gameId, result: null, reason: "aborted_no_moves" });
         } catch {
-          // Socket.IO not initialized (e.g. script/test context) — safe to ignore.
+          // Socket.IO not initialized (e.g. script/test context), safe to ignore.
         }
         await finalizeGame(gameId, liveState.fen, "aborted", null, "aborted_no_moves", {
           whiteRemainingMs: liveState.whiteRemainingMs,
@@ -287,7 +290,7 @@ async function finalizeCageMatchForfeit(
             wagerSettlement,
           });
         } catch {
-          // Socket.IO not initialized (e.g. script/test context) — safe to ignore.
+          // Socket.IO not initialized (e.g. script/test context), safe to ignore.
         }
         await finalizeGame(gameId, liveState.fen, "finished", winnerColor, legEndReason, {
           whiteRemainingMs: liveState.whiteRemainingMs,
@@ -321,7 +324,7 @@ async function finalizeCageMatchForfeit(
 }
 
 /** A player concedes the whole series (not just the current leg), via an
- *  explicit request — see finalizeCageMatchForfeit for the mechanics. */
+ *  explicit request, see finalizeCageMatchForfeit for the mechanics. */
 export async function forfeitCageMatch(matchId: string, forfeitingUserId: string): Promise<ICageMatch> {
   const match = await CageMatch.findById(matchId);
   if (!match) throw ApiError.notFound("Cage match not found");
@@ -337,9 +340,9 @@ export async function forfeitCageMatch(matchId: string, forfeitingUserId: string
 // --- Leg lifecycle -------------------------------------------------------------
 
 /** Creates the Game for whichever leg is next in line and marks it active on
- *  the match — createDirectGame arms its own first-move timer, so there's
+ *  the match, createDirectGame arms its own first-move timer, so there's
  *  nothing extra to schedule here. Colors are randomized per leg, same as a
- *  normal challenge — nothing here guarantees a player is white in every leg
+ *  normal challenge, nothing here guarantees a player is white in every leg
  *  or anything like that. */
 async function startNextLeg(match: ICageMatch): Promise<ICageMatch> {
   const leg = match.legs[match.currentLegIndex];
@@ -381,15 +384,15 @@ export async function startCageMatch(
   if (winnerMode === "first_to_n" && (!targetWins || targetWins < 1)) {
     throw ApiError.badRequest("Choose a target win count for a first-to-N match");
   }
-  // Wagers are compulsory — 'none' is no longer a selectable mode (see
+  // Wagers are compulsory, 'none' is no longer a selectable mode (see
   // cageMatchSocket.ts's sendSchema), but this is checked here too as a
   // defense-in-depth guard against anything that calls this service
   // directly.
-  if (wagerMode === "none" || wagerTokens <= 0 || wagerTokens > MAX_WAGER_TOKENS) {
+  if (wagerMode === "none" || wagerTokens < MIN_STAKE_TOKENS || wagerTokens > MAX_WAGER_TOKENS) {
     throw ApiError.badRequest("Enter a valid wager amount");
   }
   if (wagerMode === "split_even" && Math.floor(wagerTokens / legsInput.length) <= 0) {
-    throw ApiError.badRequest("That wager doesn't divide into a whole token per game — raise it or use fewer games");
+    throw ApiError.badRequest("That wager doesn't divide into a whole token per game, raise it or use fewer games");
   }
 
   const matchCode = await uniqueMatchCode();
@@ -449,7 +452,7 @@ export interface LegFinishedOutcome {
 
 /** Called once a leg's underlying Game finishes normally (checkmate, a mid-
  *  game clock timeout, resignation, a first-move timeout, draw, etc).
- *  Records the result and moves the match along by score — any timeout,
+ *  Records the result and moves the match along by score, any timeout,
  *  including a first-move no-show, only loses this ONE leg, same as any
  *  other loss; it does NOT forfeit the whole match. Only the explicit
  *  "forfeit entire match" action (finalizeCageMatchForfeit) does that. */
@@ -464,7 +467,7 @@ export async function onLegFinished(
 
   const leg = match.legs[legIndex];
   if (!leg || leg.status !== "active") {
-    // Already processed (e.g. a duplicate event) — just report current state.
+    // Already processed (e.g. a duplicate event), just report current state.
     const standings = computeStandings(match);
     return { match, standings, matchStatus: match.status === "finished" ? "match_over" : "leg_advanced", nextLeg: null, matchWinner: match.matchWinner };
   }
@@ -517,12 +520,13 @@ export async function onLegFinished(
  *  the boot/periodic reconciliation sweep (game.service.ts's
  *  reconcileActiveGames) so a leg that gets resolved during server-restart
  *  recovery advances its cage match exactly the same way a leg resolved
- *  live does — instead of silently stalling the match forever. */
+ *  live does, instead of silently stalling the match forever. */
 export async function advanceCageMatchLeg(
   cageMatchId: string,
   legIndex: number,
   gameResult: "white" | "black" | "draw",
   endReason: string,
+  finishedGameId?: string,
 ): Promise<LegFinishedOutcome | null> {
   try {
     const outcome = await onLegFinished(cageMatchId, legIndex, gameResult, endReason);
@@ -550,10 +554,19 @@ export async function advanceCageMatchLeg(
         };
         io.to(`user:${p1}`).emit("cage:next_leg", payload);
         io.to(`user:${p2}`).emit("cage:next_leg", payload);
+        // Anyone still sitting on the leg that just finished as a spectator
+        // gets swept along to the next leg too, same treatment as a
+        // regular 1v1 rematch, see game:rematch_started in gameSocket.ts.
+        if (finishedGameId) {
+          io.to(`game:${finishedGameId}:spectators`).emit("cage:next_leg_spectator", {
+            matchId: outcome.match.id,
+            joinCode: outcome.nextLeg.joinCode,
+          });
+        }
       }
     } catch {
       // Socket.IO not initialized (e.g. script/test context, or this ran
-      // before the server finished booting) — the match state itself is
+      // before the server finished booting), the match state itself is
       // still correctly persisted either way, clients will pick it up next
       // time they fetch/reconnect.
     }
@@ -568,8 +581,8 @@ export async function advanceCageMatchLeg(
 
 /** Actually pauses a leg once both players have agreed (the accept/decline
  *  negotiation itself lives in cageMatchSocket.ts, Redis-backed like a normal
- *  invite) — freezes the clock and blocks moves. Valid any time before BOTH
- *  sides have made their first move (moveCount < 2) — same window as the
+ *  invite), freezes the clock and blocks moves. Valid any time before BOTH
+ *  sides have made their first move (moveCount < 2), same window as the
  *  no-show grace timer and the abort button. */
 export async function pauseCageLeg(matchId: string): Promise<{ match: ICageMatch; leg: ICageLeg }> {
   const match = await CageMatch.findById(matchId);
@@ -598,13 +611,13 @@ export async function pauseCageLeg(matchId: string): Promise<{ match: ICageMatch
   try {
     getIo().to(`game:${gameId}`).emit("cage:leg_paused", { gameId, matchId: match.id });
   } catch {
-    // Socket.IO not initialized — safe to ignore.
+    // Socket.IO not initialized, safe to ignore.
   }
 
   return { match, leg };
 }
 
-/** Mirror of pauseCageLeg — resumes a paused leg once both players agree,
+/** Mirror of pauseCageLeg, resumes a paused leg once both players agree,
  *  restarting the clock fresh from whatever was banked at pause time and
  *  re-arming a full first-move grace window. */
 export async function resumeCageLeg(matchId: string): Promise<{ match: ICageMatch; leg: ICageLeg }> {
@@ -628,7 +641,7 @@ export async function resumeCageLeg(matchId: string): Promise<{ match: ICageMatc
   try {
     getIo().to(`game:${gameId}`).emit("cage:leg_resumed", { gameId, matchId: match.id });
   } catch {
-    // Socket.IO not initialized — safe to ignore.
+    // Socket.IO not initialized, safe to ignore.
   }
 
   return { match, leg };

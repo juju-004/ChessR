@@ -17,7 +17,7 @@ export interface ChessBoardProps {
   lastMove?: [string, string];
   onUserMove: (orig: string, dest: string) => void;
   animationEnabled?: boolean;
-  /** How long a piece slide takes, in ms — see
+  /** How long a piece slide takes, in ms, see
    *  timeControls.ts's animationDurationForTimeControl, which buckets this
    *  by the game's actual time control (bullet/blitz/rapid/classical) so
    *  faster games feel snappier and slower games feel more deliberate,
@@ -49,16 +49,16 @@ export const ChessBoard = memo(function ChessBoard({
   const onUserMoveRef = useRef(onUserMove);
   onUserMoveRef.current = onUserMove;
   // Tracks orientation across renders so the sync effect below can tell
-  // "the board flipped" apart from "a piece actually moved" — see that
+  // "the board flipped" apart from "a piece actually moved", see that
   // effect for why the distinction matters.
   const orientationRef = useRef(orientation);
 
-  // No separate wrapper div around cg-wrap and Game.tsx's own container —
+  // No separate wrapper div around cg-wrap and Game.tsx's own container, 
   // this measures the CALLER's container directly (e.g. Game.tsx's themed
   // board box) via `rootRef.current.parentElement`, i.e. one level above
   // this component's own root. `rootRef` is on the outer wrapper (below)
   // rather than `containerRef` (the inner cg-wrap chessground owns)
-  // specifically so that measurement targets the real caller-sized box —
+  // specifically so that measurement targets the real caller-sized box, 
   // measuring via containerRef.current.parentElement would instead measure
   // the wrapper this component renders around itself, which is sized OFF
   // boardSize (see the JSX below), a self-referential 0×0 loop that reads
@@ -66,14 +66,14 @@ export const ChessBoard = memo(function ChessBoard({
   // own parent is measured at 0×0 forever, so boardSize never leaves 0).
   //
   // That parent is expected to be a true square (fixed via a
-  // non-conflicting CSS aspect-ratio — see Game.tsx) and a flex container
+  // non-conflicting CSS aspect-ratio, see Game.tsx) and a flex container
   // with items-center/justify-center, so that cg-wrap gets centered inside
   // it if its box is ever not perfectly square during a transient reflow.
   //
   // `boardSize` here is what keeps chessground's internal <cg-container>
   // (sized off cg-wrap via a pure-CSS 12.5%/800% percentage trick) from
   // drifting out of sync with cg-wrap itself: snapping to a multiple of 8
-  // means every square — and the coordinate labels drawn alongside them —
+  // means every square, and the coordinate labels drawn alongside them, 
   // lands on a whole pixel instead of drifting apart over the board.
   const [boardSize, setBoardSize] = useState(0);
   useLayoutEffect(() => {
@@ -83,7 +83,7 @@ export const ChessBoard = memo(function ChessBoard({
       const box = parent!.getBoundingClientRect();
       const side = Math.floor(Math.min(box.width, box.height) / 8) * 8;
       // Ignore a transient zero/near-zero read (e.g. a reflow triggered
-      // elsewhere on the page — a modal opening, a panel animating —
+      // elsewhere on the page, a modal opening, a panel animating, 
       // that briefly collapses this element's box) rather than tearing
       // the board down to invisible and rebuilding it a frame later.
       if (side > 0) setBoardSize(side);
@@ -99,7 +99,7 @@ export const ChessBoard = memo(function ChessBoard({
     const config: CgConfig = {
       fen,
       orientation,
-      // ALWAYS false here, regardless of the real `viewOnly` prop — see
+      // ALWAYS false here, regardless of the real `viewOnly` prop, see
       // chessground's own api.ts: `set()` "accepts all config options,
       // except for viewOnly" (its literal doc comment). bindBoard/
       // bindDocument (events.ts) only attach the mousedown/touchstart/
@@ -107,12 +107,12 @@ export const ChessBoard = memo(function ChessBoard({
       // construction call; `.set()` later updates state.viewOnly but never
       // re-runs that binding step. Since the effect below deliberately
       // does NOT depend on `viewOnly` (to avoid tearing down/rebuilding
-      // the whole board on every history-nav / game-finish toggle — see
+      // the whole board on every history-nav / game-finish toggle, see
       // that effect's comment), a board first constructed while
       // `viewOnly` was true (e.g. this player loaded the page before an
       // opponent had joined) would otherwise never get its listeners
       // bound at all, even after the real value flips to false and a
-      // `.set()` pushes it through — the board looks normal but silently
+      // `.set()` pushes it through, the board looks normal but silently
       // never responds to a click or drag again for the life of that
       // instance. Chessground's actual interactivity check happens at
       // handler-call time (`if (!s.viewOnly) ...` in events.ts), not at
@@ -124,7 +124,7 @@ export const ChessBoard = memo(function ChessBoard({
       // Always false: chessground's own coordinate labels are the ones
       // that render deformed/scattered on some mobile browsers (see the
       // now-removed .cg-wrap text-size-adjust hack this used to lean on
-      // in index.css) — coordinates are drawn ourselves instead, as a
+      // in index.css), coordinates are drawn ourselves instead, as a
       // plain React overlay below, which sidesteps that rendering path
       // entirely. `showCoordinates` still controls whether that overlay
       // renders at all.
@@ -153,16 +153,16 @@ export const ChessBoard = memo(function ChessBoard({
       groundRef.current = null;
     };
     // Deliberately NOT depending on viewOnly (or any of the other config
-    // fields also present in the sync effect below) — those are already
+    // fields also present in the sync effect below), those are already
     // pushed through via groundRef.current.set() every time they change,
     // so including them here just meant the entire Chessground instance
     // got torn down and rebuilt from scratch on every toggle (viewOnly
     // flips on literally every move-history navigation and every
     // game-finish transition) instead of a cheap in-place update. That
-    // was a real, visible stutter source — this only rebuilds when the
+    // was a real, visible stutter source, this only rebuilds when the
     // board first becomes measurable. This is safe specifically because
     // `config.viewOnly` above is hardcoded to false at construction (see
-    // that field's own comment) rather than derived from the real prop —
+    // that field's own comment) rather than derived from the real prop, 
     // otherwise a board built while genuinely view-only would never
     // receive its click/drag listeners at all, no matter what a later
     // `.set()` call pushed through.
@@ -180,11 +180,11 @@ export const ChessBoard = memo(function ChessBoard({
       turnColor,
       lastMove: lastMove as Key[] | undefined,
       check: inCheck,
-      // See the construction effect above — always off, drawn ourselves.
+      // See the construction effect above, always off, drawn ourselves.
       coordinates: false,
       // A flip repositions every piece on the board at once (their pixel
       // target changed because the axes flipped, not because anything
-      // moved) — chessground's animation system can't tell that apart
+      // moved), chessground's animation system can't tell that apart
       // from a real move, so left alone it slides all 32 squares' worth
       // of pieces into place over `duration`, which is what showed up as
       // "flip takes a moment" instead of being instant. Disabling
@@ -219,7 +219,7 @@ export const ChessBoard = memo(function ChessBoard({
 
   // The board resized (window resize, sidebar collapse/expand, orientation
   // change) without changing viewOnly, so the construction effect above
-  // won't rebuild — tell the already-live instance to recompute its bounds
+  // won't rebuild, tell the already-live instance to recompute its bounds
   // against the container's new (still multiple-of-8) pixel size instead.
   useLayoutEffect(() => {
     if (boardSize === 0) return;
@@ -242,7 +242,7 @@ export const ChessBoard = memo(function ChessBoard({
 
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
 
-// True for the traditionally-dark square at (file, rank) — a1 is dark,
+// True for the traditionally-dark square at (file, rank), a1 is dark,
 // b1 is light, etc: standard alternation is "dark when file+rank is even",
 // using file a=1..h=8. Used purely to pick a legible label color, not to
 // draw the squares themselves (chessground/CSS already own that).
@@ -252,17 +252,17 @@ function isDarkSquare(fileIndex: number, rank: number): boolean {
 }
 
 /**
- * Our own rank/file labels, replacing chessground's built-in ones — those
+ * Our own rank/file labels, replacing chessground's built-in ones, those
  * render at a small fixed CSS-px font size that mobile Safari/Chrome's
  * automatic text-size-adjust inflates per-element rather than uniformly,
  * which is what made them look randomly scattered/deformed on phone no
  * matter what `text-size-adjust: 100%` override got thrown at `.cg-wrap`
  * (see the old comment this replaced in index.css). This is a plain React
- * overlay instead — a rem-sized, ordinarily-laid-out <span> per label —
+ * overlay instead, a rem-sized, ordinarily-laid-out <span> per label, 
  * so it's simply not exposed to that mobile rendering quirk at all.
  *
  * Ranks sit in the top-left corner of the left-edge squares; files sit in
- * the bottom-right corner of the bottom-edge squares — the same corner
+ * the bottom-right corner of the bottom-edge squares, the same corner
  * convention lichess/chess.com use. Label color alternates with the
  * square's own light/dark color for contrast, the same way theirs does,
  * rather than one fixed color that would wash out on a same-toned square.

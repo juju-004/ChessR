@@ -24,7 +24,7 @@ const SIDE_OFFSET: Record<NonNullable<TooltipProps["side"]>, { y?: number; x?: n
   right: { x: -4 },
 };
 
-/** Simple hover/focus tooltip — a small elevated label, fades + nudges in on
+/** Simple hover/focus tooltip, a small elevated label, fades + nudges in on
  *  its offset axis only (still transform+opacity only). */
 export function Tooltip({ content, children, side = "top", className }: TooltipProps) {
   const [open, setOpen] = useState(false);
@@ -44,7 +44,7 @@ export function Tooltip({ content, children, side = "top", className }: TooltipP
       onFocus={() => setOpen(true)}
       onBlur={() => setOpen(false)}
       onClick={() => {
-        // On touch devices there's no mouseleave to close this — tapping
+        // On touch devices there's no mouseleave to close this, tapping
         // the trigger fires onFocus (opening it) same as a real focus, but
         // then nothing ever blurs it since focus just stays put after a
         // tap, so it was sitting there forever until something else on the

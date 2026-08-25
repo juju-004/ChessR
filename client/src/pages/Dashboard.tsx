@@ -23,7 +23,7 @@ import { ApiRequestError } from "../api/http.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import { TIME_CONTROLS, formatTimeControl } from "../timeControls.js";
 import { extractGameCode } from "../lib/utils.js";
-import { MAX_WAGER_TOKENS } from "../lib/limits.js";
+import { MAX_WAGER_TOKENS, MIN_STAKE_TOKENS } from "../lib/limits.js";
 import { useTokenBalance } from "../hooks/useTokenBalance.js";
 import { useBalanceVisibility } from "../hooks/useBalanceVisibility.js";
 import { useRakePercent } from "../hooks/useRakePercent.js";
@@ -48,7 +48,7 @@ import {
   Avatar,
 } from "../components/ui/index.js";
 
-/** A single tappable/clickable tile for the quick-links grid — one icon,
+/** A single tappable/clickable tile for the quick-links grid, one icon,
  *  one label, one destination. */
 function QuickLink({
   to,
@@ -86,7 +86,7 @@ export function Dashboard() {
   const navigate = useNavigate();
   const [tcIndex, setTcIndex] = useState(2);
   const [variant, setVariant] = useState<"standard" | "chess960">("standard");
-  const [wagerInput, setWagerInput] = useState("10");
+  const [wagerInput, setWagerInput] = useState("20");
   const [joinCodeInput, setJoinCodeInput] = useState("");
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
@@ -121,7 +121,7 @@ export function Dashboard() {
 
   const wagerTokens = Math.min(
     MAX_WAGER_TOKENS,
-    Math.max(1, Math.floor(Number(wagerInput) || 0)),
+    Math.max(MIN_STAKE_TOKENS, Math.floor(Number(wagerInput) || 0)),
   );
   const rakePercent = useRakePercent();
   const wagerRake =
@@ -169,7 +169,7 @@ export function Dashboard() {
           className="bg-black/0! border-black/0! from-primary/0 to-primary/10 bg-linear-to-tr relative overflow-hidden p-5"
         >
           {/* A faint oversized coin watermark, bleeding off the top-right
-           *  corner — the kind of restrained brand flourish an actual
+           *  corner, the kind of restrained brand flourish an actual
            *  fintech balance card leans on instead of a flat, un-styled
            *  block. Purely decorative: aria-hidden, and pointer-events-none
            *  so it never intercepts the buttons below it. */}
@@ -223,7 +223,7 @@ export function Dashboard() {
           </div>
         </Card>
 
-        {/* Quick links — the three other big areas of the app, one tap
+        {/* Quick links, the three other big areas of the app, one tap
          *  away, with an icon so this reads at a glance instead of as a
          *  wall of text links. */}
         <div className="grid grid-cols-2 gap-3 sm:flex">
@@ -248,7 +248,7 @@ export function Dashboard() {
           />
         </div>
 
-        {/* Play — create/join, collapsed behind a ResponsiveOverlay trigger
+        {/* Play, create/join, collapsed behind a ResponsiveOverlay trigger
          *  (Modal on phone, Popover on desktop) instead of two permanently
          *  expanded forms taking up the top of the dashboard. */}
         <Card variant="solid">
@@ -298,7 +298,7 @@ export function Dashboard() {
                     </span>
                   }
                   type="number"
-                  min={1}
+                  min={MIN_STAKE_TOKENS}
                   max={MAX_WAGER_TOKENS}
                   step={1}
                   value={wagerInput}
@@ -314,7 +314,7 @@ export function Dashboard() {
                   className="w-full mt-3"
                   onClick={handleCreate}
                   loading={creating}
-                  disabled={wagerTokens < 1}
+                  disabled={wagerTokens < MIN_STAKE_TOKENS}
                 >
                   Create game
                 </Button>
@@ -326,10 +326,9 @@ export function Dashboard() {
               <Input
                 type="text"
                 placeholder="Join by code or link, e.g. 7K3M9P"
-                maxLength={10}
+                maxLength={200}
                 value={joinCodeInput}
                 onChange={(e) => setJoinCodeInput(e.target.value)}
-                className="uppercase"
                 leadingIcon={<Hash className="h-4 w-4" />}
               />
               <Button variant="glass" onClick={handleJoinByCode}>

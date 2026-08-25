@@ -22,7 +22,7 @@ export function InstallAppButton({
   installOnly = false,
 }: {
   compact?: boolean;
-  /** Ignores the "already installed elsewhere" state entirely — never
+  /** Ignores the "already installed elsewhere" state entirely, never
    *  offers to jump to the installed app, only ever the install flow (or
    *  nothing, if there's genuinely no install path available). Used on
    *  the Settings page, which already has its own "✓ Installed" message
@@ -53,7 +53,7 @@ export function InstallAppButton({
     if (canPromptInstall) {
       const outcome = await promptInstall();
       if (outcome === "dismissed")
-        setStatus("Maybe next time — you can install anytime from here.");
+        setStatus("Maybe next time. You can install anytime from here.");
       return;
     }
     setShowIosSteps((v) => !v);
@@ -92,7 +92,7 @@ export function InstallAppButton({
               <span className="text-base-content">Add to Home Screen</span>.
             </li>
             <li>
-              Tap <span className="text-base-content">Add</span> — Chess R
+              Tap <span className="text-base-content">Add</span>. Chess R
               will open full-screen, just like a normal app.
             </li>
           </ol>

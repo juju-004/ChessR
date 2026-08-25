@@ -9,17 +9,17 @@ export interface PageProps {
   children: ReactNode;
   /** Header title. Omit entirely for a page that wants no header at all
    *  (still gets the responsive width/padding + fade-in). Usually a
-   *  string, but accepts any node — e.g. a logo image standing in for
+   *  string, but accepts any node, e.g. a logo image standing in for
    *  the page name. */
   title?: ReactNode;
   description?: ReactNode;
   /** Adds a back button before the title. Pass a specific route to navigate
    *  there directly, or `true` to just pop one entry off browser history. */
   back?: boolean | string;
-  /** Right-aligned header content — a primary action button, a badge, etc. */
+  /** Right-aligned header content, a primary action button, a badge, etc. */
   actions?: ReactNode;
   className?: string;
-  /** Skips the default `mx-auto max-w-5xl px-* py-*` outer container —
+  /** Skips the default `mx-auto max-w-5xl px-* py-*` outer container, 
    *  for a page rendered inside a parent that already provides that
    *  chrome (e.g. a layout route wrapping several sibling pages), so
    *  the two don't stack and double the width constraint/padding. The
@@ -28,7 +28,7 @@ export interface PageProps {
 }
 
 /**
- * The standard page shell — responsive max-width/padding, and a fade-up
+ * The standard page shell, responsive max-width/padding, and a fade-up
  * entrance on mount (opacity + y only, fully GPU-accelerated per
  * @/lib/motion.ts). Use it to wrap a route's content instead of hand-rolling
  * the same "mx-auto max-w-* px-* py-*" + optional header on every page:

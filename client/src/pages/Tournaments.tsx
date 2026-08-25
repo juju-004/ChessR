@@ -24,7 +24,7 @@ import {
 } from "../components/ui/index.js";
 
 // Client-side page size for the Open tournaments and Finished tourneys
-// lists — both endpoints already return their full set in one request
+// lists, both endpoints already return their full set in one request
 // (see listOpenTournaments/listMyTournaments), so there's no server-side
 // pagination to plug into; this just slices the array that's already in
 // memory rather than rendering a potentially long list all at once.
@@ -72,7 +72,7 @@ function TournamentRow({ t }: { t: Tournament }) {
   );
 }
 
-/** A card of tournament rows with its own local page state — used for the
+/** A card of tournament rows with its own local page state, used for the
  *  two lists that can realistically grow long (Open tournaments, Finished
  *  tourneys). Active tourneys / in-progress stay unpaginated since there's
  *  rarely more than a handful at once. */
@@ -93,7 +93,7 @@ function PaginatedTournamentCard({
 }) {
   const [page, setPage] = useState(0);
   const pageCount = Math.max(1, Math.ceil(tournaments.length / PAGE_SIZE));
-  // Clamp rather than reset to 0 outright — keeps you on the same page
+  // Clamp rather than reset to 0 outright, keeps you on the same page
   // after a list shrinks by one (e.g. a tournament you were tracking just
   // finished and moved lists) instead of always bouncing back to page 1.
   const safePage = Math.min(page, pageCount - 1);
@@ -173,7 +173,7 @@ export function Tournaments() {
     () => open.filter((t) => t.status === "active"),
     [open],
   );
-  // "Active tourneys" — yours, currently pending or under way, i.e.
+  // "Active tourneys", yours, currently pending or under way, i.e.
   // anything you'd still want to check in on. Split out from "Finished
   // tourneys" below so the two don't get mixed together under one
   // ever-growing list.

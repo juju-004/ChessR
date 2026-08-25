@@ -9,7 +9,7 @@ import {
 } from "../api/cageMatches.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useRakePercent } from "../hooks/useRakePercent.js";
-import { MAX_WAGER_TOKENS } from "../lib/limits.js";
+import { MAX_WAGER_TOKENS, MIN_STAKE_TOKENS } from "../lib/limits.js";
 import { HelpTip } from "../components/HelpTip.js";
 import { CageGamePlanEditor } from "../components/cage/CageGamePlanEditor.js";
 import {
@@ -40,7 +40,7 @@ export function CreateCageMatch() {
   const [winnerMode, setWinnerMode] = useState<CageWinnerMode>("total_score");
   const [targetWins, setTargetWins] = useState(3);
   const [wagerMode, setWagerMode] = useState<CageWagerMode>("winner_takes_all");
-  const [wagerInput, setWagerInput] = useState("10");
+  const [wagerInput, setWagerInput] = useState("20");
 
   // ?challenge= carries a friend id over from the Players page's "Cage
   // match instead" button, so the opponent is picked automatically instead
@@ -105,9 +105,9 @@ export function CreateCageMatch() {
       MAX_WAGER_TOKENS,
       Math.max(0, Math.floor(Number(wagerInput) || 0)),
     );
-    if (wagerTokens <= 0) {
+    if (wagerTokens < MIN_STAKE_TOKENS) {
       return setStatus({
-        message: "Enter a wager amount. Every cage match requires one.",
+        message: `Enter a wager of at least ${MIN_STAKE_TOKENS} R.`,
         isError: true,
       });
     }
@@ -224,7 +224,7 @@ export function CreateCageMatch() {
                   </span>
                 }
                 type="number"
-                min={1}
+                min={MIN_STAKE_TOKENS}
                 max={MAX_WAGER_TOKENS}
                 step={1}
                 value={wagerInput}

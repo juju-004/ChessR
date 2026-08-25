@@ -21,7 +21,7 @@ interface MyGamesMenuProps {
 }
 
 // Deliberately dormant: no background fetching, no socket subscriptions, no
-// badge count. It only talks to the server the moment someone opens it —
+// badge count. It only talks to the server the moment someone opens it, 
 // keeps this a zero-cost navbar item for everyone who never clicks it, and
 // avoids re-rendering it on every move played anywhere in the app.
 export function MyGamesMenu({ className }: MyGamesMenuProps) {
@@ -52,7 +52,7 @@ export function MyGamesMenu({ className }: MyGamesMenuProps) {
       onOpenChange={setOpen}
       align="start"
       // Fixed w-72 would run off the right edge of narrow phone screens
-      // when this sits near the left of the navbar (the original bug) —
+      // when this sits near the left of the navbar (the original bug), 
       // clamping to the viewport width keeps it fully on-screen no matter
       // where the trigger lands.
       className={cn(

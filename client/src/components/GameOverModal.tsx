@@ -59,7 +59,7 @@ export const GameOverModal = memo(function GameOverModal({
     if (wagerSettlement.winnerId === null) {
       return (
         <>
-          Draw — your {wagerSettlement.wagerTokens}{" "}
+          Draw, your {wagerSettlement.wagerTokens}{" "}
           <RCoin size={14} className="inline align-[-2px]" /> stake was
           refunded.
         </>
@@ -81,7 +81,7 @@ export const GameOverModal = memo(function GameOverModal({
     );
   })();
 
-  // Only worth a line when the tier actually changed — a same-tier result
+  // Only worth a line when the tier actually changed, a same-tier result
   // (the overwhelmingly common case) has nothing new to say. Unranked →
   // a real tier for the first time counts as a change too, not just a
   // tier-to-tier move.

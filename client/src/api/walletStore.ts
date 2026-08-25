@@ -1,6 +1,6 @@
 // Plain (non-React) store for the token balance, same pattern as authStore.ts.
 // Needed because multiple components (navbar badge, dashboard card, buy/withdraw
-// pages) all display the balance — without a shared store, each would hold its
+// pages) all display the balance, without a shared store, each would hold its
 // own independent useState and only the one that triggered a purchase/withdrawal
 // would ever see the updated number; everywhere else would show a stale value
 // until a full page reload.
@@ -19,7 +19,7 @@ export function setCachedBalance(newBalance: number): void {
   listeners.forEach((l) => l());
 }
 
-/** Call on logout — otherwise the previous user's balance could flash briefly
+/** Call on logout, otherwise the previous user's balance could flash briefly
  *  for whoever signs in next, before the fresh fetch completes. */
 export function clearCachedBalance(): void {
   balance = null;
@@ -31,7 +31,7 @@ export function subscribeBalance(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-/** Re-fetches from the server and updates the shared store — call this after
+/** Re-fetches from the server and updates the shared store, call this after
  *  any action that could change the balance (purchase, withdrawal) instead of
  *  relying on each page to manage its own copy. */
 export async function refreshBalance(): Promise<number> {

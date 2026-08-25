@@ -52,23 +52,23 @@ export interface IGame extends Document {
   // 0 means a free (unwagered) game.
   wagerTokens: number;
   // Flips to true exactly once, the moment the wager for this game has been
-  // paid out or refunded — guards against double-crediting tokens if the
+  // paid out or refunded, guards against double-crediting tokens if the
   // settlement path is ever triggered twice for the same game (e.g. a
   // reconciliation sweep racing the live socket flow after a restart).
   wagerSettled: boolean;
   /** Flips to true exactly once, the moment this game's result has been
    *  folded into both players' hidden rating (see rating.service.ts's
-   *  applyRatingForGame) — same double-application guard pattern as
+   *  applyRatingForGame), same double-application guard pattern as
    *  wagerSettled, for the same reason (more than one code path can reach
    *  a decisive finish for the same game: the live game-over flow,
    *  tournament withdrawal, and boot-time reconciliation). */
   ratingApplied: boolean;
-  // Set when this game is one leg of a cage match — links back to the parent
+  // Set when this game is one leg of a cage match, links back to the parent
   // CageMatch document and records this leg's position in its ordered list.
   // Left undefined for standalone games (the overwhelming majority).
   cageMatchId?: Types.ObjectId;
   legIndex?: number;
-  // Set when this game is one pairing of a tournament round — links back to
+  // Set when this game is one pairing of a tournament round, links back to
   // the parent Tournament document. Left undefined for standalone games and
   // cage match legs.
   tournamentId?: Types.ObjectId;
@@ -81,7 +81,7 @@ export interface IGame extends Document {
   createdAt: Date;
   startedAt?: Date;
   endedAt?: Date;
-  // Each side's clock, frozen at the moment the game ended — never
+  // Each side's clock, frozen at the moment the game ended, never
   // touched again after that (see finalizeGame). null for an untimed
   // game (no time control) or a game that ended before either clock
   // started running. Everything else about a game's live state lives in
@@ -115,7 +115,7 @@ const timeControlSchema = new Schema<ITimeControl>(
 
 const gameSchema = new Schema<IGame>(
   {
-    // Short, shareable, human-typeable identifier — this is what shows up in the
+    // Short, shareable, human-typeable identifier, this is what shows up in the
     // URL and what a friend types in to join. The Mongo _id stays internal.
     joinCode: { type: String, required: true, unique: true, index: true },
     variant: { type: String, enum: ['standard', 'chess960'], default: 'standard' },

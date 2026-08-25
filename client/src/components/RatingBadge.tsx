@@ -16,7 +16,7 @@ import {
 import { Badge, BADGE_VARIANT_CLASSES, type BadgeVariant } from "./ui/index.js";
 import { cn } from "../lib/cn.js";
 
-// Purely cosmetic — color/icon per tier name. Mirrors the tier ladder in
+// Purely cosmetic, color/icon per tier name. Mirrors the tier ladder in
 // the server's rating.service.ts (RATING_TIERS), but the server is the
 // only source of truth for where the actual rating thresholds sit; this
 // just needs the names to match so every tier gets its own look instead of
@@ -38,12 +38,12 @@ const TIER_STYLE: Record<string, { variant: BadgeVariant; icon: typeof Star }> =
 };
 const UNRANKED_STYLE = { variant: "neutral" as BadgeVariant, icon: HelpCircle };
 
-/** `category` is exactly what the server sent — null means "Unranked"
+/** `category` is exactly what the server sent, null means "Unranked"
  *  (fewer than the provisional-game threshold played so far), never an
  *  empty string. Pass `gamesUntilRanked` (from the same API response) to
  *  get a helpful tooltip on the Unranked state instead of a bare label.
  *  `compact` renders just the tier's icon in a small circle (title
- *  attribute carries the tier name) instead of a full icon+text pill —
+ *  attribute carries the tier name) instead of a full icon+text pill, 
  *  for tight spots like the in-game player panels, where a text badge
  *  would crowd the clock and username off an already-narrow row. */
 export function RatingBadge({
@@ -62,7 +62,7 @@ export function RatingBadge({
   const label = category ?? "Unranked";
   const title = !category
     ? gamesUntilRanked
-      ? `Unranked — ${gamesUntilRanked} more rated game${gamesUntilRanked === 1 ? "" : "s"} until your rank is calculated`
+      ? `Unranked: ${gamesUntilRanked} more rated game${gamesUntilRanked === 1 ? "" : "s"} until your rank is calculated`
       : "Unranked"
     : label;
 

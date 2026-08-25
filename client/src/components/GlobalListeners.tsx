@@ -20,7 +20,7 @@ export function GlobalListeners() {
   const [cageMatchOver, setCageMatchOver] = useState<CageMatch | null>(null);
 
   // Read inside the socket handler below instead of putting location.pathname
-  // in that effect's dependency array — this way a page navigation doesn't
+  // in that effect's dependency array, this way a page navigation doesn't
   // tear down and re-subscribe the whole pile of socket listeners, it just
   // keeps this ref current for whenever a tournament:pairing_ready event
   // actually arrives.
@@ -120,6 +120,15 @@ export function GlobalListeners() {
       navigate(`/game/${payload.joinCode}`);
     }
 
+    function onRematchStarted(payload: { joinCode: string }) {
+      // Only players get game:rematch_accepted above (it's targeted at
+      // their user room), this one's broadcast to the finished game's
+      // spectatorRoom, so it only ever reaches sockets still actually
+      // sitting on that game's page, see game:leave in gameSocket.ts for
+      // the room-membership half of that guarantee.
+      navigate(`/game/${payload.joinCode}`);
+    }
+
     function onRematchDeclined() {
       notify("Your rematch offer was declined.", [], 4000);
     }
@@ -182,12 +191,19 @@ export function GlobalListeners() {
       );
     }
 
+    function onCageNextLegSpectator(payload: { joinCode: string }) {
+      // Broadcast to the finished leg's spectatorRoom only, so, like
+      // game:rematch_started, this only ever reaches sockets still
+      // actually watching that leg (see game:leave in gameSocket.ts).
+      navigate(`/game/${payload.joinCode}`);
+    }
+
     function onCageMatchOver(payload: { matchCode: string }) {
       getCageMatchByCode(payload.matchCode)
         .then(({ match }) => setCageMatchOver(match))
         .catch(() => {
           /* If the fetch fails, the match page itself is still reachable
-             directly — no popup is better than a broken one. */
+             directly, no popup is better than a broken one. */
         });
     }
 
@@ -238,7 +254,7 @@ export function GlobalListeners() {
     }
 
     // Fires for BOTH players the instant their tournament pairing's game is
-    // created — whether that's the opening round or one that had to wait out
+    // created, whether that's the opening round or one that had to wait out
     // an inter-round break (see scheduleRoundStart in tournament.service.ts).
     // Someone actively sitting on that tournament's page gets swept straight
     // into the game, since they're clearly there waiting for it; anyone else
@@ -268,6 +284,7 @@ export function GlobalListeners() {
     socket.on("challenge:error", onChallengeError);
     socket.on("game:rematch_offered", onRematchOffered);
     socket.on("game:rematch_accepted", onRematchAccepted);
+    socket.on("game:rematch_started", onRematchStarted);
     socket.on("game:rematch_declined", onRematchDeclined);
     socket.on("cage:received", onCageReceived);
     socket.on("cage:accepted", onCageAccepted);
@@ -275,6 +292,7 @@ export function GlobalListeners() {
     socket.on("cage:cancelled", onCageCancelled);
     socket.on("cage:error", onCageError);
     socket.on("cage:next_leg", onCageNextLeg);
+    socket.on("cage:next_leg_spectator", onCageNextLegSpectator);
     socket.on("cage:match_over", onCageMatchOver);
     socket.on("cage:pause_requested", onPauseRequested);
     socket.on("cage:pause_declined", onPauseDeclined);
@@ -290,6 +308,7 @@ export function GlobalListeners() {
       socket.off("challenge:error", onChallengeError);
       socket.off("game:rematch_offered", onRematchOffered);
       socket.off("game:rematch_accepted", onRematchAccepted);
+      socket.off("game:rematch_started", onRematchStarted);
       socket.off("game:rematch_declined", onRematchDeclined);
       socket.off("cage:received", onCageReceived);
       socket.off("cage:accepted", onCageAccepted);
@@ -297,6 +316,7 @@ export function GlobalListeners() {
       socket.off("cage:cancelled", onCageCancelled);
       socket.off("cage:error", onCageError);
       socket.off("cage:next_leg", onCageNextLeg);
+      socket.off("cage:next_leg_spectator", onCageNextLegSpectator);
       socket.off("cage:match_over", onCageMatchOver);
       socket.off("cage:pause_requested", onPauseRequested);
       socket.off("cage:pause_declined", onPauseDeclined);

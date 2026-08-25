@@ -12,8 +12,8 @@ interface AuthLayoutProps {
  * The shared shell behind SignIn/SignUp: a big centered logo, the form
  * card underneath it, all sitting over a few solid diagonal "paint
  * stripe" bands in the brand gradient. The stripes are plain rotated
- * divs with a gradient background — no images, no filter: blur, no
- * backdrop-filter — so this is as cheap to paint as a flat color.
+ * divs with a gradient background, no images, no filter: blur, no
+ * backdrop-filter, so this is as cheap to paint as a flat color.
  */
 export function AuthLayout({
   title,
@@ -23,7 +23,7 @@ export function AuthLayout({
 }: AuthLayoutProps) {
   return (
     <div className="relative flex min-h-dvh w-full items-center justify-center overflow-hidden bg-base-100 px-5 py-12">
-      {/* Decorative background — a handful of oversized rounded bars,
+      {/* Decorative background, a handful of oversized rounded bars,
        *  rotated and offset past the edges of the viewport, each filled
        *  with the brand gradient at a different angle/opacity so they
        *  read as loose overlapping paint strokes rather than a grid. */}

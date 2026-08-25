@@ -7,7 +7,7 @@ export interface SuspicionSignal {
 
 export interface SuspicionReport {
   side: 'white' | 'black';
-  score: number; // 0-100, purely relative — see note below.
+  score: number; // 0-100, purely relative, see note below.
   signals: SuspicionSignal[];
   thinkTimesMs: number[];
 }
@@ -19,17 +19,17 @@ export interface SuspicionReport {
  * gets compared against a chess engine's evaluation to compute centipawn
  * loss, that gets aggregated into an accuracy score, and THAT gets compared
  * against a statistical baseline built from millions of games at each
- * rating band to flag outliers — plus a manual review queue behind it,
+ * rating band to flag outliers, plus a manual review queue behind it,
  * because the automated signal alone produces false positives. That's a
  * standing piece of infrastructure (an engine cluster, a baseline dataset,
- * ongoing tuning), not something to bolt on in one pass — and a half-built
+ * ongoing tuning), not something to bolt on in one pass, and a half-built
  * version of it (an engine check with no baseline to compare against) would
  * mostly produce confident-looking numbers that don't actually mean
  * anything, which is worse than not having it: it invites accusing people
  * based on noise.
  *
- * What this DOES do: surface a move-timing signal — already-recorded data,
- * computed lazily when an admin opens a reported game — to help a human
+ * What this DOES do: surface a move-timing signal, already-recorded data,
+ * computed lazily when an admin opens a reported game, to help a human
  * reviewer's eye, not to make an automated call. Two patterns worth a
  * human's attention:
  *   - a long run of moves all taking almost exactly the same short amount
@@ -37,7 +37,7 @@ export interface SuspicionReport {
  *   - a very fast, precise move immediately after the opponent creates a
  *     genuinely hard position (few decent options, most of them losing)
  *
- * This is a hint, not a verdict — it's deliberately framed as "worth a
+ * This is a hint, not a verdict, it's deliberately framed as "worth a
  * look," and the score is only meaningful relative to other games, never
  * as a standalone percentage. The actual anti-cheat tool for now is the
  * report + admin review workflow itself: a human looking at the move list

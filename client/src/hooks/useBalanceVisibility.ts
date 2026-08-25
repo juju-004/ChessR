@@ -6,7 +6,7 @@ import {
 } from '../lib/balanceVisibilityStore.js';
 
 /** Whether the R Coin balance is currently masked (behind ••••), and a way
- *  to flip it — reads the shared store so every component using this hook
+ *  to flip it, reads the shared store so every component using this hook
  *  (navbar pill, dashboard wallet card) toggles together instantly, the
  *  same relationship useTokenBalance has with the balance itself. */
 export function useBalanceVisibility() {

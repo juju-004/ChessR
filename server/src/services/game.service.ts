@@ -18,7 +18,7 @@ import { applyRatingForGame } from "./rating.service.js";
 // (createDirectGame, finalizeGame, settleWager), so this is a deliberate
 // circular import. It's safe here because every cross-reference on both
 // sides is a hoisted `function` export only ever called at runtime (inside
-// request/reconciliation handlers) — never evaluated at module-load time —
+// request/reconciliation handlers), never evaluated at module-load time, 
 // so there's no temporal-dead-zone issue either direction.
 import { advanceCageMatchLeg } from "./cageMatch.service.js";
 // Same deliberate circular-import pattern as advanceCageMatchLeg above.
@@ -27,7 +27,7 @@ import { advanceTournamentIfPairing } from "./tournament.service.js";
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 // A normal game (not a cage match leg, not a tournament pairing) that's sat
-// in the idle phase — active, but neither side has made their first move —
+// in the idle phase, active, but neither side has made their first move, 
 // for this long gets auto-cancelled by the reconciliation sweep below.
 // Cage match legs have their own no-show forfeit timer, and tournament
 // pairings are intentionally left out of scope here (walking away from a
@@ -35,14 +35,14 @@ const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 // player's behalf), so only plain games get this treatment.
 const IDLE_PHASE_ABANDON_MS = 5 * 60 * 1000;
 
-// Safety limit — a user can't be tied up in more than this many games at
+// Safety limit, a user can't be tied up in more than this many games at
 // once. Counts anything they're a player in that's still 'waiting' (their
 // own open table) or 'active' (in progress), including cage-match legs and
 // tournament pairings.
 //
 // Deliberately NOT enforced inside createDirectGame itself, since that
 // function is also how cage matches and tournaments advance a player into
-// their next scheduled game — those must never be blocked by this. Instead
+// their next scheduled game, those must never be blocked by this. Instead
 // every user-initiated entry point (createOpenGame, joinOpenGame, challenge
 // acceptance, rematch acceptance) calls assertUnderActiveGameLimit
 // explicitly before creating anything.
@@ -102,8 +102,8 @@ export async function createOpenGame(
   const startingFen =
     variant === "chess960" ? generateChess960Fen() : STARTING_FEN;
 
-  // Host's stake is locked up front, the moment the table is opened — not at
-  // join time — so a wagered game can never be sitting open with a stake the
+  // Host's stake is locked up front, the moment the table is opened, not at
+  // join time, so a wagered game can never be sitting open with a stake the
   // host doesn't actually have. It's refunded via cancelOpenGame if nobody
   // joins.
   const game = await Game.create({
@@ -137,7 +137,7 @@ export async function createOpenGame(
 
 /** Lets the host back out of a game nobody has joined yet, refunding their
  *  stake. Once someone has joined the game is 'active' and this no longer
- *  applies — game:abort (only available with zero moves played) is the
+ *  applies, game:abort (only available with zero moves played) is the
  *  equivalent for that stage. */
 export async function cancelOpenGame(gameId: string, hostUserId: string): Promise<void> {
   const game = await Game.findById(gameId);
@@ -157,7 +157,7 @@ export async function cancelOpenGame(gameId: string, hostUserId: string): Promis
 
 /** Joins an open game and starts it immediately. Also notifies anyone already
  *  sitting in the game's socket room (i.e. the creator, waiting) that the game
- *  is live now — without this, the creator's board stays stuck in "waiting"
+ *  is live now, without this, the creator's board stays stuck in "waiting"
  *  view-only mode until they manually reload. */
 export async function joinOpenGame(
   gameId: string,
@@ -172,7 +172,7 @@ export async function joinOpenGame(
   }
   await assertUnderActiveGameLimit(joiningUserId);
 
-  // Match the host's stake before anything else changes — if the joiner
+  // Match the host's stake before anything else changes, if the joiner
   // can't cover it, the game stays exactly as it was (still waiting, host's
   // stake untouched) rather than half-starting.
   if (game.wagerTokens > 0) {
@@ -206,7 +206,7 @@ export async function joinOpenGame(
   try {
     getIo().to(`game:${game.id}`).emit("game:state_changed");
   } catch {
-    // Socket.IO not initialized (e.g. in a script/test context) — safe to ignore.
+    // Socket.IO not initialized (e.g. in a script/test context), safe to ignore.
   }
 
   return game;
@@ -255,7 +255,7 @@ export async function createDirectGame(
   });
 
   // Both sides stake at the moment the game is actually created (i.e. right
-  // after a challenge is accepted, or a rematch confirmed) — not earlier,
+  // after a challenge is accepted, or a rematch confirmed), not earlier,
   // since a pending challenge/rematch offer can simply expire or be declined.
   if (wagerTokens > 0) {
     try {
@@ -263,7 +263,7 @@ export async function createDirectGame(
       try {
         await debitWagerStake(blackId, game.id, wagerTokens);
       } catch (err) {
-        // Black couldn't cover it — put White's stake back rather than
+        // Black couldn't cover it, put White's stake back rather than
         // leaving them charged for a game that's about to be torn down.
         await creditWagerReturn(whiteId, game.id, wagerTokens, "wager_refund");
         throw err;
@@ -290,7 +290,7 @@ export async function createDirectGame(
   return game;
 }
 
-/** Every game — waiting or active — the given user is currently seated in,
+/** Every game, waiting or active, the given user is currently seated in,
  *  across friends and strangers alike. Powers the "your games" switcher in
  *  the navbar, which needs to work regardless of who the opponent is. */
 export async function listMyActiveGames(userId: string) {
@@ -314,7 +314,7 @@ export async function listFriendsActiveGames(userId: string) {
     status: "active",
     $or: [{ white: { $in: friendIds } }, { black: { $in: friendIds } }],
     // A game the viewer is themself playing in isn't "a friend currently
-    // playing" from their own point of view — it's just their own game, and
+    // playing" from their own point of view, it's just their own game, and
     // showing it here (with a "Watch" link back into their own live game)
     // was the actual bug being fixed. Exclude it regardless of which side
     // of the board the viewer is on.
@@ -354,7 +354,7 @@ export async function getGameByCode(code: string) {
   const game = await Game.findOne({ joinCode: code.toUpperCase() })
     .populate("white", "username avatarGradient rating ratedGamesPlayed")
     .populate("black", "username avatarGradient rating ratedGamesPlayed")
-    // Just the join code — enough for a "Back to tournament" link without
+    // Just the join code, enough for a "Back to tournament" link without
     // pulling the whole Tournament doc down for every single game fetch.
     // code (for the "Back to tournament" link) and name (shown on the
     // in-game tournament badge instead of a generic "Tournament game" label).
@@ -410,7 +410,7 @@ export async function finalizeGame(
         endedAt: new Date(),
         // Optional and defaulted to null rather than required: some call
         // sites (older code paths, or ones that only have the FEN handy)
-        // don't have a LiveGameState to read a clock from — better to
+        // don't have a LiveGameState to read a clock from, better to
         // persist a known-absent clock than to force every call site to
         // thread one through just to satisfy the signature.
         whiteRemainingMs: finalClock?.whiteRemainingMs ?? null,
@@ -423,7 +423,7 @@ export async function finalizeGame(
 /**
  * Sweeps every game marked 'active' in Mongo and makes sure it actually has a
  * live, correctly-scheduled timer behind it. This exists because the per-game
- * clock timer lives in process memory (see clock.service.ts) — a server
+ * clock timer lives in process memory (see clock.service.ts), a server
  * restart wipes every scheduled timeout silently, leaving the game stuck as
  * "active" forever with nothing left to ever resolve it. Call this once on
  * boot (to recover from the restart that just happened) and periodically
@@ -434,13 +434,13 @@ export interface WagerSettlement {
   wagerTokens: number;
   potTokens: number;
   winnerId: string | null; // null for a draw (both refunded) or an unwagered game
-  rakeTokens: number; // platform's cut — 0 for a draw (nothing to rake, it's a refund)
+  rakeTokens: number; // platform's cut, 0 for a draw (nothing to rake, it's a refund)
   payoutTokens: number; // what the winner actually received (potTokens - rakeTokens); 0 for a draw
 }
 
 /**
  * Pays out (or refunds) a game's R token wager exactly once. Guarded by an
- * atomic flip of wagerSettled — if two callers race (e.g. the live socket
+ * atomic flip of wagerSettled, if two callers race (e.g. the live socket
  * flow and a reconciliation sweep after a restart both try to settle the same
  * game), only the first one to flip the flag actually moves any tokens.
  * A no-op (returns null) for unwagered games, since there's nothing to settle.
@@ -470,7 +470,7 @@ export async function settleWager(
     return { wagerTokens, potTokens, winnerId: null, rakeTokens: 0, payoutTokens: 0 };
   }
 
-  // Rake comes off the pot before the winner is paid — see wallet.service.ts's
+  // Rake comes off the pot before the winner is paid, see wallet.service.ts's
   // computeRake for the split, RAKE_PERCENT in .env for the rate.
   const { rakeTokens, netTokens } = computeRake(potTokens);
   const winnerId = result === "white" ? whiteId : blackId;
@@ -520,7 +520,7 @@ export async function reconcileActiveGames(): Promise<{
 
     if (!liveState) {
       // No live state to resume from (Redis TTL expired, or it was never
-      // properly initialized) — there's nothing safe to do but close it out
+      // properly initialized), there's nothing safe to do but close it out
       // rather than leave it stuck as "active" indefinitely. Since neither
       // side did anything wrong here, refund both stakes rather than
       // treating it as a loss for either player.
@@ -532,7 +532,7 @@ export async function reconcileActiveGames(): Promise<{
         // Same treatment as a live no-moves abort: no real winner to report,
         // so it's scored as a draw for this leg rather than stalling the
         // whole cage match indefinitely.
-        await advanceCageMatchLeg(g.cageMatchId.toString(), g.legIndex, "draw", "abandoned");
+        await advanceCageMatchLeg(g.cageMatchId.toString(), g.legIndex, "draw", "abandoned", gameId);
       }
       if (g.tournamentId && g.roundIndex !== undefined && g.pairingIndex !== undefined) {
         await advanceTournamentIfPairing(
@@ -569,7 +569,7 @@ export async function reconcileActiveGames(): Promise<{
 
     const timeoutWinner = computeTimeoutWinner(liveState);
     if (timeoutWinner) {
-      // The side that timed out is whichever one WASN'T the winner — their
+      // The side that timed out is whichever one WASN'T the winner, their
       // clock is what hit zero, so that's what gets persisted; the other
       // side's clock wasn't running and keeps whatever liveState already
       // has for it.
@@ -594,7 +594,7 @@ export async function reconcileActiveGames(): Promise<{
         console.error("applyRatingForGame failed during reconciliation:", err),
       );
       if (g.cageMatchId && g.legIndex !== undefined) {
-        await advanceCageMatchLeg(g.cageMatchId.toString(), g.legIndex, timeoutWinner, "timeout");
+        await advanceCageMatchLeg(g.cageMatchId.toString(), g.legIndex, timeoutWinner, "timeout", gameId);
       }
       if (g.tournamentId && g.roundIndex !== undefined && g.pairingIndex !== undefined) {
         await advanceTournamentIfPairing(

@@ -10,16 +10,16 @@ export interface ConfirmModalProps {
   description?: string;
   confirmLabel?: string;
   cancelLabel?: string;
-  /** `danger` gets a warning icon and a red confirm button — for anything
+  /** `danger` gets a warning icon and a red confirm button, for anything
    *  irreversible (resigning, cancelling, withdrawing). */
   variant?: "default" | "danger";
-  /** Shows a spinner on the confirm button and disables both buttons — for
+  /** Shows a spinner on the confirm button and disables both buttons, for
    *  an onConfirm that kicks off an async action itself rather than firing
    *  a fire-and-forget socket event. */
   loading?: boolean;
 }
 
-/** The one confirmation-dialog component for the app — styled consistently
+/** The one confirmation-dialog component for the app, styled consistently
  *  instead of the browser's unstyleable native confirm(). Most call sites
  *  won't use this directly though; reach for useConfirm() (see
  *  contexts/ConfirmContext.tsx) for the ergonomic promise-based API this

@@ -15,9 +15,12 @@ import {
 import { getRatingCategory } from "../services/rating.service.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 
-// Sanity ceiling on a single wager — not a business limit, just a guard
+// Sanity ceiling on a single wager, not a business limit, just a guard
 // against fat-fingered/garbage input reaching the wallet layer.
 const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
+// Floor on any single wager/stake/fee amount, kept in sync with
+// MIN_STAKE_TOKENS in client/src/lib/limits.ts.
+const MIN_STAKE_TOKENS = 20;
 
 const createSchema = z.object({
   isPrivate: z.boolean().optional().default(false),
@@ -28,7 +31,7 @@ const createSchema = z.object({
   wagerTokens: z
     .number()
     .int()
-    .min(1, "A wager is required for every game")
+    .min(MIN_STAKE_TOKENS, `A wager of at least ${MIN_STAKE_TOKENS} R is required for every game`)
     .max(MAX_WAGER_TOKENS),
 });
 const idParamSchema = z.object({
@@ -76,7 +79,7 @@ export const joinGame = asyncHandler(async (req: AuthedRequest, res) => {
 });
 
 export const getOpenGames = asyncHandler(async (_req: AuthedRequest, res) => {
-  // Deliberately includes the caller's own open games now — the client needs
+  // Deliberately includes the caller's own open games now, the client needs
   // to see them to offer a "Cancel" action instead of a "Join" one.
   const games = await listOpenGames();
   res.json({ games });
@@ -107,7 +110,7 @@ export const getMyActiveGames = asyncHandler(
 );
 
 // Swaps a populated white/black user sub-doc's raw rating fields for the
-// computed, client-safe category before anything reaches res.json —
+// computed, client-safe category before anything reaches res.json, 
 // getGameByCode selects `rating`/`ratedGamesPlayed` on the populate purely
 // so this can compute from them; neither should ever leave the server.
 function withRatingCategory<T extends { rating?: number; ratedGamesPlayed?: number } | null>(

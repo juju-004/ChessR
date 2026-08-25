@@ -3,7 +3,7 @@ import { RefreshCw } from "lucide-react";
 /** Small icon button used on cards that can go slightly stale between
  *  socket events (Open tournaments, Active cage matches, etc.) so a person
  *  can pull the latest state on demand instead of reloading the whole
- *  page — the relevant socket listeners already refresh automatically on
+ *  page, the relevant socket listeners already refresh automatically on
  *  the events that fire server-side, but there's no event for "someone
  *  else's clock just ran out" or similar passive changes, so a manual
  *  button covers the gap. */

@@ -22,7 +22,7 @@ import {
 import { formatRelativeTime } from "@/lib/utils.js";
 import { cn } from "@/lib/cn.js";
 
-// Client-side page size for Match history — listMyCageMatches already
+// Client-side page size for Match history, listMyCageMatches already
 // returns the full set in one request, so this just slices the array
 // that's already in memory rather than rendering a potentially long list
 // all at once. Same pattern as Tournaments.tsx.
@@ -95,7 +95,7 @@ function CageMatchRow({ m, myId }: { m: CageMatch; myId: string | undefined }) {
   );
 }
 
-/** A card of match rows with its own local page state — used for Match
+/** A card of match rows with its own local page state, used for Match
  *  history, which can realistically grow long. Active matches stay
  *  unpaginated since there's rarely more than a handful at once. */
 function PaginatedMatchCard({
@@ -111,7 +111,7 @@ function PaginatedMatchCard({
 }) {
   const [page, setPage] = useState(0);
   const pageCount = Math.max(1, Math.ceil(matches.length / PAGE_SIZE));
-  // Clamp rather than reset to 0 outright — keeps you on the same page
+  // Clamp rather than reset to 0 outright, keeps you on the same page
   // after the list shrinks by one instead of always bouncing back to page 1.
   const safePage = Math.min(page, pageCount - 1);
   const pageItems = matches.slice(
@@ -177,7 +177,7 @@ export function CageMatches() {
   }, [refreshMatches]);
 
   // The success message set by CreateCageMatch on navigation is only
-  // meant to be shown once — clear it from history state so a refresh or
+  // meant to be shown once, clear it from history state so a refresh or
   // the back button doesn't keep re-triggering it.
   useEffect(() => {
     if (location.state) {

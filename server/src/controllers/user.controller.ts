@@ -11,7 +11,7 @@ const searchSchema = z.object({
   q: z.string().trim().min(1).max(24),
 });
 
-// Mirrors the ids in client/src/lib/avatarGradients.ts — kept as a plain
+// Mirrors the ids in client/src/lib/avatarGradients.ts, kept as a plain
 // allow-list here (not colors, we don't need those server-side) so a
 // gradient value can never end up holding an arbitrary/unstyled string.
 const VALID_AVATAR_GRADIENTS = [
@@ -113,11 +113,11 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
 
   const isFriend = req.user ? user.friends.some((f) => f.toString() === req.user!.id) : false;
   const isSelf = req.user?.id === user._id.toString();
-  // Only worth checking once we know it isn't the viewer's own profile —
+  // Only worth checking once we know it isn't the viewer's own profile, 
   // there's no "watch yourself" button to show either way.
   const activeGameCode = isSelf ? null : await getActiveGameCodeForUser(user._id.toString());
 
-  // Head-to-head record against whoever's looking at this profile — only
+  // Head-to-head record against whoever's looking at this profile, only
   // makes sense when someone's logged in and it's not their own profile.
   let h2h: { wins: number; losses: number; draws: number } | null = null;
   if (req.user && !isSelf) {
@@ -147,7 +147,7 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
       }),
     ]);
     const total = viewerWins + viewerLosses + viewerDraws;
-    // null (not a zeroed object) when they've simply never played — lets
+    // null (not a zeroed object) when they've simply never played, lets
     // the client skip rendering the h2h card entirely rather than showing
     // an empty "0-0-0" for every stranger's profile.
     h2h = total > 0 ? { wins: viewerWins, losses: viewerLosses, draws: viewerDraws } : null;
@@ -211,7 +211,7 @@ export const getUserGames = asyncHandler(async (req, res) => {
       result: myResult,
       endReason: g.endReason,
       timeControl: g.timeControl,
-      // game.moves.length is a *ply* count (one entry per half-move — White's
+      // game.moves.length is a *ply* count (one entry per half-move. White's
       // e4 and Black's e5 are two separate entries). The number chess
       // players actually mean by "N moves" only increments once per full
       // move pair, so this needs to be halved (rounding up, since a game

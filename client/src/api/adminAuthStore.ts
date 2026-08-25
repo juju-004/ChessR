@@ -1,6 +1,6 @@
 // Deliberately its own store, not a mode/flag on the player authStore.
 // Admin never has a "user" object, never shows up in the navbar/account
-// menu, and isn't a User document at all server-side — keeping the token
+// menu, and isn't a User document at all server-side, keeping the token
 // storage separate too means there's no path by which a player session
 // and an admin session can bleed into each other.
 //

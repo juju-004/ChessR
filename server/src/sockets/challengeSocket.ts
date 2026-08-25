@@ -11,20 +11,23 @@ import type { AuthedSocketData } from './socketAuth.js';
 const CHALLENGE_TTL_SECONDS = 60;
 const challengeKey = (id: string) => `challenge:${id}`;
 // Tracks "userId already has an unanswered challenge out to this specific
-// person" — same TTL as the challenge itself. Blocks challenge:send from
+// person", same TTL as the challenge itself. Blocks challenge:send from
 // firing again for the same pair while one's still pending, which is what
 // actually stops a repeated-challenge spam burst at the source, rather than
 // just hiding the resulting notifications on the receiving end.
 const pendingPairKey = (fromId: string, toId: string) => `challenge:pending:${fromId}:${toId}`;
 
 const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
+// Floor on any single wager/stake/fee amount, kept in sync with
+// MIN_STAKE_TOKENS in client/src/lib/limits.ts.
+const MIN_STAKE_TOKENS = 20;
 
 const sendSchema = z.object({
   toUserId: z.string().refine(mongoose.isValidObjectId),
   baseMinutes: z.number().min(1).max(180).nullable().optional().default(10),
   incrementSeconds: z.number().min(0).max(60).optional().default(0),
   variant: z.enum(['standard', 'chess960']).optional().default('standard'),
-  wagerTokens: z.number().int().min(1, 'A wager is required for every game').max(MAX_WAGER_TOKENS),
+  wagerTokens: z.number().int().min(MIN_STAKE_TOKENS, `A wager of at least ${MIN_STAKE_TOKENS} R is required for every game`).max(MAX_WAGER_TOKENS),
 });
 const respondSchema = z.object({ challengeId: z.string(), accept: z.boolean() });
 
@@ -67,13 +70,13 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
       if (!online) return emitError(socket, 'That friend is currently offline');
 
       // Soft check up front so a challenger can't send a stake they can't
-      // cover — the authoritative debit still happens for both sides at
+      // cover, the authoritative debit still happens for both sides at
       // acceptance time, since balances can change in the meantime.
       if (wagerTokens > 0 && (me?.tokenBalance ?? 0) < wagerTokens) {
         return emitError(socket, "You don't have enough R tokens for that wager");
       }
 
-      // Same soft-check pattern for the active-game cap — the authoritative
+      // Same soft-check pattern for the active-game cap, the authoritative
       // check happens again for both sides at acceptance time.
       const myActiveCount = await countActiveGamesForUser(userId);
       if (myActiveCount >= MAX_ACTIVE_GAMES_PER_USER) {
@@ -142,7 +145,7 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
         return;
       }
 
-      // Authoritative re-check for both sides — either could have hit the
+      // Authoritative re-check for both sides, either could have hit the
       // cap in the time between the challenge being sent and answered.
       try {
         await assertUnderActiveGameLimit(fromId);
@@ -176,8 +179,8 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
         );
       } catch (err) {
         // Most likely: one side's R token balance dropped below the wager
-        // between sending/accepting. Nobody's tokens are left committed —
-        // createDirectGame already unwound any partial debit — so just tell
+        // between sending/accepting. Nobody's tokens are left committed, 
+        // createDirectGame already unwound any partial debit, so just tell
         // both sides the game never started.
         const message = err instanceof Error ? err.message : 'Could not start the game';
         emitError(socket, message);

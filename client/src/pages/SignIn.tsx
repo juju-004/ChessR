@@ -11,7 +11,7 @@ import { User2, LockOpen, Eye, EyeOff, AlertCircle } from "lucide-react";
 export function SignIn() {
   const navigate = useNavigate();
 
-  // Same guard as SignUp — a logged-in user hitting /signin has nothing to
+  // Same guard as SignUp, a logged-in user hitting /signin has nothing to
   // do here.
   if (isLoggedIn()) return <Navigate to="/" replace />;
 
@@ -41,7 +41,7 @@ export function SignIn() {
     try {
       const { isNewUser } = await googleSignin(credential);
       // Fresh account: its username was auto-generated from the Google
-      // profile name/email, never actually chosen by them — send them
+      // profile name/email, never actually chosen by them, send them
       // through the one-time picker before the dashboard. An existing
       // account signing in with Google for the first time already has a
       // real username, so it skips straight through.

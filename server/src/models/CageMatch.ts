@@ -1,10 +1,10 @@
 import mongoose, { Schema, type Document, type Types } from 'mongoose';
 
 // A "cage match" is a pre-defined ordered series of games (legs) between the
-// same two players — e.g. 10 bullet + 5 blitz + 3 rapid, played back to back.
+// same two players, e.g. 10 bullet + 5 blitz + 3 rapid, played back to back.
 // Legs are created and settled one at a time, reusing the exact same Game
 // documents / socket flow as a standalone game (each leg IS a normal Game,
-// just tagged with cageMatchId + legIndex) — this file only tracks the
+// just tagged with cageMatchId + legIndex), this file only tracks the
 // series-level bookkeeping: the leg plan, running score, and overall wager.
 
 export type CageMatchStatus = 'active' | 'finished' | 'cancelled';
@@ -14,14 +14,14 @@ export type CageWinnerMode = 'total_score' | 'most_categories' | 'first_to_n';
 
 // How (and whether) the match is wagered.
 //  - 'none': free match, no tokens at stake. No longer selectable when
-//    starting a new match (wagers are compulsory — see the sendSchema in
+//    starting a new match (wagers are compulsory, see the sendSchema in
 //    cageMatchSocket.ts and the guard in startCageMatch), kept in the type
 //    only because older matches created before that requirement existed
 //    may still have it.
 //  - 'winner_takes_all': the full wagerTokens amount is staked once by each
 //    player up front and escrowed for the whole match; the overall winner
 //    takes the combined pot at the end (refunded to both on an overall draw).
-//  - 'per_leg': wagerTokens is a PER-LEG stake — each leg is staked and
+//  - 'per_leg': wagerTokens is a PER-LEG stake, each leg is staked and
 //    settled independently, exactly like a normal wagered game, the moment
 //    that leg finishes.
 //  - 'split_even': wagerTokens is the TOTAL amount a player is willing to
@@ -30,7 +30,7 @@ export type CageWinnerMode = 'total_score' | 'most_categories' | 'first_to_n';
 //    just a different way of sizing the per-leg stake from user input).
 export type CageWagerMode = 'none' | 'winner_takes_all' | 'per_leg' | 'split_even';
 
-// bullet/blitz/rapid/classical, auto-derived from each leg's base time —
+// bullet/blitz/rapid/classical, auto-derived from each leg's base time, 
 // this is what "most_categories" groups legs by.
 export type LegCategory = 'bullet' | 'blitz' | 'rapid' | 'classical';
 
@@ -40,10 +40,10 @@ export type LegResult = 'p1' | 'p2' | 'draw' | null;
 //  - 'completed': every leg was played (or the winner mode's target/clinch
 //    condition was met) and the score decided it normally.
 //  - 'no_show_forfeit': legacy value from before first-move timeouts were
-//    unified across all game types — historical matches may still have this,
+//    unified across all game types, historical matches may still have this,
 //    but it's no longer produced. A first-move no-show now just loses that
 //    one leg via the ordinary per-game first-move timer (see
-//    clock.service.ts), the same as any other timeout — the match continues
+//    clock.service.ts), the same as any other timeout, the match continues
 //    on score as usual, exactly like 'forfeit' below never applied to it.
 //  - 'forfeit': a player explicitly forfeited the whole match.
 export type CageMatchEndReason = 'completed' | 'no_show_forfeit' | 'forfeit' | null;
@@ -55,7 +55,7 @@ export interface ICageLeg {
   incrementSeconds: number;
   category: LegCategory;
   // 'paused' only ever applies before BOTH sides have made their first
-  // move — see the cage:pause_request / cage:resume_request socket flow.
+  // move, see the cage:pause_request / cage:resume_request socket flow.
   // Both players must agree to pause and to resume; either can request, the other accepts or
   // declines.
   status: 'pending' | 'active' | 'paused' | 'finished' | 'skipped';
@@ -69,7 +69,7 @@ export interface ICageMatch extends Document {
   _id: Types.ObjectId;
   matchCode: string;
   // player1 is always the challenger (match creator); player2 the friend who
-  // accepted. Board colors still alternate/randomize per leg independently —
+  // accepted. Board colors still alternate/randomize per leg independently, 
   // this ordering is just for score bookkeeping, not who plays white.
   player1: Types.ObjectId;
   player2: Types.ObjectId;
@@ -79,7 +79,7 @@ export interface ICageMatch extends Document {
   winnerMode: CageWinnerMode;
   targetWins: number | null; // only used when winnerMode === 'first_to_n'
   wagerMode: CageWagerMode;
-  // Interpretation depends on wagerMode — see CageWagerMode docs above.
+  // Interpretation depends on wagerMode, see CageWagerMode docs above.
   // Always 0 when wagerMode === 'none'.
   wagerTokens: number;
   wagerSettled: boolean;

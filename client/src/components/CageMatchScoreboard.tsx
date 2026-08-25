@@ -25,18 +25,18 @@ const PIP_COLOR: Record<CageLeg["status"], string> = {
 };
 
 function pipTitle(leg: CageLeg, p1Name: string, p2Name: string): string {
-  if (leg.status === "active") return `Game ${leg.index + 1} — in progress`;
-  if (leg.status === "paused") return `Game ${leg.index + 1} — paused`;
-  if (leg.status === "skipped") return `Game ${leg.index + 1} — skipped`;
-  if (leg.status === "pending") return `Game ${leg.index + 1} — not yet played`;
-  if (leg.result === "draw") return `Game ${leg.index + 1} — draw`;
-  if (leg.result === "p1") return `Game ${leg.index + 1} — ${p1Name} won`;
-  if (leg.result === "p2") return `Game ${leg.index + 1} — ${p2Name} won`;
+  if (leg.status === "active") return `Game ${leg.index + 1}: in progress`;
+  if (leg.status === "paused") return `Game ${leg.index + 1}: paused`;
+  if (leg.status === "skipped") return `Game ${leg.index + 1}: skipped`;
+  if (leg.status === "pending") return `Game ${leg.index + 1}: not yet played`;
+  if (leg.result === "draw") return `Game ${leg.index + 1}: draw`;
+  if (leg.result === "p1") return `Game ${leg.index + 1}: ${p1Name} won`;
+  if (leg.result === "p2") return `Game ${leg.index + 1}: ${p2Name} won`;
   return `Game ${leg.index + 1}`;
 }
 
 /** A compact "where are we in this series" scoreboard shown on a leg's game
- *  page — for players AND spectators who land on a leg midway through a cage
+ *  page, for players AND spectators who land on a leg midway through a cage
  *  match and need the score and remaining-games context at a glance, without
  *  clicking through to the full match page. */
 export function CageMatchScoreboard({ cageMatchId, legIndex }: Props) {
@@ -50,7 +50,7 @@ export function CageMatchScoreboard({ cageMatchId, legIndex }: Props) {
         if (!cancelled) setMatch(match);
       })
       .catch(() => {
-        /* Scoreboard is a nice-to-have — a fetch failure just means we
+        /* Scoreboard is a nice-to-have, a fetch failure just means we
            don't show it, no need to surface an error on the game page. */
       });
     return () => {

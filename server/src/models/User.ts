@@ -6,17 +6,17 @@ export interface IUser extends Document {
   usernameLower: string;
   email: string;
   /** Absent for accounts created via Google sign-in that have never set a
-   *  local password — see auth.controller.ts's signin, which rejects a
+   *  local password, see auth.controller.ts's signin, which rejects a
    *  password attempt with a "use Google sign-in instead" message rather
    *  than a generic bcrypt failure when this is unset. */
   passwordHash?: string;
   /** Google's stable per-account subject id ("sub" claim), set the first
-   *  time someone signs in with Google — either on a brand-new account or
+   *  time someone signs in with Google, either on a brand-new account or
    *  linked onto an existing email/password one. Sparse+unique so at most
    *  one User can ever claim a given Google account, while leaving it
    *  undefined on every account that's never used Google sign-in. */
   googleId?: string;
-  /** True once the address in `email` has been confirmed — via clicking
+  /** True once the address in `email` has been confirmed, via clicking
    *  the emailed link (see verification.service.ts) or, for Google
    *  sign-in, inherited directly from Google's own `email_verified` claim.
    *  Gates nothing server-side yet beyond the client's "verify your email"
@@ -24,7 +24,7 @@ export interface IUser extends Document {
    *  presence) means that can grow into an enforced gate later without a
    *  migration. */
   emailVerified: boolean;
-  /** sha256 hex digest of the current outstanding verification token —
+  /** sha256 hex digest of the current outstanding verification token, 
    *  the raw token itself is only ever in the emailed link, never stored,
    *  so a database read alone can't be used to verify someone else's
    *  address. select:false alongside passwordHash since neither should
@@ -34,33 +34,33 @@ export interface IUser extends Document {
   tokenBalance: number;
   friends: Types.ObjectId[];
   avatarUrl?: string;
-  /** Preset id from the client's avatarGradients.ts list — validated against
+  /** Preset id from the client's avatarGradients.ts list, validated against
    *  that same allow-list server-side (see user.controller.ts) so this can
    *  never end up holding an arbitrary/unstyled string. */
   avatarGradient?: string;
   /** Short freeform profile blurb, shown under the username. */
   bio?: string;
   /** Set the moment any report is filed against this user (see Report
-   *  model) — instant, automatic, and independent of whether the report
+   *  model), instant, automatic, and independent of whether the report
    *  turns out to be substantiated. An admin clears it from the report
    *  review screen once they've looked into it. See wallet.service's
    *  initiateWithdrawal for the enforcement side. */
   withdrawalBlocked: boolean;
   /** Set by an admin (not automatic, unlike withdrawalBlocked) when a
-   *  user's own reports turn out to be spam/bad-faith — stops them from
+   *  user's own reports turn out to be spam/bad-faith, stops them from
    *  filing new reports without touching anything else on the account.
    *  See report.service.createReport for enforcement. */
   reportingBlocked: boolean;
   tokenVersion: number;
-  /** Hidden internal skill rating — Elo-like, starts at 1500, shared across
+  /** Hidden internal skill rating. Elo-like, starts at 1500, shared across
    *  every time control and variant (deliberately NOT split per-TC/variant
-   *  like lichess/chess.com). Never sent to the client as a raw number —
+   *  like lichess/chess.com). Never sent to the client as a raw number, 
    *  see rating.service.ts's getRatingCategory for the tier name that
    *  actually gets shown. */
   rating: number;
   /** Count of decisive/drawn games that have fed into `rating`. Doubles as
    *  the provisional-period gate (see PROVISIONAL_GAMES_THRESHOLD in
-   *  rating.service.ts) — below that count, ratingCategory reads as
+   *  rating.service.ts), below that count, ratingCategory reads as
    *  "Unranked" no matter what the hidden number says. */
   ratedGamesPlayed: number;
   createdAt: Date;
@@ -72,7 +72,7 @@ const userSchema = new Schema<IUser>(
     username: { type: String, required: true, trim: true, minlength: 3, maxlength: 24 },
     // Store a normalized lowercase copy so lookups/uniqueness are case-insensitive
     // without needing a collation on every query. `unique: true` alone
-    // already creates the index — no need for an `index: true` here too
+    // already creates the index, no need for an `index: true` here too
     // (that combination, or a duplicate `schema.index()` call below, is
     // exactly what trips Mongoose's "Duplicate schema index" warning on
     // every server restart).
@@ -87,7 +87,7 @@ const userSchema = new Schema<IUser>(
     // Not required at the schema level: a Google-only account has nothing
     // to put here (see IUser.passwordHash doc comment above).
     passwordHash: { type: String, select: false },
-    // sparse: true is what actually matters here — it means the unique
+    // sparse: true is what actually matters here, it means the unique
     // constraint only applies to documents where googleId is *set*, so any
     // number of local-only accounts (where it's undefined) can coexist.
     // unique: true alone already creates the index.

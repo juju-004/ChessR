@@ -6,11 +6,11 @@ export interface MoveLogEntry {
   from: string;
   to: string;
   /** Reconstructed client-side (see reconstructPlyClocks in chessUtils.ts)
-   *  from move timestamps + the game's time control — not present until
+   *  from move timestamps + the game's time control, not present until
    *  Game.tsx has enough data to compute it (e.g. an untimed game, or
    *  moves missing a timestamp), so always optional here. Kept on the
    *  type even though MoveList/MoveStrip below no longer render it (the
-   *  move list no longer shows per-move think-time at all) — PlayerPanels'
+   *  move list no longer shows per-move think-time at all). PlayerPanels'
    *  clock reconstruction still consumes it. */
   remainingMs?: number | null;
   thinkTimeMs?: number | null;
@@ -33,7 +33,7 @@ interface MoveButtonProps {
  *  (not the whole `moves`/`currentPly` pair) so that stepping through a
  *  game via Prev/Next only re-renders the (at most) two buttons whose
  *  `active` flag actually flipped, instead of every move button in the
- *  game re-diffing on every single step — the thing that made move
+ *  game re-diffing on every single step, the thing that made move
  *  navigation feel laggy in a long game on a low-end phone. This only
  *  pays off because `onSelectMove` is a stable reference (see Game.tsx's
  *  goToPly, which is ref-based specifically so this memo isn't defeated
@@ -61,19 +61,19 @@ const MoveButton = memo(function MoveButton({
   );
 });
 
-/** Vertical two-column move list — tablet & desktop.
+/** Vertical two-column move list, tablet & desktop.
  *
  *  Pulled out of Game.tsx (which was building this JSX inline on every
  *  render) and wrapped in React.memo. The page holds a lot of state that
- *  has nothing to do with the move list — chat input, move errors,
- *  rematch offers — and every one of those updates was rebuilding every
+ *  has nothing to do with the move list, chat input, move errors,
+ *  rematch offers, and every one of those updates was rebuilding every
  *  move button in a potentially long game from scratch just because the
  *  parent re-rendered, not because `moves` actually changed. That's
  *  wasted main-thread work at exactly the moment (mid-game, on a low-end
  *  phone) it's least affordable.
  *
  *  This outer component still re-renders on every `currentPly` change
- *  (it has to — that's the trigger), but the map below just iterates and
+ *  (it has to, that's the trigger), but the map below just iterates and
  *  hands each row the same or a changed `active` prop; the actual DOM
  *  work is contained to whichever individual MoveButtons see a real
  *  `active` change, thanks to their own memo boundary above. */

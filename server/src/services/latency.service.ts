@@ -1,12 +1,12 @@
 // Tracks a rolling round-trip latency estimate per live socket connection,
 // used to give a small, capped amount of "lag compensation" when charging a
-// player's clock for a move — see finalizeMove in gameState.service.ts.
+// player's clock for a move, see finalizeMove in gameState.service.ts.
 //
 // Why this exists: every move (and especially a premove, which by nature
 // fires the instant the position updates) has to make a real network round
 // trip to the server before the server can charge the clock. That round-trip
 // time gets counted as "thinking time" even though the player did no
-// thinking at all — same issue lichess solved years ago with what they call
+// thinking at all, same issue lichess solved years ago with what they call
 // lag compensation. This is the same idea, deliberately kept simple:
 //   - The SERVER initiates the ping (not the client), so a client can't just
 //     claim an inflated latency to buy itself free time.
@@ -16,7 +16,7 @@
 //   - The amount ever subtracted from a move's elapsed time is hard-capped
 //     (see LAG_COMPENSATION_CAP_MS) regardless of what the estimate says.
 //
-// This is intentionally in-process, in-memory state, not Redis — a
+// This is intentionally in-process, in-memory state, not Redis, a
 // Socket.IO connection only ever lives on one process at a time, so there's
 // nothing to share across processes here.
 
@@ -66,7 +66,7 @@ export function recordLatencySample(
 
 /** The capped compensation to subtract from a move's charged elapsed time.
  *  Stored/returned as round-trip time, deliberately NOT halved to a one-way
- *  estimate — the elapsed time a premove gets charged is itself a full round
+ *  estimate, the elapsed time a premove gets charged is itself a full round
  *  trip (the opponent's move reaching this client, then this move reaching
  *  back to the server), so that's the right unit to cancel it out with. */
 export function getLagCompensationMs(socketId: string): number {

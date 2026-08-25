@@ -20,7 +20,7 @@ export interface ButtonProps extends Omit<
 > {
   variant?: ButtonVariant;
   size?: ButtonSize;
-  /** Shows a spinner and disables the button — for an in-flight async action. */
+  /** Shows a spinner and disables the button, for an in-flight async action. */
   loading?: boolean;
   fullWidth?: boolean;
   children?: React.ReactNode;

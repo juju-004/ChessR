@@ -161,9 +161,9 @@ export function CageMatchDetail() {
       const winnerLabel = winnerIsMe ? "you won" : `${opponent.username} won`;
       if (match.matchEndReason === "no_show_forfeit") {
         const loserLabel = winnerIsMe ? opponent.username : "You";
-        outcomeLine = `${loserLabel} didn't move in time at the start of a game — ${winnerLabel} the match`;
+        outcomeLine = `${loserLabel} didn't move in time at the start of a game. ${winnerLabel[0].toUpperCase()}${winnerLabel.slice(1)} the match`;
       } else if (match.forfeitedBy) {
-        outcomeLine = `${match.forfeitedBy === me._id ? "You" : opponent.username} forfeited — ${winnerLabel}`;
+        outcomeLine = `${match.forfeitedBy === me._id ? "You" : opponent.username} forfeited. ${winnerLabel[0].toUpperCase()}${winnerLabel.slice(1)}`;
       } else {
         outcomeLine = winnerIsMe
           ? "You won the match"
@@ -192,7 +192,7 @@ export function CageMatchDetail() {
 
           {match.winnerMode === "most_categories" && (
             <p className="mb-2 text-center text-sm text-base-content/60">
-              Categories won — you: {myCats}, {opponent.username}: {oppCats}
+              Categories won: you {myCats}, {opponent.username} {oppCats}
             </p>
           )}
           {match.winnerMode === "first_to_n" && (
@@ -235,7 +235,7 @@ export function CageMatchDetail() {
                 className="border border-amber-800 bg-amber-950/30 text-amber-300 shadow-none hover:bg-amber-950/50 hover:brightness-100"
               >
                 <Pause className="h-4 w-4" /> Game #{pausedLeg.index + 1} is
-                paused — go there to resume
+                paused. Tap to resume
               </Button>
             </Link>
           )}

@@ -219,7 +219,7 @@ export function AdminDashboard() {
 
           {!revenueLoading && !revenueError && revenue && (
             <>
-              {/* Total admin wallet balance — the running sum of every rake
+              {/* Total admin wallet balance, the running sum of every rake
                *  cut ever recorded (see PlatformRevenue.ts on the server).
                *  Not a separately-maintained counter, so it can never drift
                *  out of sync with the ledger below it. */}

@@ -2,7 +2,7 @@ import { getAuthSnapshot, setAuth, clearAuth } from './authStore.js';
 
 // In local dev, '/api' works because vite.config.ts proxies it to the backend
 // on a different port. In production, frontend (Vercel) and backend (Railway)
-// are genuinely different domains — there's no proxy to fake same-origin, so
+// are genuinely different domains, there's no proxy to fake same-origin, so
 // this needs to point at the real backend URL. Set VITE_API_BASE_URL in the
 // client's production environment (e.g. https://your-app.up.railway.app/api).
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api';

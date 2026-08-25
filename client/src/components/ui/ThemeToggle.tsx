@@ -21,7 +21,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       )}
     >
       {/* Crossfade + tiny scale between icons, rather than swapping the DOM
-       *  node outright — opacity/scale only, per @/lib/motion.ts. */}
+       *  node outright, opacity/scale only, per @/lib/motion.ts. */}
       <AnimatePresence mode="wait" initial={false}>
         <motion.span
           key={isDark ? "moon" : "sun"}

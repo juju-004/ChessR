@@ -13,7 +13,7 @@ export interface DisconnectBannerProps {
 
 /**
  * Same banner Game.tsx used to render inline off a `{ message, claimable }`
- * state object that got recomputed by a page-level 500ms `setInterval` —
+ * state object that got recomputed by a page-level 500ms `setInterval`, 
  * which meant every second the opponent stayed disconnected, the entire
  * Game page (board, sidebar, any open modal) re-rendered right along with
  * it. This component owns its own 500ms tick instead, so a re-render here
@@ -24,7 +24,7 @@ export function DisconnectBanner({ expiresAt, onClaim }: DisconnectBannerProps) 
 
   useEffect(() => {
     const remaining = expiresAt - Date.now();
-    if (remaining <= 0) return; // already claimable — nothing to tick toward
+    if (remaining <= 0) return; // already claimable, nothing to tick toward
     const interval = window.setInterval(() => {
       forceTick((n) => n + 1);
       if (expiresAt - Date.now() <= 0) window.clearInterval(interval);
@@ -35,7 +35,7 @@ export function DisconnectBanner({ expiresAt, onClaim }: DisconnectBannerProps) 
   const remainingMs = Math.max(0, expiresAt - Date.now());
   const claimable = remainingMs <= 0;
   const message = claimable
-    ? "Opponent has not reconnected — you can claim this game now."
+    ? "Opponent has not reconnected. You can claim this game now."
     : `Opponent disconnected. You can claim the game in ${Math.ceil(remainingMs / 1000)}s if they don't return.`;
 
   return (

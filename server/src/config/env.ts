@@ -5,9 +5,9 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(4000),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   CLIENT_ORIGIN: z.string().default('http://localhost:5173'),
-  // This server's OWN public origin — e.g. https://your-app.up.railway.app in
+  // This server's OWN public origin, e.g. https://your-app.up.railway.app in
   // production. Only used to build absolute URLs for assets a link-preview
-  // crawler needs to fetch directly (og:image — see og.controller.ts), since
+  // crawler needs to fetch directly (og:image, see og.controller.ts), since
   // those tags require a full URL, not a relative path. Defaults to
   // localhost:PORT for local dev; MUST be set to the real deployed URL in
   // production or shared-link previews will point at an unreachable address.
@@ -29,7 +29,7 @@ const envSchema = z.object({
   PAYSTACK_SECRET_KEY: z.string().min(1, 'PAYSTACK_SECRET_KEY is required'),
   PAYSTACK_PUBLIC_KEY: z.string().min(1, 'PAYSTACK_PUBLIC_KEY is required'),
 
-  // The platform's cut of every wagered pot — normal games, cage matches,
+  // The platform's cut of every wagered pot, normal games, cage matches,
   // and tournament registration-fee pools all run through the same
   // computeRake() helper in wallet.service.ts, so this one knob controls
   // all three. A whole-number percent, 0-100 (0 = rake disabled entirely).
@@ -37,7 +37,7 @@ const envSchema = z.object({
   RAKE_PERCENT: z.coerce.number().min(0).max(100).default(10),
 
   // Fixed credentials for the single expert-review admin account (see
-  // admin.controller.ts) — deliberately NOT a User document, so it never
+  // admin.controller.ts), deliberately NOT a User document, so it never
   // shows up in player search, leaderboards, matchmaking, etc, and can't
   // be funded or play games. Optional at the schema level so existing
   // deployments that haven't set these up yet don't fail to boot; the
@@ -45,7 +45,7 @@ const envSchema = z.object({
   ADMIN_USERNAME: z.string().optional(),
   ADMIN_PASSWORD: z.string().min(12).optional(),
 
-  // Resend (resend.com) sends the "confirm your email" mail — its free
+  // Resend (resend.com) sends the "confirm your email" mail, its free
   // tier is generous enough for testing/small-scale use (100/day, 3000/mo)
   // without needing a card on file, and its API is one plain HTTP POST
   // (see mailer.service.ts), so no SDK dependency either. Optional at the
@@ -55,11 +55,11 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   // Must be on a domain verified with Resend, EXCEPT for their shared
   // onboarding@resend.dev sandbox sender, which works immediately with no
-  // domain setup — exactly what you want during the "just get this
+  // domain setup, exactly what you want during the "just get this
   // working" testing period the account starts in.
   MAIL_FROM: z.string().default('Chessr <onboarding@resend.dev>'),
 
-  // OAuth 2.0 client ID from Google Cloud Console — the same value the
+  // OAuth 2.0 client ID from Google Cloud Console, the same value the
   // client uses to initialize Google Identity Services (VITE_GOOGLE_CLIENT_ID,
   // see main.tsx) is passed here too, since verifying a Google ID token
   // means checking its `aud` claim matches this exact client id (see

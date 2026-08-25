@@ -10,7 +10,7 @@ import {
 import { HelpTip } from "../HelpTip.js";
 import { Select, Input, Button, Badge } from "../ui/index.js";
 // Shared with every other time-control select in the app (see
-// ../../timeControls.js) instead of keeping its own list — a cage leg's
+// ../../timeControls.js) instead of keeping its own list, a cage leg's
 // base time must be 1-180 minutes (or unlimited) server-side, so Hyper
 // Bullet's ½-minute preset is filtered out here since it isn't a valid
 // leg length, everything else from the shared list is fair game.
@@ -22,7 +22,7 @@ const QUICK_ADD_PRESETS = TIME_CONTROLS.filter(
 
 // Client-side-only bucketing so each row in the plan can wear the same
 // bullet/blitz/rapid/classical badge the finished match uses (see
-// CATEGORY_LABEL) — purely cosmetic, the server assigns the real category
+// CATEGORY_LABEL), purely cosmetic, the server assigns the real category
 // once a leg actually starts (see api/cageMatches.ts's CageLeg.category).
 function legCategory(leg: CageLegPlan): LegCategory {
   if (leg.baseMinutes === null || leg.baseMinutes >= 30) return "classical";
@@ -39,7 +39,7 @@ interface CageGamePlanEditorProps {
 /**
  * The "which games, in what order" builder for a cage match. Split out of
  * CreateCageMatch/CageMatches so the quick-add controls and the ordered
- * list can each get enough room to read clearly — this used to be a single
+ * list can each get enough room to read clearly, this used to be a single
  * cramped row of unlabeled selects plus a dense scrolling list, which is
  * what people were running into trouble with when actually scheduling a
  * match. Every quick-add field now has its own label, the row wraps into a
@@ -88,7 +88,7 @@ export function CageGamePlanEditor({
             Games ({legs.length})
             <HelpTip>
               Games are played in this order, one after another. Drag isn't
-              needed — use the up/down arrows on a game to reorder it.
+              needed, use the up/down arrows on a game to reorder it.
             </HelpTip>
           </h3>
         </div>

@@ -13,7 +13,7 @@ function formatTimeControl(tc: { baseSeconds: number | null; incrementSeconds: n
 
 function describeGame(game: Awaited<ReturnType<typeof getGameByCode>>): string {
   const tc = formatTimeControl(game.timeControl);
-  // game.moves is a ply log (one entry per half-move) — fine for the
+  // game.moves is a ply log (one entry per half-move), fine for the
   // === 0 "hasn't started" check below, but the number shown to a person
   // needs to be the actual chess move count, which only increments once
   // per full move pair (halved, rounding up so a game that ends on
@@ -62,8 +62,8 @@ function describeTournament(tournament: Awaited<ReturnType<typeof getTournamentB
   }
   if (tournament.status === 'finished') {
     // 'normal' (knockout) tracks the winner via elimination round, not
-    // points (points are meaningless there — see ITournamentPlayer's
-    // doc comment) — the eventual winner is whoever was never eliminated.
+    // points (points are meaningless there, see ITournamentPlayer's
+    // doc comment), the eventual winner is whoever was never eliminated.
     const winner =
       tournament.format === 'normal'
         ? tournament.players.find((p) => p.eliminatedRound === null && !p.withdrawn)
@@ -77,7 +77,7 @@ function describeTournament(tournament: Awaited<ReturnType<typeof getTournamentB
   return `${tournament.name} · ${format} · ${tc} · ${count} ${playerWord} registered`;
 }
 
-// Escapes text dropped into an HTML attribute/body — this is the one place
+// Escapes text dropped into an HTML attribute/body, this is the one place
 // in the app assembling raw HTML by hand (everywhere else is React), so it
 // needs its own escaping rather than relying on JSX's automatic escaping.
 function escapeHtml(s: string): string {
@@ -89,12 +89,12 @@ function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
-// CLIENT_URL is the *frontend's* origin (e.g. the Vercel deployment) — the
+// CLIENT_URL is the *frontend's* origin (e.g. the Vercel deployment), the
 // canonical/og:url below must point there, not at this API server, since
 // that's the URL people actually share and click.
 const CLIENT_URL = process.env.CLIENT_URL ?? env.CLIENT_ORIGIN;
 
-// This API server's OWN public origin — og:image needs a fully-qualified URL
+// This API server's OWN public origin, og:image needs a fully-qualified URL
 // a crawler can fetch directly, and the image itself is served by this
 // server (see app.ts's express.static mount), not the frontend.
 const API_ORIGIN = env.API_ORIGIN ?? `http://localhost:${env.PORT}`;
@@ -107,25 +107,25 @@ interface PreviewCardInput {
 }
 
 /**
- * Renders a minimal static HTML page with Open Graph / Twitter Card tags —
+ * Renders a minimal static HTML page with Open Graph / Twitter Card tags, 
  * e.g. "kingfish vs mira · 10+0 · kingfish won by resignation in 34 moves"
- * — for link-preview crawlers (WhatsApp, Facebook, Twitter/X, Discord,
+ *, for link-preview crawlers (WhatsApp, Facebook, Twitter/X, Discord,
  * iMessage) that don't execute JavaScript and so can never see anything
  * from the actual React app.
  *
- * og:image is REQUIRED, not optional decoration — several crawlers
+ * og:image is REQUIRED, not optional decoration, several crawlers
  * (WhatsApp chief among them) simply render no preview card at all,
  * title/description included, when a page has no image to show. That was
  * the actual cause of "pasting a game link into WhatsApp shows nothing":
  * every tag here was already correct except this one was missing entirely.
  * Every card uses the same static branded image for now (see
  * DEFAULT_OG_IMAGE above / server/public/og-default.png) rather than a
- * per-game-generated board snapshot — a real per-game image would need a
+ * per-game-generated board snapshot, a real per-game image would need a
  * server-side board renderer, which is a substantially bigger feature than
  * "make previews show up at all".
  *
  * This alone isn't sufficient to make a shared /game/:code or
- * /tournaments/:code link show a rich preview — those links are served by
+ * /tournaments/:code link show a rich preview, those links are served by
  * the *frontend's* origin, not this API. Something on the frontend's side
  * (a Vercel Edge Middleware rewrite, for example) needs to detect crawler
  * requests and route them here instead of the SPA shell. See
@@ -192,7 +192,7 @@ export const getTournamentOgCard = asyncHandler(async (req, res) => {
     title = `Chessr · ${tournament.name}`;
     description = describeTournament(tournament as any);
   } catch {
-    // Fall back to the generic copy above — an unknown/deleted code should
+    // Fall back to the generic copy above, an unknown/deleted code should
     // still produce a valid (if generic) preview rather than a broken page.
   }
 

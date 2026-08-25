@@ -16,7 +16,7 @@ export interface CageLeg extends CageLegPlan {
   index: number;
   category: LegCategory;
   // 'paused' only ever applies before BOTH sides have made their first
-  // move — see the pause/resume request flow.
+  // move, see the pause/resume request flow.
   status: 'pending' | 'active' | 'paused' | 'finished' | 'skipped';
   gameId: string | null;
   joinCode: string | null;
@@ -51,7 +51,7 @@ export function getCageMatchByCode(code: string) {
   return apiFetch<{ match: CageMatch }>(`/cage-matches/code/${encodeURIComponent(code)}`);
 }
 
-/** Derived, client-side mirror of the server's computeStandings — used so
+/** Derived, client-side mirror of the server's computeStandings, used so
  *  the UI can show live-ish scores between socket events without waiting on
  *  a round trip. The server's numbers (delivered on cage:next_leg /
  *  cage:match_over) are always the source of truth. */

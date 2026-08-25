@@ -31,16 +31,25 @@ import {
 import { useSocket } from "../contexts/SocketContext.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import { useNotify } from "../contexts/NotificationContext.js";
+import { useConfirm } from "../contexts/ConfirmContext.js";
 import { copyToClipboard } from "@/lib/utils.js";
 import { cn } from "@/lib/cn.js";
 import { PrizePoolEditor } from "../components/tournaments/PrizePoolEditor.js";
 import { KnockoutBracket } from "../components/tournaments/KnockoutBracket.js";
 import { Pagination } from "../components/Pagination.js";
+import { HelpTip } from "../components/HelpTip.js";
+import { TIME_CONTROLS as TIME_PRESETS } from "../timeControls.js";
+import { MAX_WAGER_TOKENS, MIN_STAKE_TOKENS, MAX_EVENT_NAME_LENGTH } from "../lib/limits.js";
+import {
+  FORMAT_DESCRIPTION,
+  robinRoundsLabel,
+} from "../api/tournaments.js";
 import {
   Page,
   Card,
   CardHeader,
   CardTitle,
+  CardContent,
   Button,
   Badge,
   Spinner,
@@ -78,12 +87,30 @@ function EditTournamentForm({
   const [variant, setVariant] = useState<"standard" | "chess960">(
     tournament.variant,
   );
-  const [baseMinutes, setBaseMinutes] = useState<string>(
-    tournament.baseMinutes === null ? "" : String(tournament.baseMinutes),
-  );
-  const [incrementSeconds, setIncrementSeconds] = useState(
-    tournament.incrementSeconds,
-  );
+  const [presetIdx, setPresetIdx] = useState(() => {
+    const exact = TIME_PRESETS.findIndex(
+      (p) =>
+        p.baseMinutes === tournament.baseMinutes &&
+        p.incrementSeconds === tournament.incrementSeconds,
+    );
+    if (exact !== -1) return exact;
+    if (tournament.baseMinutes === null) return TIME_PRESETS.length - 1;
+    // No exact preset match (a value from before presets existed, or one
+    // that's since been edited off the list), fall back to the preset
+    // with the closest base time so the select still lands somewhere
+    // sane instead of defaulting to index 0.
+    let closest = 0;
+    let closestDiff = Infinity;
+    TIME_PRESETS.forEach((p, i) => {
+      if (p.baseMinutes === null) return;
+      const diff = Math.abs(p.baseMinutes - (tournament.baseMinutes ?? 0));
+      if (diff < closestDiff) {
+        closestDiff = diff;
+        closest = i;
+      }
+    });
+    return closest;
+  });
   const [maxPlayers, setMaxPlayers] = useState(tournament.maxPlayers);
   const [swissRounds, setSwissRounds] = useState(tournament.swissRounds ?? 5);
   const [robinRounds, setRobinRounds] = useState(tournament.robinRounds ?? 1);
@@ -108,14 +135,19 @@ function EditTournamentForm({
   );
   const [error, setError] = useState("");
 
+  function handleFormatChange(f: TournamentFormat) {
+    setFormat(f);
+    if (f === "swiss" || f === "arena") setMaxPlayers(FORMAT_MAX_PLAYERS[f]);
+  }
+
   function save() {
     if (!socket) return;
     if (name.trim().length < 3)
       return setError("Give it a name (3+ characters).");
     const regFeeTokens = Math.max(0, Math.floor(Number(regFeeInput) || 0));
-    if (regFeeTokens < 1) {
+    if (regFeeTokens < MIN_STAKE_TOKENS) {
       return setError(
-        "Set a registration fee — every tournament requires one.",
+        `Set a registration fee of at least ${MIN_STAKE_TOKENS} R.`,
       );
     }
     const scheduledStartAt = new Date(startInput);
@@ -132,13 +164,14 @@ function EditTournamentForm({
         );
       }
     }
+    const preset = TIME_PRESETS[presetIdx];
     socket.emit("tournament:edit", {
       tournamentId: tournament._id,
       name: name.trim(),
       format,
       variant,
-      baseMinutes: baseMinutes.trim() === "" ? null : Number(baseMinutes),
-      incrementSeconds,
+      baseMinutes: preset.baseMinutes,
+      incrementSeconds: preset.incrementSeconds,
       maxPlayers,
       berserkAllowed,
       isPublic,
@@ -147,7 +180,7 @@ function EditTournamentForm({
       swissRounds: format === "swiss" ? swissRounds : null,
       robinRounds: format === "round_robin" ? robinRounds : null,
       arenaMinutes: format === "arena" ? arenaMinutes : null,
-      breakSeconds,
+      breakSeconds: format === "arena" ? 0 : breakSeconds,
       scheduledStartAt: scheduledStartAt.toISOString(),
       password: removePassword ? null : password.trim() || undefined,
     });
@@ -155,213 +188,228 @@ function EditTournamentForm({
   }
 
   return (
-    <Card variant="solid" className="space-y-4 border-(--secondary)/30">
-      <CardHeader>
-        <CardTitle>Edit tournament</CardTitle>
-      </CardHeader>
-      {error && <p className="text-sm text-red-400">{error}</p>}
+    <Card variant="solid" className="border-(--secondary)/30">
+      <CardContent className="space-y-5">
+        {/* Basics */}
+        <section className="space-y-3">
+          <CardHeader className="p-0">
+            <CardTitle>Edit tournament</CardTitle>
+          </CardHeader>
+          {error && <p className="text-sm text-red-400">{error}</p>}
 
-      <Input
-        label="Name"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        maxLength={60}
-      />
+          <Input
+            label="Tournament name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={MAX_EVENT_NAME_LENGTH}
+          />
 
-      <div className="flex flex-wrap gap-3">
-        <div className="w-40">
-          <Select
-            label="Format"
-            value={format}
-            onChange={(e) => setFormat(e.target.value as TournamentFormat)}
-          >
-            {(Object.keys(FORMAT_LABEL) as TournamentFormat[]).map((f) => (
-              <option key={f} value={f}>
-                {FORMAT_LABEL[f]}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="w-32">
-          <Select
-            label="Variant"
-            value={variant}
-            onChange={(e) =>
-              setVariant(e.target.value as "standard" | "chess960")
-            }
-          >
-            <option value="standard">Standard</option>
-            <option value="chess960">Chess960</option>
-          </Select>
-        </div>
-        <div className="w-28">
-          <Input
-            label="Base mins (blank = unlimited)"
-            type="number"
-            min={1}
-            max={180}
-            value={baseMinutes}
-            onChange={(e) => setBaseMinutes(e.target.value)}
-          />
-        </div>
-        <div className="w-28">
-          <Input
-            label="Increment"
-            type="number"
-            min={0}
-            max={60}
-            value={incrementSeconds}
-            onChange={(e) => setIncrementSeconds(Number(e.target.value))}
-          />
-        </div>
-        <div className="w-28">
-          <Input
-            label="Max players"
-            type="number"
-            min={2}
-            max={FORMAT_MAX_PLAYERS[format]}
-            value={maxPlayers}
-            onChange={(e) => setMaxPlayers(Number(e.target.value))}
-          />
-        </div>
-        {format === "swiss" && (
-          <div className="w-24">
-            <Input
-              label="Rounds"
-              type="number"
-              min={3}
-              max={15}
-              value={swissRounds}
-              onChange={(e) => setSwissRounds(Number(e.target.value))}
-            />
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-base-content/80">
+              Format
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {(Object.keys(FORMAT_LABEL) as TournamentFormat[]).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => handleFormatChange(f)}
+                  className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
+                    format === f
+                      ? "border-(--secondary)/50 bg-(--secondary)/10 text-base-content"
+                      : "border-base-300 bg-base-100/60 text-base-content/70 hover:border-(--secondary)/30"
+                  }`}
+                >
+                  <div className="font-medium">{FORMAT_LABEL[f]}</div>
+                  <div className="text-xs text-base-content/50">
+                    {FORMAT_DESCRIPTION[f]}
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
-        )}
-        {format === "round_robin" && (
-          <div className="w-36">
-            <Input
-              label="Times each pair plays"
-              type="number"
-              min={1}
-              max={4}
-              value={robinRounds}
-              onChange={(e) => setRobinRounds(Number(e.target.value))}
-            />
-          </div>
-        )}
-        {format === "arena" && (
-          <div className="w-32">
-            <Input
-              label="Duration (mins)"
-              type="number"
-              min={5}
-              max={360}
-              value={arenaMinutes}
-              onChange={(e) => setArenaMinutes(Number(e.target.value))}
-            />
-          </div>
-        )}
-        <div className="w-28">
-          <Input
-            label="Break (secs)"
-            type="number"
-            min={0}
-            max={300}
-            value={breakSeconds}
-            onChange={(e) => setBreakSeconds(Number(e.target.value))}
-          />
-        </div>
-      </div>
 
-      <Switch
-        checked={berserkAllowed}
-        onChange={setBerserkAllowed}
-        label="Allow berserking"
-      />
-      <Switch checked={isPublic} onChange={setIsPublic} label="List publicly" />
-
-      <div className="space-y-2 border-t border-base-300 pt-3">
-        <Input
-          label="Start time"
-          type="datetime-local"
-          value={startInput}
-          onChange={(e) => setStartInput(e.target.value)}
-        />
-      </div>
-
-      <div className="space-y-2 border-t border-base-300 pt-3">
-        {tournament.hasPassword && !removePassword ? (
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-base-content/50">
-              A password is currently set.
-            </p>
-            <Button
-              size="sm"
-              variant="glass"
-              onClick={() => setRemovePassword(true)}
+          <div className="grid grid-cols-2 gap-3">
+            <Select
+              label="Time control"
+              value={presetIdx}
+              onChange={(e) => setPresetIdx(Number(e.target.value))}
             >
-              Remove password
-            </Button>
+              {TIME_PRESETS.map((p, i) => (
+                <option key={p.label} value={i}>
+                  {p.label}
+                </option>
+              ))}
+            </Select>
+            <Select
+              label="Variant"
+              value={variant}
+              onChange={(e) =>
+                setVariant(e.target.value as "standard" | "chess960")
+              }
+            >
+              <option value="standard">Standard</option>
+              <option value="chess960">Chess960</option>
+            </Select>
           </div>
-        ) : (
+        </section>
+
+        {/* Players & schedule */}
+        <section className="space-y-3 border-t border-base-300 pt-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {format !== "swiss" && format !== "arena" && (
+              <Input
+                label="Max players"
+                type="number"
+                min={2}
+                max={FORMAT_MAX_PLAYERS[format]}
+                value={maxPlayers}
+                onChange={(e) => setMaxPlayers(Number(e.target.value))}
+              />
+            )}
+            {format === "swiss" && (
+              <Input
+                label="Rounds"
+                type="number"
+                min={3}
+                max={15}
+                value={swissRounds}
+                onChange={(e) => setSwissRounds(Number(e.target.value))}
+              />
+            )}
+            {format === "round_robin" && (
+              <Input
+                label={
+                  <span className="inline-flex items-center gap-1">
+                    Laps <HelpTip>{robinRoundsLabel(robinRounds)}</HelpTip>
+                  </span>
+                }
+                type="number"
+                min={1}
+                max={4}
+                value={robinRounds}
+                onChange={(e) => setRobinRounds(Number(e.target.value))}
+              />
+            )}
+            {format === "arena" && (
+              <Input
+                label="Duration (min)"
+                type="number"
+                min={5}
+                max={360}
+                value={arenaMinutes}
+                onChange={(e) => setArenaMinutes(Number(e.target.value))}
+              />
+            )}
+            {format !== "arena" && (
+              <Input
+                label="Break (sec)"
+                type="number"
+                min={0}
+                max={300}
+                value={breakSeconds}
+                onChange={(e) => setBreakSeconds(Number(e.target.value))}
+              />
+            )}
+          </div>
+
+          <Input
+            label="Start date and time"
+            type="datetime-local"
+            value={startInput}
+            onChange={(e) => setStartInput(e.target.value)}
+          />
+        </section>
+
+        {/* Money */}
+        <section className="space-y-3 border-t border-base-300 pt-4">
           <Input
             label={
-              tournament.hasPassword ? "New password" : "Password (optional)"
+              <span className="inline-flex items-center gap-1">
+                Registration fee (<RCoin size={12} /> Coins)
+              </span>
             }
-            value={password}
-            onChange={(e) => {
-              setPassword(e.target.value);
-              setRemovePassword(false);
-            }}
-            placeholder="Leave blank for no password"
+            type="number"
+            min={MIN_STAKE_TOKENS}
+            max={MAX_WAGER_TOKENS}
+            value={regFeeInput}
+            onChange={(e) => setRegFeeInput(e.target.value)}
           />
-        )}
-      </div>
+          <p className="text-xs text-base-content/50">
+            Since you're still the only player, changing this just adjusts
+            what you've already paid in.
+          </p>
 
-      <div className="space-y-2 border-t border-base-300 pt-3">
-        <Input
-          label={
-            <span className="inline-flex items-center gap-1">
-              Registration fee — <RCoin size={12} /> Coins
-            </span>
-          }
-          type="number"
-          min={1}
-          value={regFeeInput}
-          onChange={(e) => setRegFeeInput(e.target.value)}
-        />
-        <p className="text-xs text-base-content/50">
-          Since you're still the only player, changing this just adjusts what
-          you've already paid in.
-        </p>
-      </div>
+          <div className="space-y-2">
+            <p className="text-xs text-base-content/50">
+              Increasing the total debits the difference from you now.
+              Decreasing it refunds the difference.
+            </p>
+            <PrizePoolEditor
+              value={prizeTiers}
+              onChange={setPrizeTiers}
+              maxPlayers={maxPlayers}
+            />
+          </div>
 
-      <div className="space-y-2 border-t border-base-300 pt-3">
-        <p className="text-xs text-base-content/50">
-          Increasing the total debits the difference from you now; decreasing it
-          refunds the difference.
-        </p>
-        <PrizePoolEditor
-          value={prizeTiers}
-          onChange={setPrizeTiers}
-          maxPlayers={maxPlayers}
-        />
-      </div>
+          {tournament.hasPassword && !removePassword ? (
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-base-content/50">
+                A password is currently set.
+              </p>
+              <Button
+                size="sm"
+                variant="glass"
+                onClick={() => setRemovePassword(true)}
+              >
+                Remove password
+              </Button>
+            </div>
+          ) : (
+            <Input
+              label={
+                tournament.hasPassword ? "New password" : "Password (optional)"
+              }
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setRemovePassword(false);
+              }}
+              placeholder="Leave blank for no password"
+            />
+          )}
+        </section>
 
-      <div className="flex gap-2 pt-2">
-        <Button variant="secondary" onClick={save}>
-          Save changes
-        </Button>
-        <Button variant="glass" onClick={onCancel}>
-          Cancel
-        </Button>
-      </div>
+        <section className="space-y-3 border-t border-base-300 pt-4">
+          <Switch
+            checked={isPublic}
+            onChange={setIsPublic}
+            label="List publicly"
+            description="Visible in the Open tournaments list for anyone to find."
+          />
+          <Switch
+            checked={berserkAllowed}
+            onChange={setBerserkAllowed}
+            label="Allow berserk"
+            description="Half clock, no increment, +0.5 point on a win."
+          />
+        </section>
+
+        <div className="flex gap-2 pt-2">
+          <Button variant="secondary" fullWidth onClick={save}>
+            Save changes
+          </Button>
+          <Button variant="glass" onClick={onCancel}>
+            Cancel
+          </Button>
+        </div>
+      </CardContent>
     </Card>
   );
 }
 
 /** Live "next round starts in Ns" countdown, shown while the tournament is
  *  sitting in its inter-round break (see scheduleRoundStart in
- *  tournament.service.ts — nextRoundStartsAt is only ever set during that
+ *  tournament.service.ts, nextRoundStartsAt is only ever set during that
  *  window). Ticks locally rather than waiting on the server; the round
  *  activating for real sends its own tournament:update/tournament:pairing_ready
  *  events, so this never needs to do anything beyond just counting down. */
@@ -391,7 +439,7 @@ function BreakCountdown({ nextRoundStartsAt }: { nextRoundStartsAt: string }) {
 }
 
 /** Formats a millisecond duration as HH:MM:SS (always all three segments,
- *  even for a countdown under an hour — easier to scan at a glance than a
+ *  even for a countdown under an hour, easier to scan at a glance than a
  *  segment count that changes shape as it ticks down). Clamps negative
  *  input to zero rather than showing a negative countdown. */
 function formatHms(ms: number): string {
@@ -404,7 +452,7 @@ function formatHms(ms: number): string {
 }
 
 /** Live HH:MM:SS countdown to a tournament's scheduled auto-start, shown
- *  while it's still pending. Purely a display timer — the actual starting
+ *  while it's still pending. Purely a display timer, the actual starting
  *  happens server-side (see scheduleAutoStart in tournament.service.ts);
  *  this just counts down to the same timestamp the server is watching. */
 function StartCountdown({ scheduledStartAt }: { scheduledStartAt: string }) {
@@ -436,7 +484,7 @@ function StartCountdown({ scheduledStartAt }: { scheduledStartAt: string }) {
 }
 
 /** Live "arena ends in HH:MM:SS" countdown, shown while an arena
- *  tournament is active — purely a display timer counting down to the same
+ *  tournament is active, purely a display timer counting down to the same
  *  arenaEndsAt timestamp the server checks in advanceAfterRound before
  *  deciding whether to generate another round or finish the event. */
 function ArenaCountdown({ arenaEndsAt }: { arenaEndsAt: string }) {
@@ -472,13 +520,13 @@ function ArenaCountdown({ arenaEndsAt }: { arenaEndsAt: string }) {
 }
 
 /** Arena and swiss both keep accepting new players after they've started
- *  (see acceptingJoins in tournament.service.ts) — arena because its
+ *  (see acceptingJoins in tournament.service.ts), arena because its
  *  pairing queue is continuous, swiss because a fresh round is built from
  *  the current player list each time a round transition happens. Knockout
  *  and round-robin don't: their whole schedule is fixed the moment the
  *  event starts, so there's nothing to slot a newcomer into.
  *
- *  This mirrors that same window purely for what to show — the server is
+ *  This mirrors that same window purely for what to show, the server is
  *  the actual authority and will reject a join that's arrived too late
  *  regardless of what this renders. */
 function LateJoinRow({
@@ -526,7 +574,7 @@ function LateJoinRow({
 }
 
 /** Every pairing a given player was part of, across every round, in the
- *  order the rounds were played — the raw material for their round-by-round
+ *  order the rounds were played, the raw material for their round-by-round
  *  line in PlayerTournamentDetails. */
 function pairingsForPlayer(
   tournament: Tournament,
@@ -554,7 +602,7 @@ const RANK_MEDAL_CLASSES: Record<number, string> = {
   3: "bg-orange-400/15 text-orange-500",
 };
 
-/** Standings row-number cell — a plain rank for 4th and below, a small
+/** Standings row-number cell, a plain rank for 4th and below, a small
  *  colored medal icon for the top 3 so the podium reads at a glance
  *  without needing to actually count down the column. */
 function RankBadge({ rank }: { rank: number }) {
@@ -579,7 +627,7 @@ function RankBadge({ rank }: { rank: number }) {
   );
 }
 
-/** The full "player tournament details" content — shared verbatim between
+/** The full "player tournament details" content, shared verbatim between
  *  the desktop popover and the mobile bottom sheet (see the standings
  *  table below, via ResponsiveOverlay) so the two surfaces can never drift
  *  out of sync with each other. */
@@ -652,7 +700,7 @@ function PlayerTournamentDetails({
               const opponentId = isP1 ? pairing.player2 : pairing.player1;
               const oppName = usernameOf(tournament, opponentId);
               const berserked = isP1 ? pairing.berserk.p1 : pairing.berserk.p2;
-              // Not set until the game is actually created (activateRound) —
+              // Not set until the game is actually created (activateRound), 
               // a pairing that's been built but is still waiting out its
               // inter-round break has neither yet, so there's nothing to
               // show; the color icon just doesn't render for that row.
@@ -778,8 +826,8 @@ function PairingRow({
   }
 
   // Any real (non-bye) pairing that's had a game created for it is
-  // clickable through to that game — live to actually play/watch it,
-  // finished to review the replay — same joinCode-based /game/:code route
+  // clickable through to that game, live to actually play/watch it,
+  // finished to review the replay, same joinCode-based /game/:code route
   // Game.tsx already uses for both cases.
   const rowClassName = `flex items-center justify-between rounded-xl border px-3 py-2 text-sm transition-colors ${
     involvesMe
@@ -841,6 +889,7 @@ export function TournamentDetail() {
   const socket = useSocket();
   const { user } = useAuth();
   const { notify, dismiss } = useNotify();
+  const confirmDialog = useConfirm();
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [error, setError] = useState("");
   const [status, setStatus] = useState<{
@@ -850,7 +899,7 @@ export function TournamentDetail() {
   const [joinPassword, setJoinPassword] = useState("");
   const [editing, setEditing] = useState(false);
   const [manualRoundIndex, setManualRoundIndex] = useState<number | null>(null);
-  // Collapsed by default — the tier breakdown is useful detail but not
+  // Collapsed by default, the tier breakdown is useful detail but not
   // something you need to see every time you land on the page, especially
   // once the header/card title already shows the total.
   const [prizePoolOpen, setPrizePoolOpen] = useState(false);
@@ -887,7 +936,7 @@ export function TournamentDetail() {
       socket.off("tournament:cancelled", onUpdate);
       socket.off("tournament:finished", onUpdate);
       socket.off("tournament:error", onError);
-      // The other half of tournament:watch — without this, leaving the
+      // The other half of tournament:watch, without this, leaving the
       // page (without disconnecting entirely) left the server thinking
       // this player was still watching, which is exactly the "counted as
       // present even on a totally different page" bug arena/swiss
@@ -897,7 +946,7 @@ export function TournamentDetail() {
     // Re-subscribe once the tournament's Mongo _id is known.
   }, [socket, tournament?._id, code, refresh]);
 
-  // Tab-visibility tracking on top of the mount/unmount watch above — a
+  // Tab-visibility tracking on top of the mount/unmount watch above, a
   // background tab still has this page mounted, but nobody's actually
   // looking at it, so it shouldn't count as "watching" for arena/swiss
   // pairing purposes either. Only reacts to actual visibility *changes*
@@ -944,7 +993,7 @@ export function TournamentDetail() {
   const isCreator = tournament.createdBy === myId;
   const isPointsFormat = tournament.format !== "normal";
   const standings = isPointsFormat ? rankTournamentPlayers(tournament) : [];
-  // 10 rows per page rather than the full field — arena/swiss standings can
+  // 10 rows per page rather than the full field, arena/swiss standings can
   // run into the dozens of players, and rendering all of them as one table
   // was the thing making the page unwieldy to scan on a real field.
   const STANDINGS_PAGE_SIZE = 10;
@@ -968,7 +1017,7 @@ export function TournamentDetail() {
     tournament.rounds[tournament.rounds.length - 1];
 
   function join() {
-    // Once you're a player, the server already knows it — the password is
+    // Once you're a player, the server already knows it, the password is
     // only ever asked for here, at join time, never again on return visits.
     socket?.emit("tournament:join", {
       tournamentId: tournament!._id,
@@ -978,19 +1027,30 @@ export function TournamentDetail() {
   function leave() {
     socket?.emit("tournament:leave", { tournamentId: tournament!._id });
   }
-  function cancel() {
-    if (confirm("Cancel this tournament and refund everyone?")) {
+  async function cancel() {
+    if (
+      await confirmDialog({
+        title: "Cancel this tournament?",
+        description: "Everyone who's registered will be refunded in full.",
+        variant: "danger",
+        confirmLabel: "Cancel tournament",
+      })
+    ) {
       socket?.emit("tournament:cancel", { tournamentId: tournament!._id });
     }
   }
   function togglePause(paused: boolean) {
     socket?.emit("tournament:pause", { tournamentId: tournament!._id, paused });
   }
-  function withdraw() {
+  async function withdraw() {
     if (
-      confirm(
-        "Withdraw from the tournament? Any game you're currently playing will count as a loss.",
-      )
+      await confirmDialog({
+        title: "Withdraw from the tournament?",
+        description:
+          "Any game you're currently playing will count as a loss.",
+        variant: "danger",
+        confirmLabel: "Withdraw",
+      })
     ) {
       socket?.emit("tournament:withdraw", { tournamentId: tournament!._id });
     }
@@ -1006,7 +1066,7 @@ export function TournamentDetail() {
         return;
       } catch (err) {
         // AbortError just means the person closed the share sheet without
-        // picking anything — not a failure worth surfacing. Any other
+        // picking anything, not a failure worth surfacing. Any other
         // failure (e.g. share unexpectedly rejected) falls back to a plain
         // clipboard copy so the action still does *something*.
         if ((err as Error)?.name === "AbortError") return;
@@ -1122,7 +1182,7 @@ export function TournamentDetail() {
                   {isCreator && (
                     <>
                       {/* Mirrors the server's own "still safe to edit"
-                       *  threshold in updateTournament — organizerOnly
+                       *  threshold in updateTournament, organizerOnly
                        *  tournaments never count the creator as a player,
                        *  so their threshold is 0 joined players, not 1. */}
                       {tournament.players.length <=
@@ -1182,7 +1242,7 @@ export function TournamentDetail() {
               <p className="text-sm text-red-400">
                 This tournament was cancelled
                 {tournament.cancelReason
-                  ? ` — ${tournament.cancelReason}.`
+                  ? `, ${tournament.cancelReason}.`
                   : "."}
               </p>
             )}
@@ -1198,8 +1258,8 @@ export function TournamentDetail() {
               aria-expanded={prizePoolOpen}
             >
               <CardHeader className="pointer-events-none mb-0">
-                <CardTitle>
-                  Prize pool — {tournament.prizePoolTokens} R
+                <CardTitle className="inline-flex items-center gap-1">
+                  Prize pool: {tournament.prizePoolTokens} <RCoin size={14} />
                 </CardTitle>
               </CardHeader>
               <ChevronDown

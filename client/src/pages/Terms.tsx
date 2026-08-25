@@ -37,7 +37,7 @@ const SECTIONS: Section[] = [
       <>
         You're responsible for keeping your login credentials secure and for
         all activity that happens under your account. One account per
-        person — creating multiple accounts to evade a report, a
+        person, creating multiple accounts to evade a report, a
         withdrawal block, or matchmaking is a violation of these terms and
         may result in suspension.
       </>
@@ -56,8 +56,8 @@ const SECTIONS: Section[] = [
         Withdrawals convert your R Coin balance back to Naira at the rate in
         effect at the time of the request, subject to a minimum withdrawal
         amount shown on the withdrawal page. We reserve the right to pause
-        withdrawals on an account under active review — for example, one
-        that's the subject of an open cheating or misconduct report — until
+        withdrawals on an account under active review, for example, one
+        that's the subject of an open cheating or misconduct report, until
         that review is complete.
       </>
     ),
@@ -73,9 +73,9 @@ const SECTIONS: Section[] = [
         shared prize pool instead.
         <br />
         <br />
-        When a wagered pot settles, Chessr deducts a platform fee — a
+        When a wagered pot settles, Chessr deducts a platform fee, a
         percentage of the gross pot, referred to on the platform and in
-        this document as the <strong>rake</strong> — before the remainder
+        this document as the <strong>rake</strong>, before the remainder
         is paid out to the winner(s). The rake percentage is fixed at the
         moment a pot settles and displayed to you before you confirm a
         wager, so what you see when you set up a game is what applies to
@@ -91,8 +91,7 @@ const SECTIONS: Section[] = [
         "house" player account that participates in games.
         <br />
         <br />
-        Wagers are compulsory on games, cage matches, and tournament entry
-        — there's no free-play mode. Once a wager is staked into a pot, it
+        Wagers are compulsory on games, cage matches, and tournament entry, there's no free-play mode. Once a wager is staked into a pot, it
         is held in escrow until the game, leg, or tournament concludes and
         is only released as part of a settlement (a win, a loss, a draw
         split, or an agreed cancellation before the game starts).
@@ -131,8 +130,8 @@ const SECTIONS: Section[] = [
     title: "8. Disputes and liability",
     body: (
       <>
-        Chessr's game record — moves, clocks, and final result as stored on
-        our servers — is the authoritative record for settling any dispute
+        Chessr's game record, moves, clocks, and final result as stored on
+        our servers, is the authoritative record for settling any dispute
         about a game's outcome. We provide the platform "as is" and aren't
         liable for losses arising from wagers you choose to enter,
         connectivity issues on your end, or funds lost to your own account

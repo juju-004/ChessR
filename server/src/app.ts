@@ -33,7 +33,7 @@ export function createApp() {
     }),
   );
 
-  // Static assets referenced by absolute URL from generated HTML — currently
+  // Static assets referenced by absolute URL from generated HTML, currently
   // just the default Open Graph preview image (see og.controller.ts). Not
   // behind CORS/auth on purpose: link-preview crawlers (WhatsApp, Twitter/X,
   // Discord, etc.) fetch og:image directly and unauthenticated, the same way
@@ -45,7 +45,7 @@ export function createApp() {
       immutable: true,
       // Helmet (above) defaults Cross-Origin-Resource-Policy to
       // 'same-origin', which is meant to stop random third-party pages
-      // from embedding this API's resources — the opposite of what's
+      // from embedding this API's resources, the opposite of what's
       // wanted here, since the entire point is that WhatsApp/Twitter/
       // Discord/etc.'s own servers need to fetch and embed this image.
       setHeaders: (res) => res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'),
@@ -53,7 +53,7 @@ export function createApp() {
   );
 
   // The Paystack webhook MUST be registered before express.json() and needs
-  // the raw, unparsed body — signature verification is an HMAC over the exact
+  // the raw, unparsed body, signature verification is an HMAC over the exact
   // bytes Paystack sent, which express.json() would otherwise have already
   // consumed and reserialized (silently breaking every signature check).
   app.post(

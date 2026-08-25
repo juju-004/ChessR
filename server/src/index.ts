@@ -30,7 +30,7 @@ async function main() {
     .catch((err) => console.error('reconcileActiveGames failed on boot:', err));
 
   // Same idea as reconcileActiveGames, but for tournaments sitting in their
-  // inter-round break — recovers any in-memory break timer wiped out by a
+  // inter-round break, recovers any in-memory break timer wiped out by a
   // restart (see scheduleRoundStart in tournament.service.ts).
   reconcileActiveTournaments()
     .then(({ activated, rearmed, autoStarted, autoStartRearmed }) => {
@@ -44,7 +44,7 @@ async function main() {
 
   // Cancelled tournaments carry no lasting value (no games were ever
   // played), so they're deleted a short while after cancellation rather
-  // than accumulating forever — see sweepCancelledTournaments' own comment
+  // than accumulating forever, see sweepCancelledTournaments' own comment
   // for the grace-period reasoning.
   sweepCancelledTournaments()
     .then(({ deleted }) => {
@@ -53,7 +53,7 @@ async function main() {
     .catch((err) => console.error('sweepCancelledTournaments failed on boot:', err));
 
   // Runs much more often than IDLE_PHASE_ABANDON_MS (5 min, in game.service.ts)
-  // on purpose — if this ran every 5 minutes too, a game that just missed one
+  // on purpose, if this ran every 5 minutes too, a game that just missed one
   // sweep could sit idle for close to double the intended threshold before
   // getting caught. A 60s cadence bounds that worst case to ~1 extra minute
   // instead, while still being cheap (Game.find({status:'active'}) over a

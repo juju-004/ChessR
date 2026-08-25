@@ -66,7 +66,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }
 
   // settings gets a brand-new object on every update anyway, so the
-  // useMemo here isn't about that — it's about *not* creating yet another
+  // useMemo here isn't about that, it's about *not* creating yet another
   // new value object (and re-rendering every useSettings() consumer)
   // whenever SettingsProvider re-renders for a reason that has nothing to
   // do with settings at all.

@@ -7,20 +7,20 @@ import mongoose, { Schema, type Document, type Types } from 'mongoose';
 // exact same move/clock/socket machinery as a standalone game.
 
 export type TournamentFormat = 'normal' | 'swiss' | 'robin' | 'round_robin' | 'arena';
-// 'normal'      — single-elimination knockout bracket, byes for non-power-of-2 fields.
-// 'swiss'       — fixed number of rounds, opponents paired by score each round.
-// 'robin'       — legacy: single round-robin (every player plays every other
-//                 player once). No longer offered at creation — superseded
-//                 by 'round_robin' + robinRounds below — but still handled
+// 'normal', single-elimination knockout bracket, byes for non-power-of-2 fields.
+// 'swiss', fixed number of rounds, opponents paired by score each round.
+// 'robin', legacy: single round-robin (every player plays every other
+//                 player once). No longer offered at creation, superseded
+//                 by 'round_robin' + robinRounds below, but still handled
 //                 by the pairing/scoring engine so tournaments created
 //                 before this change keep working exactly as they did.
-// 'round_robin' — every player plays every other player `robinRounds` times
+// 'round_robin', every player plays every other player `robinRounds` times
 //                 (colors reversed on alternating laps, like home/away).
 //                 robinRounds === 1 is equivalent to legacy 'robin';
 //                 robinRounds === 2 is equivalent to the old hardcoded
 //                 'round_robin' behavior (always-double), now just the
 //                 default rather than the only option.
-// 'arena'       — Lichess-style free-for-all: once the event starts, every
+// 'arena'. Lichess-style free-for-all: once the event starts, every
 //                 available player is continuously paired against another
 //                 available player for as long as the arena clock runs,
 //                 rather than everyone moving through synchronized rounds
@@ -30,11 +30,11 @@ export type TournamentStatus = 'pending' | 'active' | 'finished' | 'cancelled';
 
 export type PairingResult = 'p1' | 'p2' | 'draw' | null;
 
-// One tier of the creator-funded prize schedule — e.g. { fromRank: 3,
+// One tier of the creator-funded prize schedule, e.g. { fromRank: 3,
 // toRank: 8, tokens: 50 } means "each of 3rd through 8th place gets 50 R".
 // The full schedule's total commitment (tokens * range size, summed across
-// tiers) is deducted from the creator's balance up front at creation time —
-// see prizePoolTokens below — so the payout at the end is never blocked on
+// tiers) is deducted from the creator's balance up front at creation time, 
+// see prizePoolTokens below, so the payout at the end is never blocked on
 // the creator's balance at that point.
 export interface ITournamentPrizeTier {
   fromRank: number;
@@ -46,7 +46,7 @@ export interface ITournamentPlayer {
   user: Types.ObjectId;
   username: string;
   // Snapshotted from the User doc at join time (same denormalization as
-  // username above) — good enough for a tournament roster, and avoids a
+  // username above), good enough for a tournament roster, and avoids a
   // populate on every tournament fetch just to render avatars. Doesn't
   // update retroactively if the player changes their avatar mid-tournament,
   // same tradeoff username already makes with a username change.
@@ -54,12 +54,12 @@ export interface ITournamentPlayer {
   joinedAt: Date;
   // Points accumulate for swiss/robin/round_robin (1 / 0.5 / 0, +0.5 bonus for
   // a berserked win). A bye is worth 0 points (see tournament.service.ts's
-  // applyPairingScore) — it still counts as having played the round for
+  // applyPairingScore), it still counts as having played the round for
   // pairing purposes (hadBye), just not as a win. For 'normal' points are
-  // unused — elimination position is what matters, tracked via
+  // unused, elimination position is what matters, tracked via
   // `eliminatedRound`.
   points: number;
-  // Sum of the current points of every opponent faced so far — a simple
+  // Sum of the current points of every opponent faced so far, a simple
   // Buchholz-style tiebreaker for swiss/robin standings.
   tiebreak: number;
   gamesPlayed: number;
@@ -71,12 +71,12 @@ export interface ITournamentPlayer {
   hadBye: boolean;
   withdrawn: boolean;
   // Arena-only: the player has voluntarily stepped out of the pairing
-  // queue without withdrawing from the event entirely — like Lichess's
+  // queue without withdrawing from the event entirely, like Lichess's
   // pause button. They keep their points/standing and can toggle this
   // back off at any time to resume being paired. Meaningless for every
   // other format (there's no continuous pairing queue to step out of).
   // Arena-only: when this player most recently became free to be paired
-  // again (joined, un-paused, or their last game ended) — null while
+  // again (joined, un-paused, or their last game ended), null while
   // they're mid-game/paused/not yet joined. tryArenaPairings sorts its
   // pool by this ascending so whoever's been waiting longest gets first
   // pick of their nearest-standing opponent, ahead of someone who only
@@ -93,7 +93,7 @@ export interface ITournamentPairing {
   player2: Types.ObjectId | null;
   // Knockout ('normal') only: true for the bonus match between the two
   // semifinal losers, played alongside the final. Its winner/loser don't
-  // feed into any further bracket round — see advanceAfterRound and
+  // feed into any further bracket round, see advanceAfterRound and
   // finishTournament, which both special-case this pairing to keep it
   // from being mistaken for a second still-live bracket branch.
   isThirdPlace?: boolean;
@@ -120,7 +120,7 @@ export interface ITournament extends Document {
   code: string;
   name: string;
   createdBy: Types.ObjectId;
-  // True when the creator set this up purely to run it — see
+  // True when the creator set this up purely to run it, see
   // createTournament in tournament.service.ts: when set, the creator is
   // never pushed into `players` and never charged regFeeTokens. Immutable
   // after creation (not exposed on the edit form) since flipping it after
@@ -134,11 +134,11 @@ export interface ITournament extends Document {
   incrementSeconds: number;
   status: TournamentStatus;
   // Human-readable explanation for why status === 'cancelled', shown on the
-  // tournament page in place of the usual pending/active/finished content —
+  // tournament page in place of the usual pending/active/finished content, 
   // e.g. "Cancelled by the organiser" or "Not enough players to start the
   // tournament". Null for every non-cancelled status.
   cancelReason: string | null;
-  // When cancellation happened — drives sweepCancelledTournaments' cleanup
+  // When cancellation happened, drives sweepCancelledTournaments' cleanup
   // window (see tournament.service.ts): cancelled tournaments carry no
   // lasting value (no games were played, there's no history worth keeping),
   // so they're actually deleted from the database a short while after this
@@ -150,7 +150,7 @@ export interface ITournament extends Document {
   players: ITournamentPlayer[];
   berserkAllowed: boolean;
   // Whether this tournament shows up in the public "Open tournaments"
-  // browse list. Defaults to false — a tournament is reachable via its
+  // browse list. Defaults to false, a tournament is reachable via its
   // link/code either way, this just controls whether strangers can also
   // stumble onto it without the link. Independent of passwordHash: a public
   // tournament can still require a password to actually join.
@@ -168,29 +168,29 @@ export interface ITournament extends Document {
   // --- Registration fee: player-funded, paid out to the creator --------------
   // Every joining player (creator included) pays this into escrow; held by
   // the tournament until it finishes, then the pool (minus the platform's
-  // rake — see wallet.service.ts's computeRake) goes to the creator as
-  // compensation for running the event — it is NOT split among winners
+  // rake, see wallet.service.ts's computeRake) goes to the creator as
+  // compensation for running the event, it is NOT split among winners
   // (that's what prizeSchedule is for). Compulsory (>= 1) for every
-  // tournament created going forward — enforced in createTournament/
+  // tournament created going forward, enforced in createTournament/
   // updateTournament (tournament.service.ts) and the create/edit socket
   // schemas (tournamentSocket.ts). 0 only appears on tournaments created
   // before that requirement existed.
   regFeeTokens: number;
   regFeePoolTokens: number; // accumulates as players join
   regFeeSettled: boolean;
-  // Optional gate on joining (not on viewing — the tournament page itself is
+  // Optional gate on joining (not on viewing, the tournament page itself is
   // reachable by anyone with the link/code; only becoming a player requires
   // the password). null/empty = no password. Never sent to the client as
-  // anything but a hasPassword boolean — see getTournamentByCode.
+  // anything but a hasPassword boolean, see getTournamentByCode.
   passwordHash: string | null;
-  // Only meaningful for format === 'swiss' — how many rounds the event runs.
+  // Only meaningful for format === 'swiss', how many rounds the event runs.
   swissRounds: number | null;
-  // Only meaningful for format === 'round_robin' — how many times the field
+  // Only meaningful for format === 'round_robin', how many times the field
   // plays through the full round-robin schedule (1 = single round, 2 =
   // double/home-away, etc). Null for every other format, including legacy
   // 'robin' docs (which are implicitly always 1 lap).
   robinRounds: number | null;
-  // Only meaningful for format === 'arena' — how long the event runs once
+  // Only meaningful for format === 'arena', how long the event runs once
   // started. arenaEndsAt is the actual computed deadline (set at start
   // time from arenaMinutes), the thing the pairing engine and the client's
   // countdown both check against; arenaMinutes is just the creator's
@@ -200,17 +200,17 @@ export interface ITournament extends Document {
   currentRoundIndex: number;
   rounds: ITournamentRound[];
   // How long the lobby waits between one round finishing and the next one's
-  // games actually starting — gives players a breather to see standings, use
+  // games actually starting, gives players a breather to see standings, use
   // the bathroom, whatever, rather than getting yanked straight into another
   // game. Defaults to 10s; organizers can widen it at creation time.
   breakSeconds: number;
   // Set the moment a round finishes and the next one enters its break
   // window; null the rest of the time (including while a round is actually
-  // being played). Purely a display timestamp for the client's countdown —
+  // being played). Purely a display timestamp for the client's countdown, 
   // the server's own scheduling doesn't depend on reading this back.
   nextRoundStartsAt: Date | null;
   // When set, the tournament starts itself automatically at this time
-  // instead of waiting on the creator to press Start manually — see
+  // instead of waiting on the creator to press Start manually, see
   // scheduleAutoStart in tournament.service.ts. null means manual start.
   scheduledStartAt: Date | null;
   winner: Types.ObjectId | null;

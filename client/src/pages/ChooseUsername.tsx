@@ -11,7 +11,7 @@ import { AuthLayout } from "../components/AuthLayout.js";
 const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/;
 
 /**
- * One-time stop between a brand-new Google signup and the dashboard —
+ * One-time stop between a brand-new Google signup and the dashboard, 
  * SignIn.tsx/SignUp.tsx route here instead of "/" specifically when
  * auth.controller.ts's googleSignin reports `isNewUser`, since a fresh
  * account's username is just auto-generated from their Google name/email
@@ -19,7 +19,7 @@ const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/;
  * chosen by them. An existing account's later Google sign-ins skip this
  * entirely and land straight on the dashboard.
  *
- * Deliberately skippable — "player4821" is a perfectly working account,
+ * Deliberately skippable, "player4821" is a perfectly working account,
  * not a broken one, so this never blocks getting into the app.
  */
 export function ChooseUsername() {
@@ -62,7 +62,7 @@ export function ChooseUsername() {
   return (
     <AuthLayout
       title="Pick a username"
-      subtitle={`We started you off with "${user?.username ?? ""}" from your Google account — make it yours, or keep it.`}
+      subtitle={`We started you off with "${user?.username ?? ""}" from your Google account. Make it yours, or keep it.`}
       footer=""
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -75,7 +75,7 @@ export function ChooseUsername() {
           maxLength={24}
         />
         <p className="text-xs text-base-content/50">
-          3–24 characters — letters, numbers, and underscores only.
+          3–24 characters, letters, numbers, and underscores only.
         </p>
 
         {error && <p className="text-sm text-red-500">{error}</p>}
@@ -96,7 +96,7 @@ export function ChooseUsername() {
             onClick={() => navigate("/", { replace: true })}
             className="text-center text-sm text-base-content/50 hover:text-base-content/70"
           >
-            Skip for now — keep "{user?.username}"
+            Skip for now, keep "{user?.username}" instead
           </button>
         )}
       </form>

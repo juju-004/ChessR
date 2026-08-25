@@ -11,7 +11,7 @@ import { LockOpen, Mail, User2, Eye, EyeOff, AlertCircle } from "lucide-react";
 export function SignUp() {
   const navigate = useNavigate();
 
-  // Already signed in? There's nothing for this page to do — bounce straight
+  // Already signed in? There's nothing for this page to do, bounce straight
   // to the dashboard instead of showing a signup form to someone who doesn't
   // need one.
   if (isLoggedIn()) return <Navigate to="/" replace />;
@@ -74,7 +74,7 @@ export function SignUp() {
           minLength={3}
           maxLength={24}
           pattern="[a-zA-Z0-9_]+"
-          hint="3-24 characters — letters, numbers, and underscores only."
+          hint="3-24 characters, letters, numbers, and underscores only."
           value={username}
           onChange={(e) => setUsername(e.target.value)}
         />
@@ -121,8 +121,7 @@ export function SignUp() {
             className="font-medium text-(--primary) hover:underline"
           >
             Terms of Service
-          </Link>{" "}
-          — server-side move validation means everyone plays fair, and
+          </Link>{" "}, server-side move validation means everyone plays fair, and
           everyone else does too.
         </p>
       </form>

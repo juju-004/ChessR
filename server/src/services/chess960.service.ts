@@ -1,7 +1,7 @@
 /**
  * Chess960 (Fischer Random) starting position generator.
  *
- * IMPORTANT CAVEAT: chess.js — which does all move validation in this app —
+ * IMPORTANT CAVEAT: chess.js, which does all move validation in this app, 
  * does not support Chess960 castling (long-standing open upstream issue,
  * unresolved as of their own roadmap). Castling rights are therefore set to
  * none ('-') for these games rather than a misleading "KQkq" that chess.js
@@ -35,7 +35,7 @@ function generateChess960BackRank(): string {
   empty = emptyIndices();
   squares[empty[randomInt(empty.length)]] = 'n';
 
-  // Remaining 3 squares, left to right, are always Rook / King / Rook —
+  // Remaining 3 squares, left to right, are always Rook / King / Rook, 
   // this is what guarantees the king ends up between the two rooks.
   empty = emptyIndices().sort((a, b) => a - b);
   squares[empty[0]] = 'r';

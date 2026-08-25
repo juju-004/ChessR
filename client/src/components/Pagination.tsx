@@ -6,7 +6,7 @@ interface PaginationProps {
   onPageChange: (page: number) => void;
 }
 
-/** Compact prev/current/next pager for client-side-paginated lists — used
+/** Compact prev/current/next pager for client-side-paginated lists, used
  *  by the Open tournaments / Finished tourneys lists (which fetch their
  *  full set in one request, see Tournaments.tsx) and the cage match
  *  history list (see CageMatches.tsx). Not rendered at all for a single

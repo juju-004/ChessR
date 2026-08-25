@@ -117,7 +117,7 @@ export function setUserReportingBlock(username: string, blocked: boolean) {
 
 // --- Platform revenue (rake) -------------------------------------------------
 // See PlatformRevenue.ts / wallet.service.ts's computeRake+recordRake on the
-// server — a cut of every decisive game/cage-match wager and every
+// server, a cut of every decisive game/cage-match wager and every
 // tournament reg-fee pool.
 
 export type RevenueSource = 'game' | 'cage_match' | 'tournament';

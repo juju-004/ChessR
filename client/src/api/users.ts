@@ -15,7 +15,7 @@ export interface UserProfile {
   avatarGradient?: string | null;
   bio?: string | null;
   memberSince: string;
-  /** null = "Unranked" — the player hasn't hit ratedGamesUntilRanked more
+  /** null = "Unranked", the player hasn't hit ratedGamesUntilRanked more
    *  rated games yet. See rating.service.ts on the server. */
   ratingCategory: string | null;
   ratedGamesUntilRanked: number;
@@ -23,7 +23,7 @@ export interface UserProfile {
   isFriend: boolean;
   isSelf: boolean;
   activeGameCode: string | null;
-  /** Viewer's record against this profile's owner — null if not logged in,
+  /** Viewer's record against this profile's owner, null if not logged in,
    *  viewing your own profile, or the two of you have never played. */
   h2h: { wins: number; losses: number; draws: number } | null;
 }

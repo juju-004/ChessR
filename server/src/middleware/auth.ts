@@ -32,7 +32,7 @@ export function optionalAuth(req: AuthedRequest, _res: Response, next: NextFunct
       const payload = verifyAccessToken(header.slice('Bearer '.length));
       req.user = { id: payload.sub, username: payload.username };
     } catch {
-      // ignore invalid token — treat as anonymous
+      // ignore invalid token, treat as anonymous
     }
   }
   next();

@@ -19,7 +19,7 @@ import {
 } from "../api/friends.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { TIME_CONTROLS } from "../timeControls.js";
-import { MAX_WAGER_TOKENS } from "../lib/limits.js";
+import { MAX_WAGER_TOKENS, MIN_STAKE_TOKENS } from "../lib/limits.js";
 import { Page } from "@/components/ui/Page.js";
 import { Card } from "@/components/ui/Card.js";
 import { Select } from "@/components/ui/Select.js";
@@ -30,10 +30,10 @@ import { RCoin } from "@/components/ui/RCoin.js";
 import { ResponsiveOverlay } from "@/components/ui/ResponsiveOverlay.js";
 import { RatingBadge } from "@/components/RatingBadge.js";
 
-/** Merged "Players" page — search-for-anyone (the old /find) and your
+/** Merged "Players" page, search-for-anyone (the old /find) and your
  *  friends list + requests + challenge form (the old /friends) used to be
  *  two separate pages, but they're really one workflow: find someone,
- *  friend them, then challenge them — splitting that across a nav switch
+ *  friend them, then challenge them, splitting that across a nav switch
  *  just added a click in the middle of it. Search results now also get an
  *  inline "Add friend" action, which /find never had. */
 export function Players() {
@@ -44,7 +44,7 @@ export function Players() {
   const [friendSearch, setFriendSearch] = useState("");
   const [tcIndex, setTcIndex] = useState(2);
   const [variant, setVariant] = useState<"standard" | "chess960">("standard");
-  const [wagerInput, setWagerInput] = useState("10");
+  const [wagerInput, setWagerInput] = useState("20");
   const [status, setStatus] = useState<{
     message: string;
     isError: boolean;
@@ -54,7 +54,7 @@ export function Players() {
   const [results, setResults] = useState<UserSearchResult[]>([]);
   const [searchError, setSearchError] = useState("");
   const [sentRequestIds, setSentRequestIds] = useState<Set<string>>(new Set());
-  /** Which friend's row currently has its challenge overlay open — null
+  /** Which friend's row currently has its challenge overlay open, null
    *  means none. Only one at a time, so a single piece of state (rather
    *  than a per-friend open flag) is enough, and it lets the "Send
    *  challenge" button close its own overlay after sending. */
@@ -86,7 +86,7 @@ export function Players() {
     }
     function onSent() {
       setStatus({
-        message: "Challenge sent — waiting for a response…",
+        message: "Challenge sent. Waiting for a response…",
         isError: false,
       });
     }
@@ -123,7 +123,7 @@ export function Players() {
     const tc = TIME_CONTROLS[tcIndex];
     const wagerTokens = Math.min(
       MAX_WAGER_TOKENS,
-      Math.max(1, Math.floor(Number(wagerInput) || 0)),
+      Math.max(MIN_STAKE_TOKENS, Math.floor(Number(wagerInput) || 0)),
     );
     socket.emit("challenge:send", {
       toUserId: friendId,
@@ -133,7 +133,7 @@ export function Players() {
       wagerTokens,
     });
     setStatus({
-      message: `Challenge sent (${tc.label}${variant === "chess960" ? ", Chess960" : ""}, ${wagerTokens} R wager) — waiting for a response…`,
+      message: `Challenge sent (${tc.label}${variant === "chess960" ? ", Chess960" : ""}, ${wagerTokens} R wager). Waiting for a response…`,
       isError: false,
     });
     setChallengingFriendId(null);
@@ -161,7 +161,7 @@ export function Players() {
   // Search matches on username substring (case-insensitive); sort mode
   // "online" groups online friends first (alphabetical within each group)
   // so the people you can actually challenge right now surface without
-  // hunting through a long offline list — "alphabetical" ignores online
+  // hunting through a long offline list, "alphabetical" ignores online
   // status entirely for a straight a-z list.
   const visibleFriends = useMemo(() => {
     const q = friendSearch.trim().toLowerCase();
@@ -381,12 +381,12 @@ export function Players() {
                 ) : (
                   // Time control/variant/wager (for a live challenge) and
                   // the cage match option both live in this one overlay now
-                  // — settings persist across friends (same tcIndex/
+                  //, settings persist across friends (same tcIndex/
                   // variant/wagerInput state) so re-challenging someone
                   // with the same setup is still one click. The trigger
                   // itself stays open-able even when the friend's offline
                   // (a cage match invite doesn't need them online right
-                  // now the way an instant challenge does) — only "Send
+                  // now the way an instant challenge does), only "Send
                   // challenge" is gated on presence.
                   <ResponsiveOverlay
                     title={`Challenge ${f.username}`}
@@ -437,7 +437,7 @@ export function Players() {
                           </span>
                         }
                         type="number"
-                        min={1}
+                        min={MIN_STAKE_TOKENS}
                         max={MAX_WAGER_TOKENS}
                         step={1}
                         value={wagerInput}
@@ -449,7 +449,8 @@ export function Players() {
                         variant="secondary"
                         onClick={() => handleChallenge(f.id)}
                         disabled={
-                          !f.online || Math.floor(Number(wagerInput) || 0) < 1
+                          !f.online ||
+                          Math.floor(Number(wagerInput) || 0) < MIN_STAKE_TOKENS
                         }
                       >
                         {f.online ? "Send challenge" : "Friend is offline"}

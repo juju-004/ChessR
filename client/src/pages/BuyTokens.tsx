@@ -11,17 +11,17 @@ import { refreshBalance } from "../api/walletStore.js";
 import { Page, Card, Button, Input, RCoin } from "@/components/ui/index.js";
 import { MAX_WAGER_TOKENS } from "@/lib/limits.js";
 
-// Fallback used only until getWalletConfig() resolves — the server's
+// Fallback used only until getWalletConfig() resolves, the server's
 // figure (₦5/R Coin) is always what's actually charged; this just avoids
 // a blank/zeroed price preview for the one render before that request lands.
 const FALLBACK_NAIRA_PER_TOKEN = 5;
 const FALLBACK_MIN_TOKENS = 10;
 // 7-digit sanity ceiling on a single purchase, mirroring MAX_WAGER_TOKENS
-// server-side — overridden below by whatever getWalletConfig actually
+// server-side, overridden below by whatever getWalletConfig actually
 // returns, if it returns a tighter one.
 const FALLBACK_MAX_TOKENS = MAX_WAGER_TOKENS;
 
-// One-tap shortcuts for common amounts — purely a UI convenience over the
+// One-tap shortcuts for common amounts, purely a UI convenience over the
 // same custom-amount flow everyone else uses, not a distinct purchasable
 // thing like the old fixed plan tiers were.
 const QUICK_AMOUNTS = [50, 100, 250, 500, 1000, 2500];
@@ -44,15 +44,15 @@ export function BuyTokens() {
         // silently in the .then (which was the actual bug: the backend's
         // /wallet/plans hasn't been migrated to the new `purchase` field
         // yet, so `res.purchase` was undefined, the destructure threw, the
-        // rejected promise had no .catch, and publicKey — and therefore the
-        // button — never got set). Falls back to the constants above so the
+        // rejected promise had no .catch, and publicKey, and therefore the
+        // button, never got set). Falls back to the constants above so the
         // page still works with an old-shape response, just without
         // treating that as fatal.
         if (res.purchase) {
           setNairaPerToken(res.purchase.nairaPerToken);
           setMinTokens(res.purchase.minTokens);
           // Still clamp to our own 7-digit sanity ceiling even if the
-          // server ever sent something looser — this is a UI guard, not
+          // server ever sent something looser, this is a UI guard, not
           // the actual source of truth (that's server-side validation on
           // the purchase endpoint itself).
           setMaxTokens(
@@ -96,7 +96,7 @@ export function BuyTokens() {
             const result = await verifyPurchase(reference);
             if (result.status === "success") {
               setSuccessMessage(
-                `Success! ${purchasedTokens} R Coins added — new balance: ${result.tokenBalance}.`,
+                `Success! ${purchasedTokens} R Coins added, new balance: ${result.tokenBalance}.`,
               );
               await refreshBalance();
             } else {
@@ -132,7 +132,7 @@ export function BuyTokens() {
       }
       description={
         <span className="inline-flex items-center gap-1">
-          Fixed rate — ₦{nairaPerToken} per <RCoin size={13} /> Coin.
+          Fixed rate: ₦{nairaPerToken} per <RCoin size={13} /> Coin.
         </span>
       }
       back="/"
@@ -141,7 +141,7 @@ export function BuyTokens() {
       <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-500">
         <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <p>
-          Test mode — no real charge will be made. Use Paystack's test card
+          Test mode. No real charge will be made. Use Paystack's test card
           numbers.
         </p>
       </div>

@@ -8,12 +8,12 @@ import { AccountMenu } from "./AccountMenu.js";
 import { ThemeToggle } from "./ui/ThemeToggle.js";
 
 /**
- * A row of independent floating pills — logo, games menu, connection
- * status, install button, theme toggle, account — each its own
+ * A row of independent floating pills, logo, games menu, connection
+ * status, install button, theme toggle, account, each its own
  * self-contained `.elevated` surface with the page background showing
  * through the gaps, rather than one continuous bar. Site navigation on
  * phone lives in the bottom dock (see MobileDock in Sidebar.tsx), not up
- * here — there's no mobile nav trigger in this bar.
+ * here, there's no mobile nav trigger in this bar.
  */
 export const Navbar = memo(function Navbar() {
   const { isAuthed } = useAuth();

@@ -44,7 +44,7 @@ export interface PaystackVerifyResult {
   currency: string;
 }
 
-/** Server-side verification of a transaction — this, not the client's success
+/** Server-side verification of a transaction, this, not the client's success
  *  callback, is what we actually trust before crediting tokens. */
 export async function verifyTransaction(
   reference: string,
@@ -129,7 +129,7 @@ export async function initiateTransfer(params: {
 }
 
 /** Verifies the `x-paystack-signature` header against the raw request body.
- *  MUST be checked before trusting any webhook payload — otherwise anyone
+ *  MUST be checked before trusting any webhook payload, otherwise anyone
  *  who finds the webhook URL could POST a fake "charge.success" event and
  *  get free tokens credited. Requires the RAW (unparsed) request body; see
  *  app.ts for why this route is wired up before the global JSON body parser. */
@@ -142,7 +142,7 @@ export function verifyWebhookSignature(
     .createHmac("sha512", env.PAYSTACK_SECRET_KEY)
     .update(rawBody)
     .digest("hex");
-  // Constant-time comparison — a plain === here would leak timing information
+  // Constant-time comparison, a plain === here would leak timing information
   // about how many leading characters matched, which is a real (if niche)
   // attack vector against signature checks.
   const a = Buffer.from(hash);

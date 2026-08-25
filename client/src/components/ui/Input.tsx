@@ -2,13 +2,13 @@ import { forwardRef, type InputHTMLAttributes, type ReactNode } from "react";
 import { cn } from "@/lib/cn.js";
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
-  /** Small text shown under the field — swaps to error styling when `error` is set. */
+  /** Small text shown under the field, swaps to error styling when `error` is set. */
   hint?: string;
   error?: string;
   label?: string | ReactNode;
   /** e.g. a lucide icon, positioned inside the left edge of the field. */
   leadingIcon?: ReactNode;
-  /** e.g. a lucide icon, positioned inside the right edge of the field —
+  /** e.g. a lucide icon, positioned inside the right edge of the field, 
    *  a plain decorative icon if `onTrailingIconClick` is omitted, or a
    *  small icon button (e.g. password show/hide) if it's provided. */
   trailingIcon?: ReactNode;

@@ -17,6 +17,9 @@ import { watchTournament, unwatchTournament } from '../services/presence.service
 import type { AuthedSocketData } from './socketAuth.js';
 
 const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
+// Floor on any single wager/stake/fee amount, kept in sync with
+// MIN_STAKE_TOKENS in client/src/lib/limits.ts.
+const MIN_STAKE_TOKENS = 20;
 
 const MAX_BREAK_SECONDS = 300;
 
@@ -36,18 +39,18 @@ const createSchema = z.object({
   berserkAllowed: z.boolean().default(true),
   isPublic: z.boolean().default(false),
   organizerOnly: z.boolean().default(false),
-  // Knockout-only — see CreateTournamentInput's doc comment. Immutable
+  // Knockout-only, see CreateTournamentInput's doc comment. Immutable
   // after creation, same as organizerOnly, so this isn't in editSchema
   // below.
   thirdPlaceMatch: z.boolean().default(false),
   prizeSchedule: z.array(prizeTierSchema).max(20).optional().default([]),
-  regFeeTokens: z.number().int().min(1, 'A registration fee is required for every tournament').max(MAX_WAGER_TOKENS),
+  regFeeTokens: z.number().int().min(MIN_STAKE_TOKENS, `A registration fee of at least ${MIN_STAKE_TOKENS} R is required for every tournament`).max(MAX_WAGER_TOKENS),
   swissRounds: z.number().int().min(3).max(15).nullable().optional().default(null),
   robinRounds: z.number().int().min(1).max(4).nullable().optional().default(null),
   arenaMinutes: z.number().int().min(5).max(360).nullable().optional().default(null),
-  // Pause between rounds, in seconds — defaults to 10 if omitted.
+  // Pause between rounds, in seconds, defaults to 10 if omitted.
   breakSeconds: z.number().int().min(0).max(MAX_BREAK_SECONDS).default(10),
-  // ISO string — when the event should auto-start.
+  // ISO string, when the event should auto-start.
   scheduledStartAt: z.string().or(z.date()),
   password: z.string().trim().max(100).optional(),
 });
@@ -55,7 +58,7 @@ const idSchema = z.object({ tournamentId: z.string().refine(mongoose.isValidObje
 const joinSchema = idSchema.extend({ password: z.string().optional() });
 const pauseSchema = idSchema.extend({ paused: z.boolean() });
 
-// Every field truly optional with no defaults (unlike createSchema) — an
+// Every field truly optional with no defaults (unlike createSchema), an
 // omitted field must mean "leave this as-is", not "reset to the default",
 // since this is a partial edit of something that already exists.
 const editSchema = idSchema.extend({
@@ -68,7 +71,7 @@ const editSchema = idSchema.extend({
   berserkAllowed: z.boolean().optional(),
   isPublic: z.boolean().optional(),
   prizeSchedule: z.array(prizeTierSchema).max(20).optional(),
-  regFeeTokens: z.number().int().min(1, 'A registration fee is required for every tournament').max(MAX_WAGER_TOKENS).optional(),
+  regFeeTokens: z.number().int().min(MIN_STAKE_TOKENS, `A registration fee of at least ${MIN_STAKE_TOKENS} R is required for every tournament`).max(MAX_WAGER_TOKENS).optional(),
   swissRounds: z.number().int().min(3).max(15).nullable().optional(),
   robinRounds: z.number().int().min(1).max(4).nullable().optional(),
   arenaMinutes: z.number().int().min(5).max(360).nullable().optional(),
@@ -138,7 +141,7 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
 
   // Lets a spectator or a just-loaded detail page subscribe to live updates
   // for a tournament without actually joining it as a player. Also marks
-  // this socket as "watching" it in Redis (see watchTournament) — that's
+  // this socket as "watching" it in Redis (see watchTournament), that's
   // the signal arena/swiss pairing actually gates on, separately from the
   // Socket.IO room join above (which is just for live update delivery).
   socket.on(
@@ -150,12 +153,12 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
       await watchTournament(parsed.data.tournamentId, socket.id);
       // Immediate re-check rather than waiting for some unrelated pairing
       // event elsewhere to happen to pick this player up now that they're
-      // actually looking at the page — see retryArenaPairingsForUser.
+      // actually looking at the page, see retryArenaPairingsForUser.
       await retryArenaPairingsForUser(userId);
     }),
   );
 
-  // The other half of tournament:watch — called when the detail page
+  // The other half of tournament:watch, called when the detail page
   // unmounts (tab closed, navigated away, or just switched to a different
   // tournament). Without this, "who's watching this tournament" would
   // silently accumulate everyone who'd ever opened the page this session

@@ -6,7 +6,7 @@ import { startLatencyHeartbeat, stopLatencyHeartbeat, recordLatencySample } from
  * (which is client-initiated and purely for the navbar's connection
  * indicator, with no server-side memory of the result). This one exists so
  * the server has its own trustworthy measurement to use for move-clock lag
- * compensation — see latency.service.ts and finalizeMove in
+ * compensation, see latency.service.ts and finalizeMove in
  * gameState.service.ts for why that matters, especially for premoves.
  */
 export function registerLatencyHandlers(_io: Server, socket: Socket) {

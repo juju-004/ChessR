@@ -10,7 +10,7 @@ import {
 import { Page } from "@/components/ui/Page.js";
 import { Card } from "@/components/ui/Card.js";
 
-// Set this to RabahTech's actual site before shipping — placeholder for
+// Set this to RabahTech's actual site before shipping, placeholder for
 // now so the About page has somewhere real to point once it's ready.
 const RABAHTECH_URL = "https://rabah-tech.onrender.com";
 
@@ -19,13 +19,13 @@ const PILLARS = [
     icon: Swords,
     accent: "bg-blue-500/15 text-blue-400",
     title: "Real games, real stakes",
-    body: "Every match runs on server-authoritative move validation, so what you see on the board is exactly what's recorded — no client can cheat the rules of chess itself.",
+    body: "Every match runs on server-authoritative move validation, so what you see on the board is exactly what's recorded, no client can cheat the rules of chess itself.",
   },
   {
     icon: Coins,
     accent: "bg-amber-500/15 text-amber-400",
     title: "R Coin wagers",
-    body: "Players stake R Coins on games, cage matches, and tournaments. Winners take the pot, minus a small platform fee — see our Terms of Service for the exact rate.",
+    body: "Players stake R Coins on games, cage matches, and tournaments. Winners take the pot, minus a small platform fee, see our Terms of Service for the exact rate.",
   },
   {
     icon: Trophy,
@@ -57,7 +57,7 @@ export function About() {
         <Card variant="solid">
           <p className="text-sm leading-relaxed text-base-content/80">
             Chessr is a multiplayer chess platform built for players who want
-            something on the line — real-time games, cage matches, and
+            something on the line, real-time games, cage matches, and
             tournaments where R Coin wagers turn every move into a decision that
             matters. Under the hood, every game is validated server-side, so the
             result on the board is always the one that counts.

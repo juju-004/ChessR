@@ -75,13 +75,13 @@ function MatchCard({
   return card;
 }
 
-/** Tree-style bracket for knockout ('normal') tournaments — one column per
+/** Tree-style bracket for knockout ('normal') tournaments, one column per
  *  round, with a short connector line off each match pointing toward the
  *  next round, plus a separate card for the 3rd-place match (if the
- *  organizer enabled one — see Tournament.thirdPlaceMatch) since it isn't
+ *  organizer enabled one, see Tournament.thirdPlaceMatch) since it isn't
  *  part of the winner-advances chain the columns represent. Columns rely
  *  on flexbox's own equal-space distribution (justify-between, matching
- *  gap) rather than manually computed positions — since round N always has
+ *  gap) rather than manually computed positions, since round N always has
  *  exactly half of round N-1's real matches, each later match naturally
  *  lands roughly between the two matches that feed it. */
 export function KnockoutBracket({
@@ -92,7 +92,7 @@ export function KnockoutBracket({
   myId?: string;
 }) {
   // The 3rd-place pairing (if any) isn't part of the bracket's
-  // winner-advances chain — pull it out and render it separately below.
+  // winner-advances chain, pull it out and render it separately below.
   const bracketRounds = tournament.rounds
     .map((r) => r.pairings.filter((p) => !p.isThirdPlace))
     .filter((pairings) => pairings.length > 0);

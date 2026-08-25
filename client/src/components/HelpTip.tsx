@@ -12,7 +12,7 @@ import { cn } from "@/lib/cn.js";
  *  and meant for short one-line labels, so a paragraph of help text would
  *  render as one unbroken line off the edge of the screen. Popover already
  *  handles arbitrary-width content, viewport clamping, and touch (click
- *  to open/close) — all needed by explanations more than a sentence long. */
+ *  to open/close), all needed by explanations more than a sentence long. */
 export function HelpTip({
   children,
   className,

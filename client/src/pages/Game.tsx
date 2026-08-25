@@ -100,7 +100,7 @@ export function Game() {
   // Mirrors gameMeta for the socket-wiring effect below, which needs to
   // read a couple of gameMeta's fields (player ids, cageMatchId) inside
   // long-lived socket callbacks without taking a dependency on the
-  // `gameMeta` object itself — that object gets a new reference on every
+  // `gameMeta` object itself, that object gets a new reference on every
   // game:sync (its white/black usernames get refreshed there), and the
   // socket effect tearing itself down and reconnecting on every sync is
   // exactly the "toggling between Connecting… and Waiting for opponent…"
@@ -113,7 +113,7 @@ export function Game() {
     "loading",
   );
   const [loadError, setLoadError] = useState("");
-  // Set once, from the initial REST fetch below, and never flipped back —
+  // Set once, from the initial REST fetch below, and never flipped back, 
   // a game that's live when this page loads stays on the socket-driven
   // path for the rest of the session even if it finishes while open (the
   // existing game:over handling already covers that). Only a *fresh* load
@@ -124,7 +124,7 @@ export function Game() {
   const roleRef = useRef<Role>("spectator");
   // `game:over` and `cage:match_over` can arrive in either order when the
   // final leg of a cage match finishes (see onCageMatchOverOnThisLeg below)
-  // — this makes the "skip the per-leg modal" decision order-independent.
+  //, this makes the "skip the per-leg modal" decision order-independent.
   const cageMatchOverRef = useRef(false);
   const moveListScrollRef = useRef<HTMLDivElement | null>(null);
   const moveStripScrollRef = useRef<HTMLDivElement | null>(null);
@@ -147,12 +147,13 @@ export function Game() {
   } | null>(null);
   const [whiteConnected, setWhiteConnected] = useState(false);
   const [blackConnected, setBlackConnected] = useState(false);
+  const [spectatorCount, setSpectatorCount] = useState(0);
   const [moveError, setMoveError] = useState("");
   const [promoPending, setPromoPending] = useState<{
     orig: string;
     dest: string;
   } | null>(null);
-  // Just the expiry timestamp — DisconnectBanner (a separate component)
+  // Just the expiry timestamp. DisconnectBanner (a separate component)
   // derives the countdown text/claimable state itself and owns its own
   // 500ms tick, so this state only ever changes on actual socket events,
   // never on a timer. See DisconnectBanner.tsx for why that matters.
@@ -170,7 +171,7 @@ export function Game() {
     { username: string; message: string; at: number }[]
   >([]);
   const [chatInput, setChatInput] = useState("");
-  // Board flip is purely a local viewing preference — it doesn't touch
+  // Board flip is purely a local viewing preference, it doesn't touch
   // `myColor`/server state at all, just which edge of the board the local
   // player's pieces render on.
   const [boardFlipped, setBoardFlipped] = useState(false);
@@ -180,7 +181,7 @@ export function Game() {
   // Next snaps back to `null` once it reaches the live ply so newly
   // arriving moves resume being followed automatically.
   const [viewPly, setViewPly] = useState<number | null>(null);
-  // Mirror viewPly/moves for goToPly below — see that callback's own
+  // Mirror viewPly/moves for goToPly below, see that callback's own
   // comment for why it needs refs instead of closing over the state
   // directly.
   const viewPlyRef = useRef<number | null>(viewPly);
@@ -196,7 +197,7 @@ export function Game() {
     role === "white" || role === "black" ? role : undefined;
 
   // PREMOVE LOGIC: these must be memoized, not recomputed inline on every
-  // render, AND — just as importantly — declared unconditionally up here
+  // render, AND, just as importantly, declared unconditionally up here
   // rather than further down past the `if (mode === "loading") return (...)`
   // / `if (mode === "need-join") return (...)` early returns below. Hooks
   // called after a conditional return fire a different number of times
@@ -224,13 +225,13 @@ export function Game() {
   // starting position (important for Chess960, where that isn't the
   // standard start) rather than trying to derive positions from `fen`
   // (the live position), which would be the wrong direction to walk
-  // backwards from. `chess` above is deliberately left alone — dests/
+  // backwards from. `chess` above is deliberately left alone, dests/
   // premoveDests/turnColor everywhere else must keep reflecting the real,
   // live position even while the board is visually showing history.
   // Incrementally extended, not fully replayed from scratch, on every move.
   // A naive `useMemo` keyed on [initialFen, moves] still re-runs the whole
-  // replay any time the `moves` array gets a new reference — which is every
-  // single move, since onMove does `setMoves(prev => [...prev, entry])| —
+  // replay any time the `moves` array gets a new reference, which is every
+  // single move, since onMove does `setMoves(prev => [...prev, entry])|, 
   // so a full from-scratch replay was chess.js-validating every move of the
   // game over again on top of the one move that just landed. That's exactly
   // the wrong moment to spend extra main-thread time: it's the same render
@@ -238,7 +239,7 @@ export function Game() {
   // `moves` is appended immutably (the prefix keeps the same object
   // references), the cache below can detect "just one new move got
   // appended" via cheap reference equality and only replay that one move
-  // against the last cached fen — falling back to a full replay only when
+  // against the last cached fen, falling back to a full replay only when
   // the prefix doesn't match (resync, rematch, a shorter/different moves
   // array) or the variant's initial position changed.
   const historyCacheRef = useRef<{
@@ -272,7 +273,7 @@ export function Game() {
       };
       return fens;
     } catch {
-      // Shouldn't happen — the move list came from the server — but a
+      // Shouldn't happen, the move list came from the server, but a
       // broken replay should degrade to "always show the live position"
       // rather than crash the page.
       historyCacheRef.current = null;
@@ -293,14 +294,14 @@ export function Game() {
 
   const clockRunning = status === "active" && moves.length >= 2;
 
-  // Scaled to the time control (see computeLowTimeThresholdMs) — a flat
+  // Scaled to the time control (see computeLowTimeThresholdMs), a flat
   // "10 seconds left" doesn't mean the same thing in bullet vs. classical.
   const lowTimeThresholdMs = useMemo(
     () => computeLowTimeThresholdMs(gameMeta?.timeControl.baseSeconds ?? null),
     [gameMeta?.timeControl.baseSeconds],
   );
 
-  // Same idea, for the board's piece-slide speed — bullet games get quick
+  // Same idea, for the board's piece-slide speed, bullet games get quick
   // snaps, classical games get a slower, easier-to-follow slide. See
   // animationDurationForTimeControl's own comment for the bucket cutoffs.
   const animationDurationMs = useMemo(
@@ -314,25 +315,25 @@ export function Game() {
   // --- Live clocks + material diff, computed once and handed down to
   // whichever panel presentation (row on desktop, flank on mobile) is
   // actually rendered, so there's exactly one ticking source of truth. ---
-  // NOTE: this whole block — through opponentPanelData below — deliberately
+  // NOTE: this whole block, through opponentPanelData below, deliberately
   // lives up here with the other unconditional hooks (dests/premoveDests/
   // historyFens above) rather than down near where it's actually rendered.
   // It contains useMemo calls, and there are three early `return`s for
-  // loadError/mode==="loading"/mode==="need-join" between here and there —
+  // loadError/mode==="loading"/mode==="need-join" between here and there, 
   // hooks placed after those fire a different number of times depending on
   // which branch a given render takes, which is exactly the
   // "Rendered more hooks than during the previous render" crash. Same
   // reasoning as the comment on dests/premoveDests above.
   const sideToMove = turnColor(chess);
-  // Memoized on `displayFen` — the position actually on screen, which is
+  // Memoized on `displayFen`, the position actually on screen, which is
   // the live position normally but the historical one while browsing
-  // moves (see isViewingHistory/displayFen above) — so the material
+  // moves (see isViewingHistory/displayFen above), so the material
   // count on the panels always matches what's drawn on the board, not
   // the live game state you've scrolled away from.
   const material = useMemo(() => computeMaterialDiff(displayFen), [displayFen]);
-  // Per-move clock reconstruction — see reconstructPlyClocks for the exact
+  // Per-move clock reconstruction, see reconstructPlyClocks for the exact
   // rules this mirrors from the server. Recomputed only when the move list
-  // itself changes (new move, or a fresh load), not on every render/tick —
+  // itself changes (new move, or a fresh load), not on every render/tick, 
   // this data doesn't change while just scrubbing through history, only
   // the ply you're pointing at does. Skips entirely if any move is
   // missing a timestamp (an older live session that predates this field)
@@ -361,7 +362,7 @@ export function Game() {
     [moves, plyClocks],
   );
   // Each side's clock as of the position currently on screen while
-  // browsing history — the last reconstructed reading for that side at or
+  // browsing history, the last reconstructed reading for that side at or
   // before `viewPly`, or the untouched starting time if that side hasn't
   // moved yet at this point in the game. Only used while isViewingHistory;
   // live play keeps ticking off whiteRemainingMs/blackRemainingMs as
@@ -402,7 +403,7 @@ export function Game() {
   );
   const isActiveGame = status === "active";
   // The full grace window for this game: 25s for a plain game, 30s for a
-  // cage match leg or tournament pairing — see computeFirstMoveThresholdMs.
+  // cage match leg or tournament pairing, see computeFirstMoveThresholdMs.
   // Only the side whose first move is still pending actually gets a
   // non-null value passed down to their panel; see below.
   const firstMoveGraceMs = useMemo(
@@ -415,7 +416,7 @@ export function Game() {
   // Whose first move is currently the one on the clock: white's, until
   // white's first move lands (moves.length 0), then black's until black's
   // first move lands (moves.length 1). Never both, never neither, while the
-  // game's still in that idle phase — and not relevant at all once it's not
+  // game's still in that idle phase, and not relevant at all once it's not
   // (isActiveGame false, or paused for a cage match leg).
   const firstMovePendingSide: "white" | "black" | null =
     isActiveGame && !pausedLeg
@@ -428,7 +429,7 @@ export function Game() {
 
   // Memoized: PlayerPanelRow/PlayerPanelFlank are React.memo'd, but a plain
   // object literal here would be a brand-new reference on every render of
-  // Game (which re-renders often — chat input, move errors, banners…),
+  // Game (which re-renders often, chat input, move errors, banners…),
   // defeating that memo every single time regardless of whether any of
   // these values actually changed. useMemo keeps the reference stable
   // across renders where none of the listed dependencies moved.
@@ -450,6 +451,7 @@ export function Game() {
         ? `/profile/${gameMeta.white.username}`
         : null,
       ratingCategory: gameMeta?.white?.ratingCategory ?? null,
+      zenMode: settings.zenMode,
       ...whiteMaterial,
     }),
     [
@@ -469,6 +471,7 @@ export function Game() {
       firstMoveGraceMs,
       whiteBerserk,
       whiteMaterial,
+      settings.zenMode,
     ],
   );
   const blackPanelData = useMemo(
@@ -489,6 +492,7 @@ export function Game() {
         ? `/profile/${gameMeta.black.username}`
         : null,
       ratingCategory: gameMeta?.black?.ratingCategory ?? null,
+      zenMode: settings.zenMode,
       ...blackMaterial,
     }),
     [
@@ -508,9 +512,10 @@ export function Game() {
       firstMoveGraceMs,
       blackBerserk,
       blackMaterial,
+      settings.zenMode,
     ],
   );
-  // The panel matching my seat renders closest to me — bottom on desktop,
+  // The panel matching my seat renders closest to me, bottom on desktop,
   // right-hand flank on mobile; the opponent's is the mirror of that.
   const myPanelData = myColor === "black" ? blackPanelData : whitePanelData;
   const opponentPanelData =
@@ -521,7 +526,7 @@ export function Game() {
   // increment) so a second low-time stretch can warn again.
   //
   // This runs its own 100ms `setInterval` rather than depending on a
-  // shared page-level "tick" state — it only ever calls playLowTimeSound()
+  // shared page-level "tick" state, it only ever calls playLowTimeSound()
   // as a side effect, never setState, so it can't cascade into a re-render
   // of the whole page the way the old `clockTick` state used to (that was
   // the actual cause of animation jank on low-end devices: the whole Game
@@ -562,7 +567,7 @@ export function Game() {
   ]);
 
   // Smooth-scrolls the move list/strip to the newest move whenever one is
-  // added — but only while live (not while someone's browsing back through
+  // added, but only while live (not while someone's browsing back through
   // history via Prev/click, which would otherwise get yanked away from
   // whatever position they're looking at).
   useEffect(() => {
@@ -576,7 +581,7 @@ export function Game() {
   // The board's allotted space can be either width- or height-bound
   // depending on viewport shape (a tall phone vs. a wide desktop window),
   // and CSS aspect-ratio + max-width/max-height alone can't reliably pick
-  // "whichever is smaller" and re-derive the other dimension from it — so
+  // "whichever is smaller" and re-derive the other dimension from it, so
   // this measures the actual box the board sits in and sizes it in JS.
 
   // --- Load game metadata, decide whether to show a "join" gate --------------
@@ -602,7 +607,7 @@ export function Game() {
         setMode("board");
 
         if (isLiveStatus(game.status)) {
-          // Ongoing (or waiting-for-opponent, viewed by its creator) —
+          // Ongoing (or waiting-for-opponent, viewed by its creator), 
           // the socket-wiring effect below takes it from here, same as
           // it always has.
           setLive(true);
@@ -610,7 +615,7 @@ export function Game() {
         }
 
         // Finished/aborted: a stale, one-shot render. No socket room is
-        // ever joined for it — everything the board/panels/move list
+        // ever joined for it, everything the board/panels/move list
         // need is filled in here, once, from the REST payload, the same
         // fields a live game:sync would have set.
         setLive(false);
@@ -651,7 +656,7 @@ export function Game() {
           wagerSettlement: null,
         });
         // Don't auto-pop the modal for a game that's been over for a
-        // while — the inline "Game over — …" header line is enough, same
+        // while, the inline "Game over, …" header line is enough, same
         // as the old standalone replay page. Marking it dismissed here
         // also unlocks the "Rematch" action item below, for games where
         // that still makes sense.
@@ -695,7 +700,7 @@ export function Game() {
       return last ? [last.from, last.to] : undefined;
     }
 
-    // Room membership does not survive a reconnect — a dropped/restarted
+    // Room membership does not survive a reconnect, a dropped/restarted
     // connection gets a brand-new server-side socket that isn't in the game
     // room until we explicitly rejoin. Listening on 'connect' (which fires on
     // the *first* connection too) means this is the single source of truth
@@ -718,11 +723,12 @@ export function Game() {
       setTurnStartedAtMs(payload.turnStartedAtMs);
       setWhiteConnected(!!payload.whiteConnected);
       setBlackConnected(!!payload.blackConnected);
+      setSpectatorCount(payload.spectatorCount ?? 0);
       setPausedLeg(!!payload.paused);
       setWhiteBerserk(!!payload.berserk?.white);
       setBlackBerserk(!!payload.berserk?.black);
       // The initial REST fetch runs before an opponent has necessarily
-      // joined, so gameMeta.black can still be null at that point — this
+      // joined, so gameMeta.black can still be null at that point, this
       // is what actually keeps the player panels current once someone
       // does join (or on any later resync/reconnect), instead of being
       // stuck showing the "Black"/"White" placeholder forever.
@@ -779,7 +785,7 @@ export function Game() {
       setDisconnectExpiresAt(null);
       playGameOverSound();
       // The clock display only ticks down live via elapsed-time math while
-      // the game is active — once status flips to finished that stops, so
+      // the game is active, once status flips to finished that stops, so
       // without this it would snap back to whatever whiteRemainingMs/
       // blackRemainingMs were as of the *previous* move (e.g. a stale ~3s)
       // instead of resting at the actual final time (0 for a timeout).
@@ -789,7 +795,7 @@ export function Game() {
         setBlackRemainingMs(payload.blackRemainingMs);
 
       // A wager payout/refund (or the stake being locked away in the first
-      // place) changes the R Coin balance — refresh the shared store so the
+      // place) changes the R Coin balance, refresh the shared store so the
       // navbar badge and dashboard update without needing a reload.
       if (payload.wagerSettlement && payload.wagerSettlement.wagerTokens > 0) {
         refreshBalance().catch(() => {});
@@ -810,6 +816,11 @@ export function Game() {
     function onOpponentConnected(payload: { userId: string }) {
       markConnection(payload.userId, true);
       playGameStartSound();
+    }
+
+    function onSpectatorCount(payload: { gameId: string; count: number }) {
+      if (payload.gameId !== gameId) return;
+      setSpectatorCount(payload.count);
     }
 
     function onStateChanged() {
@@ -844,7 +855,7 @@ export function Game() {
 
     function onClaimAvailable() {
       if (roleRef.current === "spectator") return;
-      // Already-past timestamp — DisconnectBanner treats that as
+      // Already-past timestamp. DisconnectBanner treats that as
       // immediately claimable, same as when the countdown reaches zero.
       setDisconnectExpiresAt(Date.now());
     }
@@ -918,7 +929,7 @@ export function Game() {
     // the global `cage:match_over` (which pops CageMatchOverModal via
     // GlobalListeners) at essentially the same moment. Showing both stacked
     // is confusing, so once the whole match is over, the per-leg modal steps
-    // aside and lets the match-level popup be the single source of truth —
+    // aside and lets the match-level popup be the single source of truth, 
     // regardless of which of the two events this client happens to process
     // first.
     function onCageMatchOverOnThisLeg(payload: { matchId: string }) {
@@ -933,6 +944,7 @@ export function Game() {
     socket.on("game:over", onOver);
     socket.on("game:error", onError);
     socket.on("game:opponent_connected", onOpponentConnected);
+    socket.on("game:spectator_count", onSpectatorCount);
     socket.on("game:state_changed", onStateChanged);
     socket.on("game:opponent_disconnected", onOpponentDisconnected);
     socket.on("game:claim_available", onClaimAvailable);
@@ -953,12 +965,14 @@ export function Game() {
     if (socket.connected) joinRoom();
 
     return () => {
+      socket.emit("game:leave", { gameId });
       socket.off("connect", joinRoom);
       socket.off("game:sync", onSync);
       socket.off("game:move", onMove);
       socket.off("game:over", onOver);
       socket.off("game:error", onError);
       socket.off("game:opponent_connected", onOpponentConnected);
+      socket.off("game:spectator_count", onSpectatorCount);
       socket.off("game:state_changed", onStateChanged);
       socket.off("game:opponent_disconnected", onOpponentDisconnected);
       socket.off("game:claim_available", onClaimAvailable);
@@ -1015,7 +1029,7 @@ export function Game() {
     const ok = await confirmDialog({
       title: "Forfeit the entire cage match?",
       description:
-        "Not just this game — your opponent will be declared the overall winner and any remaining games will be skipped.",
+        "This will forfeit the entire match, not just this game. Your opponent will be declared the overall winner and any remaining games will be skipped.",
       variant: "danger",
       confirmLabel: "Forfeit match",
     });
@@ -1086,7 +1100,7 @@ export function Game() {
 
   function handleBerserk() {
     if (!socket || !gameMeta) return;
-    // Deliberately no confirmation popover — like Lichess, berserking is
+    // Deliberately no confirmation popover, like Lichess, berserking is
     // meant to be an instant, no-second-thoughts decision made in the first
     // few seconds of the game, not something that pauses on a dialog.
     socket.emit("game:berserk", { gameId: gameMeta._id });
@@ -1106,7 +1120,7 @@ export function Game() {
     if (!socket || !gameMeta) return;
     socket.emit("game:rematch_offer", { gameId: gameMeta._id });
     setRematchState("offered");
-    notify("Rematch offer sent — waiting for your opponent…", [], 5000);
+    notify("Rematch offer sent. Waiting for your opponent…", [], 5000);
   }
 
   const handleShareGame = async () => {
@@ -1116,7 +1130,7 @@ export function Game() {
         await navigator.share({ title: "Join my chess game on Chessr", url });
       } catch (err) {
         // AbortError just means the person closed the share sheet without
-        // picking anything — not a failure worth surfacing. Any other
+        // picking anything, not a failure worth surfacing. Any other
         // failure (e.g. share unexpectedly rejected) falls back to a
         // plain clipboard copy so the action still does *something*.
         if ((err as Error)?.name !== "AbortError") {
@@ -1143,13 +1157,13 @@ export function Game() {
    *  snaps back to `null` (live) rather than an equal-but-distinct ply
    *  number, so it behaves identically to Next walking off the end.
    *  Also plays the same move/capture/check sound a live move would have
-   *  — landing on a ply plays the sound for the move that produced it, in
+   *, landing on a ply plays the sound for the move that produced it, in
    *  either direction, the same as clicking through a game on lichess.
    *  No-ops (including no sound) if the requested ply is where the view
    *  already is, so holding a button past the end of the list doesn't
    *  spam a sound on every repeat tick.
    *
-   *  useCallback so MoveList/MoveStrip below — both React.memo'd — get a
+   *  useCallback so MoveList/MoveStrip below, both React.memo'd, get a
    *  stable handleSelectMove reference across the page's many unrelated
    *  re-renders (chat input, move errors, etc.) instead of rebuilding
    *  their entire move-button list every time any of that state changes. */
@@ -1157,7 +1171,7 @@ export function Game() {
   // those all change on every single navigation step, which used to give
   // goToPly (and therefore handleSelectMove below) a fresh identity on
   // every step too. MoveList/MoveStrip's per-button memoization (see
-  // MoveLog.tsx) depends on onSelectMove staying referentially stable —
+  // MoveLog.tsx) depends on onSelectMove staying referentially stable, 
   // otherwise every move button would see a "changed" prop on every step
   // and re-render regardless, defeating the whole point of that memo.
   // This callback is now stable for the lifetime of the component.
@@ -1192,8 +1206,8 @@ export function Game() {
   }
 
   // Declared here (before the loadError/mode early returns below) rather
-  // than down by the buttons that use them, since hooks — useHoldRepeat
-  // included — have to run unconditionally on every render.
+  // than down by the buttons that use them, since hooks, useHoldRepeat
+  // included, have to run unconditionally on every render.
   const prevHold = useHoldRepeat(handlePrevMove);
   const nextHold = useHoldRepeat(handleNextMove);
 
@@ -1209,7 +1223,7 @@ export function Game() {
 
   const isPlayer = role !== "spectator";
   // Keyed off the position actually on screen (live, or historical while
-  // browsing — see displayFen above), not always the live `chess` object —
+  // browsing, see displayFen above), not always the live `chess` object, 
   // otherwise the check highlight would keep showing the live game's check
   // state while scrubbing through a history where a different (or no)
   // check was in effect at that ply.
@@ -1218,7 +1232,7 @@ export function Game() {
     [isViewingHistory, displayFen, chess],
   );
 
-  // Memoized — GameDetailsCard is React.memo'd below it, and a plain array
+  // Memoized. GameDetailsCard is React.memo'd below it, and a plain array
   // literal here would be a fresh reference on every one of Game's many
   // unrelated re-renders (chat input, move errors, banners…), which would
   // make that memo boundary a no-op since one of its props would always
@@ -1255,7 +1269,7 @@ export function Game() {
         </Link>,
       );
     // White/black berserked badges now live on the player panels themselves,
-    // right next to the clock they actually affect — see PlayerPanels.tsx's
+    // right next to the clock they actually affect, see PlayerPanels.tsx's
     // BerserkBadge.
     return list;
   }, [
@@ -1268,7 +1282,7 @@ export function Game() {
 
   const showChat = !settings.zenMode && role === "spectator" && live;
 
-  // Persistent "White Wins — Timeout" style line for GameDetailsCard — see
+  // Persistent "White Wins. Timeout" style line for GameDetailsCard, see
   // that component's doc comment on resultSummary for why this needs to
   // exist separately from the modal (which only auto-pops once, right when
   // a game ends live; it stays dismissed on every later visit).
@@ -1276,7 +1290,7 @@ export function Game() {
     () =>
       gameOver
         ? {
-            text: `${titleFor(gameOver.result, myColor, isPlayer)} — ${reasonText(gameOver.reason)}`,
+            text: `${titleFor(gameOver.result, myColor, isPlayer)}, ${reasonText(gameOver.reason)}`,
             tone: (gameOver.result === null
               ? "neutral"
               : gameOver.result === "draw"
@@ -1292,13 +1306,13 @@ export function Game() {
     [gameOver, myColor, isPlayer],
   );
 
-  // Which ply is "selected" right now — the one being browsed, or the
+  // Which ply is "selected" right now, the one being browsed, or the
   // live move if nothing's being browsed. Drives the highlight below.
   const currentPly = viewPly ?? liveViewPly;
 
   // Both MoveList/MoveStrip are React.memo'd (see components/MoveLog.tsx)
   // so they only actually re-render when `moves`/`currentPly`/
-  // `handleSelectMove` change — but wrapping the elements themselves in
+  // `handleSelectMove` change, but wrapping the elements themselves in
   // useMemo additionally keeps *this* reference stable across Game's many
   // unrelated re-renders, which is what lets GameDetailsCard's own
   // React.memo boundary actually bail instead of always seeing a "new"
@@ -1375,7 +1389,7 @@ export function Game() {
               variant="solid"
               className="mb-4 border-amber-900/40 bg-amber-950/20 text-left text-sm text-amber-300"
             >
-              This is a wagered game — joining will stake{" "}
+              This is a wagered game. Joining will stake{" "}
               <strong className="inline-flex items-center gap-1">
                 {gameMeta.wagerTokens} <RCoin size={13} />
               </strong>{" "}
@@ -1394,13 +1408,13 @@ export function Game() {
     );
   }
 
-  // Resign/draw/abort — the trio of "give up on the game" actions. Abort is
+  // Resign/draw/abort, the trio of "give up on the game" actions. Abort is
   // only for normal games during the idle phase (before either side has
-  // moved), mirroring the lichess-style abort window — cage match legs get
+  // moved), mirroring the lichess-style abort window, cage match legs get
   // "pause" as their idle-phase escape hatch instead (see below), and
   // tournament pairings get neither, so walking away from a bracket game
   // isn't this cheap. Resign/offer-draw only become available once the idle
-  // phase ends (both sides have moved at least once) — before that there's
+  // phase ends (both sides have moved at least once), before that there's
   // nothing to resign from yet, hence the Abort branch is mutually exclusive
   // with them. Rendered as plain inline Buttons in the right panel from md
   // up, and collapsed into a single dropup trigger (via the Dropdown
@@ -1408,20 +1422,20 @@ export function Game() {
   // them in.
   //
   // Once the game's over and its modal has been dismissed, that space is
-  // reused for a single "Rematch" entry that just reopens GameOverModal —
+  // reused for a single "Rematch" entry that just reopens GameOverModal, 
   // it's the only place with the actual offer-rematch button (and its
   // "offer sent" disabled state), so this doesn't duplicate that logic,
   // it just gets the modal back on screen. Mutually exclusive with the
   // trio above: status can't be "active" once gameOver is set. Cage match
-  // legs never offer a rematch — the series has its own next-leg/forfeit
+  // legs never offer a rematch, the series has its own next-leg/forfeit
   // flow instead.
   // Once the game's over and its modal has been dismissed, that space is
-  // reused for a single "Rematch" entry that just reopens GameOverModal —
+  // reused for a single "Rematch" entry that just reopens GameOverModal, 
   // it's the only place with the actual offer-rematch button (and its
   // "offer sent" disabled state), so this doesn't duplicate that logic,
   // it just gets the modal back on screen. Mutually exclusive with the
   // trio above: status can't be "active" once gameOver is set. Cage match
-  // legs and tournament pairings never offer a rematch — a cage match has
+  // legs and tournament pairings never offer a rematch, a cage match has
   // its own next-leg/forfeit flow, and a tournament bracket is fixed by the
   // pairing schedule, not something either player gets to spin up again.
   const isIdlePhase = moves.length < 2;
@@ -1478,7 +1492,7 @@ export function Game() {
     ...(canBerserk
       ? [
           {
-            label: "Berserk — halve your clock for a bonus point",
+            label: "Berserk: halve your clock for a bonus point",
             icon: Swords,
             onClick: handleBerserk,
             danger: true,
@@ -1564,10 +1578,10 @@ export function Game() {
   ];
 
   // Mobile pill: Flip board, Share, Prev/Next move, and Spectator chat (when
-  // present) stay always visible — they're the ones reached for constantly
+  // present) stay always visible, they're the ones reached for constantly
   // mid-game. Everything else (resign/draw/abort/pause/forfeit/rematch)
   // collapses into the "More" dropup so the pill doesn't sprawl across a
-  // phone screen. Desktop is untouched — it still renders the full
+  // phone screen. Desktop is untouched, it still renders the full
   // actionItems list as-is in the right panel.
   const mobilePrimaryItems = [
     ...actionItems.filter((item) => item.mobilePrimary),
@@ -1589,7 +1603,7 @@ export function Game() {
         onClaim={handleClaim}
       />
 
-      {/* Main layout — a plain top-to-bottom stack on phone (details, board,
+      {/* Main layout, a plain top-to-bottom stack on phone (details, board,
        *  panels flanking it top/bottom), becoming a CSS grid from md up
        *  (see .game-grid in index.css): a 2-column board/right-panel grid
        *  with the details+moves block spanning full width above it on
@@ -1597,7 +1611,7 @@ export function Game() {
        *  where the board's grid column is the widest of the three so it
        *  reads as visually larger than the side panels. */}
       <div className="game-grid min-h-0 flex-1">
-        {/* Game details — code, share, badges, status, and the move list.
+        {/* Game details, code, share, badges, status, and the move list.
          *  (Spectator chat's trigger now lives in the action button row.)
          *  Left column on desktop; a full-width strip above the board/panel
          *  row on tablet and phone. */}
@@ -1607,6 +1621,7 @@ export function Game() {
             code={code}
             onShare={handleShareGame}
             zenMode={settings.zenMode}
+            spectatorCount={spectatorCount}
             moveListEntries={moveListEntries}
             moveStripEntries={moveStripEntries}
             moveListScrollRef={moveListScrollRef}
@@ -1642,11 +1657,11 @@ export function Game() {
           onPromotionPick={handlePromotionPick}
         />
 
-        {/* Right panel — tablet & desktop. Player panels, the cage match
+        {/* Right panel, tablet & desktop. Player panels, the cage match
          *  scoreboard (if any), then the action buttons (flip/prev/next,
          *  resign/draw/cage-match, spectator chat trigger) pinned to the
          *  bottom via mt-auto. Spectator chat itself opens as a right-side
-         *  drawer from here, or a bottom sheet on phone — see the drawer
+         *  drawer from here, or a bottom sheet on phone, see the drawer
          *  markup near the end of the component. */}
         <div className="game-area-rightpanel justify-center min-h-0 flex-col gap-3">
           <div>
@@ -1696,7 +1711,7 @@ export function Game() {
           </div>
         )}
 
-        {/* Mobile action pill — fixed to the bottom of the screen instead of
+        {/* Mobile action pill, fixed to the bottom of the screen instead of
          *  sitting in normal flow, so it's always reachable without
          *  scrolling. Only the items reached for constantly mid-game (flip
          *  board, share link, spectator chat, prev/next move) stay always
@@ -1716,6 +1731,7 @@ export function Game() {
         open={chatSheetOpen}
         onClose={() => setChatSheetOpen(false)}
         messages={chatMessages}
+        myUsername={user?.username}
         chatInput={chatInput}
         onChatInputChange={setChatInput}
         onSend={handleSendChat}

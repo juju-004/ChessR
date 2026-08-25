@@ -22,7 +22,7 @@ export interface TournamentPlayer {
   eliminatedRound: number | null;
   hadBye: boolean;
   withdrawn: boolean;
-  // Arena-only — see the server's ITournamentPlayer doc comment. Always
+  // Arena-only, see the server's ITournamentPlayer doc comment. Always
   // false for every other format.
   paused: boolean;
 }
@@ -56,7 +56,7 @@ export interface Tournament {
   code: string;
   name: string;
   createdBy: string;
-  /** True if the creator set up this tournament purely to run it — they
+  /** True if the creator set up this tournament purely to run it, they
    *  never occupy a player slot and were never charged the registration
    *  fee. See tournament.service.ts's createTournament for the server-side
    *  half of this. */
@@ -66,7 +66,7 @@ export interface Tournament {
   baseMinutes: number | null;
   incrementSeconds: number;
   status: TournamentStatus;
-  // Set when status === "cancelled" — a short human-readable reason, e.g.
+  // Set when status === "cancelled", a short human-readable reason, e.g.
   // "Cancelled by the organiser" or "Not enough players to start the
   // tournament". Null otherwise.
   cancelReason: string | null;
@@ -81,7 +81,7 @@ export interface Tournament {
   regFeeTokens: number;
   regFeePoolTokens: number;
   regFeeSettled: boolean;
-  // Never the actual hash — just whether joining requires a password.
+  // Never the actual hash, just whether joining requires a password.
   hasPassword: boolean;
   swissRounds: number | null;
   robinRounds: number | null;
@@ -94,7 +94,7 @@ export interface Tournament {
   scheduledStartAt: string | null;
   winner: string | null;
   runnerUp: string | null;
-  // Knockout-only — see tournament.service.ts's CreateTournamentInput doc
+  // Knockout-only, see tournament.service.ts's CreateTournamentInput doc
   // comment for thirdPlaceMatch, and ITournament's for thirdPlace/
   // fourthPlace. All null/false for every other format.
   thirdPlaceMatch: boolean;
@@ -120,7 +120,7 @@ export function getTournamentByCode(code: string) {
   );
 }
 
-/** Sorted standings for swiss/robin/round_robin formats — for 'normal'
+/** Sorted standings for swiss/robin/round_robin formats, for 'normal'
  *  (knockout) use the bracket view instead, points aren't tracked there. */
 export function rankTournamentPlayers(
   tournament: Tournament,
@@ -160,7 +160,7 @@ export function formatTimeControl(
   return t.variant === "chess960" ? `${base} · 960` : base;
 }
 
-/** Total the creator committed across every tier of a prize schedule — the
+/** Total the creator committed across every tier of a prize schedule, the
  *  exact number debited from them at creation time. */
 export function totalPrizePool(schedule: TournamentPrizeTier[]): number {
   return schedule.reduce(
@@ -171,7 +171,7 @@ export function totalPrizePool(schedule: TournamentPrizeTier[]): number {
 
 /** "R" for a single-rank tier (only one person can ever receive it) vs
  *  "R each" for a multi-rank tier (every rank in the range gets that
- *  amount) — auto-detected from the tier's own range rather than something
+ *  amount), auto-detected from the tier's own range rather than something
  *  the creator has to separately toggle. */
 export function tokensLabel(
   tier: Pick<TournamentPrizeTier, "fromRank" | "toRank">,
@@ -194,7 +194,7 @@ export const FORMAT_DESCRIPTION: Record<TournamentFormat, string> = {
 };
 
 // Upper bound on maxPlayers for each format, matching the server's
-// FORMAT_BOUNDS — used to keep the create/edit form's input hint honest
+// FORMAT_BOUNDS, used to keep the create/edit form's input hint honest
 // rather than always showing a flat 64 regardless of format.
 export const FORMAT_MAX_PLAYERS: Record<TournamentFormat, number> = {
   normal: 64,
@@ -203,7 +203,7 @@ export const FORMAT_MAX_PLAYERS: Record<TournamentFormat, number> = {
   arena: 100,
 };
 
-/** How many games a round-robin field actually plays — for display next to
+/** How many games a round-robin field actually plays, for display next to
  *  the format picker/summary. */
 export function robinRoundsLabel(robinRounds: number | null): string {
   if (!robinRounds || robinRounds === 1) return "Everyone plays everyone once.";
@@ -228,7 +228,7 @@ export function ordinalSuffix(n: number): string {
 }
 
 /** Render a prize schedule back into the plain-text format
- *  `parsePrizePoolText` understands — used to seed the textarea when
+ *  `parsePrizePoolText` understands, used to seed the textarea when
  *  editing an existing schedule so the round trip stays lossless. */
 export function prizeTiersToText(tiers: TournamentPrizeTier[]): string {
   return tiers
@@ -285,7 +285,7 @@ export function parsePrizePoolText(text: string): PrizePoolParseResult {
     if (!line) continue;
 
     // Strip everything but digits, a decimal point, "k", and the two
-    // separators (hyphen, whitespace) — quietly discards ordinal suffixes,
+    // separators (hyphen, whitespace), quietly discards ordinal suffixes,
     // stray punctuation, and thousands-separator commas in one pass.
     const cleaned = line.replace(/[^0-9kK.\-\s]/g, " ");
     const parts = cleaned

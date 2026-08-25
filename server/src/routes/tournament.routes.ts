@@ -11,7 +11,7 @@ const router = Router();
 
 router.get("/", optionalAuth, getOpenTournaments);
 router.get("/mine", requireAuth, getMyTournaments);
-// No auth — this is fetched by link-preview crawlers (WhatsApp, Facebook,
+// No auth, this is fetched by link-preview crawlers (WhatsApp, Facebook,
 // etc.), which never carry a session. See og.controller.ts for the caveat
 // about needing frontend-side routing for this to actually get hit by them.
 router.get("/code/:code/card", getTournamentOgCard);

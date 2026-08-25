@@ -18,11 +18,11 @@ import type { AuthedSocketData } from './socketAuth.js';
 
 const CAGE_INVITE_TTL_SECONDS = 90;
 const inviteKey = (id: string) => `cageInvite:${id}`;
-// Same anti-spam pattern as challengeSocket.ts's pendingPairKey — blocks a
+// Same anti-spam pattern as challengeSocket.ts's pendingPairKey, blocks a
 // second cage:send to the same person while one's still unanswered.
 const pendingInvitePairKey = (fromId: string, toId: string) => `cageInvite:pending:${fromId}:${toId}`;
 
-// Pause/resume requests are short-lived, Redis-backed, and keyed by match —
+// Pause/resume requests are short-lived, Redis-backed, and keyed by match, 
 // same pattern as a normal challenge invite, just scoped to a specific match
 // rather than a specific pair of strangers.
 const PAUSE_REQUEST_TTL_SECONDS = 60;
@@ -30,6 +30,9 @@ const pauseRequestKey = (matchId: string) => `cagePauseReq:${matchId}`;
 const resumeRequestKey = (matchId: string) => `cageResumeReq:${matchId}`;
 
 const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
+// Floor on any single wager/stake/fee amount, kept in sync with
+// MIN_STAKE_TOKENS in client/src/lib/limits.ts.
+const MIN_STAKE_TOKENS = 20;
 
 const legSchema = z.object({
   variant: z.enum(['standard', 'chess960']).default('standard'),
@@ -43,7 +46,7 @@ const sendSchema = z.object({
   winnerMode: z.enum(['total_score', 'most_categories', 'first_to_n']).default('total_score'),
   targetWins: z.number().int().min(1).max(30).nullable().optional().default(null),
   wagerMode: z.enum(['winner_takes_all', 'per_leg', 'split_even']).default('winner_takes_all'),
-  wagerTokens: z.number().int().min(1, 'A wager is required for every cage match').max(MAX_WAGER_TOKENS),
+  wagerTokens: z.number().int().min(MIN_STAKE_TOKENS, `A wager of at least ${MIN_STAKE_TOKENS} R is required for every cage match`).max(MAX_WAGER_TOKENS),
 });
 const respondSchema = z.object({ inviteId: z.string(), accept: z.boolean() });
 const cancelSchema = z.object({ inviteId: z.string() });
@@ -66,7 +69,7 @@ function safeHandler<T>(socket: Socket, fn: (payload: T) => Promise<void>): (pay
   };
 }
 
-// Rough per-player commitment for the up-front "can you afford this" check —
+// Rough per-player commitment for the up-front "can you afford this" check, 
 // mirrors the soft balance check in challengeSocket.ts. The authoritative
 // debit(s) still happen at the moment tokens actually need to move.
 function estimatedMaxCommitment(wagerMode: string, wagerTokens: number, legCount: number): number {

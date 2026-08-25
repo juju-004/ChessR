@@ -12,10 +12,10 @@ function hashToken(rawToken: string): string {
 
 /**
  * Generates a fresh verification token for `user`, stores only its hash
- * (same reasoning as a password reset flow — the raw token lives in the
+ * (same reasoning as a password reset flow, the raw token lives in the
  * emailed link and nowhere else, so a database read alone can never be
  * used to verify someone else's address), and emails the link. Safe to
- * call repeatedly (e.g. "resend email") — each call overwrites any
+ * call repeatedly (e.g. "resend email"), each call overwrites any
  * previous outstanding token, invalidating it.
  */
 export async function issueEmailVerification(user: IUser): Promise<void> {
@@ -31,7 +31,7 @@ export async function issueEmailVerification(user: IUser): Promise<void> {
 /**
  * Looks up the user matching `rawToken`'s hash, checks it hasn't expired,
  * marks them verified, and clears the token so it can't be reused. Returns
- * null (rather than throwing) for any invalid/expired/already-used token —
+ * null (rather than throwing) for any invalid/expired/already-used token, 
  * the controller turns that into a 400, but "token not found" and "token
  * expired" deliberately look identical to the caller so this can't be used
  * to fish for which case applies.

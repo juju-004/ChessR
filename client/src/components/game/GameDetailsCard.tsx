@@ -1,5 +1,5 @@
 import { memo, type ReactNode, type RefObject } from "react";
-import { Share2 } from "lucide-react";
+import { Share2, Users } from "lucide-react";
 import { Card } from "../ui/index.js";
 import { cn } from "@/lib/cn.js";
 
@@ -8,6 +8,7 @@ interface GameDetailsCardProps {
   code: string;
   onShare: () => void;
   zenMode: boolean;
+  spectatorCount: number;
   moveListEntries: ReactNode;
   moveStripEntries: ReactNode;
   moveListScrollRef: RefObject<HTMLDivElement | null>;
@@ -28,11 +29,11 @@ const RESULT_TONE_CLASS: Record<
   neutral: "text-base-content/60 ",
 };
 
-/** Game details — code, share, badges, result, and the move list. Left
+/** Game details, code, share, badges, result, and the move list. Left
  *  column on desktop; a full-width strip above the board/panel row on
  *  tablet and phone.
  *
- *  React.memo'd for the same reason as GameBoardArea — moveListEntries/
+ *  React.memo'd for the same reason as GameBoardArea, moveListEntries/
  *  moveStripEntries are the actual MoveList/MoveStrip elements built in
  *  Game.tsx, already memoized internally, but this wrapper stops Game's
  *  unrelated re-renders from even reaching this far down the tree. */
@@ -40,6 +41,7 @@ export const GameDetailsCard = memo(function GameDetailsCard({
   badges,
   onShare,
   zenMode,
+  spectatorCount,
   moveListEntries,
   moveStripEntries,
   moveListScrollRef,
@@ -48,7 +50,7 @@ export const GameDetailsCard = memo(function GameDetailsCard({
   return (
     <Card variant="solid" className="p-2! sm:p-3!">
       {/* min-h keeps this row's height stable whether 0 or several
-       *  badges are showing — on phone this card is a flex-shrink:0
+       *  badges are showing, on phone this card is a flex-shrink:0
        *  sibling of the board, so any wobble here directly steals from
        *  or gives back space to the board. */}
       <div className="flex min-h-6 flex-wrap items-center justify-between gap-2">
@@ -57,7 +59,15 @@ export const GameDetailsCard = memo(function GameDetailsCard({
             <div className="flex flex-wrap items-center gap-2">{badges}</div>
           )}
         </div>
-        <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-base-content/60">
+        <span className="flex shrink-0 items-center gap-3 text-xs font-medium text-base-content/60">
+          {spectatorCount > 0 && (
+            <span
+              className="flex items-center gap-1"
+              title={`${spectatorCount} spectator${spectatorCount === 1 ? "" : "s"} watching`}
+            >
+              <Users className="h-3.5 w-3.5" /> {spectatorCount}
+            </span>
+          )}
           <button
             type="button"
             onClick={onShare}
@@ -82,7 +92,7 @@ export const GameDetailsCard = memo(function GameDetailsCard({
 
       {!zenMode && (
         <div className="min-h-0 lg:flex lg:flex-col">
-          {/* Vertical list — tablet & desktop. */}
+          {/* Vertical list, tablet & desktop. */}
           <h2
             className={cn(
               moveListEntries ? "opacity-100" : "opacity-0",

@@ -3,7 +3,7 @@ import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/cn.js";
 
 export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
-  /** Usually a string, but accepts any node — e.g. a label paired with a
+  /** Usually a string, but accepts any node, e.g. a label paired with a
    *  HelpTip, same pattern as Input's label. */
   label?: string | ReactNode;
   hint?: string;

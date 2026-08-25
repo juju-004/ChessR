@@ -1,8 +1,8 @@
 /**
- * Original, procedurally-synthesized sound effects — not sampled or adapted
+ * Original, procedurally-synthesized sound effects, not sampled or adapted
  * from chess.com, lichess, or anywhere else. Full disclosure on scope: this is
  * simple Web Audio API oscillator synthesis (tones/envelopes), not real sound
- * design — it won't sound as polished as a professionally recorded/mixed sample
+ * design, it won't sound as polished as a professionally recorded/mixed sample
  * library, but it is guaranteed original and carries no licensing risk, which
  * a "grab a similar-sounding file from somewhere" approach couldn't promise.
  */
@@ -10,7 +10,7 @@
 let ctx: AudioContext | null = null;
 
 // Module-level mute switch driven by the Settings page's "Move sounds"
-// toggle (see SettingsContext.tsx / Game.tsx) — checked once at the top of
+// toggle (see SettingsContext.tsx / Game.tsx), checked once at the top of
 // playTones rather than threading an `enabled` flag through every call site.
 let soundEnabled = true;
 
@@ -38,7 +38,7 @@ interface Tone {
   type?: OscillatorType;
   gain?: number;
   /** If set, the oscillator sweeps from `freq` up/down to this frequency
-   *  over `duration` instead of holding steady — used for the berserk
+   *  over `duration` instead of holding steady, used for the berserk
    *  siren's rising/falling "whoop". */
   freqEnd?: number;
 }
@@ -71,7 +71,7 @@ function playTones(tones: Tone[]) {
   }
 }
 
-/** A short burst of filtered white noise — the "clash"/transient sizzle a
+/** A short burst of filtered white noise, the "clash"/transient sizzle a
  *  pure oscillator can't produce on its own. Only used by playBerserkSound
  *  today; kept generic (not folded into playTones' Tone shape) since it's a
  *  genuinely different signal chain (buffer source + filter, not an
@@ -110,7 +110,7 @@ export function playMoveSound() {
   playTones([{ freq: 520, startOffset: 0, duration: 0.09, type: 'triangle' }]);
 }
 
-/** A sharp "snap" — a brief filtered-noise crack (the actual transient a
+/** A sharp "snap", a brief filtered-noise crack (the actual transient a
  *  pure oscillator can't produce) landing right on top of a single low
  *  thud, like a piece being struck off the board and set down in one
  *  motion. Deliberately one clean hit rather than the previous
@@ -141,11 +141,11 @@ export function playGameStartSound() {
   ]);
 }
 
-/** A rising-then-falling siren "whoop" — a noise-burst crack up front, then
+/** A rising-then-falling siren "whoop", a noise-burst crack up front, then
  *  two sawtooth sweeps (low-to-high, then high-to-low) instead of the old
  *  fixed-pitch horn stabs, closer to an actual alarm klaxon than a chord.
  *  A faint high ring-out on top as it settles. Still the loudest, busiest
- *  sound in this file on purpose — berserking is a loud, once-per-game
+ *  sound in this file on purpose, berserking is a loud, once-per-game
  *  declaration, so it should cut through everything else. */
 export function playBerserkSound() {
   playNoiseBurst(0, 0.05, 0.18, 1200);
@@ -156,7 +156,7 @@ export function playBerserkSound() {
   ]);
 }
 
-/** A sharp double-beep — the clock just crossed into "you're running low"
+/** A sharp double-beep, the clock just crossed into "you're running low"
  *  territory. Deliberately higher-pitched and more clipped than the check
  *  alert so it reads as "look at the clock" rather than "look at the
  *  board". Fires once per crossing (see the ref-guarded effect in
@@ -168,7 +168,7 @@ export function playLowTimeSound() {
   ]);
 }
 
-/** A descending chime when a game ends (win, loss, draw, abort — same cue). */
+/** A descending chime when a game ends (win, loss, draw, abort, same cue). */
 export function playGameOverSound() {
   playTones([
     { freq: 523, startOffset: 0, duration: 0.14 },

@@ -8,7 +8,7 @@ export interface TimeControlOption {
 // creation, tournament creation, cage match leg editor, etc). Previously
 // three near-identical lists had drifted out of sync (different bullet/
 // blitz presets, tournament creation missing "Unlimited", the cage match
-// editor missing "Hyper Bullet"/"Bullet · 2+1"/the two Rapid variants) —
+// editor missing "Hyper Bullet"/"Bullet · 2+1"/the two Rapid variants), 
 // this is now the one list every page imports, so a preset added or
 // changed here shows up everywhere consistently.
 export const TIME_CONTROLS: TimeControlOption[] = [
@@ -35,7 +35,7 @@ export function formatTimeControl(tc: {
 }
 
 // Same bullet/blitz/rapid/classical buckets used for category labels
-// elsewhere (rating ladder, cage match badges) — reused here so a game's
+// elsewhere (rating ladder, cage match badges), reused here so a game's
 // piece-slide speed matches the pace of the time control it's actually
 // played at, rather than one fixed duration for every game. Faster time
 // controls get snappier, more immediate-feeling animation; slower ones get
@@ -43,10 +43,10 @@ export function formatTimeControl(tc: {
 export function animationDurationForTimeControl(
   baseSeconds: number | null,
 ): number {
-  if (baseSeconds === null) return 260; // unlimited/correspondence — treat as classical
+  if (baseSeconds === null) return 260; // unlimited/correspondence, treat as classical
   const baseMinutes = baseSeconds / 60;
-  if (baseMinutes < 3) return 90; // bullet — quick snaps
-  if (baseMinutes < 10) return 140; // blitz — faster
-  if (baseMinutes < 30) return 200; // rapid — the old fixed default
-  return 260; // classical — normal, slower
+  if (baseMinutes < 3) return 90; // bullet, quick snaps
+  if (baseMinutes < 10) return 140; // blitz, faster
+  if (baseMinutes < 30) return 200; // rapid, the old fixed default
+  return 260; // classical, normal, slower
 }

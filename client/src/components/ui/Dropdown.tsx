@@ -18,11 +18,11 @@ export interface DropdownProps {
   align?: "start" | "end" | "center";
   side?: "bottom" | "top";
   /** Optional non-interactive content rendered above the item list (e.g. a
-   *  status row) — doesn't close the dropdown or go through onClick. */
+   *  status row), doesn't close the dropdown or go through onClick. */
   header?: ReactNode;
 }
 
-/** A menu of clickable items in a Popover — closes itself after any item is
+/** A menu of clickable items in a Popover, closes itself after any item is
  *  clicked. For anything richer than a flat action list (a form, a custom
  *  layout), reach for <Popover> directly instead. */
 export const Dropdown = memo(function Dropdown({

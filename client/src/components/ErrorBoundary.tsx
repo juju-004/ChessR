@@ -7,7 +7,7 @@ interface State {
   error: Error | null;
 }
 
-// Error boundaries must be class components — there is still no hook
+// Error boundaries must be class components, there is still no hook
 // equivalent (componentDidCatch has no functional-component counterpart).
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { error: null };

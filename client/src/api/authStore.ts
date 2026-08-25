@@ -4,11 +4,11 @@ export interface CurrentUser {
   email: string;
   avatarGradient?: string | null;
   /** null = "Unranked" (fewer than ratedGamesUntilRanked more rated games
-   *  played). See rating.service.ts on the server — this is a tier name,
+   *  played). See rating.service.ts on the server, this is a tier name,
    *  never the hidden underlying number. */
   ratingCategory?: string | null;
   ratedGamesUntilRanked?: number;
-  /** Whether `email` has been confirmed yet — see the "verify your email"
+  /** Whether `email` has been confirmed yet, see the "verify your email"
    *  banner in App.tsx and the /verify-email page. Always true for a
    *  Google sign-in account. */
   emailVerified?: boolean;
@@ -32,7 +32,7 @@ export function setAuth(accessToken: string, user: CurrentUser): void {
 }
 
 /** Merges a partial patch into the currently signed-in user without a full
- *  re-login or token refresh — for cases like an avatar change that should
+ *  re-login or token refresh, for cases like an avatar change that should
  *  reflect everywhere the user object is read from (navbar, etc.)
  *  immediately, not just after the next page reload / token refresh cycle.
  *  No-ops if nobody's signed in. */
@@ -53,7 +53,7 @@ export function subscribeAuth(listener: () => void): () => void {
 }
 
 /**
- * Plain (non-hook) check for "is someone signed in right now" — for use
+ * Plain (non-hook) check for "is someone signed in right now", for use
  * outside React render (e.g. a one-off redirect guard on mount) where
  * useAuth()'s reactive isAuthed isn't necessary. Inside a component that
  * needs to stay in sync with auth state over time, prefer useAuth().isAuthed

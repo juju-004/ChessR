@@ -20,7 +20,7 @@ import { listBanks, resolveAccountNumber, verifyWebhookSignature } from '../serv
 // 7-digit sanity ceiling, same convention/value as MAX_PURCHASE_TOKENS in
 // wallet.service.ts (kept as a separate local constant here rather than
 // exported, matching how MAX_WAGER_TOKENS is duplicated per-file elsewhere
-// in this codebase) — only used here to report the ceiling to the client,
+// in this codebase), only used here to report the ceiling to the client,
 // the actual enforcement lives in wallet.service.ts.
 const MAX_PURCHASE_TOKENS = 9_999_999;
 
@@ -42,11 +42,11 @@ export const getBalance = asyncHandler(async (req: AuthedRequest, res) => {
   res.json({ tokenBalance: user.tokenBalance });
 });
 
-// tokens replaces the old planId — see wallet.service.ts's
+// tokens replaces the old planId, see wallet.service.ts's
 // createPendingPurchase for why this was "Validation failed"-ing before:
 // this schema still required `planId` from a fixed-tier system the client
-// (BuyTokens.tsx) had already moved off of, so every request — which only
-// ever sent `{ tokens }` — failed to parse before it got anywhere near
+// (BuyTokens.tsx) had already moved off of, so every request, which only
+// ever sent `{ tokens }`, failed to parse before it got anywhere near
 // Paystack.
 const initPurchaseSchema = z.object({ tokens: z.number().int().positive() });
 
@@ -58,7 +58,7 @@ export const initPurchase = asyncHandler(async (req: AuthedRequest, res) => {
 
 const verifySchema = z.object({ reference: z.string() });
 
-// Fast-path verification triggered right after the Paystack popup closes —
+// Fast-path verification triggered right after the Paystack popup closes, 
 // gives the user instant feedback instead of waiting on the webhook, which
 // can lag by a few seconds. The webhook (below) is still what's authoritative
 // if this never fires (e.g. the tab closed mid-payment).
@@ -118,7 +118,7 @@ export const getTransactions = asyncHandler(async (req: AuthedRequest, res) => {
 });
 
 /**
- * Paystack webhook — the actual source of truth for both purchases and
+ * Paystack webhook, the actual source of truth for both purchases and
  * withdrawals. Requires the RAW request body for signature verification
  * (see app.ts: this route is registered before the global JSON parser).
  */
@@ -127,7 +127,7 @@ export const handleWebhook = asyncHandler(async (req, res) => {
   const rawBody = (req as any).rawBody as Buffer | undefined;
 
   if (!rawBody || !verifyWebhookSignature(rawBody, signature)) {
-    // Deliberately vague + 400, not 401/403 — don't help an attacker
+    // Deliberately vague + 400, not 401/403, don't help an attacker
     // distinguish "bad signature" from "missing body" from anything else.
     throw ApiError.badRequest('Invalid webhook signature');
   }
@@ -151,7 +151,7 @@ export const handleWebhook = asyncHandler(async (req, res) => {
       break; // ignore anything else Paystack sends
   }
 
-  // Paystack expects a fast 200 acknowledging receipt — it retries on
+  // Paystack expects a fast 200 acknowledging receipt, it retries on
   // non-2xx, which would otherwise double-process events we already handled
   // (harmless here since everything above is idempotent, but no reason to
   // invite the extra load).

@@ -37,12 +37,12 @@ interface GameBoardAreaProps {
 /** The board itself plus everything that visually anchors to it: the
  *  mobile top/bottom player panels flanking it, the waiting-for-opponent
  *  banner, and the promotion picker overlay. Split out of Game.tsx mainly
- *  for size — this block owns no state of its own.
+ *  for size, this block owns no state of its own.
  *
  *  Wrapped in React.memo: Game.tsx re-renders on a lot of state that has
  *  nothing to do with the board itself (chat input, move errors, toast
  *  banners…), and this component's own inner ChessBoard is already memoized
- *  — but without this wrapper every one of those unrelated re-renders was
+ *, but without this wrapper every one of those unrelated re-renders was
  *  still reconciling this whole tree (panels, waiting banner, promotion
  *  picker) for no visible change. */
 export const GameBoardArea = memo(function GameBoardArea({
@@ -73,7 +73,7 @@ export const GameBoardArea = memo(function GameBoardArea({
   const squareWrapperRef = useRef<HTMLDivElement | null>(null);
   const squareSize = useSquareSize(squareWrapperRef);
 
-  // Flipping the board moves my pieces to the top — the panels flanking
+  // Flipping the board moves my pieces to the top, the panels flanking
   // it should move with them, so the panel nearest my rank on screen
   // always reads as "me" regardless of orientation.
   const topPanelData = boardFlipped ? myPanelData : opponentPanelData;
@@ -86,11 +86,11 @@ export const GameBoardArea = memo(function GameBoardArea({
       </div>
       {/* This wrapper is the one thing unambiguously sized by flexbox
        *  (flex-1 + min-h-0 gives it exactly the space left after the
-       *  mobile top/bottom panels) — useSquareSize measures it directly
+       *  mobile top/bottom panels), useSquareSize measures it directly
        *  via ResizeObserver and hands back the largest square that fits,
        *  which the board below is then sized to with plain inline
        *  width/height. No CSS unit trickery, no container-query support
-       *  to depend on — just a measured number in, a pixel size out. */}
+       *  to depend on, just a measured number in, a pixel size out. */}
       <div
         ref={squareWrapperRef}
         className="relative flex w-full min-h-0 flex-1 items-center justify-center"

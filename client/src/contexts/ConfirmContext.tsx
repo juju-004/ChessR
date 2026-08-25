@@ -18,7 +18,7 @@ interface PendingConfirm extends ConfirmOptions {
 const ConfirmContext = createContext<ConfirmFn | null>(null);
 
 /**
- * A promise-based, app-wide replacement for `window.confirm(...)` — styled
+ * A promise-based, app-wide replacement for `window.confirm(...)`, styled
  * consistently with the rest of the ui kit instead of the browser's native
  * (and completely unstyleable) confirm dialog, but with the exact same
  * call-site ergonomics. Mount once near the app root (see App.tsx); call
@@ -31,7 +31,7 @@ const ConfirmContext = createContext<ConfirmFn | null>(null);
  *     }
  *   }
  *
- * Only one confirmation can be pending at a time — a second `confirm()`
+ * Only one confirmation can be pending at a time, a second `confirm()`
  * call while one is already open replaces it (matching how a second
  * `window.confirm()` would've blocked the first anyway).
  */

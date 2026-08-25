@@ -31,7 +31,7 @@ function holdFor(
   return null;
 }
 
-/** Desktop right-panel action button row — flip/prev/next, resign/draw/
+/** Desktop right-panel action button row, flip/prev/next, resign/draw/
  *  cage-match actions, spectator chat trigger, etc. Rendered as plain
  *  inline Buttons from md up. */
 export function GameActionBarDesktop({
@@ -64,16 +64,16 @@ export function GameActionBarDesktop({
   );
 }
 
-/** In-game mobile action bar — occupies the same fixed-bottom slot as the
+/** In-game mobile action bar, occupies the same fixed-bottom slot as the
  *  site-navigation dock (see `.dock` in index.css and MobileDock in
  *  components/Sidebar.tsx, which hides itself on /game/:code so this is
  *  the only thing rendered there).
  *
  *  Three zones so nothing important can get squeezed off-screen: a pinned
  *  back button on the left (so you're never stuck without a way out of a
- *  game mid-match — the old version dropped nav entirely here), a
+ *  game mid-match, the old version dropped nav entirely here), a
  *  horizontally-scrollable middle for the
- *  reached-for-constantly items (flip/prev/next/share/etc — however many
+ *  reached-for-constantly items (flip/prev/next/share/etc, however many
  *  there are, they scroll rather than shrinking to illegible slivers),
  *  and a pinned "More" dropup on the right for resign/draw/abort/etc so
  *  it's always in the same spot and never scrolled out of view. */

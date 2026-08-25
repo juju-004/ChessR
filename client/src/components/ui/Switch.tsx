@@ -17,7 +17,7 @@ const TRACK_PADDING = 2; // px
 
 /**
  * The thumb's "sliding" motion is a `translateX` on a fixed-size element,
- * never a `left`/`width` change — same GPU-only rule as everywhere else in
+ * never a `left`/`width` change, same GPU-only rule as everywhere else in
  * this kit (see @/lib/motion.ts).
  */
 export function Switch({

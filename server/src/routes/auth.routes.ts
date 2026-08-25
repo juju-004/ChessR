@@ -23,7 +23,7 @@ const authLimiter = rateLimit({
   message: { error: 'Too many attempts, please try again later.' },
 });
 
-// Separate, tighter limiter for "resend verification email" specifically —
+// Separate, tighter limiter for "resend verification email" specifically, 
 // distinct from authLimiter above so a burst of failed signin attempts
 // can't also burn through someone's resend budget, and tight enough
 // (5/15min) that it can't be used to spam an arbitrary inbox, since this

@@ -14,12 +14,12 @@ export interface IReport extends Document {
   reporter: Types.ObjectId;
   reportedUser: Types.ObjectId;
   reason: ReportReason;
-  /** Free-text details the reporter provides — what happened, when, etc. */
+  /** Free-text details the reporter provides, what happened, when, etc. */
   description: string;
   /** Optional join code of the game in question, so the admin reviewing
    *  this can jump straight to the game record without the reporter
    *  needing to know a Mongo id. Not validated against a real game at
-   *  submission time — the review step is where that gets checked. */
+   *  submission time, the review step is where that gets checked. */
   gameCode?: string;
   status: ReportStatus;
   /** Admin user id who last touched this report, once one has. Admins are

@@ -19,7 +19,7 @@ const revenueQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
 });
 
-/** The admin page's rake/revenue view — a running total ("admin wallet"
+/** The admin page's rake/revenue view, a running total ("admin wallet"
  *  balance, summed straight from the PlatformRevenue ledger rather than a
  *  separately-tracked counter that could drift out of sync with it), a
  *  breakdown by source so it's clear how much came from games vs. cage
@@ -80,7 +80,7 @@ export const adminLogin = asyncHandler(async (req, res) => {
     throw ApiError.internal('Admin login is not configured');
   }
 
-  // Fixed, single-account, operator-configured credentials — not a User
+  // Fixed, single-account, operator-configured credentials, not a User
   // document, so a plain constant-shape comparison is enough here (no
   // per-user hash to manage, no account to ever register). Timing-safe-ish
   // in practice since both sides are short fixed strings compared whole.
@@ -191,7 +191,7 @@ const updateReportSchema = z.object({
   status: z.enum(['pending', 'reviewing', 'actioned', 'dismissed']),
   reviewNotes: z.string().trim().max(2000).optional(),
   // Whether to clear the reported user's withdrawal block as part of this
-  // update — kept as an explicit, separate flag rather than inferred from
+  // update, kept as an explicit, separate flag rather than inferred from
   // status, so closing out a report never *silently* restores withdrawals.
   clearWithdrawalBlock: z.boolean().optional(),
 });
@@ -210,7 +210,7 @@ export const updateReport = asyncHandler(async (req, res) => {
 
   if (body.clearWithdrawalBlock) {
     // Only clear it if there's no OTHER still-open report against the same
-    // user — otherwise resolving one report would silently reopen
+    // user, otherwise resolving one report would silently reopen
     // withdrawals while a second, unrelated one is still pending.
     const otherOpenReport = await Report.exists({
       _id: { $ne: report._id },

@@ -16,7 +16,7 @@ export interface TabsProps {
 /**
  * The sliding active-pill indicator uses framer-motion's `layoutId` shared
  * layout animation. That looks like it's animating position/size directly,
- * but framer-motion implements it with the FLIP technique under the hood —
+ * but framer-motion implements it with the FLIP technique under the hood, 
  * it measures the before/after boxes and animates purely via `transform`
  * (translate + scale), so it stays on the GPU-only rule from
  * @/lib/motion.ts despite appearing to resize.

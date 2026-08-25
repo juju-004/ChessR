@@ -12,7 +12,7 @@ const SIZE_CLASSES = {
   lg: "h-10 w-10 border-[3px]",
 } as const;
 
-/** A rotating ring — `rotate` is a transform, so this is fully
+/** A rotating ring, `rotate` is a transform, so this is fully
  *  GPU-accelerated despite running indefinitely. */
 export function Spinner({ size = "md", className }: SpinnerProps) {
   return (

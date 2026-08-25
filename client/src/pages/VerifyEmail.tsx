@@ -11,10 +11,10 @@ type Status = "loading" | "success" | "error";
 
 /**
  * Landing page for the link in the verification email (see
- * verification.service.ts on the server — the link is
+ * verification.service.ts on the server, the link is
  * `${CLIENT_ORIGIN}/verify-email?token=...`). Works whether or not the
- * person happens to be signed in on this device/browser right now — the
- * server endpoint itself needs no auth, only a valid token — since the
+ * person happens to be signed in on this device/browser right now, the
+ * server endpoint itself needs no auth, only a valid token, since the
  * email is just as likely to be opened on a different device than the one
  * that signed up.
  */
@@ -73,7 +73,7 @@ export function VerifyEmail() {
         status === "loading"
           ? "One moment."
           : status === "success"
-            ? "You're all set — your address is confirmed."
+            ? "You're all set, your address is confirmed."
             : errorMessage
       }
       footer={
@@ -107,7 +107,7 @@ export function VerifyEmail() {
                 disabled={resendState === "sent"}
                 onClick={handleResend}
               >
-                {resendState === "sent" ? "New link sent — check your inbox" : "Send a new link"}
+                {resendState === "sent" ? "New link sent. Check your inbox" : "Send a new link"}
               </Button>
             )}
           </>

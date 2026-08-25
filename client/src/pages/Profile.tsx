@@ -68,7 +68,7 @@ export function Profile() {
   }, [username]);
 
   // Lazy-loaded in pages of GAMES_PER_PAGE via "Load more" below, rather
-  // than click-through pagination — each click appends to `games` instead
+  // than click-through pagination, each click appends to `games` instead
   // of replacing it, so scroll position and everything already rendered
   // above stays put.
   useEffect(() => {
@@ -124,7 +124,7 @@ export function Profile() {
       await sendFriendRequest(profile.id);
       setFriendRequestSent(true);
     } catch {
-      // Non-fatal — keep the button visible so they can retry.
+      // Non-fatal, keep the button visible so they can retry.
     }
   }
 
@@ -147,23 +147,25 @@ export function Profile() {
                 gradient={profile.avatarGradient}
               />
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-bold text-base-content">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="min-w-0 flex-1 truncate text-2xl font-bold text-base-content">
                     {profile.username}
                   </h1>
-                  <RatingBadge
-                    category={profile.ratingCategory}
-                    gamesUntilRanked={profile.ratedGamesUntilRanked}
-                  />
-                  {profile.isSelf && (
-                    <button
-                      onClick={() => setEditOpen(true)}
-                      aria-label="Edit profile"
-                      className="rounded-full p-1.5 text-base-content/40 transition-colors hover:bg-base-200 hover:text-base-content"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                  )}
+                  <div className="flex shrink-0 items-center gap-2">
+                    <RatingBadge
+                      category={profile.ratingCategory}
+                      gamesUntilRanked={profile.ratedGamesUntilRanked}
+                    />
+                    {profile.isSelf && (
+                      <button
+                        onClick={() => setEditOpen(true)}
+                        aria-label="Edit profile"
+                        className="rounded-full p-1.5 text-base-content/40 transition-colors hover:bg-base-200 hover:text-base-content"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <p className="text-sm text-base-content/50">
                   Member since{" "}
@@ -257,7 +259,7 @@ export function Profile() {
                 </span>
               </div>
             </div>
-            {/* Simple proportional bar — wins/losses/draws as thirds of a
+            {/* Simple proportional bar, wins/losses/draws as thirds of a
              *  strip rather than a number-only summary, since it reads
              *  faster at a glance than three digits do. */}
             <div className="mt-3 flex h-1.5 overflow-hidden rounded-full bg-base-300">
@@ -364,7 +366,7 @@ export function Profile() {
           onSaved={(patch) => {
             setProfile((prev) => (prev ? { ...prev, ...patch } : prev));
             // The navbar (and anywhere else) reads the avatar from the auth
-            // store, not this page's local profile state — push it there
+            // store, not this page's local profile state, push it there
             // too so a changed avatar shows up immediately, not just after
             // the next login/token refresh.
             if (profile.isSelf && patch.avatarGradient !== undefined) {

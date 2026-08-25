@@ -3,16 +3,16 @@ import { Modal } from "./Modal.js";
 import { Popover } from "./Popover.js";
 
 export interface ResponsiveOverlayProps {
-  /** The element that opens the overlay on click — an icon button, a
+  /** The element that opens the overlay on click, an icon button, a
    *  Button, plain text, whatever. */
   trigger: ReactNode;
   children: ReactNode;
   /** Shown as the Modal's header on phone. The desktop Popover has no
    *  header chrome (it's anchored right next to the trigger, so the
-   *  trigger itself already provides that context) — pass a heading
+   *  trigger itself already provides that context), pass a heading
    *  inside `children` too if you want one there as well. */
   title?: string;
-  /** Popover-only — ignored on phone, where the Modal is always centered. */
+  /** Popover-only, ignored on phone, where the Modal is always centered. */
   align?: "start" | "end" | "center";
   side?: "bottom" | "top";
   className?: string;
@@ -30,7 +30,7 @@ export interface ResponsiveOverlayProps {
 /**
  * One trigger, two presentations: a centered Modal on phone, an anchored
  * Popover on desktop. The same "click to reveal a form" interaction reads
- * completely differently at each size — a modal needs room to breathe and
+ * completely differently at each size, a modal needs room to breathe and
  * a real dismiss target on a small touch screen, while a popover anchored
  * right next to the trigger is faster and less disruptive with a mouse
  * and screen space to spare. Pulled out as a shared component so the

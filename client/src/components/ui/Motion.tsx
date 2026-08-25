@@ -24,7 +24,7 @@ export function FadeIn({ children, className, delay = 0, variants = fadeInUp }: 
   );
 }
 
-/** Fades + scales up on mount — for cards, badges, anything that should feel
+/** Fades + scales up on mount, for cards, badges, anything that should feel
  *  like it "pops in" rather than slides. */
 export function ScaleIn({ children, className, delay = 0 }: MotionWrapperProps) {
   return (
@@ -42,7 +42,7 @@ interface StaggerProps {
   delayMs?: number;
 }
 
-/** Wrap a list with this, and each direct child in <StaggerItem> — they'll
+/** Wrap a list with this, and each direct child in <StaggerItem>, they'll
  *  cascade in one after another instead of all popping in at once. */
 export function Stagger({ children, className, staggerMs = 0.06, delayMs = 0 }: StaggerProps) {
   return (

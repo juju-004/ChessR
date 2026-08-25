@@ -11,7 +11,7 @@ interface CageMatchOverModalProps {
 }
 
 function reasonText(reason: CageMatch['matchEndReason']): string {
-  if (reason === 'no_show_forfeit') return "Ended — someone didn't move in time at the start of a game.";
+  if (reason === 'no_show_forfeit') return "Ended: someone didn't move in time at the start of a game.";
   if (reason === 'forfeit') return 'Ended by forfeit.';
   return 'All games complete.';
 }

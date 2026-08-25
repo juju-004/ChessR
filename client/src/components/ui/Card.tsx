@@ -10,7 +10,7 @@ export interface CardProps extends Omit<HTMLMotionProps<"div">, "ref"> {
    *  opaque/blurred glass variant for content that needs more contrast
    *  (modals, anything over a busy background). */
   variant?: "glass" | "solid" | "strong";
-  /** Adds the hover-lift + tap-shrink micro-interaction — for cards that are
+  /** Adds the hover-lift + tap-shrink micro-interaction, for cards that are
    *  themselves clickable (e.g. wrapped in a Link). Leave off for static
    *  content cards. */
   interactive?: boolean;

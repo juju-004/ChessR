@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getPlatformConfig } from '../api/config.js';
 
-// Module-level cache — the rake rate is operator-set (RAKE_PERCENT in the
+// Module-level cache, the rake rate is operator-set (RAKE_PERCENT in the
 // server .env) and effectively static for the lifetime of a page session,
 // so every form that needs it (create-game, cage match, tournament) shares
 // one fetch instead of each firing its own on mount.
@@ -24,7 +24,7 @@ function fetchRakePercent(): Promise<number> {
 }
 
 /** The platform's rake percentage, straight from the server .env
- *  (RAKE_PERCENT — see config/env.ts and wallet.service.ts's computeRake
+ *  (RAKE_PERCENT, see config/env.ts and wallet.service.ts's computeRake
  *  on the server). Returns `null` until it's loaded; forms should treat
  *  that as "don't show the exact split yet" rather than assuming 0. */
 export function useRakePercent(): number | null {

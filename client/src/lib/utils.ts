@@ -88,7 +88,7 @@ export async function copyToClipboard(text: string) {
 
 /**
  * Pulls a game join code out of free-form input on the dashboard's "join"
- * field — a bare code ("7K3M9P"), a pasted game link
+ * field, a bare code ("7K3M9P"), a pasted game link
  * ("https://chessr.app/game/7K3M9P", "chessr.app/game/7K3M9P/",
  * "/game/7K3M9P?ref=1"), or anything in between. Returns the extracted
  * code, uppercased, or "" if there's nothing usable to join with.
@@ -104,8 +104,8 @@ export function extractGameCode(input: string): string {
   const match = withoutQuery.match(/\/game\/([a-zA-Z0-9]+)$/i);
   const raw = match ? match[1] : withoutQuery;
 
-  // Whatever's left — the matched /game/ segment, or (if this wasn't a
-  // game link at all) the last path-like segment of the raw input — keep
+  // Whatever's left, the matched /game/ segment, or (if this wasn't a
+  // game link at all) the last path-like segment of the raw input, keep
   // only alphanumerics and uppercase it, matching the server's join-code
   // alphabet.
   const lastSegment = raw.split("/").pop() ?? raw;

@@ -22,7 +22,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
     // Same story as API_BASE in api/http.ts: '/' only reaches the backend
     // locally because of the Vite dev proxy. In production there's no proxy,
-    // so this needs the real backend URL — set VITE_SOCKET_URL.
+    // so this needs the real backend URL, set VITE_SOCKET_URL.
     const s = io(import.meta.env.VITE_SOCKET_URL ?? '/', {
       auth: { token: accessToken },
       withCredentials: true,
@@ -30,7 +30,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     });
 
     s.on('connect_error', async (err: Error) => {
-      // Access token likely expired between page load and socket connect — refresh once and retry.
+      // Access token likely expired between page load and socket connect, refresh once and retry.
       if (err.message === 'AUTH_INVALID' || err.message === 'AUTH_REQUIRED') {
         const ok = await tryRestoreSession();
         if (ok) {
@@ -40,7 +40,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    // Echoes straight back whatever timestamp the server sent — this is
+    // Echoes straight back whatever timestamp the server sent, this is
     // what feeds the server's own move-clock lag compensation estimate (see
     // latencySocket.ts / latency.service.ts server-side). Deliberately just
     // a bounce-back with no client-side timing logic of its own, so there's
@@ -51,7 +51,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
     socketRef.current = s;
     setSocket(s);
-    // Deliberately not disconnecting in a cleanup here — the `!isAuthed` branch
+    // Deliberately not disconnecting in a cleanup here, the `!isAuthed` branch
     // above is what tears the socket down (on logout), not effect re-runs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthed]);

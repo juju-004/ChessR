@@ -14,7 +14,7 @@ import {
 
 const router = Router();
 
-// Withdrawals move real money — much tighter limit than the general API.
+// Withdrawals move real money, much tighter limit than the general API.
 const withdrawLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: 5,

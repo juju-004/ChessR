@@ -11,7 +11,7 @@ import {
 } from "./paystack.service.js";
 
 // --- Token economy constants -------------------------------------------------
-// Deliberately a spread between buy and withdraw rates (standard practice) —
+// Deliberately a spread between buy and withdraw rates (standard practice), 
 // without one, buying tokens and immediately withdrawing them would be
 // risk-free arbitrage against whatever Paystack's transaction fees don't
 // already eat into.
@@ -22,13 +22,13 @@ export interface TokenPlan {
   priceNaira: number;
 }
 
-// Fixed custom-amount purchase rate — replaced the old fixed-tier TOKEN_PLANS
+// Fixed custom-amount purchase rate, replaced the old fixed-tier TOKEN_PLANS
 // list (below, now unused by the purchase flow itself but left in place in
 // case anything still imports the type/shape). ₦5 per R Coin.
 export const PURCHASE_NAIRA_PER_TOKEN = 5;
 export const MIN_PURCHASE_TOKENS = 10;
 // 7-digit sanity ceiling, mirroring MAX_WAGER_TOKENS elsewhere in the
-// codebase (game.controller.ts, cageMatch.service.ts) — same convention of
+// codebase (game.controller.ts, cageMatch.service.ts), same convention of
 // a local constant per file rather than a shared import.
 const MAX_PURCHASE_TOKENS = 9_999_999;
 
@@ -39,14 +39,14 @@ export const TOKEN_PLANS: TokenPlan[] = [
   { id: "elite", tokens: 3000, priceNaira: 22500 },
 ];
 
-export const WITHDRAWAL_NAIRA_PER_TOKEN = 10;
+export const WITHDRAWAL_NAIRA_PER_TOKEN = 5;
 export const MIN_WITHDRAWAL_TOKENS = 10;
 
 // --- Purchases ----------------------------------------------------------------
 
 /** Creates the pending ledger entry and returns what the client needs to open
  *  the Paystack popup. The amount is always computed server-side from
- *  PURCHASE_NAIRA_PER_TOKEN — the client only ever sends how many tokens it
+ *  PURCHASE_NAIRA_PER_TOKEN, the client only ever sends how many tokens it
  *  wants, never a price, so there's nothing for a tampered request to lie
  *  about beyond the token count itself, which this still clamps. */
 export async function createPendingPurchase(
@@ -80,7 +80,7 @@ export async function createPendingPurchase(
 
 /**
  * Confirms a purchase against Paystack's own record of the transaction and
- * credits tokens — idempotent and safe to call from both the client's
+ * credits tokens, idempotent and safe to call from both the client's
  * post-popup verify request AND the charge.success webhook, whichever
  * happens to arrive first. The second caller is a no-op.
  */
@@ -145,7 +145,7 @@ export async function initiateWithdrawal(
   }
 
   // A pending report against this account blocks withdrawals the instant
-  // it's filed — before anyone's actually looked into it — so funds can't
+  // it's filed, before anyone's actually looked into it, so funds can't
   // be pulled out ahead of a review. Cleared only by an admin, from the
   // report review screen, once they've looked into it. See User.withdrawalBlocked.
   const reportedUser = await User.findById(userId)
@@ -157,7 +157,7 @@ export async function initiateWithdrawal(
     );
   }
 
-  // Atomic conditional decrement — this is what prevents two concurrent
+  // Atomic conditional decrement, this is what prevents two concurrent
   // withdrawal requests from both passing a naive "check then deduct" and
   // taking the user's balance negative.
   const debited = await User.findOneAndUpdate(
@@ -199,14 +199,14 @@ export async function initiateWithdrawal(
     transaction.paystackTransferCode = transfer.transfer_code;
     // Paystack itself may report 'success' immediately (common in test mode)
     // or 'pending' (finalized later via webhook, or stuck on 'otp' if Transfer
-    // OTP is enabled on the account — see README for what that means here).
+    // OTP is enabled on the account, see README for what that means here).
     if (transfer.status === "success") {
       transaction.status = "success";
     }
     await transaction.save();
     return transaction;
   } catch (err) {
-    // Recipient creation or transfer initiation failed outright — refund
+    // Recipient creation or transfer initiation failed outright, refund
     // immediately rather than leaving the user's tokens stuck in limbo.
     await User.updateOne({ _id: userId }, { $inc: { tokenBalance: tokens } });
     transaction.status = "failed";
@@ -219,7 +219,7 @@ export async function initiateWithdrawal(
 
 /** Called from the transfer.success / transfer.failed / transfer.reversed
  *  webhook events to finalize a withdrawal that was left 'pending' after
- *  initiation. Refunds tokens on failure/reversal — idempotent, since it only
+ *  initiation. Refunds tokens on failure/reversal, idempotent, since it only
  *  acts on transactions still in 'pending'. */
 export async function resolveWithdrawalFromWebhook(
   transferCode: string,
@@ -249,19 +249,19 @@ export async function resolveWithdrawalFromWebhook(
 // --- Platform rake ---------------------------------------------------------------
 // A cut of every wagered pot (normal games, cage matches) and every
 // tournament registration-fee pool goes to the platform instead of whoever
-// would otherwise receive the whole thing — the winner for a wager, the
+// would otherwise receive the whole thing, the winner for a wager, the
 // organizer for a reg-fee pool. Rate is operator-configurable via
 // RAKE_PERCENT in the server .env (see config/env.ts), so it can be tuned
 // without a code change/redeploy involving this file.
 
 export interface RakeSplit {
   rakeTokens: number;
-  netTokens: number; // grossTokens - rakeTokens — what actually reaches the recipient
+  netTokens: number; // grossTokens - rakeTokens, what actually reaches the recipient
 }
 
 /** Splits a gross pot/pool into the platform's cut and the remainder. Floors
  *  the rake (never rounds up) so the platform's cut can't ever exceed the
- *  configured percentage, even on an odd total — any lost fraction of a
+ *  configured percentage, even on an odd total, any lost fraction of a
  *  token from the floor just stays with whoever the remainder goes to. */
 export function computeRake(grossTokens: number): RakeSplit {
   if (grossTokens <= 0) return { rakeTokens: 0, netTokens: 0 };
@@ -270,11 +270,11 @@ export function computeRake(grossTokens: number): RakeSplit {
 }
 
 /** Records the platform's cut of a settled pot/pool. Never touches a user's
- *  balance — there's no "platform user" account, just this ledger — and is
+ *  balance, there's no "platform user" account, just this ledger, and is
  *  a no-op for a zero-percent/zero-token cut so a disabled rake doesn't
  *  clutter the admin page with $0 rows. Not wrapped in the same
  *  wagerSettled-style atomic guard as the payout it accompanies, since it's
- *  always called immediately after that guard already succeeded — see
+ *  always called immediately after that guard already succeeded, see
  *  settleWager, settleWinnerTakesAll, and distributePrize, the only three
  *  callers. */
 export async function recordRake(
@@ -298,11 +298,11 @@ export async function recordRake(
 // puts up the same number of tokens, and the winner takes the combined pot.
 // These helpers move tokens between a player's balance and a game's implicit
 // escrow (the game document itself, via wagerTokens) and leave an auditable
-// Transaction trail — same atomic-conditional-update pattern as withdrawals,
+// Transaction trail, same atomic-conditional-update pattern as withdrawals,
 // so two concurrent calls can never take a balance negative.
 
 /** Debits a player's stake for a game they're joining/accepting/rematching.
- *  Throws if their balance can't cover it — callers should surface this as a
+ *  Throws if their balance can't cover it, callers should surface this as a
  *  clear "insufficient balance" error rather than silently failing to seat
  *  the player. */
 export async function debitWagerStake(
@@ -359,7 +359,7 @@ export async function creditWagerReturn(
 // --- Tournament escrow ----------------------------------------------------
 // Same atomic-conditional-update pattern as the wager helpers above, just
 // scoped to a Tournament document (and its own transaction types/reference
-// prefixes) instead of a single Game. Two independent flows — see the
+// prefixes) instead of a single Game. Two independent flows, see the
 // ITournament doc comment in Tournament.ts for why they're kept separate:
 // a registration fee (player-funded, ends up with the creator) and a prize
 // fund (creator-funded, ends up with the top finishers).
@@ -396,7 +396,7 @@ export async function debitTournamentRegFee(
 }
 
 /** Debits the CREATOR's balance for the full prize schedule they set at
- *  creation time — the whole committed total, up front, so payout at the end
+ *  creation time, the whole committed total, up front, so payout at the end
  *  is never blocked on the creator still having the funds. Throws if their
  *  balance can't cover it (the tournament creation itself should be rolled
  *  back by the caller if this throws). */
@@ -434,7 +434,7 @@ export async function debitTournamentPrizeFund(
  *  Reference is deterministic per tournament+user+kind+suffix so a retry
  *  can't double-credit; `suffix` lets, e.g., a rank-3 prize payout be
  *  distinguished from a rank-1 one for the same person if that ever happens
- *  (a bye-heavy small field, say) — it shouldn't overlap, but cheap
+ *  (a bye-heavy small field, say), it shouldn't overlap, but cheap
  *  insurance. */
 export async function creditTournamentReturn(
   userId: string,
@@ -466,12 +466,12 @@ export async function creditTournamentReturn(
 
 /** Settles the balance change from editing a pending tournament's prize
  *  pool or registration fee (only possible while the creator is still the
- *  sole player — see updateTournament in tournament.service.ts) — a single
+ *  sole player, see updateTournament in tournament.service.ts), a single
  *  call handles both directions: deltaTokens > 0 debits the creator for the
  *  increase, < 0 refunds them the decrease, 0 is a no-op. Uses a
  *  timestamped reference rather than the deterministic ones the debit/credit
  *  helpers above use, since an editable amount can change more than once
- *  and each change needs its own distinct ledger entry — a fixed reference
+ *  and each change needs its own distinct ledger entry, a fixed reference
  *  would collide with itself (or with the eventual real debit/refund) the
  *  second time the same tournament+user+kind combination came up. */
 export async function adjustTournamentEscrow(

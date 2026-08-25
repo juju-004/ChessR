@@ -6,7 +6,7 @@ let client: OAuth2Client | null = null;
 
 function getClient(): OAuth2Client {
   if (!env.GOOGLE_CLIENT_ID) {
-    // Distinct from an invalid-token 401 — this means the deployment
+    // Distinct from an invalid-token 401, this means the deployment
     // itself hasn't configured Google sign-in yet, which is a server
     // config problem, not something the caller did wrong.
     throw ApiError.internal('Google sign-in is not configured on this server');
@@ -25,7 +25,7 @@ export interface GoogleProfile {
 /**
  * Verifies a Google Identity Services credential (a signed JWT ID token
  * the client gets straight from Google, never touching our server until
- * this call) — checks the signature against Google's published keys, the
+ * this call), checks the signature against Google's published keys, the
  * `aud` claim against our own GOOGLE_CLIENT_ID, and expiry, all inside
  * google-auth-library. Throws ApiError.unauthorized on anything invalid;
  * never trust a credential this hasn't validated.

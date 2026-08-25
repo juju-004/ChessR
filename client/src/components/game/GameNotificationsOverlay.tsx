@@ -17,13 +17,13 @@ interface GameNotificationsOverlayProps {
   onClaim: (claim: "win" | "draw") => void;
 }
 
-/** Notification overlay stack — leg-paused notice, move errors, the
+/** Notification overlay stack, leg-paused notice, move errors, the
  *  paused-leg resume card, and the opponent-disconnect banner. All
  *  absolute + centered over the page instead of sitting inline above the
  *  board, so any one of them popping in or out mid-game never shifts the
  *  board or panels beneath it. Stacked in one flex column (rather than
  *  each doing its own absolute math) so multiple notifications showing at
- *  once — say a move error right as the opponent disconnects — line up
+ *  once, say a move error right as the opponent disconnects, line up
  *  instead of overlapping. The wrapper is pointer-events-none so empty
  *  space over the board stays clickable/draggable; each banner opts back
  *  into pointer-events-auto for its own buttons. */

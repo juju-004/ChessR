@@ -16,7 +16,7 @@ const VARIANT_CLASSES: Record<NonNullable<FloatingActionButtonProps['variant']>,
   warning: 'bg-amber-600/90 text-white shadow-lg shadow-amber-900/30 hover:bg-amber-500',
 };
 
-/** A self-contained floating pill — icon + label — for the fixed action bar
+/** A self-contained floating pill, icon + label, for the fixed action bar
  *  at the bottom of the game page. Deliberately plain CSS transitions
  *  (opacity/background on hover) rather than framer-motion; these sit fixed
  *  on screen the whole time, so there's no mount/layout animation to earn

@@ -173,7 +173,7 @@ export function AdminReportDetail() {
                   >
                     <p className="flex items-center gap-1.5 font-semibold text-amber-500">
                       <ShieldAlert className="h-4 w-4" />
-                      {s.side === "white" ? game.white?.username : game.black?.username} — worth
+                      {s.side === "white" ? game.white?.username : game.black?.username}, worth
                       a look (score {s.score}/100)
                     </p>
                     <ul className="mt-1.5 list-disc pl-5 text-base-content/70">
@@ -184,14 +184,14 @@ export function AdminReportDetail() {
                   </div>
                 ))}
               <p className="text-xs text-base-content/40">
-                Heuristic timing signal only — not a verdict. Review the moves
+                Heuristic timing signal only, not a verdict. Review the moves
                 yourself before acting on it.
               </p>
             </div>
           ) : (
             <p className="mt-3 text-xs text-base-content/40">
-              No timing anomalies flagged automatically — doesn't rule out
-              cheating, just nothing stood out from move timing alone.
+              No timing anomalies flagged automatically. This doesn't rule out
+              cheating, it just means nothing stood out from move timing alone.
             </p>
           )}
 

@@ -24,7 +24,7 @@ import { PageLoader } from "./components/PageLoader.js";
 import { tryRestoreSession } from "./api/auth.js";
 
 // Every route below is code-split via React.lazy() instead of a top-level
-// import — each page (and whatever it alone depends on) ships as its own
+// import, each page (and whatever it alone depends on) ships as its own
 // chunk, fetched only when that route is actually visited, rather than all
 // of them being bundled into the one script the browser has to download,
 // parse, and execute before anything renders. This matters most for
@@ -111,7 +111,7 @@ const WalletLayout = lazy(() =>
     default: m.WalletLayout,
   })),
 );
-// Admin console — a fully separate, unauthenticated-by-default surface
+// Admin console, a fully separate, unauthenticated-by-default surface
 // (see AdminProtectedRoute) that never shares a bundle chunk with the
 // player app until someone actually navigates to /admin/*.
 const AdminLogin = lazy(() =>
@@ -129,7 +129,7 @@ const AdminReportDetail = lazy(() =>
 );
 
 // Rematching (or navigating directly between two different game codes) keeps
-// the same route element mounted — without a key tied to the code, stale
+// the same route element mounted, without a key tied to the code, stale
 // local state (rematch offer status, chat log, disconnect banners, etc.) from
 // the previous game would leak into the new one instead of resetting.
 function GameRoute() {
@@ -137,7 +137,7 @@ function GameRoute() {
   return <Game key={code} />;
 }
 
-// GameReplay is gone — Game.tsx now detects whether a game is still live
+// GameReplay is gone. Game.tsx now detects whether a game is still live
 // or already finished and renders accordingly, so /game/:code is a single
 // fixed URL for a game's whole lifetime, the same way lichess does it.
 // /replay/:code keeps working as a redirect so old bookmarks/shared links
@@ -160,13 +160,13 @@ function TournamentDetailRoute() {
 function AppBody() {
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith("/admin");
-  // Skip the banner on the game page itself — vertical space there is
+  // Skip the banner on the game page itself, vertical space there is
   // already tight on mobile (board + panels + the in-game action dock),
   // and it'll still show right back up on every other page.
   const isGameRoute = location.pathname.startsWith("/game/");
 
   // The admin console renders on its own, without the player Navbar/
-  // Sidebar chrome — it's not a player surface, and shouldn't ever look
+  // Sidebar chrome, it's not a player surface, and shouldn't ever look
   // like one at a glance (see AdminProtectedRoute + adminAuthStore for the
   // rest of that separation).
   if (isAdminRoute) {
@@ -202,7 +202,7 @@ function AppBody() {
       <div className="flex items-start gap-4 md:px-2">
         <Sidebar />
         {/* pb-24 reserves room for the fixed bottom dock (see .dock in
-         *  index.css) so it never overlaps page content on phone — the
+         *  index.css) so it never overlaps page content on phone, the
          *  dock itself is always mounted below (either MobileDock's site
          *  nav or, on /game/:code, the in-game action bar), so this
          *  padding is needed everywhere on mobile, not just on the game
@@ -221,11 +221,11 @@ function AppBody() {
               />
               <Route path="/signin" element={<SignIn />} />
               <Route path="/signup" element={<SignUp />} />
-              {/* Public — the emailed verification link lands here; works
+              {/* Public, the emailed verification link lands here; works
                *  whether or not this browser/device happens to be signed
                *  in (see VerifyEmail.tsx). */}
               <Route path="/verify-email" element={<VerifyEmail />} />
-              {/* Protected, not listed in any nav — only ever reached via
+              {/* Protected, not listed in any nav, only ever reached via
                *  the redirect from SignIn/SignUp's Google flow right after
                *  a brand-new account is created (see ChooseUsername.tsx). */}
               <Route
@@ -236,11 +236,11 @@ function AppBody() {
                   </ProtectedRoute>
                 }
               />
-              {/* Public — reachable pre-login from the signup form, and
+              {/* Public, reachable pre-login from the signup form, and
                *  linked from the dashboard footer once signed in. */}
               <Route path="/about" element={<About />} />
               <Route path="/terms" element={<Terms />} />
-              {/* Old bookmarks/links to /dashboard keep working — / is the dashboard now. */}
+              {/* Old bookmarks/links to /dashboard keep working, / is the dashboard now. */}
               <Route path="/dashboard" element={<Navigate to="/" replace />} />
               <Route
                 path="/players"
@@ -250,7 +250,7 @@ function AppBody() {
                   </ProtectedRoute>
                 }
               />
-              {/* /find and /friends merged into one /players page — old
+              {/* /find and /friends merged into one /players page, old
                *  bookmarks/links to either keep working. */}
               <Route
                 path="/find"

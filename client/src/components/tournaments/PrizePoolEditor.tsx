@@ -14,13 +14,13 @@ import { Textarea } from "../ui/index.js";
 interface PrizePoolEditorProps {
   value: TournamentPrizeTier[];
   onChange: (tiers: TournamentPrizeTier[]) => void;
-  /** Used only to flag a tier that reaches past the field cap — a hint,
+  /** Used only to flag a tier that reaches past the field cap, a hint,
    *  not a hard block; the real validation still happens on submit. */
   maxPlayers: number;
 }
 
 /** A single free-form textarea that replaces the old "add a row per prize
- *  tier" UI. One line per tier — "1st - 500", "2nd - 200", "5th-10th - 4k" —
+ *  tier" UI. One line per tier, "1st - 500", "2nd - 200", "5th-10th - 4k", 
  *  parsed live via parsePrizePoolText. Shared between the create form and
  *  the edit form so the parsing behavior can never drift between the two. */
 export function PrizePoolEditor({
@@ -81,8 +81,7 @@ export function PrizePoolEditor({
                 {i > 0 && ", "}
                 <span className="font-mono">"{line}"</span>
               </span>
-            ))}{" "}
-            — left out of the prize pool.
+            ))}{" "}, so it was left out of the prize pool.
           </span>
         </div>
       )}
@@ -91,7 +90,7 @@ export function PrizePoolEditor({
         <p className="text-xs text-amber-500">
           {overflowTier.toRank}
           {ordinalSuffix(overflowTier.toRank)} place is past your {maxPlayers}
-          -player cap — raise the cap or trim the schedule before saving.
+          -player cap. Raise the cap or trim the schedule before saving.
         </p>
       )}
 

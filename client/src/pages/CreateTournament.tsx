@@ -24,11 +24,11 @@ import {
   RCoin,
 } from "../components/ui/index.js";
 // The global time-control list (../timeControls.js) is now the single
-// source of truth — this page used to keep its own near-duplicate list,
+// source of truth, this page used to keep its own near-duplicate list,
 // which is exactly what let it drift out of sync with every other select
 // in the app.
 import { TIME_CONTROLS as TIME_PRESETS } from "../timeControls.js";
-import { MAX_WAGER_TOKENS, MAX_EVENT_NAME_LENGTH } from "../lib/limits.js";
+import { MAX_WAGER_TOKENS, MIN_STAKE_TOKENS, MAX_EVENT_NAME_LENGTH } from "../lib/limits.js";
 
 const FORMAT_DEFAULT_MAX: Record<TournamentFormat, number> = {
   normal: 16,
@@ -38,7 +38,7 @@ const FORMAT_DEFAULT_MAX: Record<TournamentFormat, number> = {
 };
 
 // Default datetime-local value: 5 minutes from now, formatted the way the
-// input wants it (local time, no seconds/timezone) — gives the creator a
+// input wants it (local time, no seconds/timezone), gives the creator a
 // sane starting point they can push later rather than a blank/past field.
 function defaultStartInput(): string {
   const d = new Date(Date.now() + 5 * 60 * 1000);
@@ -65,7 +65,7 @@ export function CreateTournament() {
   const [presetIdx, setPresetIdx] = useState(3);
 
   // --- Players & schedule ---
-  const [maxPlayers, setMaxPlayers] = useState(FORMAT_DEFAULT_MAX.swiss);
+  const [maxPlayers, setMaxPlayers] = useState(FORMAT_MAX_PLAYERS.swiss);
   const [swissRounds, setSwissRounds] = useState(5);
   const [robinRounds, setRobinRounds] = useState(1);
   const [arenaMinutes, setArenaMinutes] = useState(60);
@@ -80,7 +80,7 @@ export function CreateTournament() {
   // --- Money ---
   const [organizerOnly, setOrganizerOnly] = useState(false);
   const [thirdPlaceMatch, setThirdPlaceMatch] = useState(false);
-  const [regFeeInput, setRegFeeInput] = useState("10");
+  const [regFeeInput, setRegFeeInput] = useState("20");
   const [prizeTiers, setPrizeTiers] = useState<TournamentPrizeTier[]>([]);
 
   useEffect(() => {
@@ -102,7 +102,9 @@ export function CreateTournament() {
 
   function handleFormatChange(f: TournamentFormat) {
     setFormat(f);
-    setMaxPlayers(FORMAT_DEFAULT_MAX[f]);
+    setMaxPlayers(
+      f === "swiss" || f === "arena" ? FORMAT_MAX_PLAYERS[f] : FORMAT_DEFAULT_MAX[f],
+    );
   }
 
   function handleCreate() {
@@ -116,9 +118,9 @@ export function CreateTournament() {
       MAX_WAGER_TOKENS,
       Math.max(0, Math.floor(Number(regFeeInput) || 0)),
     );
-    if (regFeeTokens < 1) {
+    if (regFeeTokens < MIN_STAKE_TOKENS) {
       return setStatus({
-        message: "Set a registration fee — every tournament requires one.",
+        message: `Set a registration fee of at least ${MIN_STAKE_TOKENS} R.`,
         isError: true,
       });
     }
@@ -160,7 +162,7 @@ export function CreateTournament() {
       swissRounds: format === "swiss" ? swissRounds : null,
       robinRounds: format === "round_robin" ? robinRounds : null,
       arenaMinutes: format === "arena" ? arenaMinutes : null,
-      breakSeconds,
+      breakSeconds: format === "arena" ? 0 : breakSeconds,
       scheduledStartAt: scheduledStartAt.toISOString(),
       password: password.trim() || undefined,
     });
@@ -235,14 +237,16 @@ export function CreateTournament() {
             {/* Players & schedule */}
             <section className="space-y-3 border-t border-base-300 pt-4">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <Input
-                  label="Max players"
-                  type="number"
-                  min={2}
-                  max={FORMAT_MAX_PLAYERS[format]}
-                  value={maxPlayers}
-                  onChange={(e) => setMaxPlayers(Number(e.target.value))}
-                />
+                {format !== "swiss" && format !== "arena" && (
+                  <Input
+                    label="Max players"
+                    type="number"
+                    min={2}
+                    max={FORMAT_MAX_PLAYERS[format]}
+                    value={maxPlayers}
+                    onChange={(e) => setMaxPlayers(Number(e.target.value))}
+                  />
+                )}
                 {format === "swiss" && (
                   <Input
                     label="Rounds"
@@ -277,14 +281,16 @@ export function CreateTournament() {
                     onChange={(e) => setArenaMinutes(Number(e.target.value))}
                   />
                 )}
-                <Input
-                  label="Break (sec)"
-                  type="number"
-                  min={0}
-                  max={300}
-                  value={breakSeconds}
-                  onChange={(e) => setBreakSeconds(Number(e.target.value))}
-                />
+                {format !== "arena" && (
+                  <Input
+                    label="Break (sec)"
+                    type="number"
+                    min={0}
+                    max={300}
+                    value={breakSeconds}
+                    onChange={(e) => setBreakSeconds(Number(e.target.value))}
+                  />
+                )}
               </div>
 
               <Input
@@ -319,7 +325,7 @@ export function CreateTournament() {
                   </span>
                 }
                 type="number"
-                min={1}
+                min={MIN_STAKE_TOKENS}
                 max={MAX_WAGER_TOKENS}
                 value={regFeeInput}
                 onChange={(e) => setRegFeeInput(e.target.value)}

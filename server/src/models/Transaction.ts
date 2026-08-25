@@ -3,12 +3,12 @@ import mongoose, { Schema, type Document, type Types } from 'mongoose';
 export type TransactionType =
   | 'purchase'
   | 'withdrawal'
-  // Wager ledger entries — these move tokens between a player's balance and a
+  // Wager ledger entries, these move tokens between a player's balance and a
   // game's escrow, purely internal (no Paystack money movement involved).
   | 'wager_stake'
   | 'wager_payout'
   | 'wager_refund'
-  // Tournament ledger entries — same idea as the wager_* entries above, just
+  // Tournament ledger entries, same idea as the wager_* entries above, just
   // scoped to a Tournament document instead of a Game, and split across two
   // independent flows (see the ITournament doc comment in Tournament.ts):
   //  - 'tournament_reg_fee': a player paying to join (held in escrow).
@@ -30,13 +30,13 @@ export interface ITransaction extends Document {
   type: TransactionType;
   status: TransactionStatus;
   tokens: number;
-  amountKobo: number; // NGN, lowest denomination — matches how Paystack itself works. 0 for wager entries.
+  amountKobo: number; // NGN, lowest denomination, matches how Paystack itself works. 0 for wager entries.
   reference: string; // Paystack transaction reference (purchases), our own generated ref (withdrawals), or gameId-derived (wagers)
   planId?: string; // which purchase plan, if type === 'purchase'
   game?: Types.ObjectId; // which game, if type is one of the wager_* entries
   tournament?: Types.ObjectId; // which tournament, if type is one of the tournament_* entries
-  paystackRecipientCode?: string; // withdrawals — Paystack transfer recipient
-  paystackTransferCode?: string; // withdrawals — Paystack transfer
+  paystackRecipientCode?: string; // withdrawals. Paystack transfer recipient
+  paystackTransferCode?: string; // withdrawals. Paystack transfer
   bankAccountNumber?: string;
   bankCode?: string;
   accountName?: string;
