@@ -21,7 +21,6 @@ export interface TournamentPlayer {
   berserkWins: number;
   eliminatedRound: number | null;
   hadBye: boolean;
-  withdrawn: boolean;
   // Arena-only, see the server's ITournamentPlayer doc comment. Always
   // false for every other format.
   paused: boolean;
@@ -125,9 +124,9 @@ export function getTournamentByCode(code: string) {
 export function rankTournamentPlayers(
   tournament: Tournament,
 ): TournamentPlayer[] {
-  return [...tournament.players]
-    .filter((p) => !p.withdrawn)
-    .sort((a, b) => b.points - a.points || b.tiebreak - a.tiebreak);
+  return [...tournament.players].sort(
+    (a, b) => b.points - a.points || b.tiebreak - a.tiebreak,
+  );
 }
 
 export function usernameOf(

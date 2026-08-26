@@ -597,6 +597,30 @@ function pairingsForPlayer(
   return records;
 }
 
+/** Client-side mirror of the server's arenaAvailablePlayers pairing pool
+ *  (see tournament.service.ts), minus the "actually watching the page"
+ *  presence check, that part's a server-only concept, everyone looking at
+ *  this page already satisfies it just by being here. Used for the
+ *  "Pairing pool" section below instead of a per-round tab list, which
+ *  didn't make much sense for arena: each "round" there is really just one
+ *  ad hoc 1-on-1 match rather than a shared round everyone plays at once,
+ *  so a giant scrolling tab list of them was mostly noise. Showing who's
+ *  actually free to be paired right now is the more useful view of "what's
+ *  happening" for this format. */
+function arenaPairingPool(tournament: Tournament): TournamentPlayer[] {
+  const busy = new Set<string>();
+  for (const round of tournament.rounds) {
+    for (const pairing of round.pairings) {
+      if (pairing.status !== "active") continue;
+      busy.add(pairing.player1);
+      if (pairing.player2) busy.add(pairing.player2);
+    }
+  }
+  return tournament.players
+    .filter((p) => !p.paused && !busy.has(p.user))
+    .sort((a, b) => b.points - a.points || b.tiebreak - a.tiebreak);
+}
+
 const RANK_MEDAL_CLASSES: Record<number, string> = {
   1: "bg-amber-400/15 text-amber-500",
   2: "bg-slate-300/25 text-slate-400",
@@ -688,16 +712,10 @@ function PlayerTournamentDetails({
         </div>
       </div>
 
-      {player.withdrawn && (
-        <div className="flex flex-wrap gap-1.5">
-          {player.withdrawn && <Badge variant="error">Withdrawn</Badge>}
-        </div>
-      )}
-
       {records.length > 0 && (
         <div className="space-y-1 w-full">
           <div className="md:max-h-64 max-h-80 space-y-0.5 overflow-y-auto">
-            {records.map(({ roundIndex, pairing, isP1 }) => {
+            {records.map(({ roundIndex, pairing, isP1 }, recordIndex) => {
               const opponentId = isP1 ? pairing.player2 : pairing.player1;
               const oppName = usernameOf(tournament, opponentId);
               const berserked = isP1 ? pairing.berserk.p1 : pairing.berserk.p2;
@@ -738,7 +756,9 @@ function PlayerTournamentDetails({
                 <>
                   <span className="flex min-w-0 items-center gap-1.5 text-base-content/70">
                     <span className="shrink-0 text-xs text-base-content/40">
-                      R{roundIndex + 1}
+                      {tournament.format === "arena"
+                        ? `#${recordIndex + 1}`
+                        : `R${roundIndex + 1}`}
                     </span>
                     {myColor && (
                       <span
@@ -994,6 +1014,8 @@ export function TournamentDetail() {
   const isCreator = tournament.createdBy === myId;
   const isPointsFormat = tournament.format !== "normal";
   const standings = isPointsFormat ? rankTournamentPlayers(tournament) : [];
+  const pairingPool =
+    tournament.format === "arena" ? arenaPairingPool(tournament) : [];
   // 10 rows per page rather than the full field, arena/swiss standings can
   // run into the dozens of players, and rendering all of them as one table
   // was the thing making the page unwieldy to scan on a real field.
@@ -1042,18 +1064,6 @@ export function TournamentDetail() {
   }
   function togglePause(paused: boolean) {
     socket?.emit("tournament:pause", { tournamentId: tournament!._id, paused });
-  }
-  async function withdraw() {
-    if (
-      await confirmDialog({
-        title: "Withdraw from the tournament?",
-        description: "Any game you're currently playing will count as a loss.",
-        variant: "danger",
-        confirmLabel: "Withdraw",
-      })
-    ) {
-      socket?.emit("tournament:withdraw", { tournamentId: tournament!._id });
-    }
   }
   async function handleShare() {
     const url = `${CLIENT_URL}/tournaments/${tournament!.code}`;
@@ -1206,27 +1216,22 @@ export function TournamentDetail() {
               />
             )}
 
-            {tournament.status === "active" && isPlayer && (
+            {tournament.status === "active" && isPlayer && tournament.format === "arena" && (
               <div className="flex flex-wrap gap-2">
-                {tournament.format === "arena" && (
-                  <Button
-                    variant="glass"
-                    size="sm"
-                    onClick={() => togglePause(!myPlayer?.paused)}
-                  >
-                    {myPlayer?.paused ? (
-                      <>
-                        <Play className="h-3.5 w-3.5" /> Resume
-                      </>
-                    ) : (
-                      <>
-                        <Pause className="h-3.5 w-3.5" /> Pause
-                      </>
-                    )}
-                  </Button>
-                )}
-                <Button variant="danger" size="sm" onClick={withdraw}>
-                  Withdraw
+                <Button
+                  variant="glass"
+                  size="sm"
+                  onClick={() => togglePause(!myPlayer?.paused)}
+                >
+                  {myPlayer?.paused ? (
+                    <>
+                      <Play className="h-3.5 w-3.5" /> Resume
+                    </>
+                  ) : (
+                    <>
+                      <Pause className="h-3.5 w-3.5" /> Pause
+                    </>
+                  )}
                 </Button>
               </div>
             )}
@@ -1411,7 +1416,49 @@ export function TournamentDetail() {
           </Card>
         )}
 
-        {tournament.rounds.length > 0 && selectedRound && (
+        {tournament.format === "arena" && tournament.status === "active" && (
+          <Card variant="solid">
+            <CardHeader>
+              <CardTitle>Pairing pool</CardTitle>
+            </CardHeader>
+            {pairingPool.length > 0 ? (
+              <div className="space-y-1.5">
+                {pairingPool.map((p) => (
+                  <div
+                    key={p.user}
+                    className="flex items-center gap-2 rounded-lg bg-base-200/50 px-3 py-2"
+                  >
+                    <Avatar
+                      username={p.username}
+                      gradient={p.avatarGradient}
+                      size="sm"
+                    />
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                      {p.username}
+                      {p.user === myId && (
+                        <span className="ml-1.5 text-xs font-normal text-base-content/50">
+                          (you)
+                        </span>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-xs text-base-content/50">
+                      {p.points} pt{p.points === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-base-content/50">
+                Nobody's free to be paired right now, everyone's either
+                mid-game or paused.
+              </p>
+            )}
+          </Card>
+        )}
+
+        {tournament.format !== "arena" &&
+          tournament.rounds.length > 0 &&
+          selectedRound && (
           <Card variant="solid">
             <div className="mb-3 overflow-x-auto">
               <Tabs
