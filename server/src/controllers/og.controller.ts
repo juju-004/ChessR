@@ -1,14 +1,17 @@
-import { z } from 'zod';
-import { asyncHandler } from '../utils/asyncHandler.js';
-import { getGameByCode } from '../services/game.service.js';
-import { getTournamentByCode } from '../services/tournament.service.js';
-import { renderGameBoardPng } from '../services/boardImage.service.js';
-import { env } from '../config/env.js';
+import { z } from "zod";
+import { asyncHandler } from "../utils/asyncHandler.js";
+import { getGameByCode } from "../services/game.service.js";
+import { getTournamentByCode } from "../services/tournament.service.js";
+import { renderGameBoardPng } from "../services/boardImage.service.js";
+import { env } from "../config/env.js";
 
 const codeParamSchema = z.object({ code: z.string().min(4).max(10) });
 
-function formatTimeControl(tc: { baseSeconds: number | null; incrementSeconds: number }): string {
-  if (tc.baseSeconds === null) return 'Unlimited';
+function formatTimeControl(tc: {
+  baseSeconds: number | null;
+  incrementSeconds: number;
+}): string {
+  if (tc.baseSeconds === null) return "Unlimited";
   return `${Math.round(tc.baseSeconds / 60)}+${tc.incrementSeconds}`;
 }
 
@@ -24,23 +27,28 @@ function gameCardInfo(game: Awaited<ReturnType<typeof getGameByCode>>) {
   // White's move still reports that move rather than truncating it away).
   const plyCount = game.moves.length;
   const moveCount = Math.ceil(plyCount / 2);
-  const whiteName = (game.white as any)?.username ?? 'White';
-  const blackName = (game.black as any)?.username ?? 'Black';
-  const isLive = game.status !== 'finished' && game.status !== 'aborted';
+  const whiteName = (game.white as any)?.username ?? "White";
+  const blackName = (game.black as any)?.username ?? "Black";
+  const isLive = game.status !== "finished" && game.status !== "aborted";
 
   let statusLine: string;
   if (isLive) {
-    statusLine = plyCount === 0 ? `${tc} · about to start` : `${tc} · live now, move ${moveCount}`;
+    statusLine =
+      plyCount === 0
+        ? `${tc} · about to start`
+        : `${tc} · live now, move ${moveCount}`;
   } else {
     const outcome =
-      game.result === 'draw'
-        ? 'Draw'
-        : game.result === 'white'
+      game.result === "draw"
+        ? "Draw"
+        : game.result === "white"
           ? `${whiteName} won`
-          : game.result === 'black'
+          : game.result === "black"
             ? `${blackName} won`
-            : 'Game aborted';
-    const reason = game.endReason ? ` by ${game.endReason.replace(/_/g, ' ')}` : '';
+            : "Game aborted";
+    const reason = game.endReason
+      ? ` by ${game.endReason.replace(/_/g, " ")}`
+      : "";
     statusLine = `${tc} · ${outcome}${reason} in ${moveCount} moves`;
   }
 
@@ -52,37 +60,39 @@ function describeGame(game: Awaited<ReturnType<typeof getGameByCode>>): string {
   return `${whiteName} vs ${blackName} · ${statusLine}`;
 }
 
-function describeTournament(tournament: Awaited<ReturnType<typeof getTournamentByCode>>): string {
+function describeTournament(
+  tournament: Awaited<ReturnType<typeof getTournamentByCode>>,
+): string {
   const tc =
     tournament.baseMinutes === null
-      ? 'Unlimited'
+      ? "Unlimited"
       : `${tournament.baseMinutes}+${tournament.incrementSeconds}`;
   const formatLabel: Record<string, string> = {
-    normal: 'Knockout',
-    swiss: 'Swiss',
-    robin: 'Round robin',
-    round_robin: 'Round robin',
-    arena: 'Arena',
+    normal: "Knockout",
+    swiss: "Swiss",
+    robin: "Round robin",
+    round_robin: "Round robin",
+    arena: "Arena",
   };
   const format = formatLabel[tournament.format] ?? tournament.format;
   const count = tournament.players.length;
-  const playerWord = count === 1 ? 'player' : 'players';
+  const playerWord = count === 1 ? "player" : "players";
 
-  if (tournament.status === 'cancelled') {
+  if (tournament.status === "cancelled") {
     return `${tournament.name} · ${format} · ${tc} · cancelled`;
   }
-  if (tournament.status === 'finished') {
+  if (tournament.status === "finished") {
     // 'normal' (knockout) tracks the winner via elimination round, not
     // points (points are meaningless there, see ITournamentPlayer's
     // doc comment), the eventual winner is whoever was never eliminated.
     const winner =
-      tournament.format === 'normal'
+      tournament.format === "normal"
         ? tournament.players.find((p) => p.eliminatedRound === null)
         : [...tournament.players].sort((a, b) => b.points - a.points)[0];
-    const winnerLine = winner ? ` · won by ${winner.username}` : '';
+    const winnerLine = winner ? ` · won by ${winner.username}` : "";
     return `${tournament.name} · ${format} · ${tc}${winnerLine}`;
   }
-  if (tournament.status === 'active') {
+  if (tournament.status === "active") {
     return `${tournament.name} · ${format} · ${tc} · live now · ${count} ${playerWord}`;
   }
   return `${tournament.name} · ${format} · ${tc} · ${count} ${playerWord} registered`;
@@ -93,11 +103,11 @@ function describeTournament(tournament: Awaited<ReturnType<typeof getTournamentB
 // needs its own escaping rather than relying on JSX's automatic escaping.
 function escapeHtml(s: string): string {
   return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 // CLIENT_URL is the *frontend's* origin (e.g. the Vercel deployment), the
@@ -121,7 +131,7 @@ interface PreviewCardInput {
 }
 
 /**
- * Renders a minimal static HTML page with Open Graph / Twitter Card tags, 
+ * Renders a minimal static HTML page with Open Graph / Twitter Card tags,
  * e.g. "kingfish vs mira · 10+0 · kingfish won by resignation in 34 moves"
  *, for link-preview crawlers (WhatsApp, Facebook, Twitter/X, Discord,
  * iMessage) that don't execute JavaScript and so can never see anything
@@ -144,7 +154,12 @@ interface PreviewCardInput {
  * requests and route them here instead of the SPA shell. See
  * client/middleware.ts.
  */
-function renderPreviewPage({ title, description, url, image }: PreviewCardInput): string {
+function renderPreviewPage({
+  title,
+  description,
+  url,
+  image,
+}: PreviewCardInput): string {
   const safeTitle = escapeHtml(title);
   const safeDescription = escapeHtml(description);
   const imageUrl = image ?? DEFAULT_OG_IMAGE;
@@ -158,7 +173,7 @@ function renderPreviewPage({ title, description, url, image }: PreviewCardInput)
 <meta property="og:title" content="${safeTitle}">
 <meta property="og:description" content="${safeDescription}">
 <meta property="og:url" content="${url}">
-<meta property="og:image" content="${imageUrl}">
+<meta property="og:image" content="https://${imageUrl}">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:type" content="image/png">
@@ -185,7 +200,7 @@ export const getGameOgCard = asyncHandler(async (req, res) => {
     description = describeGame(game as any);
     image = `${API_ORIGIN}/api/games/code/${encodeURIComponent(code)}/card-image.png`;
   } catch {
-    description = 'A chess game on Chessr.';
+    description = "A chess game on Chessr.";
   }
 
   const html = renderPreviewPage({
@@ -195,7 +210,7 @@ export const getGameOgCard = asyncHandler(async (req, res) => {
     image,
   });
 
-  res.set('Content-Type', 'text/html; charset=utf-8');
+  res.set("Content-Type", "text/html; charset=utf-8");
   res.send(html);
 });
 
@@ -222,7 +237,7 @@ export const getGameOgImage = asyncHandler(async (req, res) => {
     whiteName,
     blackName,
     statusLine,
-    badge: isLive ? 'live' : 'finished',
+    badge: isLive ? "live" : "finished",
   });
 
   // A finished game's position never changes again, cache it hard. A live
@@ -231,9 +246,14 @@ export const getGameOgImage = asyncHandler(async (req, res) => {
   // cache the very first preview it ever sees for a URL regardless of
   // headers, but that's a WhatsApp-side limitation, not something a
   // Cache-Control header here can work around).
-  res.set('Cache-Control', game.status === 'finished' || game.status === 'aborted' ? 'public, max-age=31536000, immutable' : 'public, max-age=30');
-  res.set('Content-Type', 'image/png');
-  res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.set(
+    "Cache-Control",
+    game.status === "finished" || game.status === "aborted"
+      ? "public, max-age=31536000, immutable"
+      : "public, max-age=30",
+  );
+  res.set("Content-Type", "image/png");
+  res.set("Cross-Origin-Resource-Policy", "cross-origin");
   res.send(png);
 });
 
@@ -241,7 +261,7 @@ export const getTournamentOgCard = asyncHandler(async (req, res) => {
   const { code } = codeParamSchema.parse(req.params);
 
   let title = `Chessr · Tournament ${code.toUpperCase()}`;
-  let description = 'A chess tournament on Chessr.';
+  let description = "A chess tournament on Chessr.";
   try {
     const tournament = await getTournamentByCode(code);
     title = `Chessr · ${tournament.name}`;
@@ -257,6 +277,6 @@ export const getTournamentOgCard = asyncHandler(async (req, res) => {
     url: `${CLIENT_URL}/tournaments/${encodeURIComponent(code)}`,
   });
 
-  res.set('Content-Type', 'text/html; charset=utf-8');
+  res.set("Content-Type", "text/html; charset=utf-8");
   res.send(html);
 });
