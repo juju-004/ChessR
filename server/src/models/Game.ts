@@ -60,8 +60,8 @@ export interface IGame extends Document {
    *  folded into both players' hidden rating (see rating.service.ts's
    *  applyRatingForGame), same double-application guard pattern as
    *  wagerSettled, for the same reason (more than one code path can reach
-   *  a decisive finish for the same game: the live game-over flow,
-   *  tournament withdrawal, and boot-time reconciliation). */
+   *  a decisive finish for the same game: the live game-over flow and
+   *  boot-time reconciliation). */
   ratingApplied: boolean;
   // Set when this game is one leg of a cage match, links back to the parent
   // CageMatch document and records this leg's position in its ordered list.

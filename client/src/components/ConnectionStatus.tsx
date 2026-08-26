@@ -55,9 +55,16 @@ function SignalBarsIcon({ className }: { className?: string }) {
       className={className}
       aria-hidden="true"
     >
-      <rect x="1" y="9" width="3.5" height="6" rx="1" fill="currentColor" />
-      <rect x="6.25" y="5.5" width="3.5" height="9.5" rx="1" fill="currentColor" />
-      <rect x="11.5" y="1" width="3.5" height="14" rx="1" fill="currentColor" />
+      <rect x="1" y="9.5" width="3" height="5.5" rx="1.5" fill="currentColor" />
+      <rect
+        x="6.5"
+        y="5.5"
+        width="3"
+        height="9.5"
+        rx="1.5"
+        fill="currentColor"
+      />
+      <rect x="12" y="1" width="3" height="14" rx="1.5" fill="currentColor" />
     </svg>
   );
 }
@@ -91,7 +98,7 @@ export const ConnectionStatus = memo(function ConnectionStatus({
       const sentAt = Date.now();
       if (pingTimeoutRef.current) window.clearTimeout(pingTimeoutRef.current);
       // If a ping never gets an ack back within a reasonable window, treat it
-      // as a connection problem rather than leaving a stale "42ms" showing, 
+      // as a connection problem rather than leaving a stale "42ms" showing,
       // the socket itself may not have noticed the drop yet.
       pingTimeoutRef.current = window.setTimeout(() => {
         smoothedLatencyRef.current = null;
@@ -159,7 +166,9 @@ export const ConnectionStatus = memo(function ConnectionStatus({
           className,
         )}
       >
-        <SignalBarsIcon className={cn("h-3.5 w-3.5 shrink-0", signalColor(state, latencyMs))} />
+        <SignalBarsIcon
+          className={cn("h-3.5 w-3.5 shrink-0", signalColor(state, latencyMs))}
+        />
         <span>{label(state, latencyMs)}</span>
       </div>
     );
@@ -169,7 +178,12 @@ export const ConnectionStatus = memo(function ConnectionStatus({
     <Tooltip
       content={
         <>
-          <SignalBarsIcon className={cn("h-3.5 w-3.5 shrink-0", signalColor(state, latencyMs))} />
+          <SignalBarsIcon
+            className={cn(
+              "h-3.5 w-3.5 shrink-0",
+              signalColor(state, latencyMs),
+            )}
+          />
           <span>{label(state, latencyMs)}</span>
         </>
       }
@@ -187,7 +201,9 @@ export const ConnectionStatus = memo(function ConnectionStatus({
             : label(state, latencyMs)
         }
       >
-        <SignalBarsIcon className={cn("h-3.5 w-3.5 shrink-0", signalColor(state, latencyMs))} />
+        <SignalBarsIcon
+          className={cn("h-3.5 w-3.5 shrink-0", signalColor(state, latencyMs))}
+        />
         <span className="hidden sm:inline">{label(state, latencyMs)}</span>
       </span>
     </Tooltip>

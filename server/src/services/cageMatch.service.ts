@@ -462,33 +462,66 @@ export async function onLegFinished(
   gameResult: "white" | "black" | "draw",
   endReason: string,
 ): Promise<LegFinishedOutcome> {
-  const match = await CageMatch.findById(cageMatchId);
-  if (!match) throw ApiError.notFound("Cage match not found");
+  const preCheck = await CageMatch.findById(cageMatchId);
+  if (!preCheck) throw ApiError.notFound("Cage match not found");
 
-  const leg = match.legs[legIndex];
-  if (!leg || leg.status !== "active") {
+  const preLeg = preCheck.legs[legIndex];
+  if (!preLeg || preLeg.status !== "active") {
     // Already processed (e.g. a duplicate event), just report current state.
-    const standings = computeStandings(match);
-    return { match, standings, matchStatus: match.status === "finished" ? "match_over" : "leg_advanced", nextLeg: null, matchWinner: match.matchWinner };
+    const standings = computeStandings(preCheck);
+    return { match: preCheck, standings, matchStatus: preCheck.status === "finished" ? "match_over" : "leg_advanced", nextLeg: null, matchWinner: preCheck.matchWinner };
   }
 
-  if (leg.gameId) clearFirstMoveTimer(leg.gameId.toString());
+  if (preLeg.gameId) clearFirstMoveTimer(preLeg.gameId.toString());
 
   // Leg results are always recorded relative to white/black of that specific
   // leg's game, which is why we need the leg's own Game doc to know who was
   // playing which color this time round.
-  const gameDoc = await Game.findById(leg.gameId).select("white black").lean();
+  const gameDoc = await Game.findById(preLeg.gameId).select("white black").lean();
   if (!gameDoc) throw ApiError.internal("Game record missing");
 
-  const whiteIsP1 = gameDoc.white.toString() === match.player1.toString();
+  const whiteIsP1 = gameDoc.white.toString() === preCheck.player1.toString();
   let legResult: "p1" | "p2" | "draw";
   if (gameResult === "draw") legResult = "draw";
   else if (gameResult === "white") legResult = whiteIsP1 ? "p1" : "p2";
   else legResult = whiteIsP1 ? "p2" : "p1";
 
-  leg.status = "finished";
-  leg.result = legResult;
-  leg.endReason = endReason;
+  // Atomically claim this leg (active -> finished) instead of mutating the
+  // in-memory doc from the read above and calling .save(). The read-then-
+  // save pattern has a TOCTOU race: the periodic reconciliation sweep
+  // (reconcileActiveGames, every 60s and on boot) and the live in-memory
+  // clock-timeout handler can both independently decide the same game timed
+  // out and both call this function for the same leg at nearly the same
+  // moment (this is also exactly what happens across a deploy, where the
+  // old process's already-scheduled timer fires while the new process's
+  // boot-time reconcile sweep picks up the same still-"active" game). Both
+  // calls could pass the plain status check above before either's .save()
+  // lands, so both would advance currentLegIndex and both would call
+  // startNextLeg, creating two different games/join codes for what should
+  // be a single "next leg" and sending two next-leg notifications for legs
+  // that should never have both been started. This findOneAndUpdate only
+  // succeeds for whichever call reaches Mongo first; the loser sees `null`
+  // and falls back to the same "already processed" response as the guard
+  // above.
+  const match = await CageMatch.findOneAndUpdate(
+    { _id: cageMatchId, [`legs.${legIndex}.status`]: "active" },
+    {
+      $set: {
+        [`legs.${legIndex}.status`]: "finished",
+        [`legs.${legIndex}.result`]: legResult,
+        [`legs.${legIndex}.endReason`]: endReason,
+      },
+    },
+    { new: true },
+  );
+
+  if (!match) {
+    // Lost the race to a concurrent/duplicate call that claimed this leg
+    // first; report current state rather than advancing a second time.
+    const fresh = await CageMatch.findById(cageMatchId);
+    const standings = computeStandings(fresh!);
+    return { match: fresh!, standings, matchStatus: fresh!.status === "finished" ? "match_over" : "leg_advanced", nextLeg: null, matchWinner: fresh!.matchWinner };
+  }
 
   const standings = computeStandings(match);
   const outcome = decideOutcome(match, standings);

@@ -1,4 +1,4 @@
-import mongoose, { Schema, type Document, type Types } from 'mongoose';
+import mongoose, { Schema, type Document, type Types } from "mongoose";
 
 // A tournament is a multi-player event (as opposed to a cage match, which is
 // always exactly two players). Same underlying idea though: an ordered
@@ -6,7 +6,12 @@ import mongoose, { Schema, type Document, type Types } from 'mongoose';
 // Game (tagged with tournamentId + roundIndex + pairingIndex) reusing the
 // exact same move/clock/socket machinery as a standalone game.
 
-export type TournamentFormat = 'normal' | 'swiss' | 'robin' | 'round_robin' | 'arena';
+export type TournamentFormat =
+  | "normal"
+  | "swiss"
+  | "robin"
+  | "round_robin"
+  | "arena";
 // 'normal', single-elimination knockout bracket, byes for non-power-of-2 fields.
 // 'swiss', fixed number of rounds, opponents paired by score each round.
 // 'robin', legacy: single round-robin (every player plays every other
@@ -26,14 +31,14 @@ export type TournamentFormat = 'normal' | 'swiss' | 'robin' | 'round_robin' | 'a
 //                 rather than everyone moving through synchronized rounds
 //                 together. See tryArenaPairings in tournament.service.ts.
 
-export type TournamentStatus = 'pending' | 'active' | 'finished' | 'cancelled';
+export type TournamentStatus = "pending" | "active" | "finished" | "cancelled";
 
-export type PairingResult = 'p1' | 'p2' | 'draw' | null;
+export type PairingResult = "p1" | "p2" | "draw" | null;
 
 // One tier of the creator-funded prize schedule, e.g. { fromRank: 3,
 // toRank: 8, tokens: 50 } means "each of 3rd through 8th place gets 50 R".
 // The full schedule's total commitment (tokens * range size, summed across
-// tiers) is deducted from the creator's balance up front at creation time, 
+// tiers) is deducted from the creator's balance up front at creation time,
 // see prizePoolTokens below, so the payout at the end is never blocked on
 // the creator's balance at that point.
 export interface ITournamentPrizeTier {
@@ -69,7 +74,6 @@ export interface ITournamentPlayer {
   // all, which only happens if someone leaves before the bracket is drawn).
   eliminatedRound: number | null;
   hadBye: boolean;
-  withdrawn: boolean;
   // Arena-only: the player has voluntarily stepped out of the pairing
   // queue without withdrawing from the event entirely, like Lichess's
   // pause button. They keep their points/standing and can toggle this
@@ -101,7 +105,7 @@ export interface ITournamentPairing {
   blackId: Types.ObjectId | null;
   gameId: Types.ObjectId | null;
   joinCode: string | null;
-  status: 'pending' | 'active' | 'finished';
+  status: "pending" | "active" | "finished";
   result: PairingResult;
   endReason: string | null;
   berserk: { p1: boolean; p2: boolean };
@@ -109,7 +113,7 @@ export interface ITournamentPairing {
 
 export interface ITournamentRound {
   index: number;
-  status: 'pending' | 'active' | 'finished';
+  status: "pending" | "active" | "finished";
   pairings: ITournamentPairing[];
   startedAt?: Date;
   endedAt?: Date;
@@ -129,12 +133,12 @@ export interface ITournament extends Document {
   // players and pairings already reference.
   organizerOnly: boolean;
   format: TournamentFormat;
-  variant: 'standard' | 'chess960';
+  variant: "standard" | "chess960";
   baseMinutes: number | null;
   incrementSeconds: number;
   status: TournamentStatus;
   // Human-readable explanation for why status === 'cancelled', shown on the
-  // tournament page in place of the usual pending/active/finished content, 
+  // tournament page in place of the usual pending/active/finished content,
   // e.g. "Cancelled by the organiser" or "Not enough players to start the
   // tournament". Null for every non-cancelled status.
   cancelReason: string | null;
@@ -206,7 +210,7 @@ export interface ITournament extends Document {
   breakSeconds: number;
   // Set the moment a round finishes and the next one enters its break
   // window; null the rest of the time (including while a round is actually
-  // being played). Purely a display timestamp for the client's countdown, 
+  // being played). Purely a display timestamp for the client's countdown,
   // the server's own scheduling doesn't depend on reading this back.
   nextRoundStartsAt: Date | null;
   // When set, the tournament starts itself automatically at this time
@@ -232,15 +236,19 @@ export interface ITournament extends Document {
 const pairingSchema = new Schema<ITournamentPairing>(
   {
     index: { type: Number, required: true },
-    player1: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    player2: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    player1: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    player2: { type: Schema.Types.ObjectId, ref: "User", default: null },
     isThirdPlace: { type: Boolean, default: false },
-    whiteId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
-    blackId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
-    gameId: { type: Schema.Types.ObjectId, ref: 'Game', default: null },
+    whiteId: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    blackId: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    gameId: { type: Schema.Types.ObjectId, ref: "Game", default: null },
     joinCode: { type: String, default: null },
-    status: { type: String, enum: ['pending', 'active', 'finished'], default: 'pending' },
-    result: { type: String, enum: ['p1', 'p2', 'draw', null], default: null },
+    status: {
+      type: String,
+      enum: ["pending", "active", "finished"],
+      default: "pending",
+    },
+    result: { type: String, enum: ["p1", "p2", "draw", null], default: null },
     endReason: { type: String, default: null },
     berserk: {
       p1: { type: Boolean, default: false },
@@ -253,7 +261,11 @@ const pairingSchema = new Schema<ITournamentPairing>(
 const roundSchema = new Schema<ITournamentRound>(
   {
     index: { type: Number, required: true },
-    status: { type: String, enum: ['pending', 'active', 'finished'], default: 'pending' },
+    status: {
+      type: String,
+      enum: ["pending", "active", "finished"],
+      default: "pending",
+    },
     pairings: { type: [pairingSchema], default: [] },
     startedAt: { type: Date },
     endedAt: { type: Date },
@@ -272,7 +284,7 @@ const prizeTierSchema = new Schema<ITournamentPrizeTier>(
 
 const playerSchema = new Schema<ITournamentPlayer>(
   {
-    user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    user: { type: Schema.Types.ObjectId, ref: "User", required: true },
     username: { type: String, required: true },
     avatarGradient: { type: String, default: null },
     joinedAt: { type: Date, default: () => new Date() },
@@ -282,7 +294,6 @@ const playerSchema = new Schema<ITournamentPlayer>(
     berserkWins: { type: Number, default: 0 },
     eliminatedRound: { type: Number, default: null },
     hadBye: { type: Boolean, default: false },
-    withdrawn: { type: Boolean, default: false },
     paused: { type: Boolean, default: false },
     arenaAvailableSince: { type: Date, default: null },
   },
@@ -293,16 +304,29 @@ const tournamentSchema = new Schema<ITournament>(
   {
     code: { type: String, required: true, unique: true, index: true },
     name: { type: String, required: true, trim: true, maxlength: 60 },
-    createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    createdBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
     organizerOnly: { type: Boolean, default: false },
-    format: { type: String, enum: ['normal', 'swiss', 'robin', 'round_robin', 'arena'], required: true },
-    variant: { type: String, enum: ['standard', 'chess960'], default: 'standard' },
+    format: {
+      type: String,
+      enum: ["normal", "swiss", "robin", "round_robin", "arena"],
+      required: true,
+    },
+    variant: {
+      type: String,
+      enum: ["standard", "chess960"],
+      default: "standard",
+    },
     baseMinutes: { type: Number, default: null },
     incrementSeconds: { type: Number, default: 0 },
     status: {
       type: String,
-      enum: ['pending', 'active', 'finished', 'cancelled'],
-      default: 'pending',
+      enum: ["pending", "active", "finished", "cancelled"],
+      default: "pending",
       index: true,
     },
     cancelReason: { type: String, default: null },
@@ -328,11 +352,11 @@ const tournamentSchema = new Schema<ITournament>(
     breakSeconds: { type: Number, default: 10 },
     nextRoundStartsAt: { type: Date, default: null },
     scheduledStartAt: { type: Date, default: null },
-    winner: { type: Schema.Types.ObjectId, ref: 'User', default: null },
-    runnerUp: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    winner: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    runnerUp: { type: Schema.Types.ObjectId, ref: "User", default: null },
     thirdPlaceMatch: { type: Boolean, default: false },
-    thirdPlace: { type: Schema.Types.ObjectId, ref: 'User', default: null },
-    fourthPlace: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    thirdPlace: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    fourthPlace: { type: Schema.Types.ObjectId, ref: "User", default: null },
     startedAt: { type: Date },
     endedAt: { type: Date },
   },
@@ -341,4 +365,7 @@ const tournamentSchema = new Schema<ITournament>(
 
 tournamentSchema.index({ status: 1, createdAt: -1 });
 
-export const Tournament = mongoose.model<ITournament>('Tournament', tournamentSchema);
+export const Tournament = mongoose.model<ITournament>(
+  "Tournament",
+  tournamentSchema,
+);

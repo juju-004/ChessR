@@ -384,13 +384,31 @@ export async function debitTournamentRegFee(
       "Insufficient R token balance for that registration fee",
     );
 
+  // The reference has to be unique per registration ATTEMPT, not just per
+  // tournament+user: leaveTournament refunds the fee (via
+  // creditTournamentReturn, a separate "TRN-RFD-...-reg" reference) but
+  // deliberately leaves this charge's own Transaction record in place as
+  // ledger history, so rejoining the same tournament needs a fresh
+  // reference here or the Transaction.create below throws a duplicate key
+  // error on the unique `reference` index. This used to be a bare
+  // `TRN-REG-${tournamentId}-${userId}`, which worked for a single join
+  // but broke on any leave-then-rejoin. Counting this user's prior reg-fee
+  // charges for this tournament keeps the reference deterministic rather
+  // than time-based, and naturally starts a fresh one each time they leave
+  // and rejoin.
+  const attempt = await Transaction.countDocuments({
+    user: userId,
+    tournament: tournamentId,
+    type: "tournament_reg_fee",
+  });
+
   await Transaction.create({
     user: userId,
     type: "tournament_reg_fee",
     status: "success",
     tokens,
     amountKobo: 0,
-    reference: `TRN-REG-${tournamentId}-${userId}`,
+    reference: `TRN-REG-${tournamentId}-${userId}-${attempt + 1}`,
     tournament: tournamentId,
   });
 }

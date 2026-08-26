@@ -177,12 +177,12 @@ export function CageGamePlanEditor({
           </Select>
           <Input
             label={
-              <>
+              <span className="relative flex">
                 Nō
-                <HelpTip className="translate-y-0.5">
+                <HelpTip className="absolute -translate-y-1/2 top-1/2 ml-1">
                   Number of games to be added
                 </HelpTip>
-              </>
+              </span>
             }
             type="number"
             min={1}

@@ -98,7 +98,7 @@ const LABEL: Record<NonNullable<GoogleSignInButtonProps["text"]>, string> = {
  * a fixed pixel number. A rounded/clipped wrapper keeps its edges tidy
  * against the rest of the form instead of leaving Google's default square
  * corners butted up against everything else. Google's fixed color themes
- * (`outline` white / `filled_black` black) are otherwise left alone, 
+ * (`outline` white / `filled_black` black) are otherwise left alone,
  * there's no third-party "transparent" or "match my site" option to lean
  * on, and no reliable way to fake one without breaking clicks again.
  *
@@ -207,11 +207,10 @@ export function GoogleSignInButton({
         id={domId}
         ref={containerRef}
         className={cn(
-          "absolute inset-0 flex items-center justify-center overflow-hidden rounded-full transition-opacity",
+          "absolute inset-0 flex items-center bg-black/0! justify-center overflow-hidden rounded-full transition-opacity",
           ready ? "opacity-100" : "pointer-events-none opacity-0",
         )}
       />
     </div>
   );
 }
-

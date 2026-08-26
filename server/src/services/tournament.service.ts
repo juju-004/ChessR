@@ -12,19 +12,15 @@ import {
 } from "../models/Tournament.js";
 import { Game } from "../models/Game.js";
 import { ApiError } from "../utils/ApiError.js";
+import { withLock } from "../utils/distributedLock.js";
 import {
   createDirectGame,
-  finalizeGame,
   type TimeControlInput,
 } from "./game.service.js";
 import {
-  getLiveState,
-  deleteLiveState,
-  endGame,
   applyBerserk,
   BerserkNotAllowedError,
 } from "./gameState.service.js";
-import { clearGameTimer } from "./clock.service.js";
 import {
   debitTournamentRegFee,
   debitTournamentPrizeFund,
@@ -33,7 +29,6 @@ import {
   computeRake,
   recordRake,
 } from "./wallet.service.js";
-import { applyRatingForGame } from "./rating.service.js";
 import { getIo } from "../sockets/io.js";
 import { isUserWatchingTournament } from "./presence.service.js";
 
@@ -545,7 +540,6 @@ export async function createTournament(
             berserkWins: 0,
             eliminatedRound: null,
             hadBye: false,
-            withdrawn: false,
           },
         ],
     berserkAllowed: input.berserkAllowed,
@@ -655,7 +649,6 @@ export async function joinTournament(
     berserkWins: 0,
     eliminatedRound: null,
     hadBye: false,
-    withdrawn: false,
     paused: false,
     joinedAt: dateObject,
     arenaAvailableSince: dateObject,
@@ -669,18 +662,20 @@ export async function joinTournament(
   // built (see buildSwissRound), which only happens at a round boundary
   // anyway, not something joining can trigger early.
   if (tournament.status === "active" && tournament.format === "arena") {
-    await tryArenaPairings(tournament);
+    await tryArenaPairings(tournament.id);
   }
 
   return tournament;
 }
 
-/** Only valid before the tournament starts, see withdrawFromTournament for
- *  backing out of an already-active event. If the creator leaves, the next
- *  earliest-joined player inherits the "creator" powers (start/cancel)
- *  rather than orphaning the tournament, and since the prize pool (if any)
- *  was funded by the ORIGINAL creator specifically, it goes back to them
- *  rather than staying committed to an event they're no longer running. */
+/** Only valid before the tournament starts, once it's active there's no
+ *  backing out (arena players can pause instead, see setArenaPause; every
+ *  other format has no equivalent, a joined player sees it through). If
+ *  the creator leaves, the next earliest-joined player inherits the
+ *  "creator" powers (start/cancel) rather than orphaning the tournament,
+ *  and since the prize pool (if any) was funded by the ORIGINAL creator
+ *  specifically, it goes back to them rather than staying committed to an
+ *  event they're no longer running. */
 export async function leaveTournament(
   tournamentId: string,
   userId: string,
@@ -1117,7 +1112,7 @@ async function buildSwissRound(
   tournament: ITournament,
   roundIndex: number,
 ): Promise<ITournamentRound> {
-  const candidates = tournament.players.filter((p) => !p.withdrawn);
+  const candidates = tournament.players;
   const watchingFlags = await Promise.all(
     candidates.map((p) => isUserWatchingTournament(p.user.toString(), tournament.id)),
   );
@@ -1214,7 +1209,7 @@ async function activateTournament(tournament: ITournament): Promise<void> {
     await tournament.save();
     broadcastUpdate(tournament, "tournament:started");
     scheduleArenaEnd(tournament);
-    await tryArenaPairings(tournament);
+    await tryArenaPairings(tournament.id);
     return;
   }
 
@@ -1423,21 +1418,20 @@ async function fireArenaEnd(tournamentId: string): Promise<void> {
 }
 
 /** Smart pairing, arena half: every player currently eligible for a new
- *  pairing, joined, not withdrawn, not paused (see the
- *  ITournamentPlayer.paused doc comment), not already sitting in a still-
- *  active pairing themselves, AND currently watching this tournament's
- *  detail page (not just online somewhere else in the app, see
- *  isUserWatchingTournament). That last check is what stops the arena
- *  from ever pairing someone against an opponent who isn't actually
- *  looking at the tournament to play: a player idling on Game.tsx or
- *  Settings with the app open in the background is left out of the pool
- *  until they come back to this page (see retryArenaPairingsForUser,
- *  called on tournament:watch, which re-checks them the instant they do
- *  rather than making them wait for some unrelated pairing event to
- *  happen to pick them up). Unlike swiss's buildSwissRound, there's no
- *  "too few watching, pair everyone anyway" fallback needed here, arena
- *  tolerates an empty pool fine, it just means nobody gets paired until
- *  the next trigger. */
+ *  pairing, joined, not paused (see the ITournamentPlayer.paused doc
+ *  comment), not already sitting in a still-active pairing themselves, AND
+ *  currently watching this tournament's detail page (not just online
+ *  somewhere else in the app, see isUserWatchingTournament). That last
+ *  check is what stops the arena from ever pairing someone against an
+ *  opponent who isn't actually looking at the tournament to play: a
+ *  player idling on Game.tsx or Settings with the app open in the
+ *  background is left out of the pool until they come back to this page
+ *  (see retryArenaPairingsForUser, called on tournament:watch, which
+ *  re-checks them the instant they do rather than making them wait for
+ *  some unrelated pairing event to happen to pick them up). Unlike
+ *  swiss's buildSwissRound, there's no "too few watching, pair everyone
+ *  anyway" fallback needed here, arena tolerates an empty pool fine, it
+ *  just means nobody gets paired until the next trigger. */
 async function arenaAvailablePlayers(
   tournament: ITournament,
 ): Promise<ITournamentPlayer[]> {
@@ -1450,7 +1444,7 @@ async function arenaAvailablePlayers(
     }
   }
   const candidates = tournament.players.filter(
-    (p) => !p.withdrawn && !p.paused && !busy.has(p.user.toString()),
+    (p) => !p.paused && !busy.has(p.user.toString()),
   );
   const watchingFlags = await Promise.all(
     candidates.map((p) => isUserWatchingTournament(p.user.toString(), tournament.id)),
@@ -1520,72 +1514,69 @@ function isImmediateArenaRematch(
  *  ITournamentPlayer.arenaAvailableSince), and for each player in turn
  *  picks the *closest available opponent by current standings position*
  *  (3rd reaches for 8th before 16th, but only if 8th actually clears the
- *  other conditions below, otherwise it skips to the next-closest, e.g.
- *  16th) subject to two soft constraints, tried in this order across the
- *  whole pool before relaxing either:
- *   1. strict: no immediate rematch, no forced 3rd-consecutive-same-color
- *   2. relax color: rematch still forbidden, same-color streak allowed
- *   3. relax both: last resort, same as the old fallback
- *  Each relaxation level is a single deterministic pass, no shuffling, 
- *  since the whole point here is that the ordering (tenure, then rank
- *  proximity) is deliberate, not something to randomize away. */
+ *  color-balance check below, otherwise the next-closest, e.g. 16th),
+ *  preferring an opponent who wouldn't hand either player a 3rd
+ *  consecutive same color, but accepting one who would rather than
+ *  leaving a player unpaired over color alone.
+ *
+ *  An immediate rematch (pairing someone with whoever they *just* played)
+ *  is never allowed, under any circumstance, not even as a last resort.
+ *  If the only player(s) left for someone are people they just played
+ *  (e.g. exactly the two of them left in the pool), that player simply
+ *  stays unpaired for this pass rather than replaying the same match back
+ *  to back — tryArenaPairings picks them up again the moment a third
+ *  player becomes available, or, if the arena only ever has those two
+ *  players in it, they just don't get a next game, which is the correct
+ *  tradeoff for a hard "no back-to-back rematch" rule.
+ *
+ *  Deterministic, one pass, no shuffling: tenure order and rank proximity
+ *  are both deliberate, not something to randomize away. */
 function matchArenaPairsSmart(
   pool: ITournamentPlayer[],
   lastOpponent: Map<string, string>,
   colorState: Map<string, ColorState>,
   rankIndex: Map<string, number>,
 ): [ITournamentPlayer, ITournamentPlayer][] {
-  function attempt(
-    allowRematch: boolean,
-    allowColorClash: boolean,
-  ): [ITournamentPlayer, ITournamentPlayer][] | null {
-    const tenureOrder = [...pool].sort(
-      (a, b) =>
-        (a.arenaAvailableSince?.getTime() ?? 0) -
-        (b.arenaAvailableSince?.getTime() ?? 0),
-    );
-    const byId = new Map(tenureOrder.map((p) => [p.user.toString(), p]));
-    const remaining = new Set(byId.keys());
-    const pairs: [ITournamentPlayer, ITournamentPlayer][] = [];
+  const tenureOrder = [...pool].sort(
+    (a, b) =>
+      (a.arenaAvailableSince?.getTime() ?? 0) -
+      (b.arenaAvailableSince?.getTime() ?? 0),
+  );
+  const byId = new Map(tenureOrder.map((p) => [p.user.toString(), p]));
+  const remaining = new Set(byId.keys());
+  const pairs: [ITournamentPlayer, ITournamentPlayer][] = [];
 
-    for (const a of tenureOrder) {
-      const aId = a.user.toString();
-      if (!remaining.has(aId)) continue;
-      remaining.delete(aId);
+  for (const a of tenureOrder) {
+    const aId = a.user.toString();
+    if (!remaining.has(aId)) continue;
+    remaining.delete(aId);
 
-      const aRank = rankIndex.get(aId) ?? 0;
-      const candidates = [...remaining]
-        .map((id) => byId.get(id)!)
-        .sort(
-          (x, y) =>
-            Math.abs((rankIndex.get(x.user.toString()) ?? 0) - aRank) -
-            Math.abs((rankIndex.get(y.user.toString()) ?? 0) - aRank),
-        );
+    const aRank = rankIndex.get(aId) ?? 0;
+    const candidates = [...remaining]
+      .map((id) => byId.get(id)!)
+      // Hard rule, never relaxed: no immediate rematch.
+      .filter((b) => !isImmediateArenaRematch(lastOpponent, a, b))
+      .sort(
+        (x, y) =>
+          Math.abs((rankIndex.get(x.user.toString()) ?? 0) - aRank) -
+          Math.abs((rankIndex.get(y.user.toString()) ?? 0) - aRank),
+      );
 
-      // No candidates at all left in the pool (odd player out) is fine, 
-      // just leave them unpaired for this pass, same as the pre-smart-
-      // pairing behavior. Only a genuine "there WAS someone left but every
-      // constraint rejected them" case is a real failure that needs the
-      // caller to retry at a relaxed level.
-      if (candidates.length === 0) continue;
+    // Nobody left who isn't a rematch (odd player out, or literally
+    // everyone still free right now is whoever `a` just played) — `a`
+    // waits for the next pairing pass instead.
+    if (candidates.length === 0) continue;
 
-      const chosen = candidates.find((b) => {
-        const bId = b.user.toString();
-        if (!allowRematch && isImmediateArenaRematch(lastOpponent, a, b)) return false;
-        if (!allowColorClash) {
-          const [p1, p2] = colorPenalties(aId, bId, colorState);
-          if (p1 > 0 && p2 > 0) return false;
-        }
-        return true;
-      });
-      if (!chosen) return null;
-      remaining.delete(chosen.user.toString());
-      pairs.push([a, chosen]);
-    }
-    return pairs;
+    const noColorClash = candidates.find((b) => {
+      const [p1, p2] = colorPenalties(aId, b.user.toString(), colorState);
+      return !(p1 > 0 && p2 > 0);
+    });
+    const chosen = noColorClash ?? candidates[0];
+
+    remaining.delete(chosen.user.toString());
+    pairs.push([a, chosen]);
   }
-
-  return attempt(false, false) ?? attempt(false, true) ?? attempt(true, true)!;
+  return pairs;
 }
 
 /** The heart of the arena format: pairs up every currently-available player
@@ -1595,41 +1586,70 @@ function matchArenaPairsSmart(
  *  again every time a game finishes or a player un-pauses (to immediately
  *  re-pair whoever just freed up, rather than making them wait for some
  *  fixed tick). An odd one out just waits, there's no bye/point awarded
- *  for simply not having a partner available this instant, unlike swiss. */
-async function tryArenaPairings(tournament: ITournament): Promise<void> {
-  if (tournament.status !== "active" || tournament.format !== "arena") return;
-  if (!tournament.arenaEndsAt || Date.now() >= tournament.arenaEndsAt.getTime())
-    return;
+ *  for simply not having a partner available this instant, unlike swiss.
+ *
+ *  Takes a tournamentId rather than a loaded doc, and always re-fetches
+ *  fresh under a lock, deliberately: this gets called from several
+ *  independent triggers that can genuinely fire at the same instant (three
+ *  players all landing back on the tournament page after a game ends all
+ *  emit tournament:watch within the same tick, each running its own
+ *  retryArenaPairingsForUser). Each of those used to hand this function
+ *  its own already-loaded, un-synchronized copy of the tournament; two
+ *  overlapping calls could both decide the same player was "available",
+ *  both create a new pairing round for them, and whichever call's
+ *  tournament.save() landed second would silently overwrite the first
+ *  call's newly-pushed round (Mongoose's save() replaces the whole
+ *  document tree, it doesn't merge concurrent array pushes) — the
+ *  overwritten round's Game document still existed and was already live
+ *  for its two players, but the tournament doc no longer listed it as
+ *  "active", so arenaAvailablePlayers stopped seeing those two as busy and
+ *  happily paired one of them again with a third player. The lock plus
+ *  fresh re-fetch closes that: only one call is ever mutating a given
+ *  tournament's rounds at a time, and it's always working off whatever the
+ *  previous call just committed, not a stale snapshot from before this
+ *  function was even entered. */
+async function tryArenaPairings(tournamentId: string): Promise<void> {
+  const result = await withLock(`tournament:arena-pairing:${tournamentId}`, async () => {
+    const tournament = await Tournament.findById(tournamentId);
+    if (!tournament) return;
+    if (tournament.status !== "active" || tournament.format !== "arena") return;
+    if (!tournament.arenaEndsAt || Date.now() >= tournament.arenaEndsAt.getTime())
+      return;
 
-  const pool = await arenaAvailablePlayers(tournament);
-  if (pool.length < 2) return;
-  const lastOpponent = computeLastArenaOpponents(tournament);
-  const colorState = computeColorState(tournament);
-  const rankIndex = new Map(
-    rankPlayers(tournament).map((p, i) => [p.user.toString(), i]),
-  );
-  const pairs = matchArenaPairsSmart(pool, lastOpponent, colorState, rankIndex);
-  const newRoundIndexes: number[] = [];
+    const pool = await arenaAvailablePlayers(tournament);
+    if (pool.length < 2) return;
+    const lastOpponent = computeLastArenaOpponents(tournament);
+    const colorState = computeColorState(tournament);
+    const rankIndex = new Map(
+      rankPlayers(tournament).map((p, i) => [p.user.toString(), i]),
+    );
+    const pairs = matchArenaPairsSmart(pool, lastOpponent, colorState, rankIndex);
+    const newRoundIndexes: number[] = [];
 
-  for (const [a, b] of pairs) {
-    const roundIndex = tournament.rounds.length;
-    const [white, black] = orderByColor(a, b, colorState);
-    tournament.rounds.push({
-      index: roundIndex,
-      status: "pending",
-      pairings: [emptyPairing(0, white.user, black.user)],
-    });
-    newRoundIndexes.push(roundIndex);
-  }
+    for (const [a, b] of pairs) {
+      const roundIndex = tournament.rounds.length;
+      const [white, black] = orderByColor(a, b, colorState);
+      tournament.rounds.push({
+        index: roundIndex,
+        status: "pending",
+        pairings: [emptyPairing(0, white.user, black.user)],
+      });
+      newRoundIndexes.push(roundIndex);
+    }
 
-  if (newRoundIndexes.length === 0) return;
-  tournament.currentRoundIndex = tournament.rounds.length - 1;
-  await tournament.save();
-  // Sequential, not Promise.all, each activateRound call creates a real
-  // Game document and re-saves the same in-memory tournament doc; running
-  // them concurrently would race that shared save.
-  for (const roundIndex of newRoundIndexes) {
-    await activateRound(tournament, roundIndex);
+    if (newRoundIndexes.length === 0) return;
+    tournament.currentRoundIndex = tournament.rounds.length - 1;
+    await tournament.save();
+    // Sequential, not Promise.all, each activateRound call creates a real
+    // Game document and re-saves the same in-memory tournament doc; running
+    // them concurrently would race that shared save.
+    for (const roundIndex of newRoundIndexes) {
+      await activateRound(tournament, roundIndex);
+    }
+  });
+
+  if (result === null) {
+    console.error(`arena pairing lock timed out for tournament ${tournamentId}`);
   }
 }
 
@@ -1650,14 +1670,12 @@ export async function setArenaPause(
     throw ApiError.conflict("This tournament isn't currently active");
   const player = findPlayer(tournament, userId);
   if (!player) throw ApiError.badRequest("You're not in this tournament");
-  if (player.withdrawn)
-    throw ApiError.badRequest("You've already withdrawn from this tournament");
 
   player.paused = paused;
   if (!paused) player.arenaAvailableSince = new Date();
   await tournament.save();
 
-  if (!paused) await tryArenaPairings(tournament);
+  if (!paused) await tryArenaPairings(tournament.id);
 
   return tournament;
 }
@@ -1672,7 +1690,11 @@ export async function setArenaPause(
  *  tryArenaPairings again. This closes that gap: the moment they're back
  *  (connected, or specifically looking at the page again), every active
  *  arena they're registered in gets an immediate re-check on their
- *  behalf. */
+ *  behalf.
+ *
+ *  Multiple players can hit this within the same instant (everyone landing
+ *  back on the tournament page right after a game ends), that's exactly
+ *  what tryArenaPairings' lock-and-refetch is for, see its comment. */
 export async function retryArenaPairingsForUser(userId: string): Promise<void> {
   const tournaments = await Tournament.find({
     status: "active",
@@ -1680,32 +1702,10 @@ export async function retryArenaPairingsForUser(userId: string): Promise<void> {
     "players.user": userId,
   });
   for (const tournament of tournaments) {
-    await tryArenaPairings(tournament).catch((err) =>
+    await tryArenaPairings(tournament.id).catch((err) =>
       console.error("arena re-pairing on reconnect failed:", err),
     );
   }
-}
-
-/** Finds the round/pairing a player is currently, actively playing in, 
- *  needed instead of just looking at tournament.currentRoundIndex because
- *  arena can have many rounds "active" at once (each one a different pair
- *  of players' game), so the single most-recently-created round isn't
- *  necessarily the one THIS player is in. Round-based formats only ever
- *  have one active round at a time, so this is equally correct (if
- *  marginally more work) for them too. */
-function findActivePairingForPlayer(
-  tournament: ITournament,
-  userId: string,
-): { roundIndex: number; pairing: ITournamentPairing } | null {
-  for (let i = tournament.rounds.length - 1; i >= 0; i--) {
-    const pairing = tournament.rounds[i].pairings.find(
-      (p) =>
-        p.status === "active" &&
-        (p.player1.toString() === userId || p.player2?.toString() === userId),
-    );
-    if (pairing) return { roundIndex: i, pairing };
-  }
-  return null;
 }
 
 // --- Scoring ---------------------------------------------------------------
@@ -1769,9 +1769,9 @@ function applyPairingScore(
 }
 
 export function rankPlayers(tournament: ITournament): ITournamentPlayer[] {
-  return [...tournament.players]
-    .filter((p) => !p.withdrawn)
-    .sort((a, b) => b.points - a.points || b.tiebreak - a.tiebreak);
+  return [...tournament.players].sort(
+    (a, b) => b.points - a.points || b.tiebreak - a.tiebreak,
+  );
 }
 
 // --- Round completion / advancement -----------------------------------------
@@ -1812,6 +1812,12 @@ async function advanceAfterRound(
 
     const timeUp =
       !tournament.arenaEndsAt || Date.now() >= tournament.arenaEndsAt.getTime();
+    // Persist the arenaAvailableSince stamps above before tryArenaPairings
+    // re-fetches its own fresh copy of this document (see its comment) —
+    // otherwise these two players' updated tenure would only ever have
+    // existed in this function's local, unsaved copy and would be invisible
+    // to that fresh read.
+    await tournament.save();
     if (timeUp) {
       // Other games from this arena might still be in progress, the last
       // one to finish is the one that actually triggers finishTournament,
@@ -1820,7 +1826,7 @@ async function advanceAfterRound(
       if (!hasActivePairing(tournament)) await finishTournament(tournament);
       return;
     }
-    await tryArenaPairings(tournament);
+    await tryArenaPairings(tournament.id);
     return;
   }
 
@@ -1940,11 +1946,9 @@ async function finishTournament(
 
 /** Full 1st-through-last ordering for the whole field, used to match players
  *  up against the creator's prize schedule by rank. For points-based
- *  formats this is just rankPlayers' order with anyone who withdrew tacked
- *  on the end (they're excluded from rankPlayers, but still occupy a rank
- *  for schedule purposes if the schedule happens to reach that far).
- *  Knockout has no points table, so it's built from bracket position
- *  instead: winner, runner-up, [3rd, 4th if a 3rd-place match was played],
+ *  formats this is just rankPlayers' order directly. Knockout has no
+ *  points table, so it's built from bracket position instead: winner,
+ *  runner-up, [3rd, 4th if a 3rd-place match was played],
  *  then everyone else grouped by which round eliminated them (later round
  *  = better placement), ties within a group (e.g. two people both lost in
  *  the semifinal, and there was no 3rd-place match to break the tie)
@@ -1974,10 +1978,7 @@ function computeFinalRanking(tournament: ITournament): Types.ObjectId[] {
     return order;
   }
 
-  const ranked = rankPlayers(tournament);
-  const rankedIds = new Set(ranked.map((p) => p.user.toString()));
-  const withdrawn = tournament.players.filter((p: ITournamentPlayer) => !rankedIds.has(p.user.toString()));
-  return [...ranked.map((p) => p.user), ...withdrawn.map((p: ITournamentPlayer) => p.user)];
+  return rankPlayers(tournament).map((p) => p.user);
 }
 
 /** Settles both independent money flows once a tournament finishes, see
@@ -2177,79 +2178,6 @@ export async function berserkInTournamentGame(
 }
 
 // --- Withdrawing from an already-active tournament --------------------------
-
-/** Backs a player out of a tournament that's already running. If they have a
- *  live pairing in progress this round, it's resolved as a loss for them
- *  (same tokens-neutral treatment as a resignation, there's no per-game
- *  wager inside a tournament to settle). They're excluded from all future
- *  pairing generation via the `withdrawn` flag. */
-export async function withdrawFromTournament(
-  tournamentId: string,
-  userId: string,
-): Promise<ITournament> {
-  const tournament = await Tournament.findById(tournamentId);
-  if (!tournament) throw ApiError.notFound("Tournament not found");
-  if (tournament.status !== "active")
-    throw ApiError.conflict("This tournament isn't currently active");
-  const player = findPlayer(tournament, userId);
-  if (!player) throw ApiError.badRequest("You're not in this tournament");
-  if (player.withdrawn) return tournament;
-
-  player.withdrawn = true;
-
-  const found = findActivePairingForPlayer(tournament, userId);
-  const pairing = found?.pairing;
-
-  if (pairing?.gameId) {
-    const gameId = pairing.gameId.toString();
-    const liveState = await getLiveState(gameId);
-    if (liveState && liveState.status === "active") {
-      clearGameTimer(gameId);
-      const winnerColor = liveState.whiteId === userId ? "black" : "white";
-      const finalState = await endGame(gameId, winnerColor, "withdrawn");
-      await finalizeGame(gameId, finalState.fen, "finished", winnerColor, "withdrawn", {
-        whiteRemainingMs: finalState.whiteRemainingMs,
-        blackRemainingMs: finalState.blackRemainingMs,
-      });
-      await deleteLiveState(gameId);
-      const ratingUpdate = await applyRatingForGame(
-        gameId,
-        finalState.whiteId,
-        finalState.blackId,
-        winnerColor,
-      ).catch((err) => {
-        console.error("applyRatingForGame failed during withdrawal:", err);
-        return null;
-      });
-      try {
-        getIo().to(`game:${gameId}`).emit("game:over", {
-          gameId,
-          result: winnerColor,
-          reason: "withdrawn",
-          ratingUpdate,
-        });
-      } catch {
-        // Socket.IO not initialized, safe to ignore.
-      }
-    }
-  }
-
-  await tournament.save();
-
-  if (pairing && found) {
-    await advanceTournamentIfPairing(
-      tournament.id,
-      found.roundIndex,
-      pairing.index,
-      "draw",
-      "withdrawn",
-    ).catch((err) =>
-      console.error("advanceTournamentIfPairing after withdrawal failed:", err),
-    );
-  }
-
-  return tournament;
-}
 
 // --- Reads ---------------------------------------------------------------------
 

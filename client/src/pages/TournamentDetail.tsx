@@ -39,11 +39,12 @@ import { KnockoutBracket } from "../components/tournaments/KnockoutBracket.js";
 import { Pagination } from "../components/Pagination.js";
 import { HelpTip } from "../components/HelpTip.js";
 import { TIME_CONTROLS as TIME_PRESETS } from "../timeControls.js";
-import { MAX_WAGER_TOKENS, MIN_STAKE_TOKENS, MAX_EVENT_NAME_LENGTH } from "../lib/limits.js";
 import {
-  FORMAT_DESCRIPTION,
-  robinRoundsLabel,
-} from "../api/tournaments.js";
+  MAX_WAGER_TOKENS,
+  MIN_STAKE_TOKENS,
+  MAX_EVENT_NAME_LENGTH,
+} from "../lib/limits.js";
+import { FORMAT_DESCRIPTION, robinRoundsLabel } from "../api/tournaments.js";
 import {
   Page,
   Card,
@@ -195,7 +196,6 @@ function EditTournamentForm({
           <CardHeader className="p-0">
             <CardTitle>Edit tournament</CardTitle>
           </CardHeader>
-          {error && <p className="text-sm text-red-400">{error}</p>}
 
           <Input
             label="Tournament name"
@@ -335,8 +335,8 @@ function EditTournamentForm({
             onChange={(e) => setRegFeeInput(e.target.value)}
           />
           <p className="text-xs text-base-content/50">
-            Since you're still the only player, changing this just adjusts
-            what you've already paid in.
+            Since you're still the only player, changing this just adjusts what
+            you've already paid in.
           </p>
 
           <div className="space-y-2">
@@ -393,6 +393,7 @@ function EditTournamentForm({
             description="Half clock, no increment, +0.5 point on a win."
           />
         </section>
+        {error && <p className="text-sm text-red-400">{error}</p>}
 
         <div className="flex gap-2 pt-2">
           <Button variant="secondary" fullWidth onClick={save}>
@@ -700,7 +701,7 @@ function PlayerTournamentDetails({
               const opponentId = isP1 ? pairing.player2 : pairing.player1;
               const oppName = usernameOf(tournament, opponentId);
               const berserked = isP1 ? pairing.berserk.p1 : pairing.berserk.p2;
-              // Not set until the game is actually created (activateRound), 
+              // Not set until the game is actually created (activateRound),
               // a pairing that's been built but is still waiting out its
               // inter-round break has neither yet, so there's nothing to
               // show; the color icon just doesn't render for that row.
@@ -1046,8 +1047,7 @@ export function TournamentDetail() {
     if (
       await confirmDialog({
         title: "Withdraw from the tournament?",
-        description:
-          "Any game you're currently playing will count as a loss.",
+        description: "Any game you're currently playing will count as a loss.",
         variant: "danger",
         confirmLabel: "Withdraw",
       })
@@ -1130,13 +1130,6 @@ export function TournamentDetail() {
                   {" "}
                   · {tournament.regFeeTokens}{" "}
                   <RCoin size={11} className="inline align-[-1px]" /> to join
-                </>
-              )}
-              {tournament.prizePoolTokens > 0 && (
-                <>
-                  {" "}
-                  · {tournament.prizePoolTokens}{" "}
-                  <RCoin size={11} className="inline align-[-1px]" /> prize pool
                 </>
               )}
               {tournament.berserkAllowed && <> · Berserk allowed ⚔</>}
@@ -1254,14 +1247,13 @@ export function TournamentDetail() {
             <button
               type="button"
               onClick={() => setPrizePoolOpen((v) => !v)}
-              className="flex w-full items-center justify-between text-left"
+              className="flex w-full  items-center justify-between text-left"
               aria-expanded={prizePoolOpen}
             >
-              <CardHeader className="pointer-events-none mb-0">
-                <CardTitle className="inline-flex items-center gap-1">
-                  Prize pool: {tournament.prizePoolTokens} <RCoin size={14} />
-                </CardTitle>
-              </CardHeader>
+              <CardTitle className="inline-flex items-center gap-1">
+                Prize pool <span className="text-secondary">{"->"}</span>{" "}
+                {tournament.prizePoolTokens} <RCoin size={14} />
+              </CardTitle>
               <ChevronDown
                 className={`h-4 w-4 shrink-0 text-base-content/40 transition-transform ${
                   prizePoolOpen ? "rotate-180" : ""
@@ -1285,8 +1277,11 @@ export function TournamentDetail() {
                             ? `${tier.fromRank}${ordinalSuffix(tier.fromRank)} place`
                             : `${tier.fromRank}${ordinalSuffix(tier.fromRank)}–${tier.toRank}${ordinalSuffix(tier.toRank)} place`}
                         </span>
-                        <span className="font-medium text-base-content">
-                          {tier.tokens} {tokensLabel(tier)}
+                        <span className="font-medium text-base-content flex items-center">
+                          {tier.tokens} <RCoin size={12} className="ml-1" />
+                          <span className="ml-1 opacity-85 text-xs">
+                            {tokensLabel(tier).slice(1)}
+                          </span>
                         </span>
                       </div>
                     ))}

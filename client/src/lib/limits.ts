@@ -22,10 +22,10 @@ export const MIN_STAKE_TOKENS = 20;
 /** Matches the server's username schema (min 3, max 24, alphanumeric +
  *  underscore only), see auth.controller.ts's signupSchema and
  *  User.ts's username field. */
-export const MAX_USERNAME_LENGTH = 24;
+export const MAX_USERNAME_LENGTH = 18;
 
 /** Profile bio, see EditProfileModal.tsx / user.controller.ts. */
 export const MAX_BIO_LENGTH = 160;
 
 /** Tournament / cage match name fields. */
-export const MAX_EVENT_NAME_LENGTH = 60;
+export const MAX_EVENT_NAME_LENGTH = 20;

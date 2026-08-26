@@ -137,48 +137,83 @@ export function CageMatchDetail() {
     );
   }
 
-  const iAmP1 = match.player1._id === user?.id;
+  // Only treat the viewer as "p1's perspective" when they're actually a
+  // participant. Previously iAmP1 defaulted to false for a spectator (since
+  // neither player._id matches user?.id), which silently fell through to
+  // "me = player2", so a spectator watching the match saw player2 labelled
+  // "You" throughout instead of player2's real name.
+  const isParticipant =
+    match.player1._id === user?.id || match.player2._id === user?.id;
+  const iAmP1 = isParticipant && match.player1._id === user?.id;
   const me = iAmP1 ? match.player1 : match.player2;
   const opponent = iAmP1 ? match.player2 : match.player1;
+  // Label for "my" side: the actual viewer only ever sees "You" if they're
+  // one of the two players; anyone else (a spectator) sees that player's
+  // real username instead.
+  const meLabel = isParticipant ? "You" : me.username;
   const standings = computeCageStandings(match);
   const myScore = iAmP1 ? standings.p1Score : standings.p2Score;
   const oppScore = iAmP1 ? standings.p2Score : standings.p1Score;
   const myCats = iAmP1 ? standings.categoriesWonP1 : standings.categoriesWonP2;
   const oppCats = iAmP1 ? standings.categoriesWonP2 : standings.categoriesWonP1;
 
-  const isParticipant =
-    match.player1._id === user?.id || match.player2._id === user?.id;
   const activeLeg = match.legs.find((l) => l.status === "active");
   const pausedLeg = match.legs.find((l) => l.status === "paused");
+
+  // Resolve a "p1"/"p2" side (or a specific user id, for forfeitedBy) to a
+  // display name directly off match.player1/player2, rather than through
+  // the me/opponent framing above, which only means something from a
+  // participant's point of view. A spectator's "opponent" is always
+  // player1 regardless of who actually won or forfeited, so driving these
+  // labels off it would just move the same mislabeling bug elsewhere.
+  const nameForSide = (side: "p1" | "p2") =>
+    side === "p1" ? match.player1.username : match.player2.username;
+  const nameForUserId = (id: string) =>
+    id === match.player1._id ? match.player1.username : match.player2.username;
+  const isMe = (id: string) => isParticipant && id === user?.id;
 
   let outcomeLine = "";
   if (match.status === "finished") {
     if (match.matchWinner === "draw") outcomeLine = "Match drawn";
     else {
-      const winnerIsMe =
-        (match.matchWinner === "p1" && iAmP1) ||
-        (match.matchWinner === "p2" && !iAmP1);
-      const winnerLabel = winnerIsMe ? "you won" : `${opponent.username} won`;
+      const winnerId =
+        match.matchWinner === "p1" ? match.player1._id : match.player2._id;
+      const winnerIsMe = isMe(winnerId);
+      const winnerLabel = winnerIsMe
+        ? "you won"
+        : `${nameForSide(match.matchWinner!)} won`;
       if (match.matchEndReason === "no_show_forfeit") {
-        const loserLabel = winnerIsMe ? opponent.username : "You";
+        const loserSide = match.matchWinner === "p1" ? "p2" : "p1";
+        const loserId = loserSide === "p1" ? match.player1._id : match.player2._id;
+        const loserLabel = isMe(loserId) ? "You" : nameForSide(loserSide);
         outcomeLine = `${loserLabel} didn't move in time at the start of a game. ${winnerLabel[0].toUpperCase()}${winnerLabel.slice(1)} the match`;
       } else if (match.forfeitedBy) {
-        outcomeLine = `${match.forfeitedBy === me._id ? "You" : opponent.username} forfeited. ${winnerLabel[0].toUpperCase()}${winnerLabel.slice(1)}`;
+        const forfeiterLabel = isMe(match.forfeitedBy)
+          ? "You"
+          : nameForUserId(match.forfeitedBy);
+        outcomeLine = `${forfeiterLabel} forfeited. ${winnerLabel[0].toUpperCase()}${winnerLabel.slice(1)}`;
       } else {
         outcomeLine = winnerIsMe
           ? "You won the match"
-          : `${opponent.username} won the match`;
+          : `${nameForSide(match.matchWinner!)} won the match`;
       }
     }
   }
 
   return (
-    <Page title={`Cage match vs ${opponent.username}`} back="/cage">
+    <Page
+      title={
+        isParticipant
+          ? `Cage match vs ${opponent.username}`
+          : `${match.player1.username} vs ${match.player2.username}`
+      }
+      back="/cage"
+    >
       <div className="mx-auto max-w-2xl space-y-4">
         <Card variant="solid">
           <div className="mb-3 flex items-center justify-center gap-6 rounded-xl bg-base-100/60 py-4">
             <div className="text-center">
-              <p className="text-sm text-base-content/60">You</p>
+              <p className="text-sm text-base-content/60">{meLabel}</p>
               <p className="text-2xl font-bold text-base-content">{myScore}</p>
             </div>
             <span className="text-base-content/40">–</span>
@@ -192,7 +227,8 @@ export function CageMatchDetail() {
 
           {match.winnerMode === "most_categories" && (
             <p className="mb-2 text-center text-sm text-base-content/60">
-              Categories won: you {myCats}, {opponent.username} {oppCats}
+              Categories won: {isParticipant ? "you" : meLabel} {myCats},{" "}
+              {opponent.username} {oppCats}
             </p>
           )}
           {match.winnerMode === "first_to_n" && (

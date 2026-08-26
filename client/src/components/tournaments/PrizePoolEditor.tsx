@@ -20,7 +20,7 @@ interface PrizePoolEditorProps {
 }
 
 /** A single free-form textarea that replaces the old "add a row per prize
- *  tier" UI. One line per tier, "1st - 500", "2nd - 200", "5th-10th - 4k", 
+ *  tier" UI. One line per tier, "1st - 500", "2nd - 200", "5th-10th - 4k",
  *  parsed live via parsePrizePoolText. Shared between the create form and
  *  the edit form so the parsing behavior can never drift between the two. */
 export function PrizePoolEditor({
@@ -81,7 +81,8 @@ export function PrizePoolEditor({
                 {i > 0 && ", "}
                 <span className="font-mono">"{line}"</span>
               </span>
-            ))}{" "}, so it was left out of the prize pool.
+            ))}{" "}
+            , so it was left out of the prize pool.
           </span>
         </div>
       )}
@@ -110,8 +111,11 @@ export function PrizePoolEditor({
                   ? `${tier.fromRank}${ordinalSuffix(tier.fromRank)} place`
                   : `${tier.fromRank}${ordinalSuffix(tier.fromRank)}–${tier.toRank}${ordinalSuffix(tier.toRank)} place`}
               </span>
-              <span className="font-medium text-base-content">
-                {tier.tokens} {tokensLabel(tier)}
+              <span className="font-medium text-base-content flex items-center">
+                {tier.tokens} <RCoin size={12} className="ml-1" />
+                <span className="ml-1 opacity-85 text-xs">
+                  {tokensLabel(tier).slice(1)}
+                </span>
               </span>
             </div>
           ))}

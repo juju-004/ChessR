@@ -180,7 +180,9 @@ export function Withdraw() {
       title="Withdraw"
       description={
         <span className="inline-flex items-center gap-1">
-          Cash out <RCoin size={13} /> Coins to your bank account.
+          <span>Cash</span> out <RCoin size={13} /> Coins <span>to your</span>
+          <span>bank</span>
+          <span>account.</span>
         </span>
       }
       back="/"
@@ -246,7 +248,7 @@ export function Withdraw() {
           onChange={setRememberDetails}
           label="Remember my account details"
           description="Save this bank and account number on this device for next time."
-          className="mb-3.5"
+          className="mb-3.5 mt-7"
         />
 
         {error && (

@@ -6,7 +6,6 @@ import {
   joinTournament,
   leaveTournament,
   cancelTournament,
-  withdrawFromTournament,
   updateTournament,
   setArenaPause,
   retryArenaPairingsForUser,
@@ -179,8 +178,13 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
       const parsed = idSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid payload');
       const tournament = await leaveTournament(parsed.data.tournamentId, userId);
-      await socket.leave(tournamentRoom(parsed.data.tournamentId));
+      // Emit to the room BEFORE this socket leaves it, otherwise the
+      // leaving user's own client never receives the update (io.to(room)
+      // only reaches sockets still in the room at emit time), so their UI
+      // keeps showing them as still in the tournament even though other
+      // players' clients correctly refresh.
       io.to(tournamentRoom(tournament.id)).emit('tournament:update', { tournamentId: tournament.id, code: tournament.code });
+      await socket.leave(tournamentRoom(parsed.data.tournamentId));
     }),
   );
 
@@ -200,16 +204,6 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
       const parsed = pauseSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid payload');
       const tournament = await setArenaPause(parsed.data.tournamentId, userId, parsed.data.paused);
-      io.to(tournamentRoom(tournament.id)).emit('tournament:update', { tournamentId: tournament.id, code: tournament.code });
-    }),
-  );
-
-  socket.on(
-    'tournament:withdraw',
-    safeHandler(socket, async (raw: unknown) => {
-      const parsed = idSchema.safeParse(raw);
-      if (!parsed.success) return emitError(socket, 'Invalid payload');
-      const tournament = await withdrawFromTournament(parsed.data.tournamentId, userId);
       io.to(tournamentRoom(tournament.id)).emit('tournament:update', { tournamentId: tournament.id, code: tournament.code });
     }),
   );
