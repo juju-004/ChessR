@@ -179,17 +179,23 @@ export function GoogleSignInButton({
   if (!clientId || failed) return null;
 
   return (
-    <div ref={wrapperRef} className="relative h-12 w-full">
+    <div
+      ref={wrapperRef}
+      className="relative h-12 w-full overflow-hidden rounded-full border-2 border-primary bg-base-100"
+    >
       {/* Loading skeleton, same footprint as the real button, visibly
        *  disabled (muted, spinner, not-allowed cursor) so it's obvious
        *  there's nothing to click yet rather than a button that looks
-       *  ready and just silently eats taps while the script loads. */}
+       *  ready and just silently eats taps while the script loads. The
+       *  border now lives on the wrapper above (shared with the real
+       *  button below) so it doesn't flicker/change color the moment
+       *  this skeleton swaps out for Google's actual button. */}
       {!ready && (
         <div
           aria-hidden="true"
           className={cn(
             "pointer-events-none absolute inset-0 flex items-center justify-center gap-2 rounded-full",
-            "border border-base-300 bg-base-200/50 text-sm font-medium text-base-content/40",
+            "bg-base-200/50 text-sm font-medium text-base-content/40",
             "cursor-not-allowed select-none",
           )}
         >
@@ -202,12 +208,25 @@ export function GoogleSignInButton({
        *  underneath the skeleton the whole time so `containerRef` is
        *  always attached for the effect above to render into, just
        *  invisible and non-interactive until there's really something
-       *  there to click. */}
+       *  there to click.
+       *
+       *  Note on the white background this sits on in light mode: 
+       *  Google's own "outline" button theme always renders a plain
+       *  white interior, that's rendered *inside* their cross-origin
+       *  iframe, so it can't be recolored or made transparent from here,
+       *  same limitation noted above for the theme generally. The
+       *  bg-base-100 on the wrapper and overflow-hidden clipping here
+       *  are what's actually controllable: they stop any *extra* white
+       *  from bleeding in around Google's own button (e.g. from a
+       *  slightly-off corner radius or iframe sizing), and the
+       *  border-primary ring above frames it as a deliberate part of the
+       *  page rather than a stray white box. In dark mode this is moot,
+       *  filled_black has no white to begin with. */}
       <div
         id={domId}
         ref={containerRef}
         className={cn(
-          "absolute inset-0 flex items-center bg-black/0! justify-center overflow-hidden rounded-full transition-opacity",
+          "absolute inset-0 flex items-center justify-center overflow-hidden rounded-full transition-opacity",
           ready ? "opacity-100" : "pointer-events-none opacity-0",
         )}
       />

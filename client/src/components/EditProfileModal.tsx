@@ -6,6 +6,7 @@ import { updateMyProfile } from "../api/users.js";
 import { ApiRequestError } from "../api/http.js";
 import { useNotify } from "../contexts/NotificationContext.js";
 import { cn } from "../lib/cn.js";
+import { Edit } from "lucide-react";
 
 const BIO_MAX = 160;
 
@@ -53,7 +54,12 @@ export function EditProfileModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Edit profile">
+    <Modal
+      icon={<Edit></Edit>}
+      open={open}
+      onClose={onClose}
+      title="Edit profile"
+    >
       <div className="flex flex-col px-3 gap-5">
         <div>
           <p className="mb-2 ml-2 text-sm font-medium text-base-content/80">

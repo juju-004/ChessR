@@ -179,8 +179,9 @@ export function Withdraw() {
     <Page
       title="Withdraw"
       description={
-        <span className="inline-flex items-center gap-1">
-          <span>Cash</span> out <RCoin size={13} /> Coins <span>to your</span>
+        <span className="inline-flex flex-wrap items-center gap-1">
+          <span>Cash</span> out <RCoin size={13} /> Coins <span>to</span>
+          <span>your</span>
           <span>bank</span>
           <span>account.</span>
         </span>
