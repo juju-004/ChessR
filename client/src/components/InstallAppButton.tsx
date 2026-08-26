@@ -67,7 +67,7 @@ export function InstallAppButton({
   const icon = isInstalledElsewhere ? "↗️" : "📲";
 
   return (
-    <div className={compact ? "sm:flex hidden" : "space-y-2"}>
+    <div className={compact ? "md:flex hidden" : "space-y-2"}>
       <button
         onClick={handleClick}
         className={
@@ -92,8 +92,8 @@ export function InstallAppButton({
               <span className="text-base-content">Add to Home Screen</span>.
             </li>
             <li>
-              Tap <span className="text-base-content">Add</span>. Chess R
-              will open full-screen, just like a normal app.
+              Tap <span className="text-base-content">Add</span>. Chess R will
+              open full-screen, just like a normal app.
             </li>
           </ol>
         </div>

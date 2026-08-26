@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-export type BoardTheme = 'brown' | 'green' | 'blue' | 'gray' | 'purple';
+export type BoardTheme = 'brown' | 'green' | 'blue' | 'gray' | 'purple' | 'walnut' | 'coral' | 'ic';
 export type PieceTheme = 'classic' | 'mono' | 'contrast' | 'wood';
 
 export interface Settings {

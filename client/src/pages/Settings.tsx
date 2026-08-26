@@ -26,6 +26,9 @@ const BOARD_THEMES: { value: BoardTheme; label: string; swatch: string }[] = [
   { value: "blue", label: "Blue", swatch: "bg-[#4b7399]" },
   { value: "gray", label: "Gray", swatch: "bg-[#7a7a7a]" },
   { value: "purple", label: "Purple", swatch: "bg-[#8877b5]" },
+  { value: "walnut", label: "Walnut", swatch: "bg-[#8b5a2b]" },
+  { value: "coral", label: "Coral", swatch: "bg-[#d9785c]" },
+  { value: "ic", label: "Ice", swatch: "bg-[#5f8ba3]" },
 ];
 
 const PIECE_THEMES: {

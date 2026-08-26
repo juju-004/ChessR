@@ -113,7 +113,7 @@ export function Game() {
     "loading",
   );
   const [loadError, setLoadError] = useState("");
-  // Set once, from the initial REST fetch below, and never flipped back, 
+  // Set once, from the initial REST fetch below, and never flipped back,
   // a game that's live when this page loads stays on the socket-driven
   // path for the rest of the session even if it finishes while open (the
   // existing game:over handling already covers that). Only a *fresh* load
@@ -231,7 +231,7 @@ export function Game() {
   // Incrementally extended, not fully replayed from scratch, on every move.
   // A naive `useMemo` keyed on [initialFen, moves] still re-runs the whole
   // replay any time the `moves` array gets a new reference, which is every
-  // single move, since onMove does `setMoves(prev => [...prev, entry])|, 
+  // single move, since onMove does `setMoves(prev => [...prev, entry])|,
   // so a full from-scratch replay was chess.js-validating every move of the
   // game over again on top of the one move that just landed. That's exactly
   // the wrong moment to spend extra main-thread time: it's the same render
@@ -319,7 +319,7 @@ export function Game() {
   // lives up here with the other unconditional hooks (dests/premoveDests/
   // historyFens above) rather than down near where it's actually rendered.
   // It contains useMemo calls, and there are three early `return`s for
-  // loadError/mode==="loading"/mode==="need-join" between here and there, 
+  // loadError/mode==="loading"/mode==="need-join" between here and there,
   // hooks placed after those fire a different number of times depending on
   // which branch a given render takes, which is exactly the
   // "Rendered more hooks than during the previous render" crash. Same
@@ -333,7 +333,7 @@ export function Game() {
   const material = useMemo(() => computeMaterialDiff(displayFen), [displayFen]);
   // Per-move clock reconstruction, see reconstructPlyClocks for the exact
   // rules this mirrors from the server. Recomputed only when the move list
-  // itself changes (new move, or a fresh load), not on every render/tick, 
+  // itself changes (new move, or a fresh load), not on every render/tick,
   // this data doesn't change while just scrubbing through history, only
   // the ply you're pointing at does. Skips entirely if any move is
   // missing a timestamp (an older live session that predates this field)
@@ -607,7 +607,7 @@ export function Game() {
         setMode("board");
 
         if (isLiveStatus(game.status)) {
-          // Ongoing (or waiting-for-opponent, viewed by its creator), 
+          // Ongoing (or waiting-for-opponent, viewed by its creator),
           // the socket-wiring effect below takes it from here, same as
           // it always has.
           setLive(true);
@@ -929,7 +929,7 @@ export function Game() {
     // the global `cage:match_over` (which pops CageMatchOverModal via
     // GlobalListeners) at essentially the same moment. Showing both stacked
     // is confusing, so once the whole match is over, the per-leg modal steps
-    // aside and lets the match-level popup be the single source of truth, 
+    // aside and lets the match-level popup be the single source of truth,
     // regardless of which of the two events this client happens to process
     // first.
     function onCageMatchOverOnThisLeg(payload: { matchId: string }) {
@@ -1171,7 +1171,7 @@ export function Game() {
   // those all change on every single navigation step, which used to give
   // goToPly (and therefore handleSelectMove below) a fresh identity on
   // every step too. MoveList/MoveStrip's per-button memoization (see
-  // MoveLog.tsx) depends on onSelectMove staying referentially stable, 
+  // MoveLog.tsx) depends on onSelectMove staying referentially stable,
   // otherwise every move button would see a "changed" prop on every step
   // and re-render regardless, defeating the whole point of that memo.
   // This callback is now stable for the lifetime of the component.
@@ -1223,7 +1223,7 @@ export function Game() {
 
   const isPlayer = role !== "spectator";
   // Keyed off the position actually on screen (live, or historical while
-  // browsing, see displayFen above), not always the live `chess` object, 
+  // browsing, see displayFen above), not always the live `chess` object,
   // otherwise the check highlight would keep showing the live game's check
   // state while scrubbing through a history where a different (or no)
   // check was in effect at that ply.
@@ -1422,7 +1422,7 @@ export function Game() {
   // them in.
   //
   // Once the game's over and its modal has been dismissed, that space is
-  // reused for a single "Rematch" entry that just reopens GameOverModal, 
+  // reused for a single "Rematch" entry that just reopens GameOverModal,
   // it's the only place with the actual offer-rematch button (and its
   // "offer sent" disabled state), so this doesn't duplicate that logic,
   // it just gets the modal back on screen. Mutually exclusive with the
@@ -1430,7 +1430,7 @@ export function Game() {
   // legs never offer a rematch, the series has its own next-leg/forfeit
   // flow instead.
   // Once the game's over and its modal has been dismissed, that space is
-  // reused for a single "Rematch" entry that just reopens GameOverModal, 
+  // reused for a single "Rematch" entry that just reopens GameOverModal,
   // it's the only place with the actual offer-rematch button (and its
   // "offer sent" disabled state), so this doesn't duplicate that logic,
   // it just gets the modal back on screen. Mutually exclusive with the

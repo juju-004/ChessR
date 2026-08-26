@@ -199,8 +199,10 @@ export function Dashboard() {
           <p className="relative mt-1 text-4xl font-bold tracking-tight text-base-content tabular-nums">
             {balanceHidden ? (
               <span aria-label="Balance hidden">••••••</span>
+            ) : balance ? (
+              balance.toLocaleString()
             ) : (
-              (balance ?? "…")
+              "…"
             )}
           </p>
 
