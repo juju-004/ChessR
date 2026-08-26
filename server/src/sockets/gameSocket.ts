@@ -36,6 +36,25 @@ import type { AuthedSocketData } from './socketAuth.js';
 const gameRoom = (gameId: string) => `game:${gameId}`;
 const spectatorRoom = (gameId: string) => `game:${gameId}:spectators`;
 
+/** io.in(room).fetchSockets() goes over the Redis adapter, it asks every
+ *  connected server instance to report its local sockets in that room, and
+ *  waits (default 5s) for all of them to reply. If one instance never
+ *  answers, usually a previous deploy's process that got hard-killed before
+ *  it could cleanly unsubscribe from Redis, this throws a timeout well after
+ *  the fact rather than returning a snapshot. All of these snapshots are
+ *  soft, self-correcting presence info (a spectator count, a connection
+ *  dot), not anything load-bearing, so a failed fetch degrades to "nobody
+ *  here right now" instead of blowing up the whole handler, it'll be right
+ *  again on the next join/leave/connect event either way. */
+async function safeFetchSockets(io: Server, room: string) {
+  try {
+    return await io.in(room).fetchSockets();
+  } catch (err) {
+    console.error(`fetchSockets(${room}) failed, treating room as empty for this snapshot:`, err);
+    return [];
+  }
+}
+
 /** Counts *distinct users* currently in a game's spectator room (not raw
  *  sockets, someone with two tabs open shouldn't count twice) and
  *  broadcasts it to the whole game room, players included, since the
@@ -45,7 +64,7 @@ const spectatorRoom = (gameId: string) => `game:${gameId}:spectators`;
  *  membership, so without this the departing socket would still be
  *  counted as present in the room snapshot fetched here. */
 async function broadcastSpectatorCount(io: Server, gameId: string, excludeSocketId?: string): Promise<void> {
-  const sockets = await io.in(spectatorRoom(gameId)).fetchSockets();
+  const sockets = await safeFetchSockets(io, spectatorRoom(gameId));
   const remaining = excludeSocketId ? sockets.filter((s) => s.id !== excludeSocketId) : sockets;
   const uniqueUserIds = new Set(remaining.map((s) => (s.data as AuthedSocketData).userId));
   io.to(gameRoom(gameId)).emit('game:spectator_count', { gameId, count: uniqueUserIds.size });
@@ -275,7 +294,18 @@ function isMoveRateLimited(socketId: string): boolean {
 }
 
 async function userStillInRoom(io: Server, gameId: string, userId: string): Promise<boolean> {
-  const sockets = await io.in(gameRoom(gameId)).fetchSockets();
+  let sockets;
+  try {
+    sockets = await io.in(gameRoom(gameId)).fetchSockets();
+  } catch (err) {
+    // Feeds the disconnect-grace/claim-available flow below, so an unknown
+    // answer defaults to "still there" rather than "gone": misreading a
+    // transient Redis hiccup as an opponent vanishing would wrongly start
+    // the disconnect clock or open up a claim on an opponent who's actually
+    // still playing.
+    console.error(`fetchSockets(${gameRoom(gameId)}) failed, assuming user is still present:`, err);
+    return true;
+  }
   return sockets.some((s) => (s.data as AuthedSocketData).userId === userId);
 }
 
@@ -369,7 +399,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       // Snapshot of who's actually connected right now, combined with the
       // opponent_connected/disconnected/reconnected events for live updates,
       // this is what drives the connection dot next to each player's name.
-      const roomSockets = await io.in(gameRoom(gameId)).fetchSockets();
+      const roomSockets = await safeFetchSockets(io, gameRoom(gameId));
       const connectedUserIds = new Set(roomSockets.map((s) => (s.data as AuthedSocketData).userId));
       const whiteConnected = connectedUserIds.has(idOf(game.white)!);
       const blackConnected = game.black ? connectedUserIds.has(idOf(game.black)!) : false;
@@ -387,7 +417,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       // So a freshly-joining client (player or spectator) has the current
       // spectator count immediately, rather than waiting for the next
       // broadcastSpectatorCount triggered by someone else joining/leaving.
-      const spectatorSockets = await io.in(spectatorRoom(gameId)).fetchSockets();
+      const spectatorSockets = await safeFetchSockets(io, spectatorRoom(gameId));
       const spectatorCount = new Set(spectatorSockets.map((s) => (s.data as AuthedSocketData).userId)).size;
 
       socket.emit('game:sync', {
