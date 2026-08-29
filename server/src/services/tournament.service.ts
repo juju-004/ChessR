@@ -31,6 +31,7 @@ import {
 } from "./wallet.service.js";
 import { getIo } from "../sockets/io.js";
 import { isUserWatchingTournament } from "./presence.service.js";
+import { expireChat } from "./chat.service.js";
 
 const generateCode = customAlphabet("ABCDEFGHJKMNPQRSTUVWXYZ23456789", 6);
 
@@ -249,6 +250,7 @@ async function fireAutoStart(tournamentId: string): Promise<void> {
     tournament.scheduledStartAt = null;
     await tournament.save();
     broadcastUpdate(tournament, "tournament:cancelled");
+    await expireChat("tournament", tournament.id).catch((err) => console.error("expireChat(tournament) failed:", err));
   }
 }
 
@@ -337,6 +339,7 @@ export interface CreateTournamentInput {
   incrementSeconds: number;
   maxPlayers: number;
   berserkAllowed: boolean;
+  chatEnabled?: boolean;
   // Show up in the public "Open tournaments" browse list? Defaults to false
   // (link/code-only) if omitted.
   isPublic?: boolean;
@@ -543,6 +546,7 @@ export async function createTournament(
           },
         ],
     berserkAllowed: input.berserkAllowed,
+    chatEnabled: input.chatEnabled ?? false,
     isPublic: input.isPublic ?? false,
     thirdPlaceMatch: input.format === "normal" ? (input.thirdPlaceMatch ?? false) : false,
     prizeSchedule,
@@ -715,6 +719,9 @@ export async function leaveTournament(
     tournament.createdBy = tournament.players[0].user;
   }
   await tournament.save();
+  if (tournament.status === "cancelled") {
+    await expireChat("tournament", tournament.id).catch((err) => console.error("expireChat(tournament) failed:", err));
+  }
   return tournament;
 }
 
@@ -766,6 +773,7 @@ export async function cancelTournament(
   tournament.cancelReason = "Cancelled by the organiser";
   tournament.cancelledAt = new Date();
   await tournament.save();
+  await expireChat("tournament", tournament.id).catch((err) => console.error("expireChat(tournament) failed:", err));
   return tournament;
 }
 
@@ -777,6 +785,7 @@ export interface UpdateTournamentInput {
   incrementSeconds?: number;
   maxPlayers?: number;
   berserkAllowed?: boolean;
+  chatEnabled?: boolean;
   isPublic?: boolean;
   prizeSchedule?: { fromRank: number; toRank: number; tokens: number }[];
   regFeeTokens?: number;
@@ -914,6 +923,7 @@ export async function updateTournament(
   tournament.maxPlayers = maxPlayers;
   tournament.minPlayers = bounds.min;
   tournament.berserkAllowed = input.berserkAllowed ?? tournament.berserkAllowed;
+  tournament.chatEnabled = input.chatEnabled ?? tournament.chatEnabled;
   tournament.isPublic = input.isPublic ?? tournament.isPublic;
   tournament.prizeSchedule = prizeSchedule;
   tournament.prizePoolTokens = prizePoolTokens;
@@ -1942,6 +1952,7 @@ async function finishTournament(
   await tournament.save();
   await distributePrize(tournament);
   broadcastUpdate(tournament, "tournament:finished");
+  await expireChat("tournament", tournament.id).catch((err) => console.error("expireChat(tournament) failed:", err));
 }
 
 /** Full 1st-through-last ordering for the whole field, used to match players

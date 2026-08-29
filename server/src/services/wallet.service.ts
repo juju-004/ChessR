@@ -449,8 +449,9 @@ export async function debitTournamentPrizeFund(
 /** Refunds (leave before start / cancelled / deleted event, or an unused
  *  prize tier with no player to claim it) or pays out (prize distribution, or
  *  the reg-fee pool reaching the creator) tokens tied to a tournament.
- *  Reference is deterministic per tournament+user+kind+suffix so a retry
- *  can't double-credit; `suffix` lets, e.g., a rank-3 prize payout be
+ *  Reference is deterministic per tournament+user+kind+suffix (with an
+ *  attempt suffix appended past the first, see below) so a retry can't
+ *  double-credit; `suffix` lets, e.g., a rank-3 prize payout be
  *  distinguished from a rank-1 one for the same person if that ever happens
  *  (a bye-heavy small field, say), it shouldn't overlap, but cheap
  *  insurance. */
@@ -471,13 +472,35 @@ export async function creditTournamentReturn(
       : kind === "tournament_reg_revenue"
         ? "REV"
         : "RFD";
+  const baseReference = `TRN-${prefix}-${tournamentId}-${userId}${suffix ? `-${suffix}` : ""}`;
+
+  // This used to just be baseReference, always, which is what a stable
+  // "join → leave (refunded) → rejoin → tournament cancelled (refunded
+  // again)" sequence collides on: two refunds, same tournament+user+kind+
+  // suffix, so the exact same reference string twice, tripping the
+  // Transaction model's unique index (E11000). Same fix as the attempt-
+  // counting on the registration-fee charge side above: count prior
+  // refunds sharing this base reference and only append a suffix once
+  // there's more than one, so a tournament's first (and, in the common
+  // case, only) refund to a given person keeps the old, unnumbered
+  // reference shape, existing ledger rows included, and only a genuine
+  // repeat gets disambiguated.
+  const escaped = baseReference.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const priorRefunds = await Transaction.countDocuments({
+    user: userId,
+    tournament: tournamentId,
+    type: kind,
+    reference: { $regex: `^${escaped}(-\\d+)?$` },
+  });
+  const reference = priorRefunds === 0 ? baseReference : `${baseReference}-${priorRefunds + 1}`;
+
   await Transaction.create({
     user: userId,
     type: kind,
     status: "success",
     tokens,
     amountKobo: 0,
-    reference: `TRN-${prefix}-${tournamentId}-${userId}${suffix ? `-${suffix}` : ""}`,
+    reference,
     tournament: tournamentId,
   });
 }

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   Clock,
   Share2,
+  MessageSquare,
   Lock,
   Pencil,
   ChevronDown,
@@ -11,13 +12,12 @@ import {
   Medal,
   LocateFixed,
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
 import {
   getTournamentByCode,
   rankTournamentPlayers,
   usernameOf,
   gradientOf,
-  formatTimeControl,
+  timeControlSpeed,
   ordinalSuffix,
   tokensLabel,
   FORMAT_LABEL,
@@ -34,8 +34,10 @@ import { useNotify } from "../contexts/NotificationContext.js";
 import { useConfirm } from "../contexts/ConfirmContext.js";
 import { copyToClipboard } from "@/lib/utils.js";
 import { cn } from "@/lib/cn.js";
+import { ChatDrawer } from "../components/chat/ChatDrawer.js";
+import type { ChatMessage } from "../lib/chatTypes.js";
 import { PrizePoolEditor } from "../components/tournaments/PrizePoolEditor.js";
-import { KnockoutBracket } from "../components/tournaments/KnockoutBracket.js";
+import { KnockoutBracket, roundLabel } from "../components/tournaments/KnockoutBracket.js";
 import { Pagination } from "../components/Pagination.js";
 import { HelpTip } from "../components/HelpTip.js";
 import { TIME_CONTROLS as TIME_PRESETS } from "../timeControls.js";
@@ -45,6 +47,14 @@ import {
   MAX_EVENT_NAME_LENGTH,
 } from "../lib/limits.js";
 import { FORMAT_DESCRIPTION, robinRoundsLabel } from "../api/tournaments.js";
+
+const SPEED_EMOJI: Record<string, string> = {
+  "Hyper Bullet": "💥",
+  Bullet: "⚡",
+  Blitz: "🔥",
+  Rapid: "⏳",
+  Classical: "♟️",
+};
 import {
   Page,
   Card,
@@ -122,6 +132,7 @@ function EditTournamentForm({
   const [berserkAllowed, setBerserkAllowed] = useState(
     tournament.berserkAllowed,
   );
+  const [chatEnabled, setChatEnabled] = useState(tournament.chatEnabled);
   const [isPublic, setIsPublic] = useState(tournament.isPublic);
   const [regFeeInput, setRegFeeInput] = useState(
     String(tournament.regFeeTokens),
@@ -174,7 +185,8 @@ function EditTournamentForm({
       baseMinutes: preset.baseMinutes,
       incrementSeconds: preset.incrementSeconds,
       maxPlayers,
-      berserkAllowed,
+      berserkAllowed: format === "normal" ? false : berserkAllowed,
+      chatEnabled,
       isPublic,
       prizeSchedule: prizeTiers,
       regFeeTokens,
@@ -386,11 +398,19 @@ function EditTournamentForm({
             label="List publicly"
             description="Visible in the Open tournaments list for anyone to find."
           />
+          {format !== "normal" && (
+            <Switch
+              checked={berserkAllowed}
+              onChange={setBerserkAllowed}
+              label="Allow berserk"
+              description="Half clock, no increment, +0.5 point on a win."
+            />
+          )}
           <Switch
-            checked={berserkAllowed}
-            onChange={setBerserkAllowed}
-            label="Allow berserk"
-            description="Half clock, no increment, +0.5 point on a win."
+            checked={chatEnabled}
+            onChange={setChatEnabled}
+            label="Enable tournament chat"
+            description="A chat visible to players and spectators on the tournament page."
           />
         </section>
         {error && <p className="text-sm text-red-400">{error}</p>}
@@ -925,6 +945,13 @@ export function TournamentDetail() {
   // once the header/card title already shows the total.
   const [prizePoolOpen, setPrizePoolOpen] = useState(false);
   const [standingsPage, setStandingsPage] = useState(0);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatSheetOpen, setChatSheetOpen] = useState(false);
+  const [chatHasUnread, setChatHasUnread] = useState(false);
+  const chatSheetOpenRef = useRef(chatSheetOpen);
+  useEffect(() => {
+    chatSheetOpenRef.current = chatSheetOpen;
+  }, [chatSheetOpen]);
 
   const refresh = useCallback(() => {
     getTournamentByCode(code)
@@ -946,17 +973,32 @@ export function TournamentDetail() {
     function onError(payload: { message: string }) {
       setStatus({ message: payload.message, isError: true });
     }
+    function onChatHistory(payload: { tournamentId: string; history: ChatMessage[] }) {
+      if (payload.tournamentId !== tournamentId) return;
+      setChatMessages(payload.history);
+    }
+    function onChatMessage(payload: ChatMessage & { tournamentId: string }) {
+      if (payload.tournamentId !== tournamentId) return;
+      setChatMessages((prev) => [...prev.slice(-199), payload]);
+      if (!chatSheetOpenRef.current && payload.username !== user?.username) {
+        setChatHasUnread(true);
+      }
+    }
     socket.on("tournament:update", onUpdate);
     socket.on("tournament:started", onUpdate);
     socket.on("tournament:cancelled", onUpdate);
     socket.on("tournament:finished", onUpdate);
     socket.on("tournament:error", onError);
+    socket.on("tournament:chat_history", onChatHistory);
+    socket.on("tournament:chat_message", onChatMessage);
     return () => {
       socket.off("tournament:update", onUpdate);
       socket.off("tournament:started", onUpdate);
       socket.off("tournament:cancelled", onUpdate);
       socket.off("tournament:finished", onUpdate);
       socket.off("tournament:error", onError);
+      socket.off("tournament:chat_history", onChatHistory);
+      socket.off("tournament:chat_message", onChatMessage);
       // The other half of tournament:watch, without this, leaving the
       // page (without disconnecting entirely) left the server thinking
       // this player was still watching, which is exactly the "counted as
@@ -1065,6 +1107,14 @@ export function TournamentDetail() {
   function togglePause(paused: boolean) {
     socket?.emit("tournament:pause", { tournamentId: tournament!._id, paused });
   }
+  function handleSendChat(message: string, replyToId?: string) {
+    if (!socket || !tournament) return;
+    socket.emit("tournament:chat_send", {
+      tournamentId: tournament._id,
+      message,
+      ...(replyToId ? { replyToId } : {}),
+    });
+  }
   async function handleShare() {
     const url = `${CLIENT_URL}/tournaments/${tournament!.code}`;
     if (navigator.share) {
@@ -1087,12 +1137,43 @@ export function TournamentDetail() {
     setTimeout(() => dismiss(n), 2000);
   }
 
+  // e.g. "3+0 Bullet Round-robin", "Unlimited Knockout", "10+5 Rapid
+  // Chess960 Swiss", one flowing phrase instead of separate dot-joined
+  // facts, for the catchy headline badge below.
+  const speed = timeControlSpeed(tournament);
+  const headline = [
+    tournament.baseMinutes === null
+      ? "Unlimited"
+      : `${tournament.baseMinutes}+${tournament.incrementSeconds}`,
+    speed,
+    tournament.variant === "chess960" ? "Chess960" : null,
+    FORMAT_LABEL[tournament.format],
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <Page
       title={tournament.name}
       back="/tournaments"
       actions={
         <div className="flex items-center gap-2">
+          {tournament.chatEnabled && (
+            <Button
+              variant="glass"
+              size="sm"
+              className="relative"
+              onClick={() => {
+                setChatSheetOpen(true);
+                setChatHasUnread(false);
+              }}
+            >
+              <MessageSquare className="h-3.5 w-3.5" /> Chat
+              {chatHasUnread && (
+                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500 ring-2 ring-base-200" />
+              )}
+            </Button>
+          )}
           <Button variant="glass" size="sm" onClick={handleShare}>
             <Share2 className="h-3.5 w-3.5" /> Share
           </Button>
@@ -1116,41 +1197,40 @@ export function TournamentDetail() {
           />
         ) : (
           <Card variant="solid">
-            <p className="mb-4 text-sm text-base-content/60">
-              {FORMAT_LABEL[tournament.format]} ·{" "}
-              {formatTimeControl(tournament)} · {tournament.players.length}/
-              {tournament.maxPlayers} players
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full gradient-brand px-3 py-1 text-sm font-bold text-white shadow-sm shadow-(--primary)/25">
+                {speed && <span>{SPEED_EMOJI[speed]}</span>}
+                {headline}
+              </span>
+            </div>
+            <div className="mb-4 flex flex-wrap gap-1.5">
+              <Badge variant="neutral">Max {tournament.maxPlayers} players</Badge>
               {tournament.format === "swiss" && (
-                <> · {tournament.swissRounds} rounds</>
+                <Badge variant="neutral">{tournament.swissRounds} rounds</Badge>
               )}
-              {tournament.format === "round_robin" && (
-                <>
-                  {" "}
-                  ·{" "}
-                  {tournament.robinRounds && tournament.robinRounds > 1
-                    ? `${tournament.robinRounds}x round-robin`
-                    : "round-robin"}
-                </>
-              )}
+              {tournament.format === "round_robin" &&
+                tournament.robinRounds &&
+                tournament.robinRounds > 1 && (
+                  <Badge variant="neutral">{tournament.robinRounds}x</Badge>
+                )}
               {tournament.format === "arena" && tournament.arenaMinutes && (
-                <> · {tournament.arenaMinutes} min arena</>
+                <Badge variant="neutral">{tournament.arenaMinutes} min arena</Badge>
               )}
               {tournament.regFeeTokens > 0 && (
-                <>
-                  {" "}
-                  · {tournament.regFeeTokens}{" "}
+                <Badge variant="neutral">
+                  {tournament.regFeeTokens}{" "}
                   <RCoin size={11} className="inline align-[-1px]" /> to join
-                </>
+                </Badge>
               )}
-              {tournament.berserkAllowed && <> · Berserk allowed ⚔</>}
+              {tournament.berserkAllowed && tournament.format !== "normal" && (
+                <Badge variant="neutral">Berserk allowed ⚔</Badge>
+              )}
               {tournament.hasPassword && (
-                <>
-                  {" "}
-                  · <Lock className="inline h-3 w-3 align-[-1px]" /> Password
-                  protected
-                </>
+                <Badge variant="neutral">
+                  <Lock className="inline h-3 w-3 align-[-1px]" /> Password protected
+                </Badge>
               )}
-            </p>
+            </div>
 
             {tournament.status === "pending" && (
               <div className="space-y-3">
@@ -1247,6 +1327,45 @@ export function TournamentDetail() {
           </Card>
         )}
 
+        {tournament.status === "pending" && (
+          <Card variant="solid">
+            <CardHeader>
+              <CardTitle>
+                Players joined <span className="text-base-content/40">({tournament.players.length})</span>
+              </CardTitle>
+            </CardHeader>
+            {tournament.players.length > 0 ? (
+              <div className="flex flex-wrap justify-center gap-2">
+                {[...tournament.players]
+                  .sort((a, b) => a.joinedAt.localeCompare(b.joinedAt))
+                  .map((p) => {
+                    const isMe = p.user === myId;
+                    const isOrganizer = p.user === tournament.createdBy;
+                    return (
+                      <Badge
+                        key={p.user}
+                        variant={isMe ? "secondary" : "neutral"}
+                        className="gap-1.5 py-1 pl-1.5 pr-2.5"
+                      >
+                        <Avatar
+                          username={p.username}
+                          gradient={p.avatarGradient}
+                          size="xs"
+                        />
+                        {isOrganizer && <span className="text-amber-400">★</span>}
+                        <span className="max-w-32 truncate">{p.username}</span>
+                      </Badge>
+                    );
+                  })}
+              </div>
+            ) : (
+              <p className="text-sm text-base-content/50">
+                Nobody's joined yet, be the first.
+              </p>
+            )}
+          </Card>
+        )}
+
         {tournament.prizeSchedule.length > 0 && (
           <Card variant="solid">
             <button
@@ -1265,35 +1384,34 @@ export function TournamentDetail() {
                 }`}
               />
             </button>
-            <AnimatePresence initial={false}>
-              {prizePoolOpen && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2, ease: "easeInOut" }}
-                  className="overflow-hidden"
-                >
-                  <div className="space-y-1 pt-2 text-sm text-base-content/70">
-                    {tournament.prizeSchedule.map((tier, i) => (
-                      <div key={i} className="flex justify-between">
-                        <span>
-                          {tier.fromRank === tier.toRank
-                            ? `${tier.fromRank}${ordinalSuffix(tier.fromRank)} place`
-                            : `${tier.fromRank}${ordinalSuffix(tier.fromRank)}–${tier.toRank}${ordinalSuffix(tier.toRank)} place`}
-                        </span>
-                        <span className="font-medium text-base-content flex items-center">
-                          {tier.tokens} <RCoin size={12} className="ml-1" />
-                          <span className="ml-1 opacity-85 text-xs">
-                            {tokensLabel(tier).slice(1)}
-                          </span>
-                        </span>
-                      </div>
-                    ))}
+            {/* grid-template-rows 0fr->1fr instead of Framer Motion's
+             *  height:"auto": animating to "auto" isn't a GPU-accelerated
+             *  property, Framer Motion approximates it by remeasuring the
+             *  content's real height on every frame, which is what made
+             *  this feel laggy. This CSS-only version transitions a single
+             *  layout property natively instead. */}
+            <div
+              className="grid overflow-hidden transition-[grid-template-rows] duration-200 ease-in-out"
+              style={{ gridTemplateRows: prizePoolOpen ? "1fr" : "0fr" }}
+            >
+              <div className="min-h-0 space-y-1 pt-2 text-sm text-base-content/70">
+                {tournament.prizeSchedule.map((tier, i) => (
+                  <div key={i} className="flex justify-between">
+                    <span>
+                      {tier.fromRank === tier.toRank
+                        ? `${tier.fromRank}${ordinalSuffix(tier.fromRank)} place`
+                        : `${tier.fromRank}${ordinalSuffix(tier.fromRank)}–${tier.toRank}${ordinalSuffix(tier.toRank)} place`}
+                    </span>
+                    <span className="font-medium text-base-content flex items-center">
+                      {tier.tokens} <RCoin size={12} className="ml-1" />
+                      <span className="ml-1 opacity-85 text-xs">
+                        {tokensLabel(tier).slice(1)}
+                      </span>
+                    </span>
                   </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                ))}
+              </div>
+            </div>
           </Card>
         )}
 
@@ -1464,7 +1582,10 @@ export function TournamentDetail() {
               <Tabs
                 items={tournament.rounds.map((r) => ({
                   value: String(r.index),
-                  label: `Round ${r.index + 1}`,
+                  label:
+                    tournament.format === "normal"
+                      ? roundLabel(r.index, tournament.rounds.length)
+                      : `Round ${r.index + 1}`,
                 }))}
                 value={String(selectedRoundIndex)}
                 onChange={(v) => setManualRoundIndex(Number(v))}
@@ -1472,7 +1593,9 @@ export function TournamentDetail() {
             </div>
             <CardHeader>
               <CardTitle>
-                Round {selectedRound.index + 1}
+                {tournament.format === "normal"
+                  ? roundLabel(selectedRound.index, tournament.rounds.length)
+                  : `Round ${selectedRound.index + 1}`}
                 {selectedRound.index === currentRound?.index &&
                   selectedRound.status === "active" && (
                     <Badge variant="success" className="ml-2">
@@ -1494,6 +1617,19 @@ export function TournamentDetail() {
           </Card>
         )}
       </div>
+
+      {tournament.chatEnabled && (
+        <ChatDrawer
+          show
+          open={chatSheetOpen}
+          onClose={() => setChatSheetOpen(false)}
+          title="Tournament chat"
+          notice="Visible to everyone on this tournament's page, players and spectators alike. Saved until a bit after the tournament ends."
+          messages={chatMessages}
+          myUsername={user?.username}
+          onSend={handleSendChat}
+        />
+      )}
     </Page>
   );
 }

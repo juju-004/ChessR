@@ -153,6 +153,10 @@ export interface ITournament extends Document {
   maxPlayers: number;
   players: ITournamentPlayer[];
   berserkAllowed: boolean;
+  // Toggles the tournament-wide spectator+player chat (see chat.service.ts,
+  // scope 'tournament'). Off by default; only visible on this tournament's
+  // detail page when on. Editable at any time, same as berserkAllowed.
+  chatEnabled: boolean;
   // Whether this tournament shows up in the public "Open tournaments"
   // browse list. Defaults to false, a tournament is reachable via its
   // link/code either way, this just controls whether strangers can also
@@ -335,6 +339,7 @@ const tournamentSchema = new Schema<ITournament>(
     maxPlayers: { type: Number, required: true },
     players: { type: [playerSchema], default: [] },
     berserkAllowed: { type: Boolean, default: true },
+    chatEnabled: { type: Boolean, default: false },
     isPublic: { type: Boolean, default: false, index: true },
     prizeSchedule: { type: [prizeTierSchema], default: [] },
     prizePoolTokens: { type: Number, default: 0 },

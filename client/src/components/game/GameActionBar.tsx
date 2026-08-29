@@ -11,6 +11,9 @@ export interface GameActionItem {
   disabled?: boolean;
   id?: string;
   mobilePrimary?: boolean;
+  // Small unread/notification dot rendered on the icon itself (currently
+  // only the spectator chat trigger uses this, for an unseen message).
+  dot?: boolean;
 }
 
 interface HoldHandlers {
@@ -53,9 +56,13 @@ export function GameActionBarDesktop({
             <Button
               variant={item.danger ? "danger" : "glass"}
               disabled={item.disabled}
+              className="relative"
               {...(hold ?? { onClick: item.onClick })}
             >
               <item.icon className="h-4 w-4" />
+              {item.dot && (
+                <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-base-200" />
+              )}
             </Button>
           </Tooltip>
         );
@@ -120,12 +127,15 @@ export function GameActionBarMobile({
             aria-label={item.label}
             disabled={item.disabled}
             className={cn(
-              "docker-item docker-item-grow",
+              "docker-item docker-item-grow relative",
               item.danger && "docker-item-danger",
             )}
             {...(hold ?? { onClick: item.onClick })}
           >
             <item.icon className="h-5 w-5" />
+            {item.dot && (
+              <span className="absolute right-2 top-1 h-2 w-2 rounded-full bg-red-500 ring-2 ring-base-100" />
+            )}
           </button>
         );
       })}

@@ -38,8 +38,8 @@ interface Tone {
   type?: OscillatorType;
   gain?: number;
   /** If set, the oscillator sweeps from `freq` up/down to this frequency
-   *  over `duration` instead of holding steady, used for the berserk
-   *  siren's rising/falling "whoop". */
+   *  over `duration` instead of holding steady. Not used by any sound in
+   *  this file right now, kept available for a future one that wants it. */
   freqEnd?: number;
 }
 
@@ -105,9 +105,17 @@ function playNoiseBurst(startOffset: number, duration: number, gain: number, hig
   source.stop(start + duration + 0.02);
 }
 
-/** A soft, short two-note "pluck" for a normal move. */
+/** A soft, quiet placement sound for a normal move: a brief noise transient
+ *  (the felt-on-wood contact tap) under a short low thud. Same recipe as
+ *  playCaptureSound below, just much quieter and with no "crack", a normal
+ *  move should read as gentle contact, not an impact. Deliberately dropped
+ *  the old single triangle-wave blip, on its own a bare oscillator note
+ *  reads as a synth/game blip rather than a piece actually touching down. */
 export function playMoveSound() {
-  playTones([{ freq: 520, startOffset: 0, duration: 0.09, type: 'triangle' }]);
+  playNoiseBurst(0, 0.018, 0.05, 3200);
+  playTones([
+    { freq: 300, startOffset: 0.004, duration: 0.07, type: 'triangle', gain: 0.13 },
+  ]);
 }
 
 /** A sharp "snap", a brief filtered-noise crack (the actual transient a
@@ -124,11 +132,19 @@ export function playCaptureSound() {
   ]);
 }
 
-/** A brighter, more urgent rising two-note alert for check. */
+/** A clean two-strike bell for check: each strike is a sine fundamental with
+ *  a quiet octave-up sine layered on top (the overtone that makes a bell
+ *  read as a bell rather than a flat tone), rising a third from the first
+ *  strike to the second. Replaced the old two sawtooth stabs, a bare
+ *  sawtooth's buzzy harmonic content is what read as a toy alarm rather
+ *  than an alert, sine is a clean, professional-sounding waveform with no
+ *  buzz to it. */
 export function playCheckSound() {
   playTones([
-    { freq: 660, startOffset: 0, duration: 0.1, type: 'sawtooth', gain: 0.15 },
-    { freq: 880, startOffset: 0.09, duration: 0.14, type: 'sawtooth', gain: 0.15 },
+    { freq: 784, startOffset: 0, duration: 0.14, type: 'sine', gain: 0.17 },
+    { freq: 1568, startOffset: 0, duration: 0.09, type: 'sine', gain: 0.05 },
+    { freq: 988, startOffset: 0.12, duration: 0.18, type: 'sine', gain: 0.16 },
+    { freq: 1976, startOffset: 0.12, duration: 0.11, type: 'sine', gain: 0.05 },
   ]);
 }
 
@@ -141,18 +157,23 @@ export function playGameStartSound() {
   ]);
 }
 
-/** A rising-then-falling siren "whoop", a noise-burst crack up front, then
- *  two sawtooth sweeps (low-to-high, then high-to-low) instead of the old
- *  fixed-pitch horn stabs, closer to an actual alarm klaxon than a chord.
- *  A faint high ring-out on top as it settles. Still the loudest, busiest
- *  sound in this file on purpose, berserking is a loud, once-per-game
- *  declaration, so it should cut through everything else. */
+/** A powerful stinger for berserk, built as a scaled-up version of
+ *  playCaptureSound's own recipe (noise-burst crack + low triangle thud)
+ *  rather than the old sawtooth siren-whoop + square beep. A raw sawtooth
+ *  sweep and a bare square wave both carry a buzzy, retro-game harmonic
+ *  content, which read as a toy alarm rather than a serious declaration.
+ *  This keeps the same "real impact" character as a capture, just bigger:
+ *  a wider noise crack, a deeper triangle thud with a harmonic layer for
+ *  body, and a quick sine shimmer on top (an octave-up ping, not a siren
+ *  sweep) so it still cuts through everything else without sounding like
+ *  an 8-bit klaxon. Still the loudest sound in this file on purpose. */
 export function playBerserkSound() {
-  playNoiseBurst(0, 0.05, 0.18, 1200);
+  playNoiseBurst(0, 0.055, 0.2, 1000);
   playTones([
-    { freq: 220, freqEnd: 880, startOffset: 0, duration: 0.16, type: 'sawtooth', gain: 0.22 },
-    { freq: 880, freqEnd: 220, startOffset: 0.16, duration: 0.18, type: 'sawtooth', gain: 0.2 },
-    { freq: 1760, startOffset: 0.02, duration: 0.12, type: 'square', gain: 0.06 },
+    { freq: 130, startOffset: 0, duration: 0.22, type: 'triangle', gain: 0.27 },
+    { freq: 390, startOffset: 0, duration: 0.16, type: 'triangle', gain: 0.11 },
+    { freq: 880, startOffset: 0.03, duration: 0.1, type: 'sine', gain: 0.09 },
+    { freq: 1760, startOffset: 0.03, duration: 0.07, type: 'sine', gain: 0.04 },
   ]);
 }
 

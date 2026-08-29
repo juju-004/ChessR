@@ -73,6 +73,7 @@ export interface Tournament {
   maxPlayers: number;
   players: TournamentPlayer[];
   berserkAllowed: boolean;
+  chatEnabled: boolean;
   isPublic: boolean;
   prizeSchedule: TournamentPrizeTier[];
   prizePoolTokens: number;
@@ -157,6 +158,21 @@ export function formatTimeControl(
       ? "Unlimited"
       : `${t.baseMinutes}+${t.incrementSeconds}`;
   return t.variant === "chess960" ? `${base} · 960` : base;
+}
+
+/** Standard chess speed category (estimated game length = base + 40 moves'
+ *  worth of increment, the same convention lichess uses), null for
+ *  Unlimited since "Bullet"/etc doesn't mean anything without a clock. */
+export function timeControlSpeed(
+  t: Pick<Tournament, "baseMinutes" | "incrementSeconds">,
+): string | null {
+  if (t.baseMinutes === null) return null;
+  const estimatedSeconds = t.baseMinutes * 60 + 40 * t.incrementSeconds;
+  if (estimatedSeconds < 60) return "Hyper Bullet";
+  if (estimatedSeconds < 180) return "Bullet";
+  if (estimatedSeconds < 480) return "Blitz";
+  if (estimatedSeconds < 1500) return "Rapid";
+  return "Classical";
 }
 
 /** Total the creator committed across every tier of a prize schedule, the

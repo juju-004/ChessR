@@ -8,6 +8,7 @@ import { getLiveState, deleteLiveState, pauseLiveClock, resumeLiveClock } from "
 import { clearGameTimer, scheduleGameTimer, clearFirstMoveTimer, scheduleFirstMoveTimer } from "./clock.service.js";
 import { debitWagerStake, creditWagerReturn, computeRake, recordRake } from "./wallet.service.js";
 import { getIo } from "../sockets/io.js";
+import { expireChat } from "./chat.service.js";
 
 const generateCode = customAlphabet("ABCDEFGHJKMNPQRSTUVWXYZ23456789", 6);
 
@@ -319,6 +320,10 @@ async function finalizeCageMatchForfeit(
   await match.save();
 
   await settleWinnerTakesAll(match, match.matchWinner).catch((err) => console.error("settleWinnerTakesAll failed:", err));
+  // Match-wide spectator chat (spans every leg, see chat.service.ts) is now
+  // over too, give it the same 10-minute grace period as a standalone
+  // game's chat.
+  await expireChat("cage", match.id).catch((err) => console.error("expireChat(cage) failed:", err));
 
   return match;
 }
@@ -538,6 +543,7 @@ export async function onLegFinished(
     match.endedAt = new Date();
     await match.save();
     await settleWinnerTakesAll(match, outcome.winner!).catch((err) => console.error("settleWinnerTakesAll failed:", err));
+    await expireChat("cage", match.id).catch((err) => console.error("expireChat(cage) failed:", err));
     return { match, standings: computeStandings(match), matchStatus: "match_over", nextLeg: null, matchWinner: outcome.winner };
   }
 

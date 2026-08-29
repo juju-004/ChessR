@@ -76,6 +76,7 @@ export function CreateTournament() {
   const [isPublic, setIsPublic] = useState(false);
   const [password, setPassword] = useState("");
   const [berserkAllowed, setBerserkAllowed] = useState(true);
+  const [chatEnabled, setChatEnabled] = useState(false);
 
   // --- Money ---
   const [organizerOnly, setOrganizerOnly] = useState(false);
@@ -154,6 +155,7 @@ export function CreateTournament() {
       incrementSeconds: preset.incrementSeconds,
       maxPlayers,
       berserkAllowed,
+      chatEnabled,
       isPublic,
       organizerOnly,
       thirdPlaceMatch: format === "normal" ? thirdPlaceMatch : false,
@@ -356,6 +358,12 @@ export function CreateTournament() {
                 onChange={setBerserkAllowed}
                 label="Allow berserk"
                 description="Half clock, no increment, +0.5 point on a win."
+              />
+              <Switch
+                checked={chatEnabled}
+                onChange={setChatEnabled}
+                label="Enable tournament chat"
+                description="A chat visible to players and spectators on the tournament page."
               />
 
               <Switch

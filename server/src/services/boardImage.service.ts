@@ -94,14 +94,17 @@ const BRAND_TO = '#8b5cf6';
 export interface BoardImageInput {
   fen: string;
   whiteName: string;
-  blackName: string;
+  /** Null while the game is still waiting for a second player, renders as
+   *  a muted "Waiting for an opponent…" line instead of a bold second
+   *  name, see getGameOgImage in og.controller.ts. */
+  blackName: string | null;
   /** Short status line, e.g. "10+0 · Live now, move 12" or
    *  "10+0 · kingfish won by resignation in 34 moves". Wrapped onto up to
    *  two lines if it doesn't fit. */
   statusLine: string;
-  /** Whether to badge the card as finished/live, drives the small pill
-   *  above the status line. */
-  badge: 'live' | 'finished' | null;
+  /** Whether to badge the card as waiting/live/finished, drives the small
+   *  pill above the status line. */
+  badge: 'waiting' | 'live' | 'finished' | null;
 }
 
 function wrapText(text: string, maxCharsPerLine: number): string[] {
@@ -150,14 +153,16 @@ function buildSvg(input: BoardImageInput): string {
   const maxChars = Math.floor(textMaxWidth / 15); // rough px-per-char at the status font size
 
   const badgePill =
-    input.badge === 'live'
-      ? `<rect x="${textX}" y="118" rx="12" ry="12" width="72" height="28" fill="#22c55e"/><text x="${textX + 36}" y="137" font-family="${FONT_FAMILY}" font-size="15" font-weight="bold" fill="#052e12" text-anchor="middle" dominant-baseline="central">LIVE</text>`
-      : input.badge === 'finished'
-        ? `<rect x="${textX}" y="118" rx="12" ry="12" width="108" height="28" fill="#3f3f46"/><text x="${textX + 54}" y="137" font-family="${FONT_FAMILY}" font-size="15" font-weight="bold" fill="${TEXT_MUTED}" text-anchor="middle" dominant-baseline="central">FINISHED</text>`
-        : '';
+    input.badge === 'waiting'
+      ? `<rect x="${textX}" y="270" rx="12" ry="12" width="150" height="28" fill="#3f3f46"/><text x="${textX + 75}" y="289" font-family="${FONT_FAMILY}" font-size="15" font-weight="bold" fill="#facc15" text-anchor="middle" dominant-baseline="central">WAITING</text>`
+      : input.badge === 'live'
+        ? `<rect x="${textX}" y="270" rx="12" ry="12" width="72" height="28" fill="#22c55e"/><text x="${textX + 36}" y="289" font-family="${FONT_FAMILY}" font-size="15" font-weight="bold" fill="#052e12" text-anchor="middle" dominant-baseline="central">LIVE</text>`
+        : input.badge === 'finished'
+          ? `<rect x="${textX}" y="270" rx="12" ry="12" width="108" height="28" fill="#3f3f46"/><text x="${textX + 54}" y="289" font-family="${FONT_FAMILY}" font-size="15" font-weight="bold" fill="${TEXT_MUTED}" text-anchor="middle" dominant-baseline="central">FINISHED</text>`
+          : '';
 
   const statusLines = wrapText(input.statusLine, maxChars);
-  const statusY = 178;
+  const statusY = 340;
   const statusTspans = statusLines
     .map((line, i) => `<tspan x="${textX}" dy="${i === 0 ? 0 : 34}">${escapeXml(line)}</tspan>`)
     .join('');
@@ -177,10 +182,14 @@ function buildSvg(input: BoardImageInput): string {
 ${board}
 <rect x="${BOARD_X}" y="${BOARD_Y}" width="${BOARD_SIZE}" height="${BOARD_SIZE}" fill="none" stroke="#000000" stroke-opacity="0.35" stroke-width="2"/>
 <text x="${textX}" y="70" font-family="${FONT_FAMILY}" font-size="30" font-weight="bold" fill="url(#brand)">Chessr</text>
+<text x="${textX}" y="140" font-family="${FONT_FAMILY}" font-size="34" font-weight="bold" fill="${TEXT_PRIMARY}">${escapeXml(input.whiteName)}</text>
+${
+  input.blackName === null
+    ? `<text x="${textX}" y="188" font-family="${FONT_FAMILY}" font-size="22" fill="${TEXT_MUTED}">Waiting for an opponent…</text>`
+    : `<text x="${textX}" y="178" font-family="${FONT_FAMILY}" font-size="20" fill="${TEXT_MUTED}">vs</text>
+<text x="${textX}" y="216" font-family="${FONT_FAMILY}" font-size="34" font-weight="bold" fill="${TEXT_PRIMARY}">${escapeXml(input.blackName)}</text>`
+}
 ${badgePill}
-<text x="${textX}" y="230" font-family="${FONT_FAMILY}" font-size="34" font-weight="bold" fill="${TEXT_PRIMARY}">${escapeXml(input.whiteName)}</text>
-<text x="${textX}" y="270" font-family="${FONT_FAMILY}" font-size="20" fill="${TEXT_MUTED}">vs</text>
-<text x="${textX}" y="308" font-family="${FONT_FAMILY}" font-size="34" font-weight="bold" fill="${TEXT_PRIMARY}">${escapeXml(input.blackName)}</text>
 <text x="${textX}" y="${statusY}" font-family="${FONT_FAMILY}" font-size="22" fill="${TEXT_MUTED}">${statusTspans}</text>
 </svg>`;
 }

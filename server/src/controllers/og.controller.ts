@@ -28,11 +28,22 @@ function gameCardInfo(game: Awaited<ReturnType<typeof getGameByCode>>) {
   const plyCount = game.moves.length;
   const moveCount = Math.ceil(plyCount / 2);
   const whiteName = (game.white as any)?.username ?? "White";
-  const blackName = (game.black as any)?.username ?? "Black";
-  const isLive = game.status !== "finished" && game.status !== "aborted";
+  // Nobody's joined the black side yet. This used to fall through to the
+  // "?? 'Black'" default below regardless, which made an empty, just-
+  // created game read as "<creator> vs Black · about to start" — as if
+  // a real second player named "Black" existed and the game was seconds
+  // from starting, when actually it's just sitting open waiting for
+  // literally anyone to join. blackName stays null in that case so the
+  // board PNG (see boardImage.service.ts) renders a "waiting for an
+  // opponent" line instead of a fake second name.
+  const isWaiting = game.status === "waiting" && !game.black;
+  const blackName = isWaiting ? null : ((game.black as any)?.username ?? "Black");
+  const isLive = !isWaiting && game.status !== "finished" && game.status !== "aborted";
 
   let statusLine: string;
-  if (isLive) {
+  if (isWaiting) {
+    statusLine = `${tc} · waiting for an opponent`;
+  } else if (isLive) {
     statusLine =
       plyCount === 0
         ? `${tc} · about to start`
@@ -52,12 +63,14 @@ function gameCardInfo(game: Awaited<ReturnType<typeof getGameByCode>>) {
     statusLine = `${tc} · ${outcome}${reason} in ${moveCount} moves`;
   }
 
-  return { whiteName, blackName, statusLine, isLive, tc };
+  return { whiteName, blackName, statusLine, isLive, isWaiting, tc };
 }
 
 function describeGame(game: Awaited<ReturnType<typeof getGameByCode>>): string {
-  const { whiteName, blackName, statusLine } = gameCardInfo(game);
-  return `${whiteName} vs ${blackName} · ${statusLine}`;
+  const { whiteName, blackName, statusLine, isWaiting } = gameCardInfo(game);
+  return isWaiting
+    ? `${whiteName} is looking for an opponent · ${statusLine}`
+    : `${whiteName} vs ${blackName} · ${statusLine}`;
 }
 
 function describeTournament(
@@ -173,7 +186,7 @@ function renderPreviewPage({
 <meta property="og:title" content="${safeTitle}">
 <meta property="og:description" content="${safeDescription}">
 <meta property="og:url" content="${url}">
-<meta property="og:image" content="https://${imageUrl}">
+<meta property="og:image" content="${imageUrl}">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:type" content="image/png">
@@ -231,13 +244,13 @@ export const getGameOgImage = asyncHandler(async (req, res) => {
     return res.redirect(302, DEFAULT_OG_IMAGE);
   }
 
-  const { whiteName, blackName, statusLine, isLive } = gameCardInfo(game);
+  const { whiteName, blackName, statusLine, isLive, isWaiting } = gameCardInfo(game);
   const png = renderGameBoardPng({
     fen: game.fen,
     whiteName,
     blackName,
     statusLine,
-    badge: isLive ? "live" : "finished",
+    badge: isWaiting ? "waiting" : isLive ? "live" : "finished",
   });
 
   // A finished game's position never changes again, cache it hard. A live

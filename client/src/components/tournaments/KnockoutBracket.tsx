@@ -7,11 +7,14 @@ import {
 } from "../../api/tournaments.js";
 import { Card, CardHeader, CardTitle, Avatar } from "../ui/index.js";
 
-function roundLabel(indexFromStart: number, totalRounds: number): string {
+export function roundLabel(
+  indexFromStart: number,
+  totalRounds: number,
+): string {
   const fromEnd = totalRounds - indexFromStart;
   if (fromEnd === 1) return "Final";
-  if (fromEnd === 2) return "Semifinals";
-  if (fromEnd === 3) return "Quarterfinals";
+  if (fromEnd === 2) return "Semi-finals";
+  if (fromEnd === 3) return "Quarter-finals";
   return `Round ${indexFromStart + 1}`;
 }
 
@@ -111,17 +114,16 @@ export function KnockoutBracket({
       {tournament.status === "finished" && tournament.winner && (
         <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-base-content/70">
           <span>
-            🏆 <span className="font-medium text-base-content">{usernameOf(tournament, tournament.winner)}</span>
+            🏆{" "}
+            <span className="font-medium text-base-content">
+              {usernameOf(tournament, tournament.winner)}
+            </span>
           </span>
           {tournament.runnerUp && (
-            <span>
-              🥈 {usernameOf(tournament, tournament.runnerUp)}
-            </span>
+            <span>🥈 {usernameOf(tournament, tournament.runnerUp)}</span>
           )}
           {tournament.thirdPlace && (
-            <span>
-              🥉 {usernameOf(tournament, tournament.thirdPlace)}
-            </span>
+            <span>🥉 {usernameOf(tournament, tournament.thirdPlace)}</span>
           )}
           {tournament.fourthPlace && (
             <span className="text-base-content/50">

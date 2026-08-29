@@ -236,7 +236,7 @@ export function Settings() {
           </Card>
         </div>
 
-        <Card variant="solid" className="h-fit">
+        <Card variant="solid" className="order-first h-fit lg:order-0">
           <CardHeader>
             <CardTitle>Preview</CardTitle>
           </CardHeader>

@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type FormEvent,
   type ReactNode,
 } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
@@ -51,6 +50,7 @@ import {
 import { useHoldRepeat } from "../components/game/useHoldRepeat.js";
 import { GameNotificationsOverlay } from "../components/game/GameNotificationsOverlay.js";
 import { GameChatPanel } from "../components/game/GameChatPanel.js";
+import type { ChatMessage } from "../lib/chatTypes.js";
 import {
   GameActionBarDesktop,
   GameActionBarMobile,
@@ -167,10 +167,8 @@ export function Game() {
   const [pauseRequestSent, setPauseRequestSent] = useState(false);
   const [resumeRequestSent, setResumeRequestSent] = useState(false);
   const [gameOverModalDismissed, setGameOverModalDismissed] = useState(false);
-  const [chatMessages, setChatMessages] = useState<
-    { username: string; message: string; at: number }[]
-  >([]);
-  const [chatInput, setChatInput] = useState("");
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatHasUnread, setChatHasUnread] = useState(false);
   // Board flip is purely a local viewing preference, it doesn't touch
   // `myColor`/server state at all, just which edge of the board the local
   // player's pieces render on.
@@ -190,6 +188,10 @@ export function Game() {
   // room for a persistent chat card next to a board that has to fit the
   // viewport) instead of always-visible inline like on desktop.
   const [chatSheetOpen, setChatSheetOpen] = useState(false);
+  const chatSheetOpenRef = useRef(chatSheetOpen);
+  useEffect(() => {
+    chatSheetOpenRef.current = chatSheetOpen;
+  }, [chatSheetOpen]);
   const CLIENT_URL = import.meta.env.VITE_CLIENT_URL ?? "http://localhost:5173";
 
   const chess = useMemo(() => new Chess(fen), [fen]);
@@ -743,6 +745,12 @@ export function Game() {
           : null,
       );
       if (gameIsOver) setGameOverModalDismissed(false);
+      // Only ever present for spectators (see gameSocket.ts), replaces
+      // whatever was in state rather than merging, this is a full,
+      // authoritative history load (initial join, or a reconnect).
+      if (Array.isArray(payload.spectatorChatHistory)) {
+        setChatMessages(payload.spectatorChatHistory);
+      }
     }
 
     function onMove(payload: any) {
@@ -884,12 +892,14 @@ export function Game() {
       ]);
     }
 
-    function onChatMessage(payload: {
-      username: string;
-      message: string;
-      at: number;
-    }) {
+    function onChatMessage(payload: ChatMessage) {
       setChatMessages((prev) => [...prev.slice(-199), payload]);
+      // Dot only for messages that arrive while the panel's closed, and
+      // not for the echo of your own message (the socket broadcasts to
+      // the whole spectator room including the sender).
+      if (!chatSheetOpenRef.current && payload.username !== user?.username) {
+        setChatHasUnread(true);
+      }
     }
 
     function onLegPaused(payload: { gameId: string }) {
@@ -1211,14 +1221,13 @@ export function Game() {
   const prevHold = useHoldRepeat(handlePrevMove);
   const nextHold = useHoldRepeat(handleNextMove);
 
-  function handleSendChat(e: FormEvent) {
-    e.preventDefault();
-    if (!socket || !gameMeta || !chatInput.trim()) return;
+  function handleSendChat(message: string, replyToId?: string) {
+    if (!socket || !gameMeta) return;
     socket.emit("spectator_chat:send", {
       gameId: gameMeta._id,
-      message: chatInput.trim(),
+      message,
+      ...(replyToId ? { replyToId } : {}),
     });
-    setChatInput("");
   }
 
   const isPlayer = role !== "spectator";
@@ -1559,9 +1568,13 @@ export function Game() {
           {
             label: "Spectator chat",
             icon: MessageSquare,
-            onClick: () => setChatSheetOpen(true),
+            onClick: () => {
+              setChatSheetOpen(true);
+              setChatHasUnread(false);
+            },
             danger: false,
             mobilePrimary: true,
+            dot: chatHasUnread,
           },
         ]
       : []),
@@ -1732,8 +1745,7 @@ export function Game() {
         onClose={() => setChatSheetOpen(false)}
         messages={chatMessages}
         myUsername={user?.username}
-        chatInput={chatInput}
-        onChatInputChange={setChatInput}
+        isCageMatch={!!gameMeta?.cageMatchId}
         onSend={handleSendChat}
       />
 

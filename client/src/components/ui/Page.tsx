@@ -69,7 +69,7 @@ export function Page({
     >
       {hasHeader && (
         <header className="mb-6 flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             {back && (
               <motion.button
                 type="button"
@@ -84,9 +84,9 @@ export function Page({
               </motion.button>
             )}
             {(title || description) && (
-              <div>
+              <div className="min-w-0">
                 {title && (
-                  <h1 className="text-xl font-bold text-base-content md:text-2xl">
+                  <h1 className="truncate text-xl font-bold text-base-content md:text-2xl">
                     {title}
                   </h1>
                 )}

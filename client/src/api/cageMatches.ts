@@ -27,8 +27,8 @@ export interface CageLeg extends CageLegPlan {
 export interface CageMatch {
   _id: string;
   matchCode: string;
-  player1: { _id: string; username: string };
-  player2: { _id: string; username: string };
+  player1: { _id: string; username: string; avatarGradient?: string | null };
+  player2: { _id: string; username: string; avatarGradient?: string | null };
   legs: CageLeg[];
   currentLegIndex: number;
   status: 'active' | 'finished' | 'cancelled';

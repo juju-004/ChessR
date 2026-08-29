@@ -13,6 +13,7 @@ import { scheduleGameTimer, scheduleFirstMoveTimer } from "./clock.service.js";
 import { getIo } from "../sockets/io.js";
 import { generateChess960Fen } from "./chess960.service.js";
 import { debitWagerStake, creditWagerReturn, computeRake, recordRake } from "./wallet.service.js";
+import { expireChat } from "./chat.service.js";
 import { applyRatingForGame } from "./rating.service.js";
 // NOTE: cageMatch.service.ts imports several functions from this same file
 // (createDirectGame, finalizeGame, settleWager), so this is a deliberate
@@ -399,8 +400,8 @@ export async function finalizeGame(
   endReason: string | null,
   finalClock?: { whiteRemainingMs: number | null; blackRemainingMs: number | null },
 ): Promise<void> {
-  await Game.updateOne(
-    { _id: gameId },
+  const updated = await Game.findByIdAndUpdate(
+    gameId,
     {
       $set: {
         fen,
@@ -417,7 +418,16 @@ export async function finalizeGame(
         blackRemainingMs: finalClock?.blackRemainingMs ?? null,
       },
     },
-  );
+    { select: 'cageMatchId' },
+  ).lean();
+
+  // Standalone games only, a cage match leg's spectator chat is scoped to
+  // the whole match (see chat.service.ts / chatScopeFor in gameSocket.ts)
+  // and only expires once the entire match finishes, that's handled
+  // separately in cageMatch.service.ts, not here per-leg.
+  if (updated && !updated.cageMatchId) {
+    expireChat('game', gameId).catch((err) => console.error('expireChat(game) failed:', err));
+  }
 }
 
 /**

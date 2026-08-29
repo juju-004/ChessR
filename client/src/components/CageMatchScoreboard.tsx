@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useSocket } from "../contexts/SocketContext.js";
-import { Card } from "./ui/index.js";
+import { Card, Avatar, Tooltip } from "./ui/index.js";
 import {
   getCageMatchByCode,
   computeCageStandings,
@@ -92,47 +92,83 @@ export function CageMatchScoreboard({ cageMatchId, legIndex }: Props) {
   return (
     <Card variant="solid" className="shrink-0 mx-3 md:mx-0">
       <div className="flex items-center justify-between gap-2 rounded-lg bg-base-100/60 px-3 py-2">
-        <div className="text-sm font-semibold text-base-content">
-          <span
-            className={
-              standings.p1Score >= standings.p2Score
-                ? "text-base-content"
-                : "text-base-content/50"
-            }
-          >
-            {p1Name} {standings.p1Score}
-          </span>
-          <span className="mx-1.5 text-base-content/40">–</span>
-          <span
-            className={
-              standings.p2Score >= standings.p1Score
-                ? "text-base-content"
-                : "text-base-content/50"
-            }
-          >
-            {standings.p2Score} {p2Name}
-          </span>
-        </div>
+        <Tooltip content={p1Name}>
+          <div className="flex items-center gap-1.5">
+            <Avatar
+              username={p1Name}
+              gradient={match.player1.avatarGradient}
+              size="sm"
+              className={standings.p1Score < standings.p2Score ? "opacity-50" : ""}
+            />
+            <span
+              className={`text-sm font-semibold ${
+                standings.p1Score >= standings.p2Score
+                  ? "text-base-content"
+                  : "text-base-content/50"
+              }`}
+            >
+              {standings.p1Score}
+            </span>
+          </div>
+        </Tooltip>
         <Link
           to={`/cage/${match.matchCode}`}
           className="text-xs font-medium text-(--primary) hover:brightness-110"
         >
           Full match →
         </Link>
+        <Tooltip content={p2Name}>
+          <div className="flex items-center gap-1.5">
+            <span
+              className={`text-sm font-semibold ${
+                standings.p2Score >= standings.p1Score
+                  ? "text-base-content"
+                  : "text-base-content/50"
+              }`}
+            >
+              {standings.p2Score}
+            </span>
+            <Avatar
+              username={p2Name}
+              gradient={match.player2.avatarGradient}
+              size="sm"
+              className={standings.p2Score < standings.p1Score ? "opacity-50" : ""}
+            />
+          </div>
+        </Tooltip>
       </div>
 
       <div className="mt-2 flex items-center w-4/5 mx-auto gap-1">
-        {match.legs.map((leg) => (
-          <span
-            key={leg.index}
-            title={pipTitle(leg, p1Name, p2Name)}
-            className={`h-1.5 flex-1 rounded-full ${PIP_COLOR[leg.status]} ${
-              leg.index === legIndex
-                ? "ring-2 ring-(--primary) ring-offset-1 ring-offset-base-200"
-                : ""
-            }`}
-          />
-        ))}
+        {match.legs.map((leg) => {
+          const pip = (
+            <span
+              title={pipTitle(leg, p1Name, p2Name)}
+              className={`block h-1.5 w-full rounded-full ${PIP_COLOR[leg.status]} ${
+                leg.index === legIndex
+                  ? "ring-2 ring-(--primary) ring-offset-1 ring-offset-base-200"
+                  : ""
+              } ${leg.joinCode ? "cursor-pointer hover:brightness-125" : ""}`}
+            />
+          );
+          // Only legs that have actually started have a game to jump to
+          // (pending/skipped legs have no gameId/joinCode yet), those pips
+          // stay inert, just a status dot.
+          return (
+            <span key={leg.index} className="flex-1">
+              {leg.joinCode ? (
+                <Link
+                  to={`/game/${leg.joinCode}`}
+                  aria-label={pipTitle(leg, p1Name, p2Name)}
+                  className="block w-full"
+                >
+                  {pip}
+                </Link>
+              ) : (
+                pip
+              )}
+            </span>
+          );
+        })}
       </div>
 
       <div className="mt-1.5 flex items-center justify-between text-xs text-base-content/50">

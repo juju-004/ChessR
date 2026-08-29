@@ -2,6 +2,7 @@ import type { Server, Socket } from 'socket.io';
 import { z } from 'zod';
 import mongoose from 'mongoose';
 import { Game } from '../models/Game.js';
+import { User } from '../models/User.js';
 import {
   applyMove,
   endGame,
@@ -23,6 +24,7 @@ import { advanceCageMatchLeg } from '../services/cageMatch.service.js';
 import { advanceTournamentIfPairing, berserkInTournamentGame } from '../services/tournament.service.js';
 import { applyRatingForGame, getRatingCategory } from '../services/rating.service.js';
 import { getLagCompensationMs } from '../services/latency.service.js';
+import { addChatMessage, getChatHistory, isChatRateLimited, isRepeatMessage, type ChatScope } from '../services/chat.service.js';
 import {
   scheduleGameTimer,
   clearGameTimer,
@@ -93,7 +95,26 @@ const berserkSchema = z.object({ gameId: z.string().refine(mongoose.isValidObjec
 const chatSchema = z.object({
   gameId: z.string().refine(mongoose.isValidObjectId),
   message: z.string().trim().min(1).max(300),
+  // Id of the message being replied to (WhatsApp-style swipe-to-reply). A
+  // small denormalized snapshot of that message is stored alongside the
+  // reply itself (see buildReplySnapshot below) rather than just the id, so
+  // rendering a reply preview never needs a second lookup, and the preview
+  // still makes sense even if the original message has since scrolled out
+  // of the capped history window.
+  replyToId: z.string().max(32).optional(),
 });
+
+// A standalone (non-cage) game's spectator chat is scoped to that one
+// gameId and expires 10 minutes after the game ends. A cage match leg reuses
+// this same spectator-chat UI, but the log itself is scoped to the whole
+// match (cageMatchId), not the individual leg, so it survives one leg
+// ending and the next starting, and only expires 10 minutes after the whole
+// match is over. This is the one place that decision gets made, both the
+// join-time history load and the send handler below go through it.
+function chatScopeFor(game: { _id: unknown; cageMatchId?: unknown }): { scope: ChatScope; id: string } {
+  if (game.cageMatchId) return { scope: 'cage', id: (game.cageMatchId as any).toString() };
+  return { scope: 'game', id: (game._id as any).toString() };
+}
 
 function emitError(socket: Socket, message: string) {
   socket.emit('game:error', { message });
@@ -420,6 +441,15 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       const spectatorSockets = await safeFetchSockets(io, spectatorRoom(gameId));
       const spectatorCount = new Set(spectatorSockets.map((s) => (s.data as AuthedSocketData).userId)).size;
 
+      // Spectator chat is now persisted (see chat.service.ts), so a
+      // freshly-joining spectator (or one who just refreshed) gets the
+      // existing conversation instead of an empty panel. Players never see
+      // the chat UI at all, so there's no point loading history for them.
+      const chatHistory =
+        role === 'spectator'
+          ? await getChatHistory(chatScopeFor(game).scope, chatScopeFor(game).id)
+          : [];
+
       socket.emit('game:sync', {
         gameId,
         joinCode: game.joinCode,
@@ -452,6 +482,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         blackRemainingMs:
           liveState?.blackRemainingMs ?? (game.timeControl.baseSeconds ? game.timeControl.baseSeconds * 1000 : null),
         turnStartedAtMs: liveState?.turnStartedAtMs ?? Date.now(),
+        spectatorChatHistory: chatHistory,
       });
 
       if (role !== 'spectator') {
@@ -805,26 +836,60 @@ export function registerGameHandlers(io: Server, socket: Socket) {
     }),
   );
 
-  // Deliberately spectator-only, and never persisted anywhere (no Mongo, no
-  // Redis), purely a live relay through Socket.IO. Refresh the page and the
-  // history is gone, by design.
+  // Spectator-only. Persisted in Redis (see chat.service.ts): scoped to
+  // this gameId normally, or to the parent cage match if this game is a
+  // cage match leg, so the conversation survives a leg ending and the next
+  // one starting. Broadcast is still just to this leg's current spectator
+  // room, real-time delivery doesn't need to fan out to past legs' viewers,
+  // they've already moved on to the new leg's game page (and will pull the
+  // full persisted history, past legs included, the moment they join it).
   socket.on(
     'spectator_chat:send',
     safeHandler(socket, async (raw: unknown) => {
       const parsed = chatSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid chat payload');
-      const { gameId, message } = parsed.data;
+      const { gameId, message, replyToId } = parsed.data;
 
       if (!socket.rooms.has(spectatorRoom(gameId))) {
         return emitError(socket, 'Only spectators can use this chat');
       }
 
+      if (await isChatRateLimited(userId)) {
+        return emitError(socket, "You're sending messages too fast, slow down a little");
+      }
+      if (await isRepeatMessage(userId, message)) {
+        return emitError(socket, "You already sent that, try saying something new");
+      }
+
+      const game = await Game.findById(gameId).select('cageMatchId').lean();
+      if (!game) return emitError(socket, 'Game not found');
+      const { scope, id } = chatScopeFor(game as any);
+
+      let replyTo: { id: string; username: string; message: string } | null = null;
+      if (replyToId) {
+        // Snapshot the replied-to message's text/author at reply time
+        // rather than storing just its id, so the reply preview renders
+        // correctly even once the original scrolls out of the capped
+        // history window. A miss here (already trimmed, or a bogus id)
+        // just means the reply is sent without a preview, not an error.
+        const history = await getChatHistory(scope, id);
+        const original = history.find((m) => m.id === replyToId);
+        if (original) {
+          replyTo = { id: original.id, username: original.username, message: original.message };
+        }
+      }
+
       const { username } = socket.data as AuthedSocketData;
-      io.to(spectatorRoom(gameId)).emit('spectator_chat:message', {
+      const user = await User.findById(userId).select('avatarGradient').lean();
+
+      const saved = await addChatMessage(scope, id, {
         username,
+        avatarGradient: user?.avatarGradient ?? null,
         message,
-        at: Date.now(),
+        replyTo,
       });
+
+      io.to(spectatorRoom(gameId)).emit('spectator_chat:message', saved);
     }),
   );
 
