@@ -71,8 +71,10 @@ export function AccountMenu() {
               <span className="tracking-widest" aria-label="Balance hidden">
                 •••
               </span>
+            ) : balance ? (
+              balance.toLocaleString()
             ) : (
-              (balance ?? "…")
+              "…"
             )}
           </span>
           <ChevronDown className="h-3.5 w-3.5 text-base-content/50" />

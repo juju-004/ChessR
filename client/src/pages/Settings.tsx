@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   useSettings,
   DEFAULT_SETTINGS,
@@ -5,6 +6,11 @@ import {
   type PieceTheme,
 } from "../contexts/SettingsContext.js";
 import { useConfirm } from "../contexts/ConfirmContext.js";
+import { useAuth } from "../contexts/AuthContext.js";
+import { useNotify } from "../contexts/NotificationContext.js";
+import { updateMyProfile } from "../api/users.js";
+import { updateAuthUser } from "../api/authStore.js";
+import { ApiRequestError } from "../api/http.js";
 import { ChessBoard } from "../components/ChessBoard.js";
 import { InstallAppButton } from "../components/InstallAppButton.js";
 import { useInstallPrompt } from "../hooks/useInstallPrompt.js";
@@ -69,6 +75,38 @@ export function Settings() {
   const { settings, updateSetting, resetSettings } = useSettings();
   const { isInstalled } = useInstallPrompt();
   const confirmDialog = useConfirm();
+  const { user } = useAuth();
+  const { notify } = useNotify();
+  // This one, unlike everything in useSettings() above, is account-level
+  // (persisted server-side on the User doc, enforced server-side too, see
+  // challengeSocket.ts's challenge:send handler), not a per-device
+  // localStorage preference, so it's tracked and saved separately: local
+  // state for a snappy toggle plus an in-flight PATCH, rather than
+  // updateSetting's fire-and-forget localStorage write.
+  const [acceptChallenges, setAcceptChallenges] = useState(
+    user?.acceptChallenges ?? true,
+  );
+  const [savingAcceptChallenges, setSavingAcceptChallenges] = useState(false);
+
+  async function handleAcceptChallengesChange(value: boolean) {
+    setAcceptChallenges(value);
+    setSavingAcceptChallenges(true);
+    try {
+      await updateMyProfile({ acceptChallenges: value });
+      updateAuthUser({ acceptChallenges: value });
+    } catch (err) {
+      setAcceptChallenges(!value);
+      notify(
+        err instanceof ApiRequestError
+          ? err.message
+          : "Couldn't save that change",
+        [],
+        4000,
+      );
+    } finally {
+      setSavingAcceptChallenges(false);
+    }
+  }
 
   const previewChess = new Chess();
 
@@ -122,7 +160,7 @@ export function Settings() {
               <CardTitle>Board theme</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-wrap gap-2">
+              <div className="md:flex md:flex-wrap grid grid-cols-3 gap-2">
                 {BOARD_THEMES.map((t) => (
                   <button
                     key={t.value}
@@ -234,6 +272,22 @@ export function Settings() {
               />
             </CardContent>
           </Card>
+
+          <Card variant="solid">
+            <CardHeader>
+              <CardTitle>General</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1">
+              <Switch
+                label="Accept challenges"
+                description="Let other players send you direct challenges or cage match invites. Turn this off and both are rejected automatically, tournaments are unaffected."
+                checked={acceptChallenges}
+                onChange={handleAcceptChallengesChange}
+                disabled={savingAcceptChallenges}
+                className="rounded-lg px-1 py-2 hover:bg-base-100"
+              />
+            </CardContent>
+          </Card>
         </div>
 
         <Card variant="solid" className="order-first h-fit lg:order-0">
@@ -266,9 +320,10 @@ export function Settings() {
       </div>
 
       <p className="mt-4 text-xs text-base-content/40">
-        Your preferences are saved on this device only. Defaults:{" "}
+        Board and gameplay preferences are saved on this device only. Defaults:{" "}
         {DEFAULT_SETTINGS.boardTheme} board, animation{" "}
-        {DEFAULT_SETTINGS.pieceAnimation ? "on" : "off"}).
+        {DEFAULT_SETTINGS.pieceAnimation ? "on" : "off"}. "Accept challenges" is
+        saved to your account and applies everywhere you're signed in.
       </p>
     </Page>
   );

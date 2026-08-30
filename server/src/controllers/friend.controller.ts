@@ -31,7 +31,7 @@ export const sendFriendRequest = asyncHandler(async (req: AuthedRequest, res) =>
 
   const [toUser, fromUser] = await Promise.all([
     User.findById(toUserId).select('username friends'),
-    User.findById(fromUserId).select('username friends'),
+    User.findById(fromUserId).select('username friends avatarGradient rating ratedGamesPlayed'),
   ]);
   if (!toUser) throw ApiError.notFound('User not found');
 
@@ -48,11 +48,29 @@ export const sendFriendRequest = asyncHandler(async (req: AuthedRequest, res) =>
   });
   if (existing) throw ApiError.conflict('A pending request already exists');
 
-  const request = await FriendRequest.create({ from: fromUserId, to: toUserId });
+  let request;
+  try {
+    request = await FriendRequest.create({ from: fromUserId, to: toUserId });
+  } catch (err: any) {
+    // Backstop for an environment where the partial-unique-index migration
+    // (see FriendRequest.ts) hasn't been applied yet, in that window the
+    // old blanket unique index can still reject this the moment there's
+    // any prior resolved request between this pair, this at least turns
+    // that into a clean, expected-looking error instead of a raw 500.
+    if (err?.code === 11000) {
+      throw ApiError.conflict('A pending request already exists');
+    }
+    throw err;
+  }
 
   await pushToUser(toUserId, 'friend:request_received', {
     requestId: request.id,
-    from: { id: fromUserId, username: fromUser!.username },
+    from: {
+      id: fromUserId,
+      username: fromUser!.username,
+      avatarGradient: fromUser!.avatarGradient ?? null,
+      ratingCategory: getRatingCategory(fromUser!.rating, fromUser!.ratedGamesPlayed),
+    },
   });
 
   res.status(201).json({ requestId: request.id, status: request.status });
@@ -100,7 +118,7 @@ export const listFriends = asyncHandler(async (req: AuthedRequest, res) => {
       avatarGradient: f.avatarGradient ?? null,
       ratingCategory: getRatingCategory(f.rating, f.ratedGamesPlayed),
       online: (await getUserSocketIds(f._id.toString())).length > 0,
-      activeGameCode: await getActiveGameCodeForUser(f._id.toString()),
+      activeGameCode: await getActiveGameCodeForUser(f._id.toString(), req.user!.id),
     })),
   );
 
@@ -122,6 +140,13 @@ export const removeFriend = asyncHandler(async (req: AuthedRequest, res) => {
     User.updateOne({ _id: userId }, { $pull: { friends: friendId } }),
     User.updateOne({ _id: friendId }, { $pull: { friends: userId } }),
   ]);
+
+  // Removing a friend used to be silent on the other end, nothing told
+  // their client the friendship was gone, so it kept showing up in their
+  // friends list (and "Friends"/an active Unfriend button on your
+  // profile, from their side) until they happened to reload. Same fix
+  // shape as friend:request_resolved above, just for this action.
+  await pushToUser(friendId, 'friend:removed', { by: userId });
 
   res.status(204).send();
 });

@@ -51,6 +51,7 @@ import { useHoldRepeat } from "../components/game/useHoldRepeat.js";
 import { GameNotificationsOverlay } from "../components/game/GameNotificationsOverlay.js";
 import { GameChatPanel } from "../components/game/GameChatPanel.js";
 import type { ChatMessage } from "../lib/chatTypes.js";
+import { useMyActiveGame } from "../contexts/MyActiveGameContext.js";
 import {
   GameActionBarDesktop,
   GameActionBarMobile,
@@ -86,6 +87,7 @@ import {
 export function Game() {
   const { code = "" } = useParams<{ code: string }>();
   const { user } = useAuth();
+  const { setActiveGame, clearActiveGame } = useMyActiveGame();
   const socket = useSocket();
   const navigate = useNavigate();
   const { notify, dismiss } = useNotify();
@@ -611,8 +613,15 @@ export function Game() {
         if (isLiveStatus(game.status)) {
           // Ongoing (or waiting-for-opponent, viewed by its creator),
           // the socket-wiring effect below takes it from here, same as
-          // it always has.
+          // it always has. Also the moment this client learns it's
+          // actually playing (not spectating) a live game, whether that's
+          // from just having created/joined it or from landing straight
+          // on this page (a refresh, or a direct link), which is the one
+          // case GlobalListeners' event-driven setActiveGame calls can't
+          // cover on their own, there's no socket event for "I reloaded
+          // the page I was already on".
           setLive(true);
+          if (isWhite || isBlack) setActiveGame(code);
           return;
         }
 
@@ -621,6 +630,7 @@ export function Game() {
         // need is filled in here, once, from the REST payload, the same
         // fields a live game:sync would have set.
         setLive(false);
+        if (isWhite || isBlack) clearActiveGame(code);
         const movesList: MoveLogEntry[] = game.moves ?? [];
         setStatus(game.status);
         setMoves(movesList);
@@ -675,7 +685,7 @@ export function Game() {
     return () => {
       cancelled = true;
     };
-  }, [code, user?.id]);
+  }, [code, user?.id, setActiveGame, clearActiveGame]);
 
   async function handleJoin() {
     if (!gameMeta) return;
@@ -739,6 +749,15 @@ export function Game() {
       );
       const gameIsOver =
         payload.status === "finished" || payload.status === "aborted";
+      // Same reasoning as the initial-fetch branch above: this is what
+      // catches the game ending while the player is sitting right here on
+      // its page, GlobalListeners has no socket event for that (game:over
+      // only reaches this game's own room, not a global one), so this is
+      // the one place it can be noticed and cleared.
+      if (payload.role !== "spectator") {
+        if (gameIsOver) clearActiveGame(code);
+        else setActiveGame(code);
+      }
       setGameOver(
         gameIsOver
           ? { result: payload.result ?? null, reason: payload.endReason }
@@ -788,6 +807,16 @@ export function Game() {
           ? "aborted"
           : "finished",
       );
+      // game:over reaches everyone in the game room, players and
+      // spectators alike (unlike game:sync, it doesn't carry a role of
+      // its own), so this has to check roleRef rather than assume.
+      // Missing this clearActiveGame call at all is exactly why an
+      // aborted game's icon kept pinging on the dashboard after leaving
+      // the page: game:sync's clearActiveGame only covers the game ending
+      // while still watching the live position update, not the
+      // abort/resign/timeout confirmation that arrives via this separate
+      // event.
+      if (roleRef.current !== "spectator") clearActiveGame(code);
       setGameOver(payload);
       setGameOverModalDismissed(cageMatchOverRef.current);
       setDisconnectExpiresAt(null);
@@ -998,7 +1027,7 @@ export function Game() {
       socket.off("cage:resume_declined", onResumeDeclinedLocal);
       socket.off("cage:match_over", onCageMatchOverOnThisLeg);
     };
-  }, [mode, socket, gameMeta?._id, notify, live]);
+  }, [mode, socket, gameMeta?._id, notify, live, code, setActiveGame, clearActiveGame]);
 
   const handleUserMove = useCallback(
     (orig: string, dest: string) => {
@@ -1098,6 +1127,12 @@ export function Game() {
     if (!ok) return;
     try {
       await cancelGame(gameMeta._id);
+      // REST-only action, no socket event fires for it (unlike abort,
+      // which goes through game:over), so this is the one place that can
+      // clear it, the game:sync/game:over-driven clearActiveGame calls
+      // elsewhere in this file never get a chance to run before the
+      // navigate() below takes the user away from this page entirely.
+      clearActiveGame(code);
       navigate("/");
     } catch (err) {
       setLoadError(

@@ -97,6 +97,7 @@ function userFields(user: IUser) {
     email: user.email,
     avatarGradient: user.avatarGradient ?? null,
     emailVerified: user.emailVerified,
+    acceptChallenges: user.acceptChallenges,
     ...ratingFields(user),
   };
 }
@@ -297,6 +298,7 @@ export const me = asyncHandler(async (req: AuthedRequest, res) => {
     email: user.email,
     avatarGradient: user.avatarGradient ?? null,
     emailVerified: user.emailVerified,
+    acceptChallenges: user.acceptChallenges,
     tokenBalance: user.tokenBalance,
     friendCount: user.friends.length,
     ...ratingFields(user),

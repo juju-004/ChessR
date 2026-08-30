@@ -9,15 +9,12 @@ import {
   TvMinimalPlay,
 } from "lucide-react";
 import { searchUsers, type UserSearchResult } from "../api/users.js";
-import {
-  listFriends,
-  listIncomingRequests,
-  respondToFriendRequest,
-  sendFriendRequest,
-  type Friend,
-  type IncomingRequest,
-} from "../api/friends.js";
+import { listFriends, sendFriendRequest, type Friend } from "../api/friends.js";
 import { useSocket } from "../contexts/SocketContext.js";
+import {
+  useNotificationCenter,
+  type NotificationItem,
+} from "../contexts/NotificationCenterContext.js";
 import { TIME_CONTROLS } from "../timeControls.js";
 import { MAX_WAGER_TOKENS, MIN_STAKE_TOKENS } from "../lib/limits.js";
 import { Page } from "@/components/ui/Page.js";
@@ -39,7 +36,24 @@ import { RatingBadge } from "@/components/RatingBadge.js";
 export function Players() {
   const socket = useSocket();
   const navigate = useNavigate();
-  const [requests, setRequests] = useState<IncomingRequest[]>([]);
+  const { items: notificationItems, respondToFriendRequestItem } =
+    useNotificationCenter();
+  // Pending friend requests are now owned by NotificationCenterContext
+  // (single source of truth, also backs the navbar bell), this page just
+  // filters that same list down to the friend_request items rather than
+  // keeping its own separate copy. Used to be its own REST fetch +
+  // friend:request_received listener here, which is exactly how accepting
+  // a request from this page could leave a stale copy sitting in the bell
+  // (or vice versa), two independent lists that had no way to know about
+  // each other's changes.
+  const requests = useMemo(
+    () =>
+      notificationItems.filter(
+        (i): i is Extract<NotificationItem, { kind: "friend_request" }> =>
+          i.kind === "friend_request",
+      ),
+    [notificationItems],
+  );
   const [friends, setFriends] = useState<Friend[]>([]);
   const [friendSearch, setFriendSearch] = useState("");
   const [tcIndex, setTcIndex] = useState(2);
@@ -62,24 +76,32 @@ export function Players() {
     null,
   );
 
-  const refreshRequests = useCallback(() => {
-    listIncomingRequests().then((res) => setRequests(res.requests));
-  }, []);
-
   const refreshFriends = useCallback(() => {
     listFriends().then((res) => setFriends(res.friends));
   }, []);
 
   useEffect(() => {
-    refreshRequests();
     refreshFriends();
-  }, [refreshRequests, refreshFriends]);
+  }, [refreshFriends]);
 
   useEffect(() => {
     if (!socket) return;
 
-    function onRequestReceived() {
-      refreshRequests();
+    // Pushed to the SENDER once the other side accepts or declines (see
+    // pushToUser(request.from...) in friend.controller.ts). Without this,
+    // the accepter's own optimistic refreshFriends() in
+    // respondToFriendRequestItem was the only place the new friendship
+    // ever got picked up, the sender just sat on stale data ("no friends
+    // yet" / a still-pending request) until they happened to reload the
+    // page.
+    function onRequestResolved(payload: { accepted: boolean }) {
+      if (payload.accepted) refreshFriends();
+    }
+    // Same idea, the other direction: pushed to the person who just got
+    // unfriended, so their list drops that friend immediately instead of
+    // sitting stale until a refresh.
+    function onFriendRemoved() {
+      refreshFriends();
     }
     function onPresence() {
       refreshFriends();
@@ -94,28 +116,32 @@ export function Players() {
       setStatus({ message: payload.message, isError: true });
     }
 
-    socket.on("friend:request_received", onRequestReceived);
+    socket.on("friend:request_resolved", onRequestResolved);
+    socket.on("friend:removed", onFriendRemoved);
     socket.on("friend:presence", onPresence);
     socket.on("challenge:sent", onSent);
     socket.on("challenge:error", onError);
 
     return () => {
-      socket.off("friend:request_received", onRequestReceived);
+      socket.off("friend:request_resolved", onRequestResolved);
+      socket.off("friend:removed", onFriendRemoved);
       socket.off("friend:presence", onPresence);
       socket.off("challenge:sent", onSent);
       socket.off("challenge:error", onError);
     };
   }, [socket, refreshFriends]);
 
-  async function handleAccept(requestId: string) {
-    await respondToFriendRequest(requestId, true);
-    refreshRequests();
+  function handleAccept(requestId: string) {
+    respondToFriendRequestItem(requestId, true);
+    // respondToFriendRequestItem's own REST call already updates the
+    // friendship server-side, this just gets it reflected here too
+    // (optimistically, same as before) rather than waiting on the next
+    // full page load.
     refreshFriends();
   }
 
-  async function handleDecline(requestId: string) {
-    await respondToFriendRequest(requestId, false);
-    refreshRequests();
+  function handleDecline(requestId: string) {
+    respondToFriendRequestItem(requestId, false);
   }
 
   function handleChallenge(friendId: string) {
@@ -133,7 +159,7 @@ export function Players() {
       wagerTokens,
     });
     setStatus({
-      message: `Challenge sent (${tc.label}${variant === "chess960" ? ", Chess960" : ""}, ${wagerTokens} R wager). Waiting for a response…`,
+      message: `Challenge sent. Waiting for a response…`,
       isError: false,
     });
     setChallengingFriendId(null);
@@ -191,7 +217,7 @@ export function Players() {
 
         <Card variant="solid">
           <h1 className="mb-2 flex items-center gap-2 text-lg font-semibold text-base-content">
-            <Search className="h-4 w-4 text-base-content/50" /> Search players
+            Search players
           </h1>
           <Input
             type="text"
@@ -275,7 +301,7 @@ export function Players() {
           )}
           {requests.map((r) => (
             <div
-              key={r._id}
+              key={r.id}
               onClick={() => navigate(`/profile/${r.from.username}`)}
               className="-mx-2 flex cursor-pointer flex-wrap items-center justify-between gap-2 rounded-lg border-b border-base-300 px-2 py-2 transition-colors last:border-none hover:bg-base-100/60"
             >
@@ -300,14 +326,14 @@ export function Players() {
                 className="flex flex-wrap gap-2"
                 onClick={(e) => e.stopPropagation()}
               >
-                <Button size="sm" onClick={() => handleAccept(r._id)}>
+                <Button size="sm" onClick={() => handleAccept(r.id)}>
                   <Check className="h-4 w-4" />
                   <span className="hidden sm:flex">Accept</span>
                 </Button>
                 <Button
                   variant="glass"
                   size="sm"
-                  onClick={() => handleDecline(r._id)}
+                  onClick={() => handleDecline(r.id)}
                 >
                   <X className="h-4 w-4" />
                   <span className="hidden sm:flex">Decline</span>
@@ -368,11 +394,11 @@ export function Players() {
                 />
               </span>
               <span
-                className="flex flex-wrap gap-2"
+                className="flex flex-wrap items-center gap-2"
                 onClick={(e) => e.stopPropagation()}
               >
                 {f.activeGameCode ? (
-                  <Link to={`/game/`}>
+                  <Link to={`/game/${f.activeGameCode}`}>
                     <Button variant="glass" size="sm">
                       <TvMinimalPlay className="h-4 w-4" />{" "}
                       <span className="hidden! sm:flex">Watch</span>
@@ -433,7 +459,7 @@ export function Players() {
                       <Input
                         label={
                           <span className="inline-flex items-center gap-1">
-                            <RCoin size={12} /> Coin wager (per player)
+                            <RCoin size={12} /> Coin wager
                           </span>
                         }
                         type="number"

@@ -60,8 +60,8 @@ export interface MyActiveGame {
   joinCode: string;
   variant: GameVariant;
   status: 'waiting' | 'active';
-  white: { _id: string; username: string };
-  black: { _id: string; username: string } | null;
+  white: { _id: string; username: string; avatarGradient?: string | null };
+  black: { _id: string; username: string; avatarGradient?: string | null } | null;
   timeControl: { baseSeconds: number | null; incrementSeconds: number };
   wagerTokens: number;
   fen: string;

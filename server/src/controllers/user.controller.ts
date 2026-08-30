@@ -29,6 +29,7 @@ const updateProfileSchema = z.object({
   avatarGradient: z.enum(VALID_AVATAR_GRADIENTS).optional(),
   bio: z.string().trim().max(160).optional(),
   username: usernameSchema.optional(),
+  acceptChallenges: z.boolean().optional(),
 });
 
 export const updateMyProfile = asyncHandler(async (req: AuthedRequest, res) => {
@@ -37,6 +38,7 @@ export const updateMyProfile = asyncHandler(async (req: AuthedRequest, res) => {
   const update: Record<string, unknown> = {};
   if (body.avatarGradient !== undefined) update.avatarGradient = body.avatarGradient;
   if (body.bio !== undefined) update.bio = body.bio;
+  if (body.acceptChallenges !== undefined) update.acceptChallenges = body.acceptChallenges;
   if (body.username !== undefined) {
     const usernameLower = body.username.toLowerCase();
     const taken = await User.exists({
@@ -49,7 +51,7 @@ export const updateMyProfile = asyncHandler(async (req: AuthedRequest, res) => {
   }
 
   const user = await User.findByIdAndUpdate(req.user!.id, update, { new: true })
-    .select('username avatarUrl avatarGradient bio')
+    .select('username avatarUrl avatarGradient bio acceptChallenges')
     .lean();
   if (!user) throw ApiError.notFound('User not found');
 
@@ -58,14 +60,21 @@ export const updateMyProfile = asyncHandler(async (req: AuthedRequest, res) => {
     avatarUrl: user.avatarUrl,
     avatarGradient: user.avatarGradient,
     bio: user.bio,
+    acceptChallenges: user.acceptChallenges,
   });
 });
 
-export const searchUsers = asyncHandler(async (req, res) => {
+export const searchUsers = asyncHandler(async (req: AuthedRequest, res) => {
   const { q } = searchSchema.parse(req.query);
   const regex = new RegExp('^' + q.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
-  const users = await User.find({ usernameLower: regex })
+  const users = await User.find({
+    usernameLower: regex,
+    // optionalAuth, so req.user may be undefined (a logged-out visitor
+    // searching players), only exclude when there's actually a self to
+    // exclude.
+    ...(req.user ? { _id: { $ne: req.user.id } } : {}),
+  })
     .select('username avatarUrl avatarGradient rating ratedGamesPlayed')
     .limit(20)
     .lean();
@@ -115,7 +124,7 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
   const isSelf = req.user?.id === user._id.toString();
   // Only worth checking once we know it isn't the viewer's own profile, 
   // there's no "watch yourself" button to show either way.
-  const activeGameCode = isSelf ? null : await getActiveGameCodeForUser(user._id.toString());
+  const activeGameCode = isSelf ? null : await getActiveGameCodeForUser(user._id.toString(), req.user?.id);
 
   // Head-to-head record against whoever's looking at this profile, only
   // makes sense when someone's logged in and it's not their own profile.

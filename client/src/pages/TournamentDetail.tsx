@@ -1327,7 +1327,7 @@ export function TournamentDetail() {
           </Card>
         )}
 
-        {tournament.status === "pending" && (
+        {tournament.status === "pending" && tournament.format === "normal" && (
           <Card variant="solid">
             <CardHeader>
               <CardTitle>

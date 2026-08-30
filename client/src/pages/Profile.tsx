@@ -4,6 +4,7 @@ import {
   Swords,
   Eye,
   UserPlus,
+  UserMinus,
   Check,
   Pencil,
   Scale,
@@ -15,10 +16,12 @@ import {
   type UserProfile,
   type UserGameHistoryItem,
 } from "../api/users.js";
-import { sendFriendRequest } from "../api/friends.js";
+import { sendFriendRequest, removeFriend } from "../api/friends.js";
 import { updateAuthUser } from "../api/authStore.js";
 import { ApiRequestError } from "../api/http.js";
 import { formatTimeControl } from "../timeControls.js";
+import { useSocket } from "../contexts/SocketContext.js";
+import { useConfirm } from "../contexts/ConfirmContext.js";
 import {
   Page,
   Card,
@@ -44,6 +47,8 @@ const resultVariant: Record<
 
 export function Profile() {
   const { username } = useParams<{ username: string }>();
+  const socket = useSocket();
+  const confirmDialog = useConfirm();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [games, setGames] = useState<UserGameHistoryItem[]>([]);
   const [page, setPage] = useState(1);
@@ -66,6 +71,36 @@ export function Profile() {
         ),
       );
   }, [username]);
+
+  // Lets a still-pending "Request sent" state on this profile flip to
+  // "Friends" live if the person it's for accepts while you're sitting
+  // here, same fix as the friends list on the Players page, just for the
+  // one-profile case, "by" on this event is whoever just resolved the
+  // request, i.e. the person this profile belongs to.
+  useEffect(() => {
+    if (!socket || !profile) return;
+    function onRequestResolved(payload: { accepted: boolean; by: string }) {
+      if (!payload.accepted || payload.by !== profile!.id) return;
+      setFriendRequestSent(false);
+      setProfile((prev) => (prev ? { ...prev, isFriend: true } : prev));
+    }
+    // The other direction: this profile's owner just unfriended you (from
+    // their own friends list, or their own view of your profile) while
+    // you happened to be looking at theirs, flip the Unfriend button back
+    // to "Add friend" live instead of leaving a stale "Unfriend" button
+    // that would 204-and-do-nothing (or worse, silently re-friend them)
+    // the next time it's clicked.
+    function onFriendRemoved(payload: { by: string }) {
+      if (payload.by !== profile!.id) return;
+      setProfile((prev) => (prev ? { ...prev, isFriend: false } : prev));
+    }
+    socket.on("friend:request_resolved", onRequestResolved);
+    socket.on("friend:removed", onFriendRemoved);
+    return () => {
+      socket.off("friend:request_resolved", onRequestResolved);
+      socket.off("friend:removed", onFriendRemoved);
+    };
+  }, [socket, profile?.id]);
 
   // Lazy-loaded in pages of GAMES_PER_PAGE via "Load more" below, rather
   // than click-through pagination, each click appends to `games` instead
@@ -128,6 +163,19 @@ export function Profile() {
     }
   }
 
+  async function handleUnfriend() {
+    if (!profile) return;
+    const ok = await confirmDialog({
+      title: `Unfriend ${profile.username}?`,
+      description: "You can always send another friend request later.",
+      variant: "danger",
+      confirmLabel: "Unfriend",
+    });
+    if (!ok) return;
+    await removeFriend(profile.id);
+    setProfile((prev) => (prev ? { ...prev, isFriend: false } : prev));
+  }
+
   const gamesPlayed = profile.stats.gamesPlayed || 1;
   const winPct = Math.round((profile.stats.wins / gamesPlayed) * 100);
   const hasMoreGames = games.length < totalGames;
@@ -139,47 +187,48 @@ export function Profile() {
     <Page>
       <div className="space-y-4">
         <Card variant="solid">
-          <div className="flex flex-col lg:flex-row gap-4">
-            <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start gap-3 sm:gap-4">
               <Avatar
                 username={profile.username}
                 size="lg"
                 gradient={profile.avatarGradient}
+                className="shrink-0"
               />
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="min-w-0 flex-1 truncate text-2xl font-bold text-base-content">
+                <div className="flex items-center gap-1.5">
+                  <h1 className="min-w-0 truncate text-2xl font-bold text-base-content">
                     {profile.username}
                   </h1>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <RatingBadge
-                      category={profile.ratingCategory}
-                      gamesUntilRanked={profile.ratedGamesUntilRanked}
-                    />
-                    {profile.isSelf && (
-                      <button
-                        onClick={() => setEditOpen(true)}
-                        aria-label="Edit profile"
-                        className="rounded-full p-1.5 text-base-content/40 transition-colors hover:bg-base-200 hover:text-base-content"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
+                  {profile.isSelf && (
+                    <button
+                      onClick={() => setEditOpen(true)}
+                      aria-label="Edit profile"
+                      className="shrink-0 rounded-full p-1.5 text-base-content/40 transition-colors hover:bg-base-200 hover:text-base-content"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
-                <p className="text-sm text-base-content/50">
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <RatingBadge
+                    category={profile.ratingCategory}
+                    gamesUntilRanked={profile.ratedGamesUntilRanked}
+                  />
+                </div>
+                <p className="mt-1 text-sm text-base-content/50">
                   Member since{" "}
                   {new Date(profile.memberSince).toLocaleDateString()}
                 </p>
-                {profile.bio && (
-                  <p className="mt-1 text-sm text-base-content/70">
-                    {profile.bio}
-                  </p>
-                )}
               </div>
             </div>
+
+            {profile.bio && (
+              <p className="ml-5 text-sm text-base-content/70">{profile.bio}</p>
+            )}
+
             {!profile.isSelf && (
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-row flex-wrap items-center gap-2">
                 {profile.activeGameCode && (
                   <Link to={`/game/${profile.activeGameCode}`}>
                     <Button variant="secondary" size="sm">
@@ -188,11 +237,16 @@ export function Profile() {
                   </Link>
                 )}
                 {profile.isFriend ? (
-                  <Badge variant="success">
-                    <Check className="h-3 w-3" /> Friends
-                  </Badge>
+                  <Button
+                    variant="glass"
+                    size="sm"
+                    onClick={handleUnfriend}
+                    aria-label={`Unfriend ${profile.username}`}
+                  >
+                    <UserMinus className="h-4 w-4" /> Unfriend
+                  </Button>
                 ) : friendRequestSent ? (
-                  <Badge variant="success">
+                  <Badge variant="success" className="py-2">
                     <Check className="h-3 w-3" /> Request sent
                   </Badge>
                 ) : (

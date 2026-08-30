@@ -7,9 +7,25 @@ import { initSocketServer } from './sockets/index.js';
 import { getIo } from './sockets/io.js';
 import { reconcileActiveGames } from './services/game.service.js';
 import { reconcileActiveTournaments, sweepCancelledTournaments } from './services/tournament.service.js';
+import { FriendRequest } from './models/FriendRequest.js';
 
 async function main() {
   await connectMongo();
+
+  // Self-heals a schema change: FriendRequest's unique index used to be a
+  // blanket {from, to} unique index; it's now partial, scoped to pending
+  // requests only, so a resolved request no longer permanently blocks a
+  // fresh one between the same two people (see FriendRequest.ts).
+  // Mongoose's autoIndex creates newly-defined indexes on boot but won't
+  // drop a conflicting old one on its own, a database that already had
+  // the old index just keeps silently enforcing it forever, defeating the
+  // fix, hence this. syncIndexes drops anything not in the current schema
+  // and creates what's missing; idempotent and cheap once already in
+  // sync, so it's fine to just run on every boot rather than needing a
+  // one-off migration script someone has to remember to run.
+  await FriendRequest.syncIndexes().catch((err) => {
+    console.error('FriendRequest.syncIndexes failed:', err);
+  });
 
   const app = createApp();
   const httpServer = createServer(app);

@@ -18,7 +18,7 @@ import {
   settleWager,
   refundWagerBothSides,
   assertUnderActiveGameLimit,
-  MAX_ACTIVE_GAMES_PER_USER,
+  activeGameLimitMessage,
 } from '../services/game.service.js';
 import { advanceCageMatchLeg } from '../services/cageMatch.service.js';
 import { advanceTournamentIfPairing, berserkInTournamentGame } from '../services/tournament.service.js';
@@ -740,7 +740,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       } catch {
         emitError(socket, 'Your opponent already has too many active games to start another right now.');
         io.to(`user:${pending.fromUserId}`).emit('game:error', {
-          message: `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before starting a rematch.`,
+          message: activeGameLimitMessage("starting a rematch"),
         });
         return;
       }
@@ -749,7 +749,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       } catch {
         emitError(
           socket,
-          `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before accepting a rematch.`,
+          activeGameLimitMessage("accepting a rematch"),
         );
         io.to(`user:${pending.fromUserId}`).emit('game:error', {
           message: 'Your opponent already has too many active games to accept the rematch right now.',
@@ -836,13 +836,14 @@ export function registerGameHandlers(io: Server, socket: Socket) {
     }),
   );
 
-  // Spectator-only. Persisted in Redis (see chat.service.ts): scoped to
-  // this gameId normally, or to the parent cage match if this game is a
-  // cage match leg, so the conversation survives a leg ending and the next
-  // one starting. Broadcast is still just to this leg's current spectator
-  // room, real-time delivery doesn't need to fan out to past legs' viewers,
-  // they've already moved on to the new leg's game page (and will pull the
-  // full persisted history, past legs included, the moment they join it).
+  // Open to anyone in the game, players and spectators alike. Persisted in
+  // Redis (see chat.service.ts): scoped to this gameId normally, or to the
+  // parent cage match if this game is a cage match leg, so the
+  // conversation survives a leg ending and the next one starting.
+  // Broadcast is still just to this leg's current game room, real-time
+  // delivery doesn't need to fan out to past legs' viewers, they've
+  // already moved on to the new leg's game page (and will pull the full
+  // persisted history, past legs included, the moment they join it).
   socket.on(
     'spectator_chat:send',
     safeHandler(socket, async (raw: unknown) => {

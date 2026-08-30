@@ -17,7 +17,9 @@ import {
 import {
   createGame,
   listFriendsActiveGames,
+  listMyActiveGames,
   type ActiveFriendGame,
+  type MyActiveGame,
 } from "../api/games.js";
 import { ApiRequestError } from "../api/http.js";
 import { useAuth } from "../contexts/AuthContext.js";
@@ -94,6 +96,13 @@ export function Dashboard() {
     null,
   );
   const [gamesError, setGamesError] = useState("");
+  // Your own current game, if you have one (at most one, see
+  // MAX_ACTIVE_GAMES_PER_USER server-side). When set, the Play card below
+  // shows this instead of the create/join form, there's nothing to create
+  // or join while it's occupied anyway.
+  const [myGame, setMyGame] = useState<MyActiveGame | null | undefined>(
+    undefined,
+  );
   const { balance, refresh } = useTokenBalance();
   const { hidden: balanceHidden, toggle: toggleBalanceHidden } =
     useBalanceVisibility();
@@ -105,6 +114,9 @@ export function Dashboard() {
 
   useEffect(() => {
     let cancelled = false;
+    listMyActiveGames()
+      .then((res) => !cancelled && setMyGame(res.games[0] ?? null))
+      .catch(() => !cancelled && setMyGame(null));
     listFriendsActiveGames()
       .then((res) => !cancelled && setActiveGames(res.games))
       .catch(() => !cancelled && setGamesError("Failed to load active games."));
@@ -257,87 +269,154 @@ export function Dashboard() {
           <CardHeader>
             <CardTitle>Play</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col gap-3 sm:flex-row">
-            <ResponsiveOverlay
-              title="Create a new game"
-              align="start"
-              icon={<Plus></Plus>}
-              className="w-80 max-w-[calc(100vw-2rem)]"
-              trigger={
-                <Button className="w-full sm:w-auto">
-                  <Plus className="h-4 w-4" /> Create game
-                </Button>
-              }
-            >
-              <div className="space-y-3 px-4 md:px-2">
-                <Select
-                  label="Time control"
-                  value={tcIndex}
-                  onChange={(e) => setTcIndex(Number(e.target.value))}
-                >
-                  {TIME_CONTROLS.map((tc, i) => (
-                    <option key={tc.label} value={i}>
-                      {tc.label}
-                    </option>
-                  ))}
-                </Select>
-
-                <Select
-                  label="Variant"
-                  value={variant}
-                  onChange={(e) =>
-                    setVariant(e.target.value as "standard" | "chess960")
-                  }
-                >
-                  <option value="standard">Standard</option>
-                  <option value="chess960">Chess960 </option>
-                </Select>
-
-                <Input
-                  label={
-                    <span className="inline-flex items-center gap-1">
-                      <RCoin size={12} /> Coin wager (per player)
-                    </span>
-                  }
-                  type="number"
-                  min={MIN_STAKE_TOKENS}
-                  max={MAX_WAGER_TOKENS}
-                  step={1}
-                  value={wagerInput}
-                  onChange={(e) => setWagerInput(e.target.value)}
-                  hint={
-                    wagerRake !== null
-                      ? `You'll stake ${wagerTokens} R Coins now. Winner takes ${wagerTokens * 2 - wagerRake} (${rakePercent}% platform fee).`
-                      : `You'll stake ${wagerTokens} R Coins now.`
-                  }
-                />
-
-                <Button
-                  className="w-full mt-3"
-                  onClick={handleCreate}
-                  loading={creating}
-                  disabled={wagerTokens < MIN_STAKE_TOKENS}
-                >
-                  Create game
-                </Button>
-                {error && <p className="text-sm text-red-400">{error}</p>}
+          {myGame ? (
+            // Mirrors the "Friends currently playing" row below, this is
+            // the same "who, at what point, for what stakes" summary,
+            // just for your own game instead of a friend's, and a
+            // "Resume" action instead of "Watch". Shown instead of the
+            // create/join form below because there's nothing to create or
+            // join right now anyway, one game at a time (see
+            // MAX_ACTIVE_GAMES_PER_USER server-side).
+            <CardContent>
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-(--primary)/40 bg-(--primary)/5 px-3 py-2.5">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <div className="flex shrink-0 -space-x-2">
+                    <Avatar
+                      username={myGame.white.username}
+                      gradient={myGame.white.avatarGradient}
+                      size="sm"
+                      className="ring-2 rounded-full ring-base-100"
+                    />
+                    {myGame.black && (
+                      <Avatar
+                        username={myGame.black.username}
+                        gradient={myGame.black.avatarGradient}
+                        size="sm"
+                        className="ring-2 rounded-full ring-base-100"
+                      />
+                    )}
+                  </div>
+                  <div className="min-w-0 text-sm text-base-content">
+                    <div className="truncate font-medium">
+                      {myGame.black ? (
+                        <>
+                          {myGame.white._id === user?.id
+                            ? "You"
+                            : myGame.white.username}{" "}
+                          <span className="text-base-content/40">vs</span>{" "}
+                          {myGame.black._id === user?.id
+                            ? "You"
+                            : myGame.black.username}
+                        </>
+                      ) : (
+                        "Waiting for an opponent…"
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-base-content/50">
+                      <span>
+                        {myGame.moves.length > 0
+                          ? `Move ${Math.ceil(myGame.moves.length / 2)} · `
+                          : ""}
+                        {formatTimeControl(myGame.timeControl)}
+                      </span>
+                      {myGame.wagerTokens > 0 && (
+                        <Badge variant="warning">
+                          <span className="inline-flex items-center gap-1">
+                            {myGame.wagerTokens} <RCoin size={10} />
+                          </span>
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <Link to={`/game/${myGame.joinCode}`} className="shrink-0">
+                  <Button size="sm">Resume</Button>
+                </Link>
               </div>
-            </ResponsiveOverlay>
+            </CardContent>
+          ) : (
+            <CardContent className="flex flex-col gap-3 sm:flex-row">
+              <ResponsiveOverlay
+                title="Create a new game"
+                align="start"
+                icon={<Plus></Plus>}
+                className="w-80 max-w-[calc(100vw-2rem)]"
+                trigger={
+                  <Button className="w-full sm:w-auto">
+                    <Plus className="h-4 w-4" /> Create game
+                  </Button>
+                }
+              >
+                <div className="space-y-3 px-4 md:px-2">
+                  <Select
+                    label="Time control"
+                    value={tcIndex}
+                    onChange={(e) => setTcIndex(Number(e.target.value))}
+                  >
+                    {TIME_CONTROLS.map((tc, i) => (
+                      <option key={tc.label} value={i}>
+                        {tc.label}
+                      </option>
+                    ))}
+                  </Select>
 
-            <div className="flex flex-1 gap-2">
-              <Input
-                type="text"
-                placeholder="Join by code or link, e.g. 7K3M9P"
-                maxLength={200}
-                value={joinCodeInput}
-                onChange={(e) => setJoinCodeInput(e.target.value)}
-                leadingIcon={<Hash className="h-4 w-4" />}
-              />
-              <Button variant="glass" onClick={handleJoinByCode}>
-                Join
-              </Button>
-            </div>
-          </CardContent>
+                  <Select
+                    label="Variant"
+                    value={variant}
+                    onChange={(e) =>
+                      setVariant(e.target.value as "standard" | "chess960")
+                    }
+                  >
+                    <option value="standard">Standard</option>
+                    <option value="chess960">Chess960 </option>
+                  </Select>
+
+                  <Input
+                    label={
+                      <span className="inline-flex items-center gap-1">
+                        <RCoin size={12} /> Coin wager
+                      </span>
+                    }
+                    type="number"
+                    min={MIN_STAKE_TOKENS}
+                    max={MAX_WAGER_TOKENS}
+                    step={1}
+                    value={wagerInput}
+                    onChange={(e) => setWagerInput(e.target.value)}
+                    hint={
+                      wagerRake !== null
+                        ? `You'll stake ${wagerTokens} R Coins now. Winner takes ${wagerTokens * 2 - wagerRake} (${rakePercent}% platform fee).`
+                        : `You'll stake ${wagerTokens} R Coins now.`
+                    }
+                  />
+
+                  <Button
+                    className="w-full mt-3"
+                    onClick={handleCreate}
+                    loading={creating}
+                    disabled={wagerTokens < MIN_STAKE_TOKENS}
+                  >
+                    Create game
+                  </Button>
+                  {error && <p className="text-sm text-red-400">{error}</p>}
+                </div>
+              </ResponsiveOverlay>
+
+              <div className="flex flex-1 gap-2">
+                <Input
+                  type="text"
+                  placeholder="Join by code or link, e.g. 7K3M9P"
+                  maxLength={200}
+                  value={joinCodeInput}
+                  onChange={(e) => setJoinCodeInput(e.target.value)}
+                  leadingIcon={<Hash className="h-4 w-4" />}
+                />
+                <Button variant="glass" onClick={handleJoinByCode}>
+                  Join
+                </Button>
+              </div>
+            </CardContent>
+          )}
         </Card>
 
         {(gamesError || activeGames === null || activeGames.length > 0) && (

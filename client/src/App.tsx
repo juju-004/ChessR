@@ -10,6 +10,8 @@ import { Suspense, lazy, useEffect, useState } from "react";
 import { AuthProvider } from "./contexts/AuthContext.js";
 import { SocketProvider } from "./contexts/SocketContext.js";
 import { NotificationProvider } from "./contexts/NotificationContext.js";
+import { NotificationCenterProvider } from "./contexts/NotificationCenterContext.js";
+import { MyActiveGameProvider } from "./contexts/MyActiveGameContext.js";
 import { SettingsProvider } from "./contexts/SettingsContext.js";
 import { ThemeProvider } from "./contexts/ThemeContext.js";
 import { ConfirmProvider } from "./contexts/ConfirmContext.js";
@@ -374,29 +376,31 @@ function AppShell() {
     return <></>;
   }
 
-  return (
-    <BrowserRouter>
-      <AppBody />
-    </BrowserRouter>
-  );
+  return <AppBody />;
 }
 
 export function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider>
-        <AuthProvider>
-          <SocketProvider>
-            <NotificationProvider>
-              <SettingsProvider>
-                <ConfirmProvider>
-                  <AppShell />
-                </ConfirmProvider>
-              </SettingsProvider>
-            </NotificationProvider>
-          </SocketProvider>
-        </AuthProvider>
-      </ThemeProvider>
+      <BrowserRouter>
+        <ThemeProvider>
+          <AuthProvider>
+            <SocketProvider>
+              <NotificationProvider>
+                <MyActiveGameProvider>
+                  <NotificationCenterProvider>
+                    <SettingsProvider>
+                      <ConfirmProvider>
+                        <AppShell />
+                      </ConfirmProvider>
+                    </SettingsProvider>
+                  </NotificationCenterProvider>
+                </MyActiveGameProvider>
+              </NotificationProvider>
+            </SocketProvider>
+          </AuthProvider>
+        </ThemeProvider>
+      </BrowserRouter>
     </ErrorBoundary>
   );
 }

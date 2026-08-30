@@ -40,6 +40,13 @@ export interface IUser extends Document {
   avatarGradient?: string;
   /** Short freeform profile blurb, shown under the username. */
   bio?: string;
+  /** Off means direct challenges (challengeSocket.ts's challenge:send) and
+   *  cage match invites (cageMatchSocket.ts's cage:send) are rejected
+   *  before ever reaching this person, checked against the target, not
+   *  the sender. Doesn't affect tournament pairings, those are opt-in by
+   *  nature already (joining the tournament yourself). Defaults to true,
+   *  existing users keep getting challenged exactly as before. */
+  acceptChallenges: boolean;
   /** Set the moment any report is filed against this user (see Report
    *  model), instant, automatic, and independent of whether the report
    *  turns out to be substantiated. An admin clears it from the report
@@ -100,6 +107,7 @@ const userSchema = new Schema<IUser>(
     avatarUrl: { type: String },
     avatarGradient: { type: String },
     bio: { type: String, maxlength: 160, trim: true },
+    acceptChallenges: { type: Boolean, default: true },
     withdrawalBlocked: { type: Boolean, default: false },
     reportingBlocked: { type: Boolean, default: false },
     // Bumped on password change / "log out everywhere" to invalidate all

@@ -12,6 +12,10 @@ export interface CurrentUser {
    *  banner in App.tsx and the /verify-email page. Always true for a
    *  Google sign-in account. */
   emailVerified?: boolean;
+  /** Off means other players' direct challenges (challengeSocket.ts's
+   *  challenge:send) are rejected server-side before reaching this
+   *  account. See the "Accept challenges" switch on the Settings page. */
+  acceptChallenges?: boolean;
 }
 
 interface AuthSnapshot {

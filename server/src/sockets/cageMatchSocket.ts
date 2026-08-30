@@ -13,7 +13,7 @@ import {
   getCageMatchByCode,
   type CageLegInput,
 } from '../services/cageMatch.service.js';
-import { assertUnderActiveGameLimit, countActiveGamesForUser, MAX_ACTIVE_GAMES_PER_USER } from '../services/game.service.js';
+import { assertUnderActiveGameLimit, countActiveGamesForUser, MAX_ACTIVE_GAMES_PER_USER, activeGameLimitMessage } from '../services/game.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
 const CAGE_INVITE_TTL_SECONDS = 90;
@@ -112,6 +112,11 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
       const online = await isUserOnline(toUserId);
       if (!online) return emitError(socket, 'That friend is currently offline');
 
+      const target = await User.findById(toUserId).select('acceptChallenges').lean();
+      if (target && target.acceptChallenges === false) {
+        return emitError(socket, "That player isn't accepting challenges right now.");
+      }
+
       const commitment = estimatedMaxCommitment(wagerMode, wagerTokens, legs.length);
       if (commitment > 0 && (me?.tokenBalance ?? 0) < commitment) {
         return emitError(socket, "You don't have enough R tokens for that wager");
@@ -119,10 +124,7 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
 
       const myActiveCount = await countActiveGamesForUser(userId);
       if (myActiveCount >= MAX_ACTIVE_GAMES_PER_USER) {
-        return emitError(
-          socket,
-          `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before starting a cage match.`,
-        );
+        return emitError(socket, activeGameLimitMessage("starting a cage match"));
       }
 
       const alreadyPending = await redis.exists(pendingInvitePairKey(userId, toUserId));
@@ -186,7 +188,7 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
       try {
         await assertUnderActiveGameLimit(fromId);
       } catch {
-        const message = `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before accepting.`;
+        const message = activeGameLimitMessage('accepting');
         emitError(socket, 'That player already has too many active games to start another right now.');
         io.to(`user:${fromId}`).emit('cage:error', { message });
         return;
@@ -194,7 +196,7 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
       try {
         await assertUnderActiveGameLimit(toId);
       } catch {
-        const message = `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before accepting.`;
+        const message = activeGameLimitMessage('accepting');
         emitError(socket, message);
         io.to(`user:${fromId}`).emit('cage:error', {
           message: 'That player already has too many active games to accept right now.',

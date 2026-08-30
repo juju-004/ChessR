@@ -3,8 +3,11 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useNotify } from "../contexts/NotificationContext.js";
 import { useAuth } from "../contexts/AuthContext.js";
+import { useMyActiveGame } from "../contexts/MyActiveGameContext.js";
+import { useOnOwnGamePageRef } from "../hooks/useOnOwnGamePageRef.js";
 import { getCageMatchByCode, type CageMatch } from "../api/cageMatches.js";
 import { CageMatchOverModal } from "./CageMatchOverModal.js";
+import { RCoin } from "./ui/RCoin.js";
 
 /**
  * Cross-page real-time notifications: incoming friend challenges and rematch
@@ -17,6 +20,7 @@ export function GlobalListeners() {
   const location = useLocation();
   const { notify } = useNotify();
   const { user } = useAuth();
+  const { setActiveGame } = useMyActiveGame();
   const [cageMatchOver, setCageMatchOver] = useState<CageMatch | null>(null);
 
   // Read inside the socket handler below instead of putting location.pathname
@@ -29,6 +33,17 @@ export function GlobalListeners() {
     pathRef.current = location.pathname;
   }, [location.pathname]);
 
+  // Whether the person is, right now, actually sitting on their own live
+  // game's page, i.e. mid-game rather than just "has one going somewhere
+  // in the background". Used to decide whether an incoming challenge
+  // interrupts them with a toast (annoying, possibly a misclick, while
+  // they're trying to concentrate on the position in front of them) or
+  // just quietly lands in the notification bell instead (see
+  // onChallengeReceived below and NotificationCenterContext, which reads
+  // this same ref so the two can never disagree and show the challenge
+  // both ways at once).
+  const onOwnGamePageRef = useOnOwnGamePageRef();
+
   useEffect(() => {
     if (!socket) return;
 
@@ -39,12 +54,26 @@ export function GlobalListeners() {
       wagerTokens?: number;
     }) {
       if (!socket) return;
+      // Mid-game, this challenge lands in the notification bell instead
+      // (see NotificationCenterContext, which independently checks the
+      // same ref), not both, so no toast here in that case.
+      if (onOwnGamePageRef.current) return;
 
       const tc =
         payload.timeControl.baseMinutes === null
           ? "Unlimited"
           : `${payload.timeControl.baseMinutes}+${payload.timeControl.incrementSeconds}`;
-      const wagerNote = payload.wagerTokens ? `, ${payload.wagerTokens} R wager` : "";
+      const wagerNote = payload.wagerTokens ? (
+        <>
+          ,{" "}
+          <span className="inline-flex gap-0.5">
+            {payload.wagerTokens}{" "}
+            <RCoin className="translate-y-0.75" size={14} />
+          </span>
+        </>
+      ) : (
+        ""
+      );
       notify(
         `${payload.from.username} challenged you to a game (${tc}${wagerNote}).`,
         [
@@ -74,6 +103,7 @@ export function GlobalListeners() {
     }
 
     function onChallengeAccepted(payload: { joinCode: string }) {
+      setActiveGame(payload.joinCode);
       navigate(`/game/${payload.joinCode}`);
     }
 
@@ -117,6 +147,7 @@ export function GlobalListeners() {
     }
 
     function onRematchAccepted(payload: { joinCode: string }) {
+      setActiveGame(payload.joinCode);
       navigate(`/game/${payload.joinCode}`);
     }
 
@@ -136,28 +167,46 @@ export function GlobalListeners() {
     function onCageReceived(payload: {
       inviteId: string;
       from: { id: string; username: string };
-      legs: { baseMinutes: number | null; incrementSeconds: number; variant: string }[];
+      legs: {
+        baseMinutes: number | null;
+        incrementSeconds: number;
+        variant: string;
+      }[];
       wagerMode: string;
       wagerTokens?: number;
     }) {
       if (!socket) return;
       const wagerNote =
-        payload.wagerMode !== "none" && payload.wagerTokens
-          ? `, ${payload.wagerTokens} R wager`
-          : "";
+        payload.wagerMode !== "none" && payload.wagerTokens ? (
+          <>
+            ,{" "}
+            <span className="inline-flex gap-0.5">
+              {payload.wagerTokens}{" "}
+              <RCoin className="translate-y-0.75" size={14} />
+            </span>
+          </>
+        ) : (
+          ""
+        );
       notify(
         `${payload.from.username} challenged you to a ${payload.legs.length}-game cage match${wagerNote}.`,
         [
           {
             label: "Accept",
             onClick: () =>
-              socket.emit("cage:respond", { inviteId: payload.inviteId, accept: true }),
+              socket.emit("cage:respond", {
+                inviteId: payload.inviteId,
+                accept: true,
+              }),
           },
           {
             label: "Decline",
             variant: "secondary",
             onClick: () =>
-              socket.emit("cage:respond", { inviteId: payload.inviteId, accept: false }),
+              socket.emit("cage:respond", {
+                inviteId: payload.inviteId,
+                accept: false,
+              }),
           },
         ],
         60_000,
@@ -166,6 +215,7 @@ export function GlobalListeners() {
     }
 
     function onCageAccepted(payload: { firstLeg: { joinCode: string } }) {
+      setActiveGame(payload.firstLeg.joinCode);
       navigate(`/game/${payload.firstLeg.joinCode}`);
     }
 
@@ -184,9 +234,15 @@ export function GlobalListeners() {
     function onCageNextLeg(payload: { nextLeg?: { joinCode: string } }) {
       if (!payload.nextLeg) return;
       const joinCode = payload.nextLeg.joinCode;
+      setActiveGame(joinCode);
       notify(
         "Your cage match's next game is starting.",
-        [{ label: "Play it now", onClick: () => navigate(`/game/${joinCode}`) }],
+        [
+          {
+            label: "Play it now",
+            onClick: () => navigate(`/game/${joinCode}`),
+          },
+        ],
         20_000,
       );
     }
@@ -214,12 +270,20 @@ export function GlobalListeners() {
         [
           {
             label: "Allow pause",
-            onClick: () => socket.emit("cage:pause_respond", { matchId: payload.matchId, accept: true }),
+            onClick: () =>
+              socket.emit("cage:pause_respond", {
+                matchId: payload.matchId,
+                accept: true,
+              }),
           },
           {
             label: "Decline",
             variant: "secondary",
-            onClick: () => socket.emit("cage:pause_respond", { matchId: payload.matchId, accept: false }),
+            onClick: () =>
+              socket.emit("cage:pause_respond", {
+                matchId: payload.matchId,
+                accept: false,
+              }),
           },
         ],
         60_000,
@@ -230,19 +294,30 @@ export function GlobalListeners() {
       notify("Your pause request was declined.", [], 4000);
     }
 
-    function onResumeRequested(payload: { matchId: string; matchCode: string }) {
+    function onResumeRequested(payload: {
+      matchId: string;
+      matchCode: string;
+    }) {
       if (!socket) return;
       notify(
         "Your opponent wants to resume the paused game.",
         [
           {
             label: "Resume",
-            onClick: () => socket.emit("cage:resume_respond", { matchId: payload.matchId, accept: true }),
+            onClick: () =>
+              socket.emit("cage:resume_respond", {
+                matchId: payload.matchId,
+                accept: true,
+              }),
           },
           {
             label: "Not yet",
             variant: "secondary",
-            onClick: () => socket.emit("cage:resume_respond", { matchId: payload.matchId, accept: false }),
+            onClick: () =>
+              socket.emit("cage:resume_respond", {
+                matchId: payload.matchId,
+                accept: false,
+              }),
           },
         ],
         60_000,
@@ -265,14 +340,21 @@ export function GlobalListeners() {
       code: string;
       joinCode: string;
     }) {
-      const onThisTournamentPage = pathRef.current === `/tournaments/${payload.code}`;
+      setActiveGame(payload.joinCode);
+      const onThisTournamentPage =
+        pathRef.current === `/tournaments/${payload.code}`;
       if (onThisTournamentPage) {
         navigate(`/game/${payload.joinCode}`);
         return;
       }
       notify(
         "Your tournament game has started.",
-        [{ label: "Play it now", onClick: () => navigate(`/game/${payload.joinCode}`) }],
+        [
+          {
+            label: "Play it now",
+            onClick: () => navigate(`/game/${payload.joinCode}`),
+          },
+        ],
         20_000,
       );
     }
@@ -324,7 +406,7 @@ export function GlobalListeners() {
       socket.off("cage:resume_declined", onResumeDeclined);
       socket.off("tournament:pairing_ready", onTournamentPairingReady);
     };
-  }, [socket, navigate, notify]);
+  }, [socket, navigate, notify, setActiveGame]);
 
   if (cageMatchOver) {
     return (

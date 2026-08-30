@@ -47,7 +47,18 @@ const IDLE_PHASE_ABANDON_MS = 5 * 60 * 1000;
 // every user-initiated entry point (createOpenGame, joinOpenGame, challenge
 // acceptance, rematch acceptance) calls assertUnderActiveGameLimit
 // explicitly before creating anything.
-export const MAX_ACTIVE_GAMES_PER_USER = 3;
+export const MAX_ACTIVE_GAMES_PER_USER = 1;
+
+// Centralized so the grammar (singular "game" vs plural "games") stays
+// correct regardless of what MAX_ACTIVE_GAMES_PER_USER is set to, and so
+// every call site (open game create/join, direct challenge, cage match
+// invite, rematch, ...) reads as one consistent message instead of each
+// one hand-rolling its own copy of this string.
+export function activeGameLimitMessage(action: string): string {
+  return MAX_ACTIVE_GAMES_PER_USER === 1
+    ? `You already have an active game. Finish or cancel it before ${action}.`
+    : `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before ${action}.`;
+}
 
 export async function countActiveGamesForUser(userId: string): Promise<number> {
   return Game.countDocuments({
@@ -59,9 +70,7 @@ export async function countActiveGamesForUser(userId: string): Promise<number> {
 export async function assertUnderActiveGameLimit(userId: string): Promise<void> {
   const count = await countActiveGamesForUser(userId);
   if (count >= MAX_ACTIVE_GAMES_PER_USER) {
-    throw ApiError.conflict(
-      `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before starting another.`,
-    );
+    throw ApiError.conflict(activeGameLimitMessage("starting another"));
   }
 }
 
@@ -331,9 +340,18 @@ export async function listFriendsActiveGames(userId: string) {
 
 /** Used by the Friends list and Profile page to swap a "Challenge"/"Add
  *  friend" button for a "Watch" link when that person is mid-game. Returns
- *  just the join code (cheap projection) or null if they're not playing. */
-export async function getActiveGameCodeForUser(userId: string): Promise<string | null> {
-  const game = await Game.findOne({ status: "active", $or: [{ white: userId }, { black: userId }] })
+ *  just the join code (cheap projection) or null if they're not playing.
+ *  `viewerId`, when given, excludes a game the viewer is themselves also a
+ *  participant in — otherwise looking at your own live opponent's profile
+ *  mid-game offered a "Watch" link to the very game you're already
+ *  playing, which is exactly backwards (you're not spectating it, you're
+ *  in it). */
+export async function getActiveGameCodeForUser(userId: string, viewerId?: string): Promise<string | null> {
+  const game = await Game.findOne({
+    status: "active",
+    $or: [{ white: userId }, { black: userId }],
+    ...(viewerId ? { white: { $ne: viewerId }, black: { $ne: viewerId } } : {}),
+  })
     .select("joinCode")
     .lean();
   return game?.joinCode ?? null;
