@@ -832,7 +832,7 @@ export function Game() {
         setBlackRemainingMs(payload.blackRemainingMs);
 
       // A wager payout/refund (or the stake being locked away in the first
-      // place) changes the R Coin balance, refresh the shared store so the
+      // place) changes the Rabah Coin balance, refresh the shared store so the
       // navbar badge and dashboard update without needing a reload.
       if (payload.wagerSettlement && payload.wagerSettlement.wagerTokens > 0) {
         refreshBalance().catch(() => {});
@@ -1027,7 +1027,16 @@ export function Game() {
       socket.off("cage:resume_declined", onResumeDeclinedLocal);
       socket.off("cage:match_over", onCageMatchOverOnThisLeg);
     };
-  }, [mode, socket, gameMeta?._id, notify, live, code, setActiveGame, clearActiveGame]);
+  }, [
+    mode,
+    socket,
+    gameMeta?._id,
+    notify,
+    live,
+    code,
+    setActiveGame,
+    clearActiveGame,
+  ]);
 
   const handleUserMove = useCallback(
     (orig: string, dest: string) => {

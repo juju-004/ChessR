@@ -12,7 +12,7 @@ import { Page, Card, Button, Input, RCoin } from "@/components/ui/index.js";
 import { MAX_WAGER_TOKENS } from "@/lib/limits.js";
 
 // Fallback used only until getWalletConfig() resolves, the server's
-// figure (₦5/R Coin) is always what's actually charged; this just avoids
+// figure (₦5/Rabah Coin) is always what's actually charged; this just avoids
 // a blank/zeroed price preview for the one render before that request lands.
 const FALLBACK_NAIRA_PER_TOKEN = 5;
 const FALLBACK_MIN_TOKENS = 10;
@@ -96,7 +96,7 @@ export function BuyTokens() {
             const result = await verifyPurchase(reference);
             if (result.status === "success") {
               setSuccessMessage(
-                `Success! ${purchasedTokens} R Coins added, new balance: ${result.tokenBalance}.`,
+                `Success! ${purchasedTokens} Rabah Coins added, new balance: ${result.tokenBalance}.`,
               );
               await refreshBalance();
             } else {
@@ -188,8 +188,8 @@ export function BuyTokens() {
           error={
             !isValidAmount && tokensInput !== ""
               ? tokens > maxTokens
-                ? `Maximum purchase is ${maxTokens.toLocaleString()} R Coins.`
-                : `Minimum purchase is ${minTokens} R Coins.`
+                ? `Maximum purchase is ${maxTokens.toLocaleString()} Rabah Coins.`
+                : `Minimum purchase is ${minTokens} Rabah Coins.`
               : undefined
           }
         />

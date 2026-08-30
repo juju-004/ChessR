@@ -1,9 +1,15 @@
 import { memo, useRef, useState, type FormEvent } from "react";
-import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
+import {
+  motion,
+  AnimatePresence,
+  useMotionValue,
+  useTransform,
+} from "framer-motion";
 import { CornerUpLeft, MessageSquare, Send, X } from "lucide-react";
 import { Avatar, Button } from "../ui/index.js";
 import { springSnappy } from "../../lib/motion.js";
 import type { ChatMessage } from "../../lib/chatTypes.js";
+import { cn } from "@/lib/cn.js";
 
 interface ChatDrawerProps {
   show: boolean;
@@ -11,7 +17,7 @@ interface ChatDrawerProps {
   onClose: () => void;
   title: string;
   /** Shown once under the title, e.g. what's persisted/who can see it. */
-  notice: string;
+  notice?: string;
   messages: ChatMessage[];
   myUsername?: string | null;
   onSend: (message: string, replyToId?: string) => void;
@@ -69,10 +75,16 @@ const ChatBubble = memo(function ChatBubble({
       >
         <div className="w-6 shrink-0">
           {showMeta && !isMine && (
-            <Avatar username={message.username} gradient={message.avatarGradient} size="xs" />
+            <Avatar
+              username={message.username}
+              gradient={message.avatarGradient}
+              size="xs"
+            />
           )}
         </div>
-        <div className={`flex max-w-[75%] flex-col ${isMine ? "items-end" : "items-start"}`}>
+        <div
+          className={`flex max-w-[75%] flex-col ${isMine ? "items-end" : "items-start"}`}
+        >
           {showMeta && (
             <span
               className={`mb-0.5 px-1 text-[11px] font-medium text-base-content/45 ${isMine ? "text-right" : ""}`}
@@ -81,7 +93,7 @@ const ChatBubble = memo(function ChatBubble({
             </span>
           )}
           <div
-            className={`rounded-2xl px-3 py-1.5 text-sm break-words ${
+            className={`rounded-2xl px-3 py-1.5 text-sm wrap-break-word ${
               isMine
                 ? "gradient-brand rounded-br-sm text-white"
                 : "rounded-bl-sm bg-base-300/70 text-base-content"
@@ -95,8 +107,12 @@ const ChatBubble = memo(function ChatBubble({
                     : "border-(--primary)/50 bg-base-100/40 text-base-content/60"
                 }`}
               >
-                <div className="text-[10px] font-medium opacity-80">{message.replyTo.username}</div>
-                <div className="truncate text-xs">{message.replyTo.message}</div>
+                <div className="text-[10px] font-medium opacity-80">
+                  {message.replyTo.username}
+                </div>
+                <div className="truncate text-xs">
+                  {message.replyTo.message}
+                </div>
               </div>
             )}
             {message.message}
@@ -120,13 +136,20 @@ const MessageList = memo(function MessageList({
   messages,
   myUsername,
   onReply,
+  isModal,
 }: {
+  isModal?: boolean;
   messages: ChatMessage[];
   myUsername?: string | null;
   onReply: (message: ChatMessage) => void;
 }) {
   return (
-    <div className="mb-2 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto rounded-xl bg-base-100/60 p-2.5">
+    <div
+      className={cn(
+        "mb-2 flex flex-1 flex-col gap-1.5 overflow-y-auto rounded-xl bg-base-100/60 p-2.5 ",
+        isModal ? "min-h-[40vh]" : "min-h-0",
+      )}
+    >
       {messages.length === 0 && (
         <p className="text-sm text-base-content/50">No messages yet.</p>
       )}
@@ -176,8 +199,12 @@ const ChatComposer = memo(function ChatComposer({
         <div className="mb-1.5 flex items-center gap-2 rounded-lg bg-base-100/70 px-2.5 py-1.5 text-xs">
           <CornerUpLeft className="h-3.5 w-3.5 shrink-0 text-base-content/40" />
           <div className="min-w-0 flex-1">
-            <div className="text-[10px] font-medium text-base-content/70">{replyingTo.username}</div>
-            <div className="truncate text-xs text-base-content/50">{replyingTo.message}</div>
+            <div className="text-[10px] font-medium text-base-content/70">
+              {replyingTo.username}
+            </div>
+            <div className="truncate text-xs text-base-content/50">
+              {replyingTo.message}
+            </div>
           </div>
           <button
             type="button"
@@ -189,7 +216,7 @@ const ChatComposer = memo(function ChatComposer({
           </button>
         </div>
       )}
-      <form onSubmit={submit} className="flex gap-2">
+      <form onSubmit={submit} className="flex w-full gap-2">
         <input
           ref={inputRef}
           type="text"
@@ -248,7 +275,12 @@ function ChatDrawerImpl({
 
   const body = (
     <>
-      <MessageList messages={messages} myUsername={myUsername} onReply={setReplyingTo} />
+      <MessageList
+        isModal
+        messages={messages}
+        myUsername={myUsername}
+        onReply={setReplyingTo}
+      />
       <ChatComposer
         replyingTo={replyingTo}
         onCancelReply={() => setReplyingTo(null)}

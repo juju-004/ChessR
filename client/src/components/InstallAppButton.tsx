@@ -1,14 +1,18 @@
 import { useState } from "react";
+import { motion } from "framer-motion";
+import { Download } from "lucide-react";
+import { pressable } from "@/lib/motion.js";
+import { Button } from "./ui/index.js";
 import { useInstallPrompt } from "../hooks/useInstallPrompt.js";
 
 /**
- * A single "Install app"/"Open app" control that adapts to what the browser
- * actually supports and whether the PWA is already installed:
- *  - Currently running standalone (already inside the installed app) →
- *    renders nothing, there's nothing to offer.
- *  - Installed, but this tab is a normal browser tab → "Open app" instead
- *    of disappearing or re-offering an install that's already done, unless
- *    `installOnly` is set (see below).
+ * A single "Install app" control, install-only now (there used to also be
+ * an "Open app" variant for jumping back to an already-installed PWA from
+ * a plain browser tab, removed along with the isInstalledElsewhere/
+ * openInstalledApp bits in useInstallPrompt, see that file):
+ *  - Already installed (running standalone right now) → renders nothing,
+ *    a caller that wants to say so explicitly does that itself (see
+ *    Settings.tsx's own "✓ Installed" message).
  *  - Not installed, Chrome/Edge/Android (real `beforeinstallprompt`
  *    support) → a button that triggers the native install prompt directly.
  *  - Not installed, iOS Safari (no such event exists there) → a button
@@ -19,37 +23,21 @@ import { useInstallPrompt } from "../hooks/useInstallPrompt.js";
  */
 export function InstallAppButton({
   compact = false,
-  installOnly = false,
 }: {
+  /** The small pill used in the navbar, styled to match the other
+   *  `.elevated` rounded-full icons/pills next to it (theme toggle,
+   *  notifications bell, account menu). Off (the default) renders a full
+   *  themed Button instead, e.g. for the Settings page. */
   compact?: boolean;
-  /** Ignores the "already installed elsewhere" state entirely, never
-   *  offers to jump to the installed app, only ever the install flow (or
-   *  nothing, if there's genuinely no install path available). Used on
-   *  the Settings page, which already has its own "✓ Installed" message
-   *  for the standalone case and doesn't need a second, separate "open in
-   *  app" control alongside it. */
-  installOnly?: boolean;
 }) {
-  const {
-    canPromptInstall,
-    isInstalled,
-    isInstalledElsewhere: isInstalledElsewhereRaw,
-    isIos,
-    promptInstall,
-    openInstalledApp,
-  } = useInstallPrompt();
-  const isInstalledElsewhere = installOnly ? false : isInstalledElsewhereRaw;
+  const { canPromptInstall, isInstalled, isIos, promptInstall } = useInstallPrompt();
   const [showIosSteps, setShowIosSteps] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
   if (isInstalled) return null;
-  if (!isInstalledElsewhere && !canPromptInstall && !isIos) return null;
+  if (!canPromptInstall && !isIos) return null;
 
   async function handleClick() {
-    if (isInstalledElsewhere) {
-      openInstalledApp();
-      return;
-    }
     if (canPromptInstall) {
       const outcome = await promptInstall();
       if (outcome === "dismissed")
@@ -59,27 +47,24 @@ export function InstallAppButton({
     setShowIosSteps((v) => !v);
   }
 
-  const label = isInstalledElsewhere
-    ? "Open app"
-    : compact
-      ? "Install app"
-      : "Install Chess R";
-  const icon = isInstalledElsewhere ? "↗️" : "📲";
-
   return (
-    <div className={compact ? "md:flex hidden" : "space-y-2"}>
-      <button
-        onClick={handleClick}
-        className={
-          compact
-            ? "elevated h-9 rounded-full px-3.5 text-sm font-semibold text-base-content transition-colors hover:bg-base-content/5"
-            : "rounded-md bg-amber-700 px-4 py-2 font-semibold text-neutral-950 hover:bg-amber-600"
-        }
-      >
-        {icon} {label}
-      </button>
+    <div className={compact ? "" : "space-y-2"}>
+      {compact ? (
+        <motion.button
+          onClick={handleClick}
+          aria-label="Install app"
+          className="elevated flex h-9 items-center gap-1.5 rounded-full px-3.5 text-sm font-semibold text-base-content transition-colors hover:bg-base-content/5"
+          {...pressable}
+        >
+          <Download className="h-3.5 w-3.5" /> Install
+        </motion.button>
+      ) : (
+        <Button onClick={handleClick} variant="gradient">
+          <Download className="h-4 w-4" /> Install Chess R
+        </Button>
+      )}
       {status && <p className="text-xs text-base-content/50">{status}</p>}
-      {!isInstalledElsewhere && showIosSteps && (
+      {showIosSteps && (
         <div className="rounded-md border border-base-300 bg-base-100 p-3 text-sm text-base-content/80">
           <p className="mb-1 font-medium text-base-content">On iPhone/iPad:</p>
           <ol className="list-inside list-decimal space-y-1 text-base-content/60">

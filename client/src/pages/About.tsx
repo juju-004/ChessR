@@ -24,8 +24,8 @@ const PILLARS = [
   {
     icon: Coins,
     accent: "bg-amber-500/15 text-amber-400",
-    title: "R Coin wagers",
-    body: "Players stake R Coins on games, cage matches, and tournaments. Winners take the pot, minus a small platform fee, see our Terms of Service for the exact rate.",
+    title: "Rabah Coin wagers",
+    body: "Players stake Rabah Coins on games, cage matches, and tournaments. Winners take the pot, minus a small platform fee, see our Terms of Service for the exact rate.",
   },
   {
     icon: Trophy,
@@ -58,9 +58,9 @@ export function About() {
           <p className="text-sm leading-relaxed text-base-content/80">
             Chessr is a multiplayer chess platform built for players who want
             something on the line, real-time games, cage matches, and
-            tournaments where R Coin wagers turn every move into a decision that
-            matters. Under the hood, every game is validated server-side, so the
-            result on the board is always the one that counts.
+            tournaments where Rabah Coin wagers turn every move into a decision
+            that matters. Under the hood, every game is validated server-side,
+            so the result on the board is always the one that counts.
           </p>
         </Card>
 

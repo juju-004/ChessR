@@ -192,7 +192,7 @@ export function Dashboard() {
 
           <div className="relative flex items-center justify-between gap-2">
             <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-base-content/50 uppercase">
-              <RCoin size={14} /> R Coin Balance
+              <RCoin size={14} /> Rabah Coin Balance
             </p>
             <button
               type="button"
@@ -385,8 +385,8 @@ export function Dashboard() {
                     onChange={(e) => setWagerInput(e.target.value)}
                     hint={
                       wagerRake !== null
-                        ? `You'll stake ${wagerTokens} R Coins now. Winner takes ${wagerTokens * 2 - wagerRake} (${rakePercent}% platform fee).`
-                        : `You'll stake ${wagerTokens} R Coins now.`
+                        ? `Winner takes ${wagerTokens * 2 - wagerRake} `
+                        : ``
                     }
                   />
 

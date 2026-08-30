@@ -37,7 +37,10 @@ import { cn } from "@/lib/cn.js";
 import { ChatDrawer } from "../components/chat/ChatDrawer.js";
 import type { ChatMessage } from "../lib/chatTypes.js";
 import { PrizePoolEditor } from "../components/tournaments/PrizePoolEditor.js";
-import { KnockoutBracket, roundLabel } from "../components/tournaments/KnockoutBracket.js";
+import {
+  KnockoutBracket,
+  roundLabel,
+} from "../components/tournaments/KnockoutBracket.js";
 import { Pagination } from "../components/Pagination.js";
 import { HelpTip } from "../components/HelpTip.js";
 import { TIME_CONTROLS as TIME_PRESETS } from "../timeControls.js";
@@ -973,7 +976,10 @@ export function TournamentDetail() {
     function onError(payload: { message: string }) {
       setStatus({ message: payload.message, isError: true });
     }
-    function onChatHistory(payload: { tournamentId: string; history: ChatMessage[] }) {
+    function onChatHistory(payload: {
+      tournamentId: string;
+      history: ChatMessage[];
+    }) {
       if (payload.tournamentId !== tournamentId) return;
       setChatMessages(payload.history);
     }
@@ -1168,14 +1174,16 @@ export function TournamentDetail() {
                 setChatHasUnread(false);
               }}
             >
-              <MessageSquare className="h-3.5 w-3.5" /> Chat
+              <MessageSquare className="h-3.5 w-3.5" />{" "}
+              <span className="sm:flex hidden">Chat</span>
               {chatHasUnread && (
                 <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500 ring-2 ring-base-200" />
               )}
             </Button>
           )}
           <Button variant="glass" size="sm" onClick={handleShare}>
-            <Share2 className="h-3.5 w-3.5" /> Share
+            <Share2 className="h-3.5 w-3.5" />{" "}
+            <span className="sm:flex hidden">Share</span>
           </Button>
         </div>
       }
@@ -1204,7 +1212,9 @@ export function TournamentDetail() {
               </span>
             </div>
             <div className="mb-4 flex flex-wrap gap-1.5">
-              <Badge variant="neutral">Max {tournament.maxPlayers} players</Badge>
+              <Badge variant="neutral">
+                Max {tournament.maxPlayers} players
+              </Badge>
               {tournament.format === "swiss" && (
                 <Badge variant="neutral">{tournament.swissRounds} rounds</Badge>
               )}
@@ -1214,7 +1224,9 @@ export function TournamentDetail() {
                   <Badge variant="neutral">{tournament.robinRounds}x</Badge>
                 )}
               {tournament.format === "arena" && tournament.arenaMinutes && (
-                <Badge variant="neutral">{tournament.arenaMinutes} min arena</Badge>
+                <Badge variant="neutral">
+                  {tournament.arenaMinutes} min arena
+                </Badge>
               )}
               {tournament.regFeeTokens > 0 && (
                 <Badge variant="neutral">
@@ -1227,7 +1239,8 @@ export function TournamentDetail() {
               )}
               {tournament.hasPassword && (
                 <Badge variant="neutral">
-                  <Lock className="inline h-3 w-3 align-[-1px]" /> Password protected
+                  <Lock className="inline h-3 w-3 align-[-1px]" /> Password
+                  protected
                 </Badge>
               )}
             </div>
@@ -1296,25 +1309,27 @@ export function TournamentDetail() {
               />
             )}
 
-            {tournament.status === "active" && isPlayer && tournament.format === "arena" && (
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="glass"
-                  size="sm"
-                  onClick={() => togglePause(!myPlayer?.paused)}
-                >
-                  {myPlayer?.paused ? (
-                    <>
-                      <Play className="h-3.5 w-3.5" /> Resume
-                    </>
-                  ) : (
-                    <>
-                      <Pause className="h-3.5 w-3.5" /> Pause
-                    </>
-                  )}
-                </Button>
-              </div>
-            )}
+            {tournament.status === "active" &&
+              isPlayer &&
+              tournament.format === "arena" && (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="glass"
+                    size="sm"
+                    onClick={() => togglePause(!myPlayer?.paused)}
+                  >
+                    {myPlayer?.paused ? (
+                      <>
+                        <Play className="h-3.5 w-3.5" /> Resume
+                      </>
+                    ) : (
+                      <>
+                        <Pause className="h-3.5 w-3.5" /> Pause
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
 
             {tournament.status === "cancelled" && (
               <p className="text-sm text-red-400">
@@ -1331,7 +1346,10 @@ export function TournamentDetail() {
           <Card variant="solid">
             <CardHeader>
               <CardTitle>
-                Players joined <span className="text-base-content/40">({tournament.players.length})</span>
+                Players joined{" "}
+                <span className="text-base-content/40">
+                  ({tournament.players.length})
+                </span>
               </CardTitle>
             </CardHeader>
             {tournament.players.length > 0 ? (
@@ -1352,7 +1370,9 @@ export function TournamentDetail() {
                           gradient={p.avatarGradient}
                           size="xs"
                         />
-                        {isOrganizer && <span className="text-amber-400">★</span>}
+                        {isOrganizer && (
+                          <span className="text-amber-400">★</span>
+                        )}
                         <span className="max-w-32 truncate">{p.username}</span>
                       </Badge>
                     );
@@ -1567,8 +1587,8 @@ export function TournamentDetail() {
               </div>
             ) : (
               <p className="text-sm text-base-content/50">
-                Nobody's free to be paired right now, everyone's either
-                mid-game or paused.
+                Nobody's free to be paired right now, everyone's either mid-game
+                or paused.
               </p>
             )}
           </Card>
@@ -1577,45 +1597,45 @@ export function TournamentDetail() {
         {tournament.format !== "arena" &&
           tournament.rounds.length > 0 &&
           selectedRound && (
-          <Card variant="solid">
-            <div className="mb-3 overflow-x-auto">
-              <Tabs
-                items={tournament.rounds.map((r) => ({
-                  value: String(r.index),
-                  label:
-                    tournament.format === "normal"
-                      ? roundLabel(r.index, tournament.rounds.length)
-                      : `Round ${r.index + 1}`,
-                }))}
-                value={String(selectedRoundIndex)}
-                onChange={(v) => setManualRoundIndex(Number(v))}
-              />
-            </div>
-            <CardHeader>
-              <CardTitle>
-                {tournament.format === "normal"
-                  ? roundLabel(selectedRound.index, tournament.rounds.length)
-                  : `Round ${selectedRound.index + 1}`}
-                {selectedRound.index === currentRound?.index &&
-                  selectedRound.status === "active" && (
-                    <Badge variant="success" className="ml-2">
-                      current
-                    </Badge>
-                  )}
-              </CardTitle>
-            </CardHeader>
-            <div className="space-y-1.5">
-              {selectedRound.pairings.map((pairing) => (
-                <PairingRow
-                  key={pairing.index}
-                  tournament={tournament}
-                  pairing={pairing}
-                  myId={myId}
+            <Card variant="solid">
+              <div className="mb-3 overflow-x-auto">
+                <Tabs
+                  items={tournament.rounds.map((r) => ({
+                    value: String(r.index),
+                    label:
+                      tournament.format === "normal"
+                        ? roundLabel(r.index, tournament.rounds.length)
+                        : `Round ${r.index + 1}`,
+                  }))}
+                  value={String(selectedRoundIndex)}
+                  onChange={(v) => setManualRoundIndex(Number(v))}
                 />
-              ))}
-            </div>
-          </Card>
-        )}
+              </div>
+              <CardHeader>
+                <CardTitle>
+                  {tournament.format === "normal"
+                    ? roundLabel(selectedRound.index, tournament.rounds.length)
+                    : `Round ${selectedRound.index + 1}`}
+                  {selectedRound.index === currentRound?.index &&
+                    selectedRound.status === "active" && (
+                      <Badge variant="success" className="ml-2">
+                        current
+                      </Badge>
+                    )}
+                </CardTitle>
+              </CardHeader>
+              <div className="space-y-1.5">
+                {selectedRound.pairings.map((pairing) => (
+                  <PairingRow
+                    key={pairing.index}
+                    tournament={tournament}
+                    pairing={pairing}
+                    myId={myId}
+                  />
+                ))}
+              </div>
+            </Card>
+          )}
       </div>
 
       {tournament.chatEnabled && (
@@ -1624,7 +1644,6 @@ export function TournamentDetail() {
           open={chatSheetOpen}
           onClose={() => setChatSheetOpen(false)}
           title="Tournament chat"
-          notice="Visible to everyone on this tournament's page, players and spectators alike. Saved until a bit after the tournament ends."
           messages={chatMessages}
           myUsername={user?.username}
           onSend={handleSendChat}

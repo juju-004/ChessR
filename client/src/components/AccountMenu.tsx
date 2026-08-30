@@ -10,7 +10,7 @@ import { RCoin } from "./ui/RCoin.js";
 import { ConnectionStatus } from "./ConnectionStatus.js";
 import { useTheme } from "@/contexts/ThemeContext.js";
 
-/** Everything account-related, the R Coin balance, profile link, username,
+/** Everything account-related, the Rabah Coin balance, profile link, username,
  *  logout, collapsed into a single pill in the navbar. The
  *  balance stays visible at a glance on the trigger itself; the rest lives
  *  behind the dropdown. */
@@ -36,7 +36,7 @@ export function AccountMenu() {
       onClick: () => navigate(`/profile/${user.username}`),
     },
     {
-      label: "Buy R Coins",
+      label: "Buy RCoins",
       icon: Coins,
       onClick: () => navigate("/wallet/buy"),
     },

@@ -469,28 +469,28 @@ export function Players() {
                         value={wagerInput}
                         onChange={(e) => setWagerInput(e.target.value)}
                       />
-
-                      <Button
-                        className="w-full"
-                        variant="secondary"
-                        onClick={() => handleChallenge(f.id)}
-                        disabled={
-                          !f.online ||
-                          Math.floor(Number(wagerInput) || 0) < MIN_STAKE_TOKENS
-                        }
-                      >
-                        {f.online ? "Send challenge" : "Friend is offline"}
-                      </Button>
-
-                      <Link
-                        to={`/cage/new?challenge=${f.id}`}
-                        className="block"
-                        onClick={() => setChallengingFriendId(null)}
-                      >
-                        <Button variant="glass" className="w-full">
-                          <Swords className="h-4 w-4" /> Cage match instead
+                      <span className="w-full gap-2 grid grid-cols-2">
+                        <Button
+                          variant="secondary"
+                          onClick={() => handleChallenge(f.id)}
+                          disabled={
+                            !f.online ||
+                            Math.floor(Number(wagerInput) || 0) <
+                              MIN_STAKE_TOKENS
+                          }
+                        >
+                          {f.online ? "Send" : "offline"}
                         </Button>
-                      </Link>
+
+                        <Link
+                          to={`/cage/new?challenge=${f.id}`}
+                          onClick={() => setChallengingFriendId(null)}
+                        >
+                          <Button variant="glass" className="w-full">
+                            <Swords className="h-4 w-4" /> Cage
+                          </Button>
+                        </Link>
+                      </span>
                     </div>
                   </ResponsiveOverlay>
                 )}

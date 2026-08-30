@@ -11,7 +11,7 @@ export interface RCoinProps {
 }
 
 /**
- * Premium R Coin
+ * Premium Rabah Coin
  *
  * A beveled gold coin with a sapphire/purple center and
  * custom-minted champagne-gold R emblem.
@@ -97,7 +97,7 @@ export function RCoin({ size = 20, className, animateIn = false }: RCoinProps) {
         </filter>
       </defs>
 
-      {/* Outer Coin Base */}
+      {/* OuteRabah Coin Base */}
       <circle
         cx="64"
         cy="64"
