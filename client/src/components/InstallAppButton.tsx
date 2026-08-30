@@ -30,7 +30,8 @@ export function InstallAppButton({
    *  themed Button instead, e.g. for the Settings page. */
   compact?: boolean;
 }) {
-  const { canPromptInstall, isInstalled, isIos, promptInstall } = useInstallPrompt();
+  const { canPromptInstall, isInstalled, isIos, promptInstall } =
+    useInstallPrompt();
   const [showIosSteps, setShowIosSteps] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
@@ -40,8 +41,7 @@ export function InstallAppButton({
   async function handleClick() {
     if (canPromptInstall) {
       const outcome = await promptInstall();
-      if (outcome === "dismissed")
-        setStatus("Maybe next time. You can install anytime from here.");
+      if (outcome === "dismissed") setStatus("Can't install as an app");
       return;
     }
     setShowIosSteps((v) => !v);
@@ -56,7 +56,8 @@ export function InstallAppButton({
           className="elevated flex h-9 items-center gap-1.5 rounded-full px-3.5 text-sm font-semibold text-base-content transition-colors hover:bg-base-content/5"
           {...pressable}
         >
-          <Download className="h-3.5 w-3.5" /> Install
+          <Download className="h-3.5 w-3.5" />{" "}
+          <span className="sm:flex hidden">Install</span>
         </motion.button>
       ) : (
         <Button onClick={handleClick} variant="gradient">

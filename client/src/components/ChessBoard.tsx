@@ -1,4 +1,11 @@
-import { useLayoutEffect, useMemo, useRef, useState, memo, type CSSProperties } from "react";
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  memo,
+  type CSSProperties,
+} from "react";
 import { Chessground } from "@lichess-org/chessground";
 import { Key } from "@lichess-org/chessground/types";
 
@@ -53,12 +60,12 @@ export const ChessBoard = memo(function ChessBoard({
   // effect for why the distinction matters.
   const orientationRef = useRef(orientation);
 
-  // No separate wrapper div around cg-wrap and Game.tsx's own container, 
+  // No separate wrapper div around cg-wrap and Game.tsx's own container,
   // this measures the CALLER's container directly (e.g. Game.tsx's themed
   // board box) via `rootRef.current.parentElement`, i.e. one level above
   // this component's own root. `rootRef` is on the outer wrapper (below)
   // rather than `containerRef` (the inner cg-wrap chessground owns)
-  // specifically so that measurement targets the real caller-sized box, 
+  // specifically so that measurement targets the real caller-sized box,
   // measuring via containerRef.current.parentElement would instead measure
   // the wrapper this component renders around itself, which is sized OFF
   // boardSize (see the JSX below), a self-referential 0×0 loop that reads
@@ -73,7 +80,7 @@ export const ChessBoard = memo(function ChessBoard({
   // `boardSize` here is what keeps chessground's internal <cg-container>
   // (sized off cg-wrap via a pure-CSS 12.5%/800% percentage trick) from
   // drifting out of sync with cg-wrap itself: snapping to a multiple of 8
-  // means every square, and the coordinate labels drawn alongside them, 
+  // means every square, and the coordinate labels drawn alongside them,
   // lands on a whole pixel instead of drifting apart over the board.
   const [boardSize, setBoardSize] = useState(0);
   useLayoutEffect(() => {
@@ -83,7 +90,7 @@ export const ChessBoard = memo(function ChessBoard({
       const box = parent!.getBoundingClientRect();
       const side = Math.floor(Math.min(box.width, box.height) / 8) * 8;
       // Ignore a transient zero/near-zero read (e.g. a reflow triggered
-      // elsewhere on the page, a modal opening, a panel animating, 
+      // elsewhere on the page, a modal opening, a panel animating,
       // that briefly collapses this element's box) rather than tearing
       // the board down to invisible and rebuilding it a frame later.
       if (side > 0) setBoardSize(side);
@@ -162,7 +169,7 @@ export const ChessBoard = memo(function ChessBoard({
     // was a real, visible stutter source, this only rebuilds when the
     // board first becomes measurable. This is safe specifically because
     // `config.viewOnly` above is hardcoded to false at construction (see
-    // that field's own comment) rather than derived from the real prop, 
+    // that field's own comment) rather than derived from the real prop,
     // otherwise a board built while genuinely view-only would never
     // receive its click/drag listeners at all, no matter what a later
     // `.set()` call pushed through.
@@ -191,7 +198,10 @@ export const ChessBoard = memo(function ChessBoard({
       // animation for just this one set() call fixes that; a real move
       // right after still gets the user's normal animationEnabled
       // setting on the very next update.
-      animation: { enabled: isFlip ? false : animationEnabled, duration: animationDurationMs },
+      animation: {
+        enabled: isFlip ? false : animationEnabled,
+        duration: animationDurationMs,
+      },
       movable: {
         color: movableColor,
         dests: dests as any,
@@ -227,10 +237,14 @@ export const ChessBoard = memo(function ChessBoard({
   }, [boardSize]);
 
   return (
-    <div ref={rootRef} className="relative" style={{ width: boardSize, height: boardSize }}>
+    <div
+      ref={rootRef}
+      className="relative"
+      style={{ width: boardSize, height: boardSize }}
+    >
       <div
         ref={containerRef}
-        className="cg-wrap rounded-lg overflow-hidden"
+        className="cg-wrap rounded-sm md:rounded-lg overflow-hidden"
         style={{ width: boardSize, height: boardSize }}
       />
       {showCoordinates && boardSize > 0 && (
@@ -258,7 +272,7 @@ function isDarkSquare(fileIndex: number, rank: number): boolean {
  * which is what made them look randomly scattered/deformed on phone no
  * matter what `text-size-adjust: 100%` override got thrown at `.cg-wrap`
  * (see the old comment this replaced in index.css). This is a plain React
- * overlay instead, a rem-sized, ordinarily-laid-out <span> per label, 
+ * overlay instead, a rem-sized, ordinarily-laid-out <span> per label,
  * so it's simply not exposed to that mobile rendering quirk at all.
  *
  * Ranks sit in the top-left corner of the left-edge squares; files sit in

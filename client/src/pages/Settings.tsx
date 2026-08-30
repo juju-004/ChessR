@@ -97,7 +97,9 @@ export function Settings() {
     } catch (err) {
       setAcceptChallenges(!value);
       notify(
-        err instanceof ApiRequestError ? err.message : "Couldn't save that change",
+        err instanceof ApiRequestError
+          ? err.message
+          : "Couldn't save that change",
         [],
         4000,
       );
@@ -147,7 +149,7 @@ export function Settings() {
                     experience. Launch it directly from your home screen or app
                     list without browser tabs or an address bar.
                   </p>
-                  <InstallAppButton />
+                  <InstallAppButton compact />
                 </>
               )}
             </CardContent>
@@ -318,10 +320,10 @@ export function Settings() {
       </div>
 
       <p className="mt-4 text-xs text-base-content/40">
-        Board and gameplay preferences are saved on this device only.
-        Defaults: {DEFAULT_SETTINGS.boardTheme} board, animation{" "}
-        {DEFAULT_SETTINGS.pieceAnimation ? "on" : "off"}. "Accept challenges"
-        is saved to your account and applies everywhere you're signed in.
+        Board and gameplay preferences are saved on this device only. Defaults:{" "}
+        {DEFAULT_SETTINGS.boardTheme} board, animation{" "}
+        {DEFAULT_SETTINGS.pieceAnimation ? "on" : "off"}. "Accept challenges" is
+        saved to your account and applies everywhere you're signed in.
       </p>
     </Page>
   );
