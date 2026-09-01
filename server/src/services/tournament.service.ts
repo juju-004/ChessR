@@ -15,6 +15,9 @@ import { ApiError } from "../utils/ApiError.js";
 import { withLock } from "../utils/distributedLock.js";
 import {
   createDirectGame,
+  countActiveGamesForUser,
+  MAX_ACTIVE_GAMES_PER_USER,
+  activeGameLimitMessage,
   type TimeControlInput,
 } from "./game.service.js";
 import {
@@ -512,8 +515,19 @@ export async function createTournament(
     ? await bcrypt.hash(input.password.trim(), PASSWORD_BCRYPT_ROUNDS)
     : null;
 
-  const code = await uniqueCode();
   const organizerOnly = input.organizerOnly ?? false;
+  // Only matters if the creator will actually occupy a player slot,
+  // organizerOnly creators run the event without ever being paired into
+  // a game themselves (see the players: [] branch below), so their own
+  // in-progress game shouldn't block them from setting one up.
+  if (!organizerOnly) {
+    const activeCount = await countActiveGamesForUser(creatorId);
+    if (activeCount >= MAX_ACTIVE_GAMES_PER_USER) {
+      throw ApiError.conflict(activeGameLimitMessage("creating a tournament"));
+    }
+  }
+
+  const code = await uniqueCode();
   const tournament = await Tournament.create({
     code,
     name: input.name.trim(),
@@ -634,6 +648,11 @@ export async function joinTournament(
   if (tournament.passwordHash) {
     const matches = !!password && (await bcrypt.compare(password, tournament.passwordHash));
     if (!matches) throw ApiError.forbidden("Incorrect tournament password");
+  }
+
+  const activeCount = await countActiveGamesForUser(userId);
+  if (activeCount >= MAX_ACTIVE_GAMES_PER_USER) {
+    throw ApiError.conflict(activeGameLimitMessage("joining a tournament"));
   }
 
   if (tournament.regFeeTokens > 0) {

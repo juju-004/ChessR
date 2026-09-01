@@ -216,7 +216,7 @@ const ChatComposer = memo(function ChatComposer({
           </button>
         </div>
       )}
-      <form onSubmit={submit} className="flex w-full gap-2">
+      <form onSubmit={submit} className="flex w-full min-w-0 gap-2">
         <input
           ref={inputRef}
           type="text"
@@ -224,9 +224,9 @@ const ChatComposer = memo(function ChatComposer({
           onChange={(e) => setValue(e.target.value)}
           maxLength={300}
           placeholder="Say something…"
-          className="h-10 flex-1 rounded-lg border border-base-300 bg-base-200 px-3 text-sm text-base-content focus:outline-none focus:ring-2 focus:ring-(--primary)"
+          className="h-10 min-w-0 flex-1 rounded-lg border border-base-300 bg-base-200 px-3 text-sm text-base-content focus:outline-none focus:ring-2 focus:ring-(--primary)"
         />
-        <Button type="submit" size="md" aria-label="Send">
+        <Button type="submit" size="md" aria-label="Send" className="shrink-0">
           <Send className="h-4 w-4" />
         </Button>
       </form>

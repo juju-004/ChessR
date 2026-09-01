@@ -149,7 +149,7 @@ export function Settings() {
                     experience. Launch it directly from your home screen or app
                     list without browser tabs or an address bar.
                   </p>
-                  <InstallAppButton compact />
+                  <InstallAppButton />
                 </>
               )}
             </CardContent>

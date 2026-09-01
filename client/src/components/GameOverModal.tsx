@@ -141,12 +141,39 @@ export const GameOverModal = memo(function GameOverModal({
           </p>
         )}
 
-        {rankChanged && ratingUpdate && (
+        {ratingUpdate && (
+          <p
+            className={`mb-2 text-sm font-semibold ${
+              ratingUpdate.delta > 0
+                ? 'text-green-400'
+                : ratingUpdate.delta < 0
+                  ? 'text-red-400'
+                  : 'text-base-content/60'
+            }`}
+          >
+            {ratingUpdate.delta > 0
+              ? `+${ratingUpdate.delta} rating`
+              : ratingUpdate.delta < 0
+                ? `${ratingUpdate.delta} rating`
+                : 'No rating change'}
+          </p>
+        )}
+
+        {ratingUpdate && (
           <div className="mb-5 flex items-center justify-center gap-2 rounded-xl bg-base-200/70 px-3 py-2.5 text-sm">
             <span className="font-medium text-base-content/70">
-              {ratingUpdate.previousCategory === null ? "You've been ranked" : "Rank updated"}
+              {rankChanged
+                ? ratingUpdate.previousCategory === null
+                  ? "You've been ranked"
+                  : "Rank updated"
+                : "Rank"}
             </span>
-            <RatingBadge category={ratingUpdate.newCategory} />
+            <RatingBadge
+              category={ratingUpdate.newCategory}
+              gamesUntilRanked={ratingUpdate.ratedGamesUntilRanked}
+              showProgress
+              pointsToNextTier={ratingUpdate.pointsToNextTier}
+            />
           </div>
         )}
 

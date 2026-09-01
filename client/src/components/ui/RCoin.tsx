@@ -1,3 +1,4 @@
+import { memo, useId } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/cn.js";
 import { springSoft } from "@/lib/motion.js";
@@ -10,17 +11,34 @@ export interface RCoinProps {
   animateIn?: boolean;
 }
 
+// Below this pixel size, the milled edge (48 individually-drawn <line>s)
+// and the feDropShadow filter are both invisible anyway and pure
+// rendering cost, not detail anyone can actually see. Below it, RCoin
+// renders a cheaper flat version: no filter (SVG filters are expensive to
+// rasterize on mobile, especially at the scale this icon gets reused at,
+// e.g. one per row in a list of active games), no edge lines, just the
+// gradients. Tuned to sit above the ~14-16px inline-badge size this icon
+// is mostly used at and below the ~140px dashboard watermark that
+// actually benefits from the full detail.
+const FULL_DETAIL_MIN_SIZE = 32;
+
 /**
  * Premium Rabah Coin
  *
  * A beveled gold coin with a sapphire/purple center and
  * custom-minted champagne-gold R emblem.
  */
-export function RCoin({ size = 20, className, animateIn = false }: RCoinProps) {
+export const RCoin = memo(function RCoin({ size = 20, className, animateIn = false }: RCoinProps) {
   /*
    * Unique IDs prevent multiple RCoins from sharing SVG definitions.
+   * useId() (not Math.random()) so the id is stable across re-renders,
+   * a fresh random id on every render meant every re-render of any
+   * component holding an RCoin rebuilt its gradient/filter defs from
+   * scratch for no reason.
    */
-  const id = `rcoin-${Math.random().toString(36).slice(2, 9)}`;
+  const reactId = useId();
+  const id = `rcoin-${reactId.replace(/:/g, "")}`;
+  const fullDetail = size >= FULL_DETAIL_MIN_SIZE;
 
   const rimId = `${id}-rim`;
   const rimInnerId = `${id}-rim-inner`;
@@ -91,10 +109,12 @@ export function RCoin({ size = 20, className, animateIn = false }: RCoinProps) {
           <stop offset="100%" stopColor="#fff" stopOpacity="0" />
         </linearGradient>
 
-        {/* Soft coin shadow */}
-        <filter id={shadowId} x="-30%" y="-30%" width="160%" height="160%">
-          <feDropShadow dx="0" dy="5" stdDeviation="6" floodOpacity=".4" />
-        </filter>
+        {/* Soft coin shadow, full-detail sizes only, see FULL_DETAIL_MIN_SIZE. */}
+        {fullDetail && (
+          <filter id={shadowId} x="-30%" y="-30%" width="160%" height="160%">
+            <feDropShadow dx="0" dy="5" stdDeviation="6" floodOpacity=".4" />
+          </filter>
+        )}
       </defs>
 
       {/* OuteRabah Coin Base */}
@@ -103,10 +123,13 @@ export function RCoin({ size = 20, className, animateIn = false }: RCoinProps) {
         cy="64"
         r="60"
         fill={`url(#${rimId})`}
-        filter={`url(#${shadowId})`}
+        filter={fullDetail ? `url(#${shadowId})` : undefined}
       />
 
-      {/* Milled Edge */}
+      {/* Milled Edge, full-detail sizes only, see FULL_DETAIL_MIN_SIZE:
+       *  invisible at badge scale and pure per-instance rendering cost
+       *  there. */}
+      {fullDetail && (
       <g strokeWidth="1.4">
         {Array.from({ length: 48 }).map((_, i) => {
           const angle = (i / 48) * Math.PI * 2;
@@ -128,6 +151,7 @@ export function RCoin({ size = 20, className, animateIn = false }: RCoinProps) {
           );
         })}
       </g>
+      )}
 
       {/* Inner Beveled Rim */}
       <circle
@@ -347,7 +371,7 @@ export function RCoin({ size = 20, className, animateIn = false }: RCoinProps) {
       {svg}
     </motion.span>
   );
-}
+});
 
 /**
  * Icon + amount.

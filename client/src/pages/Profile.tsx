@@ -32,7 +32,7 @@ import {
 } from "../components/ui/index.js";
 import { EditProfileModal } from "../components/EditProfileModal.js";
 import { ReportUserModal } from "../components/ReportUserModal.js";
-import { RatingBadge } from "../components/RatingBadge.js";
+import { RatingBadge, RatingTierHelpTip } from "../components/RatingBadge.js";
 
 const GAMES_PER_PAGE = 15;
 
@@ -214,7 +214,9 @@ export function Profile() {
                   <RatingBadge
                     category={profile.ratingCategory}
                     gamesUntilRanked={profile.ratedGamesUntilRanked}
+                    showProgress={profile.isSelf}
                   />
+                  <RatingTierHelpTip />
                 </div>
                 <p className="mt-1 text-sm text-base-content/50">
                   Member since{" "}

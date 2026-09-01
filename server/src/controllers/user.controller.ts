@@ -4,7 +4,7 @@ import { Game } from '../models/Game.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { getActiveGameCodeForUser } from '../services/game.service.js';
-import { getRatingCategory, gamesUntilRanked } from '../services/rating.service.js';
+import { getRatingCategory, gamesUntilRanked, pointsToNextTier } from '../services/rating.service.js';
 import type { AuthedRequest } from '../middleware/auth.js';
 
 const searchSchema = z.object({
@@ -61,6 +61,23 @@ export const updateMyProfile = asyncHandler(async (req: AuthedRequest, res) => {
     avatarGradient: user.avatarGradient,
     bio: user.bio,
     acceptChallenges: user.acceptChallenges,
+  });
+});
+
+// Self-only, deliberately not folded into getProfile (which any signed-in
+// visitor can call for any :username): the gap to someone's next tier is
+// only meaningful for your own progress, and repeatedly reading it for
+// someone else would let a determined visitor slowly triangulate their
+// hidden rating. The badge's help-tip popover fetches this on demand
+// rather than it riding along with every profile load.
+export const getMyRatingProgress = asyncHandler(async (req: AuthedRequest, res) => {
+  const user = await User.findById(req.user!.id).select('rating ratedGamesPlayed').lean();
+  if (!user) throw ApiError.notFound('User not found');
+
+  res.json({
+    ratingCategory: getRatingCategory(user.rating, user.ratedGamesPlayed),
+    ratedGamesUntilRanked: gamesUntilRanked(user.ratedGamesPlayed),
+    pointsToNextTier: pointsToNextTier(user.rating, user.ratedGamesPlayed),
   });
 });
 

@@ -42,6 +42,15 @@ export interface RatingSideUpdate {
   previousCategory: string | null;
   newCategory: string | null;
   ratedGamesPlayed: number;
+  /** How many hidden-rating points this game moved this player, positive
+   *  or negative (never shown as the raw rating itself, just the delta,
+   *  same "hidden number, visible change" principle as the tier badge). */
+  delta: number;
+  /** Points left to the next tier after this game, see pointsToNextTier. */
+  pointsToNextTier: NextTierProgress | null;
+  /** Mirrors gamesUntilRanked(ratedGamesPlayed), for the "Unranked, N more
+   *  games to go" message when newCategory is still null after this game. */
+  ratedGamesUntilRanked: number;
 }
 
 export interface RatingUpdateResult {
@@ -66,7 +75,7 @@ export interface RatingUpdateResult {
  * $inc. If the same player has two games finish within moments of each
  * other (they can have up to MAX_ACTIVE_GAMES_PER_USER active at once),
  * both deltas end up computed against a very slightly stale
- * opponent-comparison base rather than a serialized one-at-a-time update, 
+ * opponent-comparison base rather than a serialized one-at-a-time update,
  * a minor, self-correcting approximation, not worth the added complexity
  * of a lock/transaction for a hidden number that's already only an
  * approximation of skill.
@@ -96,8 +105,12 @@ export async function applyRatingForGame(
   const whiteActual = result === "white" ? 1 : result === "draw" ? 0.5 : 0;
   const blackActual = 1 - whiteActual;
 
-  const whiteDelta = Math.round(getKFactor(white.ratedGamesPlayed) * (whiteActual - whiteExpected));
-  const blackDelta = Math.round(getKFactor(black.ratedGamesPlayed) * (blackActual - blackExpected));
+  const whiteDelta = Math.round(
+    getKFactor(white.ratedGamesPlayed) * (whiteActual - whiteExpected),
+  );
+  const blackDelta = Math.round(
+    getKFactor(black.ratedGamesPlayed) * (blackActual - blackExpected),
+  );
 
   const [updatedWhite, updatedBlack] = await Promise.all([
     User.findByIdAndUpdate(
@@ -122,14 +135,30 @@ export async function applyRatingForGame(
       newCategory: updatedWhite
         ? getRatingCategory(updatedWhite.rating, updatedWhite.ratedGamesPlayed)
         : null,
-      ratedGamesPlayed: updatedWhite?.ratedGamesPlayed ?? white.ratedGamesPlayed + 1,
+      ratedGamesPlayed:
+        updatedWhite?.ratedGamesPlayed ?? white.ratedGamesPlayed + 1,
+      delta: whiteDelta,
+      pointsToNextTier: updatedWhite
+        ? pointsToNextTier(updatedWhite.rating, updatedWhite.ratedGamesPlayed)
+        : null,
+      ratedGamesUntilRanked: gamesUntilRanked(
+        updatedWhite?.ratedGamesPlayed ?? white.ratedGamesPlayed + 1,
+      ),
     },
     black: {
       previousCategory: getRatingCategory(black.rating, black.ratedGamesPlayed),
       newCategory: updatedBlack
         ? getRatingCategory(updatedBlack.rating, updatedBlack.ratedGamesPlayed)
         : null,
-      ratedGamesPlayed: updatedBlack?.ratedGamesPlayed ?? black.ratedGamesPlayed + 1,
+      ratedGamesPlayed:
+        updatedBlack?.ratedGamesPlayed ?? black.ratedGamesPlayed + 1,
+      delta: blackDelta,
+      pointsToNextTier: updatedBlack
+        ? pointsToNextTier(updatedBlack.rating, updatedBlack.ratedGamesPlayed)
+        : null,
+      ratedGamesUntilRanked: gamesUntilRanked(
+        updatedBlack?.ratedGamesPlayed ?? black.ratedGamesPlayed + 1,
+      ),
     },
   };
 }
@@ -145,22 +174,22 @@ export interface RatingTier {
 
 export const RATING_TIERS: RatingTier[] = [
   { name: "Novice", min: 0 },
-  { name: "Beginner", min: 1100 },
-  { name: "Apprentice", min: 1250 },
-  { name: "Intermediate", min: 1400 },
-  { name: "Proficient", min: 1550 },
-  { name: "Advanced", min: 1700 },
-  { name: "Expert", min: 1850 },
-  { name: "Master", min: 2000 },
-  { name: "Grandmaster", min: 2150 },
-  { name: "Elite", min: 2300 },
-  { name: "Elite II", min: 2450 },
-  { name: "Elite III", min: 2600 },
+  { name: "Beginner", min: 1000 },
+  { name: "Apprentice", min: 1300 },
+  { name: "Intermediate", min: 1600 },
+  { name: "Advanced", min: 1800 },
+  { name: "Expert", min: 2100 },
+  { name: "Master", min: 2300 },
+  { name: "Elite", min: 2600 },
+  { name: "Super Elite", min: 2900 },
 ];
 
 /** The tier name to actually show for a player, or null for "Unranked"
  *  (fewer than PROVISIONAL_GAMES_THRESHOLD rated games so far). */
-export function getRatingCategory(rating: number, ratedGamesPlayed: number): string | null {
+export function getRatingCategory(
+  rating: number,
+  ratedGamesPlayed: number,
+): string | null {
   if (ratedGamesPlayed < PROVISIONAL_GAMES_THRESHOLD) return null;
   let current = RATING_TIERS[0].name;
   for (const tier of RATING_TIERS) {
@@ -175,4 +204,29 @@ export function getRatingCategory(rating: number, ratedGamesPlayed: number): str
  *  ("4 games until your rank is calculated") instead of just a boolean. */
 export function gamesUntilRanked(ratedGamesPlayed: number): number {
   return Math.max(0, PROVISIONAL_GAMES_THRESHOLD - ratedGamesPlayed);
+}
+
+export interface NextTierProgress {
+  /** Points still needed to reach `nextTierName`. */
+  points: number;
+  nextTierName: string;
+}
+
+/** How far this player is from the next tier up, or null when there's
+ *  nothing meaningful to show: still provisional (no tier yet at all), or
+ *  already at the top tier with nowhere further to climb. Reveals only
+ *  the gap and the destination tier's name, same "hidden number, visible
+ *  movement" principle as RatingSideUpdate.delta, never the raw rating
+ *  itself. */
+export function pointsToNextTier(
+  rating: number,
+  ratedGamesPlayed: number,
+): NextTierProgress | null {
+  if (ratedGamesPlayed < PROVISIONAL_GAMES_THRESHOLD) return null;
+  const nextTier = RATING_TIERS.find((tier) => tier.min > rating);
+  if (!nextTier) return null; // already at the top tier
+  return {
+    points: Math.max(0, nextTier.min - rating),
+    nextTierName: nextTier.name,
+  };
 }

@@ -69,3 +69,17 @@ export function updateMyProfile(body: { avatarGradient?: string; bio?: string; u
     { method: 'PATCH', body: JSON.stringify(body) },
   );
 }
+
+export interface MyRatingProgress {
+  ratingCategory: string | null;
+  ratedGamesUntilRanked: number;
+  /** Points left to the next tier, null if unranked or already top tier. */
+  pointsToNextTier: { points: number; nextTierName: string } | null;
+}
+
+/** Self-only, fetched on demand (e.g. when the rank badge's popover
+ *  opens) rather than bundled into every profile load, see
+ *  getMyRatingProgress on the server. */
+export function getMyRatingProgress() {
+  return apiFetch<MyRatingProgress>('/users/me/rating-progress');
+}

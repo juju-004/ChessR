@@ -63,9 +63,7 @@ export function NotificationsMenu({ className }: NotificationsMenuProps) {
         </div>
 
         {items.length === 0 && (
-          <p className="p-3 text-sm text-base-content/60">
-            Nothing new. Friend requests and challenges will show up here.
-          </p>
+          <p className="p-3 text-sm  text-base-content/60">.</p>
         )}
 
         <div className="max-h-96 overflow-y-auto">

@@ -43,6 +43,15 @@ export interface RatingSideUpdate {
   previousCategory: string | null;
   newCategory: string | null;
   ratedGamesPlayed: number;
+  /** Hidden-rating points gained/lost this game, positive or negative. */
+  delta: number;
+  /** Points left to the next tier after this game, null if unranked or
+   *  already at the top tier. */
+  pointsToNextTier: { points: number; nextTierName: string } | null;
+  /** Mirrors gamesUntilRanked(ratedGamesPlayed) on the server, for the
+   *  "Unranked, N more games to go" message when newCategory is still
+   *  null after this game. */
+  ratedGamesUntilRanked: number;
 }
 
 export interface RatingUpdate {
