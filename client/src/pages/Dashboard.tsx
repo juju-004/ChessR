@@ -23,6 +23,7 @@ import {
 } from "../api/games.js";
 import { ApiRequestError } from "../api/http.js";
 import { useAuth } from "../contexts/AuthContext.js";
+import { RestrictionBanner } from "../components/RestrictionBanner.js";
 import { TIME_CONTROLS, formatTimeControl } from "../timeControls.js";
 import { extractGameCode } from "../lib/utils.js";
 import { MAX_WAGER_TOKENS, MIN_STAKE_TOKENS } from "../lib/limits.js";
@@ -176,6 +177,7 @@ export function Dashboard() {
   return (
     <Page title={`Welcome, ${user?.username ?? ""}`}>
       <div className="space-y-4">
+        <RestrictionBanner />
         <Card
           variant="solid"
           className="bg-black/0! border-black/0! from-primary/0 to-primary/10 bg-linear-to-tr relative overflow-hidden p-5"

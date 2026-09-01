@@ -1,4 +1,8 @@
 import type { IMove } from '../models/Game.js';
+import { Game } from '../models/Game.js';
+import { GameFlag } from '../models/GameFlag.js';
+import { User } from '../models/User.js';
+import { createNotification } from './notification.service.js';
 
 export interface SuspicionSignal {
   type: 'uniform_fast_moves' | 'inhuman_reaction';
@@ -88,3 +92,85 @@ export function analyzeGameForSuspicion(moves: IMove[]): SuspicionReport[] {
     return { side, score: Math.min(100, score), signals, thinkTimesMs };
   });
 }
+
+// Score at which the heuristic above stops being "a hint for a human" and
+// starts triggering an automatic action. Deliberately set at the point
+// where BOTH signals have fired together (40 + 30), not either one alone:
+// analyzeGameForSuspicion's own doc comment is explicit that a single
+// signal, or the score in isolation, isn't meaningful enough to accuse
+// anyone off of — this keeps that same bar for the one place the score
+// now does something consequential (freezing funds) rather than lowering
+// it just because an automated action was added on top.
+export const AUTO_FLAG_THRESHOLD = 70;
+
+/**
+ * Runs after a game finishes (see finalizeGame in game.service.ts). If
+ * either side's suspicion score crosses AUTO_FLAG_THRESHOLD: freezes that
+ * player's withdrawals (same field a report does, see report.service.ts),
+ * opens a GameFlag for the admin "game check" queue instead of a regular
+ * user Report (this wasn't filed by anyone, it's a system finding), and
+ * notifies the flagged player about what's happening and why, in the same
+ * "worth a look, not a verdict" spirit as the heuristic itself, framed as
+ * a pending review rather than an accusation.
+ *
+ * Never throws, this always runs fire-and-forget off the game-over path
+ * and a failure here must never take down finalizing the game itself.
+ */
+export async function runAutoCheatCheck(gameId: string): Promise<void> {
+  try {
+    const game = await Game.findById(gameId)
+      .select('moves white black joinCode')
+      .lean();
+    if (!game || !game.moves?.length) return;
+
+    const reports = analyzeGameForSuspicion(game.moves);
+    const sideUser: Record<'white' | 'black', string | undefined> = {
+      white: game.white?.toString(),
+      black: game.black?.toString(),
+    };
+
+    for (const report of reports) {
+      if (report.score < AUTO_FLAG_THRESHOLD) continue;
+      const flaggedUserId = sideUser[report.side];
+      if (!flaggedUserId) continue;
+
+      // Upsert-style guard against the (rare) case finalizeGame's
+      // fire-and-forget call runs more than once for the same game: the
+      // unique (game, flaggedUser) index on GameFlag rejects a duplicate
+      // insert, which this treats as "already flagged, nothing more to do"
+      // rather than an error.
+      let flag;
+      try {
+        flag = await GameFlag.create({
+          game: game._id,
+          gameCode: game.joinCode,
+          flaggedUser: flaggedUserId,
+          side: report.side,
+          score: report.score,
+          signals: report.signals,
+        });
+      } catch (err: any) {
+        if (err?.code === 11000) continue; // already flagged, skip
+        throw err;
+      }
+
+      await User.updateOne({ _id: flaggedUserId }, { $set: { withdrawalBlocked: true } });
+
+      await createNotification({
+        recipientId: flaggedUserId,
+        type: 'anticheat_freeze',
+        title: "Your funds have been temporarily frozen",
+        body:
+          `Our system flagged unusual activity in a recent game (${game.joinCode}) for review. ` +
+          "As a precaution, withdrawals on your account are frozen until our team has looked into it. " +
+          "This is an automated hold, not a final decision, you can keep playing in the meantime. " +
+          "We'll notify you once it's been reviewed.",
+      }).catch((err) => console.error('Failed to send anticheat_freeze notification:', err));
+
+      void flag; // created for the admin queue; nothing further needed here
+    }
+  } catch (err) {
+    console.error(`runAutoCheatCheck failed for game ${gameId}:`, err);
+  }
+}
+

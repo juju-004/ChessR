@@ -14,6 +14,7 @@ import {
   type CageLegInput,
 } from '../services/cageMatch.service.js';
 import { assertUnderActiveGameLimit, countActiveGamesForUser, MAX_ACTIVE_GAMES_PER_USER, activeGameLimitMessage } from '../services/game.service.js';
+import { assertNotRestricted } from '../services/suspension.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
 const CAGE_INVITE_TTL_SECONDS = 90;
@@ -105,6 +106,12 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
         return emitError(socket, 'Enter a valid wager amount');
       }
 
+      try {
+        await assertNotRestricted(userId);
+      } catch (err) {
+        return emitError(socket, err instanceof Error ? err.message : "You can't start new games right now");
+      }
+
       const me = await User.findById(userId).select('friends tokenBalance').lean();
       const isFriend = me?.friends.some((f) => f.toString() === toUserId);
       if (!isFriend) return emitError(socket, 'You can only start a cage match with a friend');
@@ -183,6 +190,12 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
       if (!accept) {
         io.to(`user:${fromId}`).emit('cage:declined', { inviteId, by: userId });
         return;
+      }
+
+      try {
+        await assertNotRestricted(toId);
+      } catch (err) {
+        return emitError(socket, err instanceof Error ? err.message : "You can't accept new games right now");
       }
 
       try {

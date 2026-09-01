@@ -16,6 +16,7 @@ import {
   consumeEmailVerificationToken,
 } from "../services/verification.service.js";
 import { verifyGoogleCredential } from "../services/googleAuth.service.js";
+import { createNotification } from "../services/notification.service.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 
 const BCRYPT_ROUNDS = 12;
@@ -98,6 +99,14 @@ function userFields(user: IUser) {
     avatarGradient: user.avatarGradient ?? null,
     emailVerified: user.emailVerified,
     acceptChallenges: user.acceptChallenges,
+    // Present only while an active play/chat restriction is in effect
+    // (see suspension.service.ts / User.suspendedUntil), a past or unset
+    // value is dropped rather than sent as a stale date, so the client
+    // can treat "field present" as "currently restricted" without also
+    // comparing it to the current time itself.
+    suspendedUntil: user.suspendedUntil && user.suspendedUntil.getTime() > Date.now()
+      ? user.suspendedUntil
+      : null,
     ...ratingFields(user),
   };
 }
@@ -137,6 +146,23 @@ async function generateAvailableUsername(seed: string): Promise<string> {
   return `player${Date.now()}`;
 }
 
+// Sent once, automatically, on account creation, see the notifications
+// system (models/Notification.ts) — a first-party "here's what this app
+// is" message rather than an empty inbox on day one. Deliberately doesn't
+// try to restate the Terms in full (or wager rules, fair-play policy,
+// etc.), those live on their own pages and change independently of this
+// fixed welcome copy; this just points there.
+function sendWelcomeNotification(userId: string): void {
+  createNotification({
+    recipientId: userId,
+    type: "welcome",
+    title: "Welcome to ChessR",
+    body:
+      "ChessR is multiplayer chess with cage matches, tournaments, and real R-token wagers on the line. Play rated games, challenge friends directly, or enter a tournament. See the About page for a full tour of what you can do here, and the Terms page for the rules around wagers, withdrawals, and fair play before you jump in.",
+    link: "/about",
+  }).catch((err) => console.error("Failed to send welcome notification:", err));
+}
+
 export const signup = asyncHandler(async (req, res) => {
   const { username, email, password } = signupSchema.parse(req.body);
 
@@ -163,6 +189,7 @@ export const signup = asyncHandler(async (req, res) => {
   issueEmailVerification(user).catch((err) =>
     console.error("Failed to send verification email on signup:", err),
   );
+  sendWelcomeNotification(user._id.toString());
 
   const accessToken = issueSession(res, user);
 
@@ -242,6 +269,7 @@ export const googleSignin = asyncHandler(async (req, res) => {
         emailVerified: profile.emailVerified,
       });
       isNewUser = true;
+      sendWelcomeNotification(user._id.toString());
     }
   }
 
@@ -301,6 +329,11 @@ export const me = asyncHandler(async (req: AuthedRequest, res) => {
     acceptChallenges: user.acceptChallenges,
     tokenBalance: user.tokenBalance,
     friendCount: user.friends.length,
+    // See userFields()'s identical treatment above: present only while
+    // still active, so the client only ever sees a live countdown target.
+    suspendedUntil: user.suspendedUntil && user.suspendedUntil.getTime() > Date.now()
+      ? user.suspendedUntil
+      : null,
     ...ratingFields(user),
   });
 });

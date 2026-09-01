@@ -14,6 +14,12 @@ import {
   respondToFriendRequest,
   type IncomingRequest,
 } from "../api/friends.js";
+import {
+  getNotifications,
+  markAllNotificationsRead,
+  type AppNotification,
+  type NotificationType,
+} from "../api/notifications.js";
 
 interface FriendRequestItem {
   kind: "friend_request";
@@ -46,7 +52,28 @@ interface CageInviteItem {
   seen: boolean;
 }
 
-export type NotificationItem = FriendRequestItem | ChallengeItem | CageInviteItem;
+// ChessR's own persisted messages to the account (welcome, anti-cheat/
+// report freeze alerts, admin broadcasts, ...), see models/Notification.ts
+// server-side. Unlike the other three kinds here, these are backed by a
+// real DB record with a durable read/unread state, not just "seen in this
+// session", and they're the one kind with no accept/decline actions, just
+// tap-to-open. "seen" here mirrors `read` from the API, kept in sync via
+// markAllNotificationsRead below rather than being purely a local flag.
+interface SystemNotificationItem {
+  kind: "system";
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  link?: string;
+  seen: boolean;
+}
+
+export type NotificationItem =
+  | FriendRequestItem
+  | ChallengeItem
+  | CageInviteItem
+  | SystemNotificationItem;
 
 interface NotificationCenterValue {
   items: NotificationItem[];
@@ -55,6 +82,8 @@ interface NotificationCenterValue {
   respondToFriendRequestItem: (id: string, accept: boolean) => void;
   respondToChallengeItem: (id: string, accept: boolean) => void;
   respondToCageInviteItem: (id: string, accept: boolean) => void;
+  /** id omitted marks every system item seen locally. */
+  markSystemItemSeenLocally: (id?: string) => void;
 }
 
 const NotificationCenterContext = createContext<NotificationCenterValue | null>(null);
@@ -106,6 +135,32 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
       .catch(() => {
         /* Not critical, the Players page's own request list is still the
            source of truth either way, this just backs the bell. */
+      });
+
+    // Unlike friend requests, system notifications are the actual source
+    // of truth here (there's no separate full-list page these merely
+    // mirror, /notifications reads from the same API), so this seeds
+    // whatever's unread plus a little recent read history, not just a
+    // pending queue.
+    getNotifications(1, 20)
+      .then(({ notifications }) => {
+        setItems((prev) => [
+          ...notifications.map(
+            (n: AppNotification): SystemNotificationItem => ({
+              kind: "system",
+              id: n.id,
+              type: n.type,
+              title: n.title,
+              body: n.body,
+              link: n.link,
+              seen: n.read,
+            }),
+          ),
+          ...prev,
+        ]);
+      })
+      .catch(() => {
+        /* Best-effort, same posture as the friend-request seed above. */
       });
   }, [isAuthed]);
 
@@ -188,6 +243,30 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
       ]);
     }
 
+    // See notification.service.ts's createNotification on the server,
+    // pushed to this user's own socket room the same way every other
+    // event here is addressed.
+    function onSystemNotification(payload: {
+      id: string;
+      type: NotificationType;
+      title: string;
+      body: string;
+      link?: string;
+    }) {
+      setItems((prev) => [
+        {
+          kind: "system",
+          id: payload.id,
+          type: payload.type,
+          title: payload.title,
+          body: payload.body,
+          link: payload.link,
+          seen: false,
+        },
+        ...prev,
+      ]);
+    }
+
     function removeCageInvite(inviteId?: string) {
       if (!inviteId) return;
       setItems((prev) => prev.filter((i) => !(i.kind === "cage_invite" && i.id === inviteId)));
@@ -224,6 +303,7 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
     socket.on("cage:declined", onCageResolved);
     socket.on("cage:cancelled", onCageCancelled);
     socket.on("cage:received", onCageReceived);
+    socket.on("notification:new", onSystemNotification);
 
     return () => {
       socket.off("friend:request_received", onFriendRequestReceived);
@@ -235,11 +315,21 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
       socket.off("cage:declined", onCageResolved);
       socket.off("cage:cancelled", onCageCancelled);
       socket.off("cage:received", onCageReceived);
+      socket.off("notification:new", onSystemNotification);
     };
   }, [socket]);
 
   const markAllSeen = useCallback(() => {
-    setItems((prev) => prev.map((i) => (i.seen ? i : { ...i, seen: true })));
+    setItems((prev) => {
+      const hasUnseenSystem = prev.some((i) => i.kind === "system" && !i.seen);
+      if (hasUnseenSystem) {
+        // Best-effort, mirrors the read state on /notifications too (see
+        // notification.service.ts), not just a local flag the way
+        // "seen" is for the other three kinds here.
+        markAllNotificationsRead().catch(() => {});
+      }
+      return prev.map((i) => (i.seen ? i : { ...i, seen: true }));
+    });
   }, []);
 
   const respondToFriendRequestItem = useCallback((id: string, accept: boolean) => {
@@ -265,6 +355,20 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
     [socket],
   );
 
+  // Local-only flip, no API call, for callers (the /notifications page)
+  // that already made their own markNotificationRead/markAllNotificationsRead
+  // request and just need the bell's copy of that same item to catch up
+  // so its badge count doesn't disagree with what the page just showed.
+  const markSystemItemSeenLocally = useCallback((id?: string) => {
+    setItems((prev) =>
+      prev.map((i) =>
+        i.kind === "system" && !i.seen && (id === undefined || i.id === id)
+          ? { ...i, seen: true }
+          : i,
+      ),
+    );
+  }, []);
+
   const unreadCount = items.filter((i) => !i.seen).length;
 
   return (
@@ -276,6 +380,7 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
         respondToFriendRequestItem,
         respondToChallengeItem,
         respondToCageInviteItem,
+        markSystemItemSeenLocally,
       }}
     >
       {children}

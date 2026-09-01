@@ -1,6 +1,7 @@
 import { Report, type IReport } from '../models/Report.js';
 import { User } from '../models/User.js';
 import { ApiError } from '../utils/ApiError.js';
+import { createNotification } from './notification.service.js';
 
 // Spam controls, all per-reporter. None of these are about whether a
 // report is *true*, that's what admin review is for, only about making
@@ -15,6 +16,13 @@ import { ApiError } from '../utils/ApiError.js';
 //   about NEW information is still fine once the first is resolved
 const REPORT_COOLDOWN_MS = 60_000;
 const REPORT_DAILY_LIMIT = 10;
+
+// A single report freezes nothing on its own, one person's word (however
+// sincere) isn't evidence, it's a queue entry for an admin to look at. Once
+// a *second, distinct* person has an open report against the same account,
+// that's an independent corroborating signal worth acting on immediately
+// rather than waiting for a human to get to both, hence the freeze here.
+const DISTINCT_REPORTERS_FREEZE_THRESHOLD = 2;
 
 /** Accepts either a bare join code or a full/partial game URL pasted into
  *  the report form and normalizes down to just the code, mirrors the
@@ -80,9 +88,28 @@ export async function createReport(params: CreateReportParams): Promise<IReport>
     gameCode: gameCode?.trim() ? normalizeGameCode(gameCode) : undefined,
   });
 
-  // Instant and automatic, independent of whether the report holds up, 
-  // see User.withdrawalBlocked. An admin clears it after review.
-  await User.updateOne({ _id: reportedUser._id }, { $set: { withdrawalBlocked: true } });
+  // Reaches the admin dash purely by having been created, above, an
+  // admin can see and act on a single report immediately. The automatic
+  // freeze, though, waits for more than one distinct person to have an
+  // open report against this account (see DISTINCT_REPORTERS_FREEZE_THRESHOLD),
+  // not the first report alone.
+  const distinctReporters = await Report.distinct('reporter', {
+    reportedUser: reportedUser._id,
+    status: { $in: ['pending', 'reviewing'] },
+  });
+
+  if (distinctReporters.length >= DISTINCT_REPORTERS_FREEZE_THRESHOLD && !reportedUser.withdrawalBlocked) {
+    await User.updateOne({ _id: reportedUser._id }, { $set: { withdrawalBlocked: true } });
+    await createNotification({
+      recipientId: reportedUser._id.toString(),
+      type: 'report_freeze',
+      title: 'Your funds have been temporarily frozen',
+      body:
+        `Multiple players have reported your account. As a precaution, withdrawals are frozen ` +
+        `until our team has reviewed the reports. This is an automatic hold, not a final decision, ` +
+        `you can keep playing in the meantime. We'll notify you once it's been reviewed.`,
+    }).catch((err) => console.error('Failed to send report_freeze notification:', err));
+  }
 
   return report;
 }

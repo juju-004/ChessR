@@ -47,17 +47,35 @@ export interface IUser extends Document {
    *  nature already (joining the tournament yourself). Defaults to true,
    *  existing users keep getting challenged exactly as before. */
   acceptChallenges: boolean;
-  /** Set the moment any report is filed against this user (see Report
-   *  model), instant, automatic, and independent of whether the report
-   *  turns out to be substantiated. An admin clears it from the report
-   *  review screen once they've looked into it. See wallet.service's
-   *  initiateWithdrawal for the enforcement side. */
+  /** Set automatically once either: (a) two or more distinct users have an
+   *  open report against this account (see report.service.ts's
+   *  DISTINCT_REPORTERS_FREEZE_THRESHOLD — a single report alone no
+   *  longer freezes anything, it just reaches the admin queue), or (b)
+   *  the anti-cheat heuristic auto-flags one of their games (see
+   *  anticheat.service.ts's runAutoCheatCheck / GameFlag). Either way
+   *  it's a precautionary hold pending human review, not a verdict. An
+   *  admin clears it from the report/game-check review screen once
+   *  they've looked into it. See wallet.service's initiateWithdrawal for
+   *  the enforcement side. */
   withdrawalBlocked: boolean;
   /** Set by an admin (not automatic, unlike withdrawalBlocked) when a
    *  user's own reports turn out to be spam/bad-faith, stops them from
    *  filing new reports without touching anything else on the account.
    *  See report.service.createReport for enforcement. */
   reportingBlocked: boolean;
+  /** Temporary play/chat restriction, set automatically when a user's
+   *  reports keep getting dismissed as bad-faith (see
+   *  admin.controller.ts's checkReportAbuseSuspension /
+   *  DISMISSED_REPORTS_SUSPENSION_THRESHOLD), or manually by an admin.
+   *  Undefined/past means not restricted. Enforced per-action via
+   *  suspension.service.ts's assertNotRestricted at the point someone
+   *  tries to start a new challenge/cage match/tournament or send a chat
+   *  message — deliberately NOT in requireAuth or at signin/refresh, this
+   *  never signs anyone out or blocks the rest of the app, and it has no
+   *  bearing on withdrawalBlocked below (a restricted user can still
+   *  deposit and withdraw normally). The client reads this straight off
+   *  its own user object to show a countdown on Dashboard. */
+  suspendedUntil?: Date;
   tokenVersion: number;
   /** Hidden internal skill rating. Elo-like, starts at 1500, shared across
    *  every time control and variant (deliberately NOT split per-TC/variant
@@ -110,6 +128,7 @@ const userSchema = new Schema<IUser>(
     acceptChallenges: { type: Boolean, default: true },
     withdrawalBlocked: { type: Boolean, default: false },
     reportingBlocked: { type: Boolean, default: false },
+    suspendedUntil: { type: Date },
     // Bumped on password change / "log out everywhere" to invalidate all
     // outstanding refresh tokens without needing a server-side blacklist.
     tokenVersion: { type: Number, default: 0 },

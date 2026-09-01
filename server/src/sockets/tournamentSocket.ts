@@ -15,6 +15,7 @@ import { User } from '../models/User.js';
 import { Tournament } from '../models/Tournament.js';
 import { watchTournament, unwatchTournament } from '../services/presence.service.js';
 import { addChatMessage, getChatHistory, isChatRateLimited, isRepeatMessage } from '../services/chat.service.js';
+import { assertNotRestricted } from '../services/suspension.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
 const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
@@ -242,6 +243,12 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
 
       if (!socket.rooms.has(tournamentRoom(tournamentId))) {
         return emitError(socket, 'Join the tournament page to chat');
+      }
+
+      try {
+        await assertNotRestricted(userId);
+      } catch (err) {
+        return emitError(socket, err instanceof Error ? err.message : 'Chat is currently restricted for your account');
       }
 
       if (await isChatRateLimited(userId)) {

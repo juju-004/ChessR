@@ -1,15 +1,24 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Bell, Check, X, Swords, Shield } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Bell, Check, X, Swords, Shield, Maximize2, PartyPopper, ShieldAlert, Flag, Megaphone } from "lucide-react";
 import { pressable } from "@/lib/motion.js";
 import { cn } from "@/lib/cn.js";
 import { Popover } from "./ui/Popover.js";
 import { Avatar, RCoin } from "./ui/index.js";
-import { useNotificationCenter } from "../contexts/NotificationCenterContext.js";
+import { useNotificationCenter, type NotificationItem } from "../contexts/NotificationCenterContext.js";
+import type { NotificationType } from "../api/notifications.js";
 
 interface NotificationsMenuProps {
   className?: string;
 }
+
+const SYSTEM_TYPE_ICON: Record<NotificationType, typeof Megaphone> = {
+  welcome: PartyPopper,
+  anticheat_freeze: ShieldAlert,
+  report_freeze: Flag,
+  admin_message: Megaphone,
+};
 
 function timeControlLabel(tc: {
   baseMinutes: number | null;
@@ -21,6 +30,7 @@ function timeControlLabel(tc: {
 }
 
 export function NotificationsMenu({ className }: NotificationsMenuProps) {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const {
     items,
@@ -30,6 +40,11 @@ export function NotificationsMenu({ className }: NotificationsMenuProps) {
     respondToChallengeItem,
     respondToCageInviteItem,
   } = useNotificationCenter();
+
+  function handleSystemItemClick(item: Extract<NotificationItem, { kind: "system" }>) {
+    setOpen(false);
+    navigate(item.link ?? "/notifications");
+  }
 
   return (
     <Popover
@@ -63,7 +78,9 @@ export function NotificationsMenu({ className }: NotificationsMenuProps) {
         </div>
 
         {items.length === 0 && (
-          <p className="p-3 text-sm  text-base-content/60">.</p>
+          <p className="p-3 text-sm text-base-content/60">
+            Nothing new. Friend requests, challenges, and updates from ChessR will show up here.
+          </p>
         )}
 
         <div className="max-h-96 overflow-y-auto">
@@ -157,6 +174,30 @@ export function NotificationsMenu({ className }: NotificationsMenuProps) {
               );
             }
 
+            if (item.kind === "system") {
+              const Icon = SYSTEM_TYPE_ICON[item.type] ?? Megaphone;
+              return (
+                <button
+                  key={`sys-${item.id}`}
+                  type="button"
+                  onClick={() => handleSystemItemClick(item)}
+                  className="flex w-full items-start gap-2.5 border-b border-base-300/60 px-3 py-2.5 text-left last:border-b-0 hover:bg-base-200"
+                >
+                  <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-base-300 text-base-content/70">
+                    <Icon className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-base-content">
+                      {item.title}
+                    </p>
+                    <p className="mt-0.5 line-clamp-2 text-xs text-base-content/60">
+                      {item.body}
+                    </p>
+                  </div>
+                </button>
+              );
+            }
+
             const wagerNote =
               item.wagerMode !== "none" && item.wagerTokens ? (
                 <>
@@ -204,6 +245,17 @@ export function NotificationsMenu({ className }: NotificationsMenuProps) {
             );
           })}
         </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(false);
+            navigate("/notifications");
+          }}
+          className="flex w-full items-center justify-center gap-1.5 border-t border-base-300 py-2 text-xs font-medium text-base-content/60 hover:bg-base-200 hover:text-base-content"
+        >
+          <Maximize2 className="h-3 w-3" /> Expand
+        </button>
       </div>
     </Popover>
   );

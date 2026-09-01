@@ -13,6 +13,7 @@ import {
 import { Game } from "../models/Game.js";
 import { ApiError } from "../utils/ApiError.js";
 import { withLock } from "../utils/distributedLock.js";
+import { assertNotRestricted } from "./suspension.service.js";
 import {
   createDirectGame,
   countActiveGamesForUser,
@@ -519,8 +520,10 @@ export async function createTournament(
   // Only matters if the creator will actually occupy a player slot,
   // organizerOnly creators run the event without ever being paired into
   // a game themselves (see the players: [] branch below), so their own
-  // in-progress game shouldn't block them from setting one up.
+  // in-progress game (or a play restriction) shouldn't block them from
+  // setting one up.
   if (!organizerOnly) {
+    await assertNotRestricted(creatorId);
     const activeCount = await countActiveGamesForUser(creatorId);
     if (activeCount >= MAX_ACTIVE_GAMES_PER_USER) {
       throw ApiError.conflict(activeGameLimitMessage("creating a tournament"));
@@ -654,6 +657,7 @@ export async function joinTournament(
   if (activeCount >= MAX_ACTIVE_GAMES_PER_USER) {
     throw ApiError.conflict(activeGameLimitMessage("joining a tournament"));
   }
+  await assertNotRestricted(userId);
 
   if (tournament.regFeeTokens > 0) {
     await debitTournamentRegFee(userId, tournament.id, tournament.regFeeTokens);

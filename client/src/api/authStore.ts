@@ -16,6 +16,12 @@ export interface CurrentUser {
    *  challenge:send) are rejected server-side before reaching this
    *  account. See the "Accept challenges" switch on the Settings page. */
   acceptChallenges?: boolean;
+  /** ISO date string, present only while an active play/chat restriction
+   *  is in effect (see suspension.service.ts on the server — this never
+   *  blocks signing in, browsing, or withdrawing/depositing, just
+   *  starting new games and chatting). Null/absent means not restricted.
+   *  Drives the countdown card on Dashboard. */
+  suspendedUntil?: string | null;
 }
 
 interface AuthSnapshot {

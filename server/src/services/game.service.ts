@@ -15,6 +15,7 @@ import { generateChess960Fen } from "./chess960.service.js";
 import { debitWagerStake, creditWagerReturn, computeRake, recordRake } from "./wallet.service.js";
 import { expireChat } from "./chat.service.js";
 import { applyRatingForGame } from "./rating.service.js";
+import { runAutoCheatCheck } from "./anticheat.service.js";
 // NOTE: cageMatch.service.ts imports several functions from this same file
 // (createDirectGame, finalizeGame, settleWager), so this is a deliberate
 // circular import. It's safe here because every cross-reference on both
@@ -445,6 +446,15 @@ export async function finalizeGame(
   // separately in cageMatch.service.ts, not here per-leg.
   if (updated && !updated.cageMatchId) {
     expireChat('game', gameId).catch((err) => console.error('expireChat(game) failed:', err));
+  }
+
+  // Fire-and-forget, off every real ending (decisive or drawn; aborted/
+  // no-result games have nothing for the heuristic to look at). Runs here
+  // rather than at each individual call site so both the normal
+  // game:over path (gameSocket.ts) and the disconnect-timeout
+  // reconciliation path above both get covered from one place.
+  if (status === 'finished' && result !== null) {
+    runAutoCheatCheck(gameId).catch((err) => console.error('runAutoCheatCheck failed:', err));
   }
 }
 

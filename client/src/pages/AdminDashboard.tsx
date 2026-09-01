@@ -7,14 +7,19 @@ import {
   Swords,
   Trophy,
   Gamepad2,
+  ShieldQuestion,
 } from "lucide-react";
 import {
   listReports,
   getRevenueSummary,
+  listGameFlags,
+  updateGameFlag,
   type AdminReportListItem,
   type ReportStatus,
   type RevenueSummary,
   type RevenueSource,
+  type AdminGameFlag,
+  type GameFlagStatus,
 } from "../api/admin.js";
 import { clearAdminToken } from "../api/adminAuthStore.js";
 import {
@@ -56,13 +61,32 @@ const SOURCE_ICON: Record<RevenueSource, typeof Gamepad2> = {
   tournament: Trophy,
 };
 
+const FLAG_STATUS_FILTERS: (GameFlagStatus | "all")[] = [
+  "pending_review",
+  "cleared",
+  "actioned",
+  "all",
+];
+
+const flagStatusVariant: Record<GameFlagStatus, "warning" | "success" | "error"> = {
+  pending_review: "warning",
+  cleared: "success",
+  actioned: "error",
+};
+
 export function AdminDashboard() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"reports" | "revenue">("reports");
+  const [tab, setTab] = useState<"reports" | "gameCheck" | "revenue">("reports");
   const [status, setStatus] = useState<ReportStatus | "all">("pending");
   const [reports, setReports] = useState<AdminReportListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const [flagStatus, setFlagStatus] = useState<GameFlagStatus | "all">("pending_review");
+  const [flags, setFlags] = useState<AdminGameFlag[]>([]);
+  const [flagsLoading, setFlagsLoading] = useState(true);
+  const [flagsError, setFlagsError] = useState("");
+  const [flagActionId, setFlagActionId] = useState<string | null>(null);
 
   const [revenue, setRevenue] = useState<RevenueSummary | null>(null);
   const [revenueLoading, setRevenueLoading] = useState(true);
@@ -79,6 +103,16 @@ export function AdminDashboard() {
   }, [status]);
 
   useEffect(() => {
+    if (tab !== "gameCheck") return;
+    setFlagsLoading(true);
+    setFlagsError("");
+    listGameFlags(flagStatus)
+      .then((res) => setFlags(res.flags))
+      .catch(() => setFlagsError("Could not load flagged games"))
+      .finally(() => setFlagsLoading(false));
+  }, [tab, flagStatus]);
+
+  useEffect(() => {
     if (tab !== "revenue") return;
     setRevenueLoading(true);
     setRevenueError("");
@@ -91,6 +125,26 @@ export function AdminDashboard() {
   function handleLogout() {
     clearAdminToken();
     navigate("/admin/login", { replace: true });
+  }
+
+  async function handleFlagReview(flag: AdminGameFlag, newStatus: GameFlagStatus) {
+    setFlagActionId(flag.id);
+    try {
+      // Clearing (not "actioned") also lifts the withdrawal freeze this
+      // flag put on the player, same "explicit, not inferred" posture as
+      // the reports tab: an admin marking it cleared means it genuinely
+      // wasn't cheating, actioned means it was and the hold should stay
+      // (or become a longer-term account action handled separately).
+      await updateGameFlag(flag.id, {
+        status: newStatus,
+        clearWithdrawalBlock: newStatus === "cleared",
+      });
+      setFlags((prev) => prev.filter((f) => f.id !== flag.id));
+    } catch {
+      setFlagsError("Could not update that flag, try again.");
+    } finally {
+      setFlagActionId(null);
+    }
   }
 
   return (
@@ -108,9 +162,10 @@ export function AdminDashboard() {
       <div className="mb-4">
         <Tabs
           value={tab}
-          onChange={(v) => setTab(v as "reports" | "revenue")}
+          onChange={(v) => setTab(v as "reports" | "gameCheck" | "revenue")}
           items={[
             { value: "reports", label: "Reports" },
+            { value: "gameCheck", label: "Game check" },
             { value: "revenue", label: "Revenue" },
           ]}
         />
@@ -197,6 +252,104 @@ export function AdminDashboard() {
                   </p>
                 </Card>
               </Link>
+            ))}
+          </div>
+        </>
+      ) : tab === "gameCheck" ? (
+        <>
+          <div className="mb-4 flex flex-wrap gap-2">
+            {FLAG_STATUS_FILTERS.map((s) => (
+              <button
+                key={s}
+                onClick={() => setFlagStatus(s)}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
+                  flagStatus === s
+                    ? "bg-(--primary) text-white"
+                    : "bg-base-200 text-base-content/60 hover:bg-base-300"
+                }`}
+              >
+                {s.replace(/_/g, " ")}
+              </button>
+            ))}
+          </div>
+
+          {flagsLoading && (
+            <div className="flex justify-center py-10">
+              <Spinner className="text-base-content/40" />
+            </div>
+          )}
+
+          {flagsError && (
+            <Card
+              variant="solid"
+              className="border-red-900/50 bg-red-950/20 text-red-300"
+            >
+              {flagsError}
+            </Card>
+          )}
+
+          {!flagsLoading && !flagsError && flags.length === 0 && (
+            <p className="py-10 text-center text-sm text-base-content/50">
+              No {flagStatus !== "all" ? flagStatus.replace(/_/g, " ") : ""} flagged games.
+            </p>
+          )}
+
+          <div className="space-y-2">
+            {flags.map((f) => (
+              <Card key={f.id} variant="solid" className="text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <ShieldQuestion className="h-4 w-4 text-base-content/40" />
+                    <span className="font-semibold text-base-content">
+                      {f.flaggedUser?.username ?? "Unknown user"}
+                    </span>
+                    <span className="text-base-content/40">
+                      · {f.side} · game {f.gameCode}
+                    </span>
+                    <Badge variant="error" className="gap-1">
+                      Score {f.score}
+                    </Badge>
+                  </div>
+                  <Badge variant={flagStatusVariant[f.status]} className="capitalize">
+                    {f.status.replace(/_/g, " ")}
+                  </Badge>
+                </div>
+
+                <ul className="mt-1.5 space-y-0.5 text-base-content/60">
+                  {f.signals.map((sig, i) => (
+                    <li key={i}>
+                      <span className="text-base-content/40">{sig.type.replace(/_/g, " ")}:</span>{" "}
+                      {sig.detail}
+                    </li>
+                  ))}
+                </ul>
+
+                <p className="mt-1.5 text-xs text-base-content/40">
+                  {new Date(f.createdAt).toLocaleString()}
+                </p>
+
+                {f.status === "pending_review" && (
+                  <div className="mt-2.5 flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="glass"
+                      disabled={flagActionId === f.id}
+                      onClick={() => handleFlagReview(f, "cleared")}
+                    >
+                      Clear &amp; unfreeze
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="glass"
+                      disabled={flagActionId === f.id}
+                      onClick={() => handleFlagReview(f, "actioned")}
+                      className="border-red-900/50 text-red-300"
+                    >
+                      Confirm cheating
+                    </Button>
+                  </div>
+                )}
+              </Card>
             ))}
           </div>
         </>

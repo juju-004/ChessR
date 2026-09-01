@@ -108,6 +108,9 @@ const Withdraw = lazy(() =>
 const Settings = lazy(() =>
   import("./pages/Settings.js").then((m) => ({ default: m.Settings })),
 );
+const Notifications = lazy(() =>
+  import("./pages/Notifications.js").then((m) => ({ default: m.Notifications })),
+);
 const WalletLayout = lazy(() =>
   import("./components/WalletLayout.js").then((m) => ({
     default: m.WalletLayout,
@@ -351,6 +354,14 @@ function AppBody() {
                 element={
                   <ProtectedRoute>
                     <Settings />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/notifications"
+                element={
+                  <ProtectedRoute>
+                    <Notifications />
                   </ProtectedRoute>
                 }
               />

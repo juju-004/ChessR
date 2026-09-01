@@ -6,8 +6,10 @@ import { signAdminToken } from '../services/token.service.js';
 import { Report } from '../models/Report.js';
 import { User } from '../models/User.js';
 import { Game } from '../models/Game.js';
+import { GameFlag } from '../models/GameFlag.js';
 import { PlatformRevenue } from '../models/PlatformRevenue.js';
 import { analyzeGameForSuspicion } from '../services/anticheat.service.js';
+import { createNotification } from '../services/notification.service.js';
 
 const loginSchema = z.object({
   username: z.string().min(1),
@@ -196,6 +198,53 @@ const updateReportSchema = z.object({
   clearWithdrawalBlock: z.boolean().optional(),
 });
 
+// A report getting dismissed doesn't by itself mean the reporter acted in
+// bad faith, people misjudge situations honestly all the time. A *pattern*
+// of dismissals is a different story: once this many of one person's
+// reports have been looked at and thrown out, that's a real signal
+// (adjudicated by an admin, not guessed at automatically) that they're
+// reporting people "for fun" rather than in good faith.
+const DISMISSED_REPORTS_SUSPENSION_THRESHOLD = 5;
+const REPORT_ABUSE_SUSPENSION_DAYS = 7;
+
+/** Runs after a report is dismissed, checks whether the REPORTER (not the
+ *  reported user) has crossed the bad-faith-reporting threshold, and if
+ *  so, restricts them from playing or chatting for
+ *  REPORT_ABUSE_SUSPENSION_DAYS by setting User.suspendedUntil (enforced
+ *  at each specific action via suspension.service.ts's
+ *  assertNotRestricted — starting a challenge/cage match/tournament, or
+ *  sending a chat message). Deliberately narrow: this does NOT sign them
+ *  out, block browsing, or touch withdrawals/deposits (those are governed
+ *  entirely by the separate withdrawalBlocked field) — someone flagged
+ *  for reporting abuse still has full access to their wallet, they just
+ *  can't start playing or talking to other players until it lifts. The
+ *  client reads suspendedUntil straight off their own user object (see
+ *  userFields() in auth.controller.ts) to show a countdown on Dashboard.
+ *
+ *  Fires exactly once per threshold crossing (checks the count *equals*
+ *  the threshold, not >=), so re-dismissing a 6th, 7th, ... report from
+ *  the same repeat offender doesn't stack additional restrictions or
+ *  reset the clock on one already in effect. */
+async function checkReportAbuseSuspension(reporterId: string): Promise<void> {
+  const dismissedCount = await Report.countDocuments({ reporter: reporterId, status: 'dismissed' });
+  if (dismissedCount !== DISMISSED_REPORTS_SUSPENSION_THRESHOLD) return;
+
+  const suspendedUntil = new Date(Date.now() + REPORT_ABUSE_SUSPENSION_DAYS * 86_400_000);
+  await User.updateOne({ _id: reporterId }, { $set: { suspendedUntil } });
+
+  await createNotification({
+    recipientId: reporterId,
+    type: 'admin_message',
+    title: "You're temporarily restricted from playing and chatting",
+    body:
+      `Several reports you've filed against other players were reviewed and dismissed. ` +
+      `As a result, you can't start new games (challenges, cage matches, tournaments) or send chat ` +
+      `messages until ${suspendedUntil.toDateString()}. Your wallet is unaffected, you can still deposit ` +
+      `and withdraw normally. Please only report genuine violations, contact support if you believe ` +
+      `this is a mistake.`,
+  }).catch((err) => console.error('Failed to send report-abuse suspension notification:', err));
+}
+
 export const updateReport = asyncHandler(async (req, res) => {
   const body = updateReportSchema.parse(req.body);
 
@@ -207,6 +256,12 @@ export const updateReport = asyncHandler(async (req, res) => {
   report.reviewedBy = env.ADMIN_USERNAME ?? 'admin';
   report.reviewedAt = new Date();
   await report.save();
+
+  if (body.status === 'dismissed') {
+    checkReportAbuseSuspension(report.reporter.toString()).catch((err) =>
+      console.error('checkReportAbuseSuspension failed:', err),
+    );
+  }
 
   if (body.clearWithdrawalBlock) {
     // Only clear it if there's no OTHER still-open report against the same
@@ -223,4 +278,88 @@ export const updateReport = asyncHandler(async (req, res) => {
   }
 
   res.json({ id: report._id, status: report.status });
+});
+
+const listGameFlagsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+  status: z.enum(['pending_review', 'cleared', 'actioned']).optional(),
+});
+
+/** The "game check" queue: games the anti-cheat heuristic auto-flagged,
+ *  see anticheat.service.ts's runAutoCheatCheck. Separate from /reports —
+ *  these weren't filed by a user, they're a system finding. */
+export const listGameFlags = asyncHandler(async (req, res) => {
+  const { page, limit, status } = listGameFlagsQuerySchema.parse(req.query);
+  const filter = status ? { status } : {};
+
+  const [flags, total] = await Promise.all([
+    GameFlag.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .populate('flaggedUser', 'username')
+      .lean(),
+    GameFlag.countDocuments(filter),
+  ]);
+
+  res.json({
+    flags: flags.map((f: any) => ({
+      id: f._id,
+      gameId: f.game,
+      gameCode: f.gameCode,
+      flaggedUser: f.flaggedUser
+        ? { id: f.flaggedUser._id, username: f.flaggedUser.username }
+        : null,
+      side: f.side,
+      score: f.score,
+      signals: f.signals,
+      status: f.status,
+      reviewedBy: f.reviewedBy,
+      reviewedAt: f.reviewedAt,
+      reviewNotes: f.reviewNotes,
+      createdAt: f.createdAt,
+    })),
+    page,
+    limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+  });
+});
+
+const updateGameFlagSchema = z.object({
+  status: z.enum(['pending_review', 'cleared', 'actioned']),
+  reviewNotes: z.string().trim().max(2000).optional(),
+  // Same explicit-flag-not-inferred-from-status posture as
+  // updateReport's clearWithdrawalBlock, resolving a flag should never
+  // *silently* restore withdrawals.
+  clearWithdrawalBlock: z.boolean().optional(),
+});
+
+export const updateGameFlag = asyncHandler(async (req, res) => {
+  const body = updateGameFlagSchema.parse(req.body);
+
+  const flag = await GameFlag.findById(req.params.id);
+  if (!flag) throw ApiError.notFound('Game flag not found');
+
+  flag.status = body.status;
+  if (body.reviewNotes !== undefined) flag.reviewNotes = body.reviewNotes;
+  flag.reviewedBy = env.ADMIN_USERNAME ?? 'admin';
+  flag.reviewedAt = new Date();
+  await flag.save();
+
+  if (body.clearWithdrawalBlock) {
+    // Same "don't reopen withdrawals out from under a still-open, unrelated
+    // hold" guard as updateReport, checked across BOTH GameFlags and
+    // Reports since either kind can be the reason withdrawalBlocked is set.
+    const [otherOpenFlag, otherOpenReport] = await Promise.all([
+      GameFlag.exists({ _id: { $ne: flag._id }, flaggedUser: flag.flaggedUser, status: 'pending_review' }),
+      Report.exists({ reportedUser: flag.flaggedUser, status: { $in: ['pending', 'reviewing'] } }),
+    ]);
+    if (!otherOpenFlag && !otherOpenReport) {
+      await User.updateOne({ _id: flag.flaggedUser }, { $set: { withdrawalBlocked: false } });
+    }
+  }
+
+  res.json({ id: flag._id, status: flag.status });
 });

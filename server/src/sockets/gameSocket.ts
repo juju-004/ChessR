@@ -25,6 +25,7 @@ import { advanceTournamentIfPairing, berserkInTournamentGame } from '../services
 import { applyRatingForGame, getRatingCategory } from '../services/rating.service.js';
 import { getLagCompensationMs } from '../services/latency.service.js';
 import { addChatMessage, getChatHistory, isChatRateLimited, isRepeatMessage, type ChatScope } from '../services/chat.service.js';
+import { assertNotRestricted } from '../services/suspension.service.js';
 import {
   scheduleGameTimer,
   clearGameTimer,
@@ -853,6 +854,12 @@ export function registerGameHandlers(io: Server, socket: Socket) {
 
       if (!socket.rooms.has(spectatorRoom(gameId))) {
         return emitError(socket, 'Only spectators can use this chat');
+      }
+
+      try {
+        await assertNotRestricted(userId);
+      } catch (err) {
+        return emitError(socket, err instanceof Error ? err.message : 'Chat is currently restricted for your account');
       }
 
       if (await isChatRateLimited(userId)) {

@@ -146,3 +146,49 @@ export interface RevenueSummary {
 export function getRevenueSummary(page = 1, limit = 50) {
   return adminFetch<RevenueSummary>(`/revenue?page=${page}&limit=${limit}`);
 }
+
+// --- Game check queue (anti-cheat auto-flags) -------------------------------
+// See models/GameFlag.ts / anticheat.service.ts's runAutoCheatCheck on the
+// server. Separate from /reports: these are the system's own findings,
+// nobody filed them.
+
+export type GameFlagStatus = 'pending_review' | 'cleared' | 'actioned';
+
+export interface AdminGameFlag {
+  id: string;
+  gameId: string;
+  gameCode: string;
+  flaggedUser: { id: string; username: string } | null;
+  side: 'white' | 'black';
+  score: number;
+  signals: SuspicionSignal[];
+  status: GameFlagStatus;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  reviewNotes?: string;
+  createdAt: string;
+}
+
+export interface GameFlagListResponse {
+  flags: AdminGameFlag[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export function listGameFlags(status?: GameFlagStatus | 'all', page = 1, limit = 20) {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (status && status !== 'all') params.set('status', status);
+  return adminFetch<GameFlagListResponse>(`/game-flags?${params.toString()}`);
+}
+
+export function updateGameFlag(
+  id: string,
+  body: { status: GameFlagStatus; reviewNotes?: string; clearWithdrawalBlock?: boolean },
+) {
+  return adminFetch<{ id: string; status: GameFlagStatus }>(`/game-flags/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}

@@ -359,6 +359,20 @@ export function GlobalListeners() {
       );
     }
 
+    // ChessR's own persisted notifications (welcome message, anti-cheat/
+    // report freeze alerts, ...) — see models/Notification.ts server-side.
+    // NotificationCenterContext (the bell) independently listens for this
+    // same event and adds the persistent item there, this is purely an
+    // ephemeral "heads up" toast layered on top, the same way a challenge
+    // can show as both a toast and a bell item.
+    function onNotificationNew(payload: { title: string }) {
+      notify(
+        payload.title,
+        [{ label: "View", onClick: () => navigate("/notifications") }],
+        8000,
+      );
+    }
+
     socket.on("challenge:received", onChallengeReceived);
     socket.on("challenge:accepted", onChallengeAccepted);
     socket.on("challenge:declined", onChallengeDeclined);
@@ -381,6 +395,7 @@ export function GlobalListeners() {
     socket.on("cage:resume_requested", onResumeRequested);
     socket.on("cage:resume_declined", onResumeDeclined);
     socket.on("tournament:pairing_ready", onTournamentPairingReady);
+    socket.on("notification:new", onNotificationNew);
 
     return () => {
       socket.off("challenge:received", onChallengeReceived);
@@ -405,6 +420,7 @@ export function GlobalListeners() {
       socket.off("cage:resume_requested", onResumeRequested);
       socket.off("cage:resume_declined", onResumeDeclined);
       socket.off("tournament:pairing_ready", onTournamentPairingReady);
+      socket.off("notification:new", onNotificationNew);
     };
   }, [socket, navigate, notify, setActiveGame]);
 
