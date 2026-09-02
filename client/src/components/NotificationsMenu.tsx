@@ -5,7 +5,7 @@ import { Bell, Check, X, Swords, Shield, Maximize2, PartyPopper, ShieldAlert, Fl
 import { pressable } from "@/lib/motion.js";
 import { cn } from "@/lib/cn.js";
 import { Popover } from "./ui/Popover.js";
-import { Avatar, RCoin } from "./ui/index.js";
+import { Avatar, RCoin, TimeControlIcon } from "./ui/index.js";
 import { useNotificationCenter, type NotificationItem } from "../contexts/NotificationCenterContext.js";
 import type { NotificationType } from "../api/notifications.js";
 
@@ -152,7 +152,13 @@ export function NotificationsMenu({ className }: NotificationsMenuProps) {
                         {item.from.username}
                       </span>{" "}
                       challenged you to a game (
-                      {timeControlLabel(item.timeControl)}
+                      <span className="inline-flex items-center gap-0.5">
+                        <TimeControlIcon
+                          baseMinutes={item.timeControl.baseMinutes}
+                          size={11}
+                        />
+                        {timeControlLabel(item.timeControl)}
+                      </span>
                       {wagerNote})
                     </p>
                     <div className="mt-1.5 flex gap-1.5">

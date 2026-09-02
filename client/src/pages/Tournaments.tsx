@@ -21,6 +21,7 @@ import {
   Button,
   Badge,
   RCoin,
+  TimeControlIcon,
 } from "../components/ui/index.js";
 
 // Client-side page size for the Open tournaments and Finished tourneys
@@ -52,7 +53,13 @@ function TournamentRow({ t }: { t: Tournament }) {
           <Badge variant={STATUS_VARIANT[t.status]}>{t.status}</Badge>
         </div>
         <div className="mt-0.5 text-xs text-base-content/50">
-          {FORMAT_LABEL[t.format]} · {formatTimeControl(t)} · {t.players.length}
+          {FORMAT_LABEL[t.format]} ·{" "}
+          <TimeControlIcon
+            baseMinutes={t.baseMinutes}
+            size={12}
+            className="inline-block align-[-2px]"
+          />{" "}
+          {formatTimeControl(t)} · {t.players.length}
           /{t.maxPlayers} players
           {t.regFeeTokens > 0 && (
             <>

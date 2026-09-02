@@ -50,13 +50,19 @@ import {
   MAX_EVENT_NAME_LENGTH,
 } from "../lib/limits.js";
 import { FORMAT_DESCRIPTION, robinRoundsLabel } from "../api/tournaments.js";
+import type { TimeControlCategory } from "../timeControls.js";
 
-const SPEED_EMOJI: Record<string, string> = {
-  "Hyper Bullet": "💥",
-  Bullet: "⚡",
-  Blitz: "🔥",
-  Rapid: "⏳",
-  Classical: "♟️",
+// Maps timeControlSpeed()'s lichess-style estimated-length string (which
+// already accounts for increment, not just base minutes, and has its own
+// "Hyper Bullet" bucket) onto the shared bullet/blitz/rapid/classical icon
+// set, rather than re-deriving a category from tournament.baseMinutes
+// alone and risking the two disagreeing on a borderline time control.
+const SPEED_CATEGORY: Record<string, TimeControlCategory> = {
+  "Hyper Bullet": "bullet",
+  Bullet: "bullet",
+  Blitz: "blitz",
+  Rapid: "rapid",
+  Classical: "classical",
 };
 import {
   Page,
@@ -74,6 +80,7 @@ import {
   Tabs,
   ResponsiveOverlay,
   RCoin,
+  CategoryIcon,
 } from "../components/ui/index.js";
 
 const CLIENT_URL = import.meta.env.VITE_CLIENT_URL ?? "http://localhost:5173";
@@ -1207,7 +1214,13 @@ export function TournamentDetail() {
           <Card variant="solid">
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full gradient-brand px-3 py-1 text-sm font-bold text-white shadow-sm shadow-(--primary)/25">
-                {speed && <span>{SPEED_EMOJI[speed]}</span>}
+                {speed && (
+                  <CategoryIcon
+                    category={SPEED_CATEGORY[speed]}
+                    size={14}
+                    monochrome="text-white"
+                  />
+                )}
                 {headline}
               </span>
             </div>

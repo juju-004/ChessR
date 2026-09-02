@@ -31,7 +31,7 @@ interface NotifyItem {
    *  same person challenging you three times in a row should update one
    *  toast, not pile up three. */
   key?: string;
-  message: string;
+  message: ReactNode;
   actions: NotifyAction[];
   /** How long (ms) before this toast dismisses itself, omit for one that
    *  stays until the person acts on it or dismisses it manually. Also
@@ -49,7 +49,7 @@ const MAX_VISIBLE_TOASTS = 4;
 
 interface NotificationContextValue {
   notify: (
-    message: string,
+    message: ReactNode,
     actions?: NotifyAction[],
     autoDismissMs?: number,
     key?: string,
@@ -144,7 +144,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const notify = useCallback(
     (
-      message: string,
+      message: ReactNode,
       actions: NotifyAction[] = [],
       autoDismissMs?: number,
       key?: string,

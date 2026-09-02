@@ -29,6 +29,7 @@ import {
   Button,
   Badge,
   Spinner,
+  TimeControlIcon,
 } from "../components/ui/index.js";
 import { EditProfileModal } from "../components/EditProfileModal.js";
 import { ReportUserModal } from "../components/ReportUserModal.js";
@@ -378,7 +379,13 @@ export function Profile() {
                       />
                       <span className="capitalize">{g.color}</span>
                       <span>·</span>
-                      <span>{formatTimeControl(g.timeControl)}</span>
+                      <span className="inline-flex items-center gap-1">
+                        <TimeControlIcon
+                          baseSeconds={g.timeControl.baseSeconds}
+                          size={12}
+                        />
+                        {formatTimeControl(g.timeControl)}
+                      </span>
                       <span>·</span>
                       <span>{g.moveCount} moves</span>
                       <span>·</span>

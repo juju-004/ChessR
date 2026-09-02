@@ -1,7 +1,7 @@
 import { useRef, memo } from "react";
 import { motion } from "framer-motion";
 import { Ban } from "lucide-react";
-import { ChessBoard } from "../ChessBoard.js";
+import { ChessBoard, BoardCoordinatesOutside } from "../ChessBoard.js";
 import { PromotionPicker } from "../PromotionPicker.js";
 import { PlayerPanelRow, type PanelData } from "../PlayerPanels.js";
 import { Button } from "../ui/index.js";
@@ -79,6 +79,12 @@ export const GameBoardArea = memo(function GameBoardArea({
   const topPanelData = boardFlipped ? myPanelData : opponentPanelData;
   const bottomPanelData = boardFlipped ? opponentPanelData : myPanelData;
 
+  const orientation: "white" | "black" = boardFlipped
+    ? myColor === "black"
+      ? "white"
+      : "black"
+    : (myColor ?? "white");
+
   return (
     <div className="game-area-board mt-4 md:mt-0 relative flex flex-col flex-1 items-center justify-center">
       <div className=" md:hidden w-[95%]">
@@ -96,54 +102,62 @@ export const GameBoardArea = memo(function GameBoardArea({
         className="relative flex w-full min-h-0 flex-1 items-center justify-center"
       >
         <div
+          className="relative"
           style={{
             width: squareSize || undefined,
             height: squareSize || undefined,
           }}
-          className={`relative rounded-2xl flex items-center shadow- overflow-hidden board-theme-${boardTheme} piece-theme-${pieceTheme} justify-center`}
         >
-          <ChessBoard
-            fen={displayFen}
-            orientation={
-              boardFlipped
-                ? myColor === "black"
-                  ? "white"
-                  : "black"
-                : (myColor ?? "white")
-            }
-            viewOnly={viewOnly}
-            turnColor={turnColor}
-            movableColor={myColor}
-            dests={dests}
-            premoveDests={premoveDests}
-            inCheck={inCheck}
-            lastMove={displayLastMove}
-            onUserMove={onUserMove}
-            animationEnabled={animationEnabled}
-            animationDurationMs={animationDurationMs}
-            showCoordinates={showCoordinates}
-            showLegalMoves={showLegalMoves}
-          />
-          {isPlayer && status === "waiting" && (
-            <div className="pointer-events-none absolute bg-base-200/10 inset-0 px-3 justify-center items-center top-2 z-30 mx-auto flex">
-              <motion.div
-                key="waiting-banner"
-                initial={{ opacity: 0, y: -8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={springSnappy}
-                className="pointer-events-auto flex items-center gap-3 rounded-xl border border-base-300 bg-base-100 px-3 py-2.5 shadow-lg"
-              >
-                <p className="flex-1 text-sm text-base-content/60">
-                  Waiting for an opponent to join…
-                </p>
-                <Button variant="glass" size="sm" onClick={onCancelWaitingGame}>
-                  <Ban className="h-4 w-4" /> Cancel game
-                </Button>
-              </motion.div>
-            </div>
+          <div
+            className={`relative rounded-2xl flex items-center shadow- overflow-hidden board-theme-${boardTheme} piece-theme-${pieceTheme} justify-center h-full w-full`}
+          >
+            <ChessBoard
+              fen={displayFen}
+              orientation={orientation}
+              viewOnly={viewOnly}
+              turnColor={turnColor}
+              movableColor={myColor}
+              dests={dests}
+              premoveDests={premoveDests}
+              inCheck={inCheck}
+              lastMove={displayLastMove}
+              onUserMove={onUserMove}
+              animationEnabled={animationEnabled}
+              animationDurationMs={animationDurationMs}
+              showCoordinates={showCoordinates}
+              showLegalMoves={showLegalMoves}
+            />
+            {isPlayer && status === "waiting" && (
+              <div className="pointer-events-none absolute bg-base-200/10 inset-0 px-3 justify-center items-center top-2 z-30 mx-auto flex">
+                <motion.div
+                  key="waiting-banner"
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={springSnappy}
+                  className="pointer-events-auto flex items-center gap-3 rounded-xl border border-base-300 bg-base-100 px-3 py-2.5 shadow-lg"
+                >
+                  <p className="flex-1 text-sm text-base-content/60">
+                    Waiting for an opponent to join…
+                  </p>
+                  <Button variant="glass" size="sm" onClick={onCancelWaitingGame}>
+                    <Ban className="h-4 w-4" /> Cancel game
+                  </Button>
+                </motion.div>
+              </div>
+            )}
+            {promoPending && <PromotionPicker onPick={onPromotionPick} />}
+          </div>
+          {/* Deliberately a sibling of the overflow-hidden themed div above,
+           *  not a child of it — labels positioned outside the board's own
+           *  box would otherwise get silently clipped by that div's
+           *  overflow-hidden (which needs to stay, it's what keeps the
+           *  waiting-banner scrim and promotion picker within the rounded
+           *  corners). This wrapper has no overflow-hidden of its own, so
+           *  the coordinates can render past its edges on lg+. */}
+          {showCoordinates && squareSize > 0 && (
+            <BoardCoordinatesOutside orientation={orientation} boardSize={squareSize} />
           )}
-          {promoPending && <PromotionPicker onPick={onPromotionPick} />}
         </div>
       </div>
       <div className=" md:hidden w-[95%]">

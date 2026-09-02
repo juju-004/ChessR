@@ -32,6 +32,14 @@ export interface ChessBoardProps {
   animationDurationMs?: number;
   showCoordinates?: boolean;
   showLegalMoves?: boolean;
+  /** GameBoardArea's live game board renders its own BoardCoordinatesOutside
+   *  as a sibling on lg+ (see that file for why it can't live in here — it
+   *  needs a non-clipped ancestor this component doesn't have), and this
+   *  component's own inside overlay hides itself at lg+ to hand off to it.
+   *  Settings.tsx's small preview board has no such sibling and no room
+   *  for an outside gutter in a narrow sidebar card, so it sets this to
+   *  keep its coordinates inside at every breakpoint instead. */
+  forceInsideCoordinates?: boolean;
 }
 
 export const ChessBoard = memo(function ChessBoard({
@@ -49,6 +57,7 @@ export const ChessBoard = memo(function ChessBoard({
   animationDurationMs = 200,
   showCoordinates = true,
   showLegalMoves = true,
+  forceInsideCoordinates = false,
 }: ChessBoardProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -248,7 +257,11 @@ export const ChessBoard = memo(function ChessBoard({
         style={{ width: boardSize, height: boardSize }}
       />
       {showCoordinates && boardSize > 0 && (
-        <BoardCoordinates orientation={orientation} boardSize={boardSize} />
+        <BoardCoordinates
+          orientation={orientation}
+          boardSize={boardSize}
+          className={forceInsideCoordinates ? undefined : "lg:hidden"}
+        />
       )}
     </div>
   );
@@ -284,9 +297,11 @@ function isDarkSquare(fileIndex: number, rank: number): boolean {
 const BoardCoordinates = memo(function BoardCoordinates({
   orientation,
   boardSize,
+  className,
 }: {
   orientation: "white" | "black";
   boardSize: number;
+  className?: string;
 }) {
   const squareSize = boardSize / 8;
   const fontSize = Math.max(9, Math.round(boardSize * 0.022));
@@ -312,7 +327,9 @@ const BoardCoordinates = memo(function BoardCoordinates({
   });
 
   return (
-    <div className="pointer-events-none absolute inset-0 select-none">
+    <div
+      className={`pointer-events-none absolute inset-0 select-none${className ? ` ${className}` : ""}`}
+    >
       {ranks.map((rank, row) => {
         const leftFileIndex = FILES.indexOf(files[0]);
         return (
@@ -346,6 +363,92 @@ const BoardCoordinates = memo(function BoardCoordinates({
           </span>
         );
       })}
+    </div>
+  );
+});
+
+/**
+ * Desktop (lg+) counterpart to BoardCoordinates above: on a laptop-or-wider
+ * screen there's enough page width that the coordinates don't need to sit
+ * on top of the board at all, so this renders them just outside its four
+ * edges instead — a rank column to the left, a file row underneath, the
+ * same placement lichess/chess.com use on desktop. Must be mounted as a
+ * sibling of the board's own overflow-hidden themed wrapper (see
+ * GameBoardArea.tsx), not inside it, since labels positioned outside a
+ * 0..boardSize box get silently clipped by any ancestor's overflow-hidden
+ * regardless of this component's own styling.
+ *
+ * No light/dark alternation here (there's no square underneath to
+ * contrast against once the label is off the board), just one consistent
+ * muted color, and a slightly larger, non-boardSize-scaled font since it's
+ * no longer competing for space inside a board square.
+ */
+export const BoardCoordinatesOutside = memo(function BoardCoordinatesOutside({
+  orientation,
+  boardSize,
+}: {
+  orientation: "white" | "black";
+  boardSize: number;
+}) {
+  const squareSize = boardSize / 8;
+  const fontSize = 13;
+  const gutter = 20; // px reserved outside the board edge for each axis
+
+  const { files, ranks } = useMemo(() => {
+    const files = orientation === "white" ? FILES : [...FILES].reverse();
+    const ranks =
+      orientation === "white"
+        ? [8, 7, 6, 5, 4, 3, 2, 1]
+        : [1, 2, 3, 4, 5, 6, 7, 8];
+    return { files, ranks };
+  }, [orientation]);
+
+  const labelClassName = "absolute flex items-center justify-center font-semibold text-base-content/45";
+
+  return (
+    <div className="pointer-events-none absolute inset-0 hidden select-none lg:block">
+      <div
+        className="absolute"
+        style={{ top: 0, left: -gutter, width: gutter, height: boardSize }}
+      >
+        {ranks.map((rank, row) => (
+          <span
+            key={`rank-out-${rank}`}
+            className={labelClassName}
+            style={{
+              top: row * squareSize,
+              left: 0,
+              width: gutter,
+              height: squareSize,
+              fontSize,
+              lineHeight: 1,
+            }}
+          >
+            {rank}
+          </span>
+        ))}
+      </div>
+      <div
+        className="absolute"
+        style={{ top: boardSize, left: 0, width: boardSize, height: gutter }}
+      >
+        {files.map((file, col) => (
+          <span
+            key={`file-out-${file}`}
+            className={labelClassName}
+            style={{
+              top: 0,
+              left: col * squareSize,
+              width: squareSize,
+              height: gutter,
+              fontSize,
+              lineHeight: 1,
+            }}
+          >
+            {file}
+          </span>
+        ))}
+      </div>
     </div>
   );
 });

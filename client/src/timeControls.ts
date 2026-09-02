@@ -50,3 +50,37 @@ export function animationDurationForTimeControl(
   if (baseMinutes < 30) return 200; // rapid, the old fixed default
   return 260; // classical, normal, slower
 }
+
+export type TimeControlCategory =
+  | "bullet"
+  | "blitz"
+  | "rapid"
+  | "classical"
+  | "unlimited";
+
+// Single source of truth for the bullet/blitz/rapid/classical/unlimited
+// bucketing, same thresholds as animationDurationForTimeControl above and
+// CageGamePlanEditor's legCategory (which can't reuse this directly since
+// the server's LegCategory type has no "unlimited" bucket and treats a
+// null base as classical instead). Used to pick the icon/color shown next
+// to a time control everywhere else in the app (see
+// components/ui/TimeControlIcon.tsx).
+export function timeControlCategory(
+  baseMinutes: number | null,
+): TimeControlCategory {
+  if (baseMinutes === null) return "unlimited";
+  if (baseMinutes < 3) return "bullet";
+  if (baseMinutes < 10) return "blitz";
+  if (baseMinutes < 30) return "rapid";
+  return "classical";
+}
+
+// Same bucketing, for the many call sites (live game data, Profile/
+// Dashboard history rows) that carry baseSeconds rather than a preset's
+// baseMinutes.
+export function timeControlCategoryFromSeconds(
+  baseSeconds: number | null,
+): TimeControlCategory {
+  return timeControlCategory(baseSeconds === null ? null : baseSeconds / 60);
+}
+

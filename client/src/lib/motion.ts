@@ -107,8 +107,8 @@ export const modalBackdrop: Variants = {
 // opening or closing is a frequent, high-traffic interaction where that
 // extra settle time reads as lag, not polish. Fixed, short durations here
 // instead.
-const overlayIn: Transition = { duration: 0.14, ease: EASE_OUT };
-const overlayOut: Transition = { duration: 0.09, ease: EASE_OUT };
+export const overlayIn: Transition = { duration: 0.14, ease: EASE_OUT };
+export const overlayOut: Transition = { duration: 0.09, ease: EASE_OUT };
 
 export const modalContent: Variants = {
   hidden: { opacity: 0, scale: 0.96, y: 6 },

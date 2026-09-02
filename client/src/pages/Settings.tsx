@@ -131,30 +131,30 @@ export function Settings() {
         </Button>
       }
     >
-      <div className="grid gap-4 lg:grid-cols-[1fr_240px]">
-        <div className="space-y-4">
-          <Card variant="solid">
-            <CardHeader>
-              <CardTitle>App</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {isInstalled ? (
-                <p className="text-sm text-green-500">
-                  ✓ Installed. you're already running Chess R standalone.
+      <div className="settings-grid">
+        <Card variant="solid" className="settings-grid-app">
+          <CardHeader>
+            <CardTitle>App</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isInstalled ? (
+              <p className="text-sm text-green-500">
+                ✓ Installed. you're already running Chess R standalone.
+              </p>
+            ) : (
+              <>
+                <p className="mb-3 text-xs text-base-content/50">
+                  Install Chess R on this device for a focused, full-screen
+                  experience. Launch it directly from your home screen or app
+                  list without browser tabs or an address bar.
                 </p>
-              ) : (
-                <>
-                  <p className="mb-3 text-xs text-base-content/50">
-                    Install Chess R on this device for a focused, full-screen
-                    experience. Launch it directly from your home screen or app
-                    list without browser tabs or an address bar.
-                  </p>
-                  <InstallAppButton />
-                </>
-              )}
-            </CardContent>
-          </Card>
+                <InstallAppButton />
+              </>
+            )}
+          </CardContent>
+        </Card>
 
+        <div className="settings-grid-rest space-y-4">
           <Card variant="solid">
             <CardHeader>
               <CardTitle>Board theme</CardTitle>
@@ -290,7 +290,7 @@ export function Settings() {
           </Card>
         </div>
 
-        <Card variant="solid" className="order-first h-fit lg:order-0">
+        <Card variant="solid" className="settings-grid-preview">
           <CardHeader>
             <CardTitle>Preview</CardTitle>
           </CardHeader>
@@ -309,6 +309,7 @@ export function Settings() {
                 animationEnabled={settings.pieceAnimation}
                 showCoordinates={settings.showCoordinates}
                 showLegalMoves={settings.showLegalMoves}
+                forceInsideCoordinates
               />
             </div>
             <p className="mt-2 text-xs text-base-content/50">

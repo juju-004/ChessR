@@ -8,7 +8,7 @@ import {
   type LegCategory,
 } from "../../api/cageMatches.js";
 import { HelpTip } from "../HelpTip.js";
-import { Select, Input, Button, Badge } from "../ui/index.js";
+import { Select, Input, Button, Badge, CategoryIcon } from "../ui/index.js";
 // Shared with every other time-control select in the app (see
 // ../../timeControls.js) instead of keeping its own list, a cage leg's
 // base time must be 1-180 minutes (or unlimited) server-side, so Hyper
@@ -113,7 +113,10 @@ export function CageGamePlanEditor({
                       {formatLegTimeControl(leg)}
                     </span>
                     <Badge variant="neutral">
-                      {CATEGORY_LABEL[legCategory(leg)]}
+                      <span className="inline-flex items-center gap-1">
+                        <CategoryIcon category={legCategory(leg)} size={11} />
+                        {CATEGORY_LABEL[legCategory(leg)]}
+                      </span>
                     </Badge>
                   </div>
                 </div>

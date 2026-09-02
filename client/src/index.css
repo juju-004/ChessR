@@ -247,6 +247,41 @@ body {
   }
 }
 
+/* Settings page layout. Named areas so the mobile-only reorder (App above
+   Preview, above the rest of the settings cards) is just a repositioning
+   of each existing grid item, not a second mounted copy, since the
+   Preview card owns a live Chessground board instance that can't safely
+   be duplicated. Desktop (lg+) keeps the original two-column look: App
+   and the rest of the cards stacked in the left column, Preview spanning
+   both rows on the right. */
+.settings-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "app"
+    "preview"
+    "rest";
+}
+.settings-grid-app {
+  grid-area: app;
+}
+.settings-grid-preview {
+  grid-area: preview;
+  height: fit-content;
+}
+.settings-grid-rest {
+  grid-area: rest;
+}
+@media (min-width: 1024px) {
+  .settings-grid {
+    grid-template-columns: 1fr 240px;
+    grid-template-areas:
+      "app preview"
+      "rest preview";
+  }
+}
+
 /* ---------------------------------------------------------------------------
    Mobile bottom dock
    -------------------------------------------------------------------------

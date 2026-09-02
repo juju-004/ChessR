@@ -49,6 +49,7 @@ import {
   RCoin,
   ResponsiveOverlay,
   Avatar,
+  TimeControlIcon,
 } from "../components/ui/index.js";
 
 /** A single tappable/clickable tile for the quick-links grid, one icon,
@@ -315,10 +316,14 @@ export function Dashboard() {
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-base-content/50">
-                      <span>
+                      <span className="inline-flex items-center gap-1">
                         {myGame.moves.length > 0
                           ? `Move ${Math.ceil(myGame.moves.length / 2)} · `
                           : ""}
+                        <TimeControlIcon
+                          baseSeconds={myGame.timeControl.baseSeconds}
+                          size={12}
+                        />
                         {formatTimeControl(myGame.timeControl)}
                       </span>
                       {myGame.wagerTokens > 0 && (
@@ -472,8 +477,12 @@ export function Dashboard() {
                             </Link>
                           </div>
                           <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-base-content/50">
-                            <span>
+                            <span className="inline-flex items-center gap-1">
                               Move {Math.ceil(g.moves.length / 2)} ·{" "}
+                              <TimeControlIcon
+                                baseSeconds={g.timeControl.baseSeconds}
+                                size={12}
+                              />
                               {formatTimeControl(g.timeControl)}
                             </span>
                             {g.wagerTokens > 0 && (

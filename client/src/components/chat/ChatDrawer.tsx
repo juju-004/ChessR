@@ -7,7 +7,7 @@ import {
 } from "framer-motion";
 import { CornerUpLeft, MessageSquare, Send, X } from "lucide-react";
 import { Avatar, Button } from "../ui/index.js";
-import { springSnappy } from "../../lib/motion.js";
+import { overlayIn, overlayOut } from "../../lib/motion.js";
 import type { ChatMessage } from "../../lib/chatTypes.js";
 import { cn } from "@/lib/cn.js";
 
@@ -296,9 +296,8 @@ function ChatDrawerImpl({
           className="fixed inset-0 z-50 bg-black/60"
           onClick={onClose}
           initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
+          animate={{ opacity: 1, transition: overlayIn }}
+          exit={{ opacity: 0, transition: overlayOut }}
         >
           {/* Bottom sheet, phone only. elevated-flat, not elevated-strong:
               no box-shadow at all here (this panel repaints on every
@@ -314,9 +313,8 @@ function ChatDrawerImpl({
             }}
             onClick={(e) => e.stopPropagation()}
             initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            transition={springSnappy}
+            animate={{ y: 0, transition: overlayIn }}
+            exit={{ y: "100%", transition: overlayOut }}
           >
             {header}
             {body}
@@ -332,9 +330,8 @@ function ChatDrawerImpl({
             }}
             onClick={(e) => e.stopPropagation()}
             initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={springSnappy}
+            animate={{ x: 0, transition: overlayIn }}
+            exit={{ x: "100%", transition: overlayOut }}
           >
             {header}
             {body}

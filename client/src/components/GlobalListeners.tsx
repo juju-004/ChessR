@@ -8,6 +8,7 @@ import { useOnOwnGamePageRef } from "../hooks/useOnOwnGamePageRef.js";
 import { getCageMatchByCode, type CageMatch } from "../api/cageMatches.js";
 import { CageMatchOverModal } from "./CageMatchOverModal.js";
 import { RCoin } from "./ui/RCoin.js";
+import { TimeControlIcon } from "./ui/TimeControlIcon.js";
 
 /**
  * Cross-page real-time notifications: incoming friend challenges and rematch
@@ -66,16 +67,24 @@ export function GlobalListeners() {
       const wagerNote = payload.wagerTokens ? (
         <>
           ,{" "}
-          <span className="inline-flex gap-0.5">
+          <span className="inline-flex items-center gap-0.5">
             {payload.wagerTokens}{" "}
             <RCoin className="translate-y-0.75" size={14} />
           </span>
         </>
-      ) : (
-        ""
-      );
+      ) : null;
       notify(
-        `${payload.from.username} challenged you to a game (${tc}${wagerNote}).`,
+        <span>
+          {payload.from.username} challenged you to a game (
+          <span className="inline-flex items-center gap-0.5">
+            <TimeControlIcon
+              baseMinutes={payload.timeControl.baseMinutes}
+              size={12}
+            />
+            {tc}
+          </span>
+          {wagerNote}).
+        </span>,
         [
           {
             label: "Accept",
@@ -180,16 +189,17 @@ export function GlobalListeners() {
         payload.wagerMode !== "none" && payload.wagerTokens ? (
           <>
             ,{" "}
-            <span className="inline-flex gap-0.5">
+            <span className="inline-flex items-center gap-0.5">
               {payload.wagerTokens}{" "}
               <RCoin className="translate-y-0.75" size={14} />
             </span>
           </>
-        ) : (
-          ""
-        );
+        ) : null;
       notify(
-        `${payload.from.username} challenged you to a ${payload.legs.length}-game cage match${wagerNote}.`,
+        <span>
+          {payload.from.username} challenged you to a {payload.legs.length}
+          -game cage match{wagerNote}.
+        </span>,
         [
           {
             label: "Accept",

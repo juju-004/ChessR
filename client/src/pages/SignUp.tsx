@@ -53,8 +53,7 @@ export function SignUp() {
 
   return (
     <AuthLayout
-      title="Create your account"
-      subtitle="Join up and get your first game going in seconds."
+      title="Register"
       footer={
         <>
           Already have an account?{" "}

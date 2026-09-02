@@ -55,8 +55,7 @@ export function SignIn() {
 
   return (
     <AuthLayout
-      title="Welcome back"
-      subtitle="Sign in to jump back into your games."
+      title="Login"
       footer={
         <>
           No account?{" "}

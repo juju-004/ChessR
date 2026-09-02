@@ -64,7 +64,9 @@ export function InstallAppButton({
           <Download className="h-4 w-4" /> Install Chess R
         </Button>
       )}
-      {status && <p className="text-xs text-base-content/50">{status}</p>}
+      {status && !compact && (
+        <p className="text-xs text-base-content/50">{status}</p>
+      )}
       {showIosSteps && (
         <div className="rounded-md border border-base-300 bg-base-100 p-3 text-sm text-base-content/80">
           <p className="mb-1 font-medium text-base-content">On iPhone/iPad:</p>

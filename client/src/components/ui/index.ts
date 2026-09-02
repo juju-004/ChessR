@@ -24,5 +24,11 @@ export { Tooltip, type TooltipProps } from "./Tooltip.js";
 export { Spinner, type SpinnerProps } from "./Spinner.js";
 export { Page, type PageProps } from "./Page.js";
 export { RCoin, RCoinAmount, type RCoinProps } from "./RCoin.js";
+export {
+  TimeControlIcon,
+  CategoryIcon,
+  type TimeControlIconProps,
+  type CategoryIconProps,
+} from "./TimeControlIcon.js";
 export { ThemeToggle } from "./ThemeToggle.js";
 export { FadeIn, ScaleIn, Stagger, StaggerItem } from "./Motion.js";

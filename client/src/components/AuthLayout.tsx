@@ -3,7 +3,11 @@ import { Card } from "./ui/index.js";
 
 interface AuthLayoutProps {
   title: string;
-  subtitle: string;
+  /** Optional — SignIn/SignUp deliberately go title-only (just "Login" /
+   *  "Register", no descriptive line under it); VerifyEmail and
+   *  ChooseUsername still pass one since their pages need the extra
+   *  context. */
+  subtitle?: string;
   children: ReactNode;
   footer: ReactNode;
 }
@@ -58,12 +62,16 @@ export function AuthLayout({
         <img src="/logo.png" className="mb-8 w-56 " alt="App Logo" />
 
         <Card variant="strong" className="w-full rounded-3xl p-7 sm:p-8">
-          <h1 className="text-center text-2xl font-bold text-base-content">
+          <h1
+            className={`text-center text-2xl font-bold text-base-content${subtitle ? "" : " mb-6"}`}
+          >
             {title}
           </h1>
-          <p className="mt-1 mb-6 text-center text-sm text-base-content/60">
-            {subtitle}
-          </p>
+          {subtitle && (
+            <p className="mt-1 mb-6 text-center text-sm text-base-content/60">
+              {subtitle}
+            </p>
+          )}
 
           {children}
 

@@ -37,7 +37,14 @@ import {
   reasonText,
 } from "../components/GameOverModal.js";
 import { CageMatchScoreboard } from "../components/CageMatchScoreboard.js";
-import { Card, Badge, Spinner, Button, RCoin } from "../components/ui/index.js";
+import {
+  Card,
+  Badge,
+  Spinner,
+  Button,
+  RCoin,
+  TimeControlIcon,
+} from "../components/ui/index.js";
 import {
   type GameMeta,
   type MoveLogEntry,
@@ -1296,7 +1303,13 @@ export function Game() {
     if (gameMeta?.timeControl)
       list.push(
         <Badge key="tc" variant="neutral">
-          {formatTimeControl(gameMeta.timeControl)}
+          <span className="inline-flex items-center gap-1">
+            <TimeControlIcon
+              baseSeconds={gameMeta.timeControl.baseSeconds}
+              size={12}
+            />
+            {formatTimeControl(gameMeta.timeControl)}
+          </span>
         </Badge>,
       );
     if (gameMeta?.variant === "chess960")
@@ -1789,7 +1802,6 @@ export function Game() {
         onClose={() => setChatSheetOpen(false)}
         messages={chatMessages}
         myUsername={user?.username}
-        isCageMatch={!!gameMeta?.cageMatchId}
         onSend={handleSendChat}
       />
 
