@@ -147,42 +147,39 @@ function playImpact(layers: ImpactLayer[]) {
   for (const layer of layers) playImpactLayer(layer);
 }
 
-/** A normal move: a piece set down gently. Two layers — a quiet, brief high
- *  click for the instant of contact, and a low body thud for the board
- *  absorbing it — same physical recipe as a real piece placement, sized to
- *  actually be heard over a quiet room rather than disappearing under
- *  normal usage. */
+/** A normal move: a piece set down gently. Two layers — a soft, brief
+ *  high click for the instant of contact, and a low body thud for the
+ *  board absorbing it — same physical recipe as a real piece placement,
+ *  balanced to be clearly audible without being sharp or startling. */
 export function playMoveSound() {
   playImpact([
-    { startOffset: 0, duration: 0.02, gain: 0.12, freq: 2600, q: 4 }, // contact click
-    { startOffset: 0, duration: 0.06, gain: 0.34, freq: 210, q: 2.4 }, // wood body thud
+    { startOffset: 0, duration: 0.02, gain: 0.07, freq: 2400, q: 3.5 }, // contact click
+    { startOffset: 0, duration: 0.055, gain: 0.2, freq: 210, q: 2.4 }, // wood body thud
   ]);
 }
 
 /** A capture: a piece struck down harder, like it's being knocked off its
  *  square and set down in one motion. Same two-layer recipe as a normal
- *  move — click + body — just louder, a touch sharper on the click, and a
- *  deeper/longer body layer so it reads as a bigger, harder contact rather
- *  than a different kind of sound entirely; a capture should still sound
- *  unmistakably like the same board, just a harder hit. */
+ *  move — click + body — just a step up in both, with the click widened
+ *  (lower Q) rather than sharpened, since a narrow high-Q resonance is
+ *  what reads as a shrill "shout" — a broader, slightly lower crack still
+ *  clearly reads as a harder hit without being harsh. */
 export function playCaptureSound() {
   playImpact([
-    { startOffset: 0, duration: 0.03, gain: 0.22, freq: 3200, q: 5 }, // sharper crack
-    { startOffset: 0.006, duration: 0.1, gain: 0.46, freq: 165, q: 2.2 }, // deeper body thud
+    { startOffset: 0, duration: 0.03, gain: 0.13, freq: 2900, q: 4 }, // crack, broad not shrill
+    { startOffset: 0.006, duration: 0.09, gain: 0.32, freq: 165, q: 2.2 }, // deeper body thud
   ]);
 }
 
-/** A single clean, quiet strike for check — a notification cue, not a
- *  physical contact sound, and deliberately restrained: one sine
- *  fundamental with a very faint octave-up layer for a touch of body, no
- *  second strike and no rising melodic interval (that read as a playful
- *  arpeggio rather than a serious alert), and a moderate peak gain rather
- *  than the loudest thing on the board. A short, plain, professional
- *  "ding", not a chime. */
+/** A single clean, warm strike for check — a notification cue, not a
+ *  physical contact sound: one sine fundamental with a very faint octave
+ *  layer just for a touch of body, no second strike, no melodic interval.
+ *  Pitched and gained to sit clearly above the board sounds without being
+ *  piercing — a quiet "ding", not an alarm. */
 export function playCheckSound() {
   playTones([
-    { freq: 880, startOffset: 0, duration: 0.16, type: 'sine', gain: 0.14 },
-    { freq: 1760, startOffset: 0, duration: 0.09, type: 'sine', gain: 0.025 },
+    { freq: 830, startOffset: 0, duration: 0.18, type: 'sine', gain: 0.12 },
+    { freq: 1660, startOffset: 0, duration: 0.1, type: 'sine', gain: 0.02 },
   ]);
 }
 
