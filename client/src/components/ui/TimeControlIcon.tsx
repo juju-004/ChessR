@@ -68,30 +68,33 @@ export function CategoryIcon({
   );
 }
 
-export type TimeControlIconProps = {
+export interface TimeControlIconProps {
+  /** Pass exactly one of these, whichever unit is already on hand:
+   *  presets/config (CreateTournament, CageGamePlanEditor's quick-add,
+   *  challenge modals) carry baseMinutes, while live game data (Dashboard,
+   *  Game.tsx, Profile history) carries baseSeconds. Plain optional props
+   *  rather than a discriminated union — TypeScript's `"x" in obj`
+   *  narrowing doesn't reliably discriminate a union whose branches share
+   *  an optional `?: never` key, which is exactly this shape. */
+  baseMinutes?: number | null;
+  baseSeconds?: number | null;
   size?: number;
   className?: string;
   monochrome?: string;
-} & (
-  | { baseMinutes: number | null; baseSeconds?: never }
-  | { baseSeconds: number | null; baseMinutes?: never }
-);
+}
 
-/** Bullet/blitz/rapid/classical/unlimited icon, colored per category. Pass
- *  whichever unit is already on hand: presets/config (CreateTournament,
- *  CageGamePlanEditor's quick-add, challenge modals) carry baseMinutes,
- *  while live game data (Dashboard, Game.tsx, Profile history) carries
- *  baseSeconds. */
+/** Bullet/blitz/rapid/classical/unlimited icon, colored per category. */
 export function TimeControlIcon({
+  baseMinutes,
+  baseSeconds,
   size,
   className,
   monochrome,
-  ...tc
 }: TimeControlIconProps) {
   const category =
-    "baseMinutes" in tc
-      ? timeControlCategory(tc.baseMinutes)
-      : timeControlCategoryFromSeconds(tc.baseSeconds);
+    baseMinutes !== undefined
+      ? timeControlCategory(baseMinutes)
+      : timeControlCategoryFromSeconds(baseSeconds ?? null);
   return (
     <CategoryIcon
       category={category}
