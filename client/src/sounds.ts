@@ -148,14 +148,14 @@ function playImpact(layers: ImpactLayer[]) {
 }
 
 /** A normal move: a piece set down gently. Two layers — a quiet, brief high
- *  click for the instant of contact, and a soft low body thud for the
- *  board absorbing it — same physical recipe as a real piece placement,
- *  just at low gain and a short body decay since a normal move should read
- *  as "gentle contact", not an impact you'd notice across the room. */
+ *  click for the instant of contact, and a low body thud for the board
+ *  absorbing it — same physical recipe as a real piece placement, sized to
+ *  actually be heard over a quiet room rather than disappearing under
+ *  normal usage. */
 export function playMoveSound() {
   playImpact([
-    { startOffset: 0, duration: 0.02, gain: 0.05, freq: 2600, q: 4 }, // contact click
-    { startOffset: 0, duration: 0.05, gain: 0.16, freq: 210, q: 2.4 }, // wood body thud
+    { startOffset: 0, duration: 0.02, gain: 0.12, freq: 2600, q: 4 }, // contact click
+    { startOffset: 0, duration: 0.06, gain: 0.34, freq: 210, q: 2.4 }, // wood body thud
   ]);
 }
 
@@ -167,23 +167,22 @@ export function playMoveSound() {
  *  unmistakably like the same board, just a harder hit. */
 export function playCaptureSound() {
   playImpact([
-    { startOffset: 0, duration: 0.03, gain: 0.11, freq: 3200, q: 5 }, // sharper crack
-    { startOffset: 0.006, duration: 0.09, gain: 0.26, freq: 165, q: 2.2 }, // deeper body thud
+    { startOffset: 0, duration: 0.03, gain: 0.22, freq: 3200, q: 5 }, // sharper crack
+    { startOffset: 0.006, duration: 0.1, gain: 0.46, freq: 165, q: 2.2 }, // deeper body thud
   ]);
 }
 
-/** A clean two-strike bell for check: each strike is a sine fundamental
- *  with a quiet octave-up sine layered on top (the overtone that makes a
- *  bell read as a bell rather than a flat tone), rising a third from the
- *  first strike to the second. This is a notification cue, not a physical
- *  contact sound, so it's the one place a clean oscillator tone is exactly
- *  right rather than something to avoid. */
+/** A single clean, quiet strike for check — a notification cue, not a
+ *  physical contact sound, and deliberately restrained: one sine
+ *  fundamental with a very faint octave-up layer for a touch of body, no
+ *  second strike and no rising melodic interval (that read as a playful
+ *  arpeggio rather than a serious alert), and a moderate peak gain rather
+ *  than the loudest thing on the board. A short, plain, professional
+ *  "ding", not a chime. */
 export function playCheckSound() {
   playTones([
-    { freq: 784, startOffset: 0, duration: 0.14, type: 'sine', gain: 0.17 },
-    { freq: 1568, startOffset: 0, duration: 0.09, type: 'sine', gain: 0.05 },
-    { freq: 988, startOffset: 0.12, duration: 0.18, type: 'sine', gain: 0.16 },
-    { freq: 1976, startOffset: 0.12, duration: 0.11, type: 'sine', gain: 0.05 },
+    { freq: 880, startOffset: 0, duration: 0.16, type: 'sine', gain: 0.14 },
+    { freq: 1760, startOffset: 0, duration: 0.09, type: 'sine', gain: 0.025 },
   ]);
 }
 
@@ -204,8 +203,8 @@ export function playGameStartSound() {
  *  purpose. */
 export function playBerserkSound() {
   playImpact([
-    { startOffset: 0, duration: 0.045, gain: 0.16, freq: 3000, q: 4.5 }, // wide crack
-    { startOffset: 0.008, duration: 0.16, gain: 0.34, freq: 130, q: 2 }, // deep body thud
+    { startOffset: 0, duration: 0.045, gain: 0.28, freq: 3000, q: 4.5 }, // wide crack
+    { startOffset: 0.008, duration: 0.17, gain: 0.56, freq: 130, q: 2 }, // deep body thud
   ]);
   playTones([
     { freq: 880, startOffset: 0.02, duration: 0.1, type: 'sine', gain: 0.08 },
