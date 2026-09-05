@@ -147,39 +147,57 @@ function playImpact(layers: ImpactLayer[]) {
   for (const layer of layers) playImpactLayer(layer);
 }
 
-/** A normal move: a piece set down gently. Two layers — a soft, brief
- *  high click for the instant of contact, and a low body thud for the
- *  board absorbing it — same physical recipe as a real piece placement,
- *  balanced to be clearly audible without being sharp or startling. */
+/** Small per-call pitch jitter so repeated moves don't all sound like the
+ *  exact same sample on a loop — real pieces landing never resonate at
+ *  identically the same frequency twice. +/-4% is subtle enough to still
+ *  read as "the same sound" while killing the machine-gun repetition. */
+function jitter(freq: number, amount = 0.04): number {
+  return freq * (1 + (Math.random() * 2 - 1) * amount);
+}
+
+/** A normal move: a piece set down on the board. Three layers, matching
+ *  how chess.com/lichess-style piece sounds are actually built: a short
+ *  high "tick" for the initial edge contact, a quick mid-range "tap" for
+ *  the felt-bottomed piece meeting the square, and a low body thud for
+ *  the board/table absorbing the rest. Tuned sharper than a plain thud:
+ *  higher-pitched top layers, a tighter (higher-Q) resonance so the
+ *  attack reads as a crisp "snap" rather than a soft knock, an near-
+ *  instant attack, and a shorter/lighter body layer so the low end
+ *  doesn't wash out the transient on top. */
 export function playMoveSound() {
   playImpact([
-    { startOffset: 0, duration: 0.02, gain: 0.07, freq: 2400, q: 3.5 }, // contact click
-    { startOffset: 0, duration: 0.055, gain: 0.2, freq: 210, q: 2.4 }, // wood body thud
+    { startOffset: 0, duration: 0.012, gain: 0.1, freq: jitter(3800), q: 6, attack: 0.001 }, // edge tick
+    { startOffset: 0.0015, duration: 0.022, gain: 0.22, freq: jitter(1500), q: 4.5, attack: 0.001 }, // felt tap
+    { startOffset: 0, duration: 0.045, gain: 0.15, freq: jitter(230), q: 2.6 }, // wood body thud
   ]);
 }
 
-/** A capture: a piece struck down harder, like it's being knocked off its
- *  square and set down in one motion. Same two-layer recipe as a normal
- *  move — click + body — just a step up in both, with the click widened
- *  (lower Q) rather than sharpened, since a narrow high-Q resonance is
- *  what reads as a shrill "shout" — a broader, slightly lower crack still
- *  clearly reads as a harder hit without being harsh. */
+/** A capture: two distinct events overlapping — the captured piece being
+ *  knocked aside and the capturing piece landing in its place — which is
+ *  why real capture sounds read as "busier" than a move rather than just
+ *  louder. Pushed sharper than before: brighter, tighter double-crack up
+ *  top with a near-instant attack so it snaps rather than thuds, still
+ *  backed by a deep body layer so it stays a step up from playMoveSound,
+ *  but shortened so the low end doesn't blunt the crack's edge. */
 export function playCaptureSound() {
   playImpact([
-    { startOffset: 0, duration: 0.03, gain: 0.13, freq: 2900, q: 4 }, // crack, broad not shrill
-    { startOffset: 0.006, duration: 0.09, gain: 0.32, freq: 165, q: 2.2 }, // deeper body thud
+    { startOffset: 0, duration: 0.018, gain: 0.24, freq: jitter(4400), q: 7, attack: 0.001 }, // first crack
+    { startOffset: 0.012, duration: 0.02, gain: 0.16, freq: jitter(3300), q: 6, attack: 0.001 }, // second, softer crack
+    { startOffset: 0.004, duration: 0.075, gain: 0.28, freq: jitter(160), q: 2.4 }, // deep body thud
   ]);
 }
 
-/** A single clean, warm strike for check — a notification cue, not a
- *  physical contact sound: one sine fundamental with a very faint octave
- *  layer just for a touch of body, no second strike, no melodic interval.
- *  Pitched and gained to sit clearly above the board sounds without being
- *  piercing — a quiet "ding", not an alarm. */
+/** Check: a short, bright bell-like "ding" — the way both chess.com and
+ *  lichess flag check, as a distinct alert layered on top of (not instead
+ *  of) the move/capture sound that triggered it. Built from a fundamental
+ *  plus two quiet, very slightly detuned upper partials (a perfect fifth
+ *  and an octave-and-a-third) so it reads as a small bell/chime rather
+ *  than a plain sine "beep" — real bells are never a single pure tone. */
 export function playCheckSound() {
   playTones([
-    { freq: 830, startOffset: 0, duration: 0.18, type: 'sine', gain: 0.12 },
-    { freq: 1660, startOffset: 0, duration: 0.1, type: 'sine', gain: 0.02 },
+    { freq: 988, startOffset: 0, duration: 0.22, type: 'sine', gain: 0.14 }, // fundamental
+    { freq: 1480, startOffset: 0, duration: 0.16, type: 'sine', gain: 0.05 }, // fifth above
+    { freq: 2489, startOffset: 0, duration: 0.1, type: 'sine', gain: 0.025 }, // bright top partial
   ]);
 }
 

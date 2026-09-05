@@ -25,11 +25,14 @@ export const Navbar = memo(function Navbar() {
         to="/"
         className="elevated relative mr-auto flex h-9 items-center gap-2 rounded-full px-4 font-bold text-base-content transition-colors hover:bg-base-content/5"
       >
-        <img src="/logo.png" className="w-20 md:w-22" alt="App Logo" />
+        {/* <img src="/logo.png" className="w-20 md:w-22" alt="App Logo" /> */}
+        <span className="text-xl md:text-2xl font-extrabold tracking-tight">
+          Chess<span className="text-gradient-brand">r</span>
+        </span>
 
-        {/* <span className="pointer-events-none absolute top-[98%] left-[88%] -translate-x-1/2 rounded-full gradient-brand px-1.5 py-px text-[6px] font-bold uppercase tracking-wider text-white shadow-sm shadow-(--primary)/30">
+        <span className="pointer-events-none absolute top-[98%] left-[88%] -translate-x-1/2 rounded-full gradient-brand px-1.5 py-px text-[6px] font-bold uppercase tracking-wider text-white shadow-sm shadow-(--primary)/30">
           Beta
-        </span> */}
+        </span>
       </Link>
 
       <NavGameOrBell />

@@ -157,7 +157,7 @@ export function Settings() {
         <div className="settings-grid-rest space-y-4">
           <Card variant="solid">
             <CardHeader>
-              <CardTitle>Board theme</CardTitle>
+              <CardTitle>Board Theme</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
@@ -183,7 +183,7 @@ export function Settings() {
 
           <Card variant="solid">
             <CardHeader>
-              <CardTitle>Piece theme</CardTitle>
+              <CardTitle>Piece Theme</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="mb-3 text-xs text-base-content/50">
@@ -218,25 +218,25 @@ export function Settings() {
 
           <Card variant="solid">
             <CardHeader>
-              <CardTitle>Board & gameplay</CardTitle>
+              <CardTitle>Board & Gameplay</CardTitle>
             </CardHeader>
             <CardContent className="space-y-1">
               <Switch
-                label="Piece animation"
+                label="Piece Animation"
                 description="Animate pieces smoothly when they move. Disable this for instant movement."
                 checked={settings.pieceAnimation}
                 onChange={(v) => updateSetting("pieceAnimation", v)}
                 className="rounded-lg px-1 py-2 hover:bg-base-100"
               />
               <Switch
-                label="Show board coordinates"
+                label="Show Board Coordinates"
                 description="Display file and rank labels along the edges of the board."
                 checked={settings.showCoordinates}
                 onChange={(v) => updateSetting("showCoordinates", v)}
                 className="rounded-lg px-1 py-2 hover:bg-base-100"
               />
               <Switch
-                label="Show legal moves"
+                label="Show Legal Moves"
                 description="Highlight the legal destination squares for the selected piece."
                 checked={settings.showLegalMoves}
                 onChange={(v) => updateSetting("showLegalMoves", v)}
@@ -250,21 +250,21 @@ export function Settings() {
                 className="rounded-lg px-1 py-2 hover:bg-base-100"
               />
               <Switch
-                label="Move sounds"
+                label="Move Sounds"
                 description="Play a subtle sound for moves, captures, and checks."
                 checked={settings.soundEnabled}
                 onChange={(v) => updateSetting("soundEnabled", v)}
                 className="rounded-lg px-1 py-2 hover:bg-base-100"
               />
               <Switch
-                label="Confirm resignation"
+                label="Confirm Resignation"
                 description="Ask for confirmation before resigning a game."
                 checked={settings.confirmResign}
                 onChange={(v) => updateSetting("confirmResign", v)}
                 className="rounded-lg px-1 py-2 hover:bg-base-100"
               />{" "}
               <Switch
-                label="Zen mode"
+                label="Zen Mode"
                 description="Keep your focus on the board and clock by hiding the move list, chat, and extra badges."
                 checked={settings.zenMode}
                 onChange={(v) => updateSetting("zenMode", v)}
@@ -279,7 +279,7 @@ export function Settings() {
             </CardHeader>
             <CardContent className="space-y-1">
               <Switch
-                label="Accept challenges"
+                label="Accept Challenges"
                 description="Let other players send you direct challenges or cage match invites. Turn this off and both are rejected automatically, tournaments are unaffected."
                 checked={acceptChallenges}
                 onChange={handleAcceptChallengesChange}
