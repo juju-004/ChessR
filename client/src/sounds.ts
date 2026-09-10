@@ -1,19 +1,3 @@
-/**
- * Original, procedurally-synthesized sound effects, not sampled or adapted
- * from chess.com, lichess, or anywhere else. Full disclosure on scope: this
- * is Web Audio API synthesis, not a recorded/mixed sample library, so it
- * won't be pixel-perfect foley — but the piece-contact sounds (move/
- * capture/berserk) are built as resonant-filtered noise impacts (the
- * standard technique for synthesizing a convincing knock/tap without a
- * sample), not oscillator tones, specifically because a held oscillator
- * note reads as "a synth playing a note" no matter how short you make it,
- * while a real piece landing on a board is fundamentally noise (a broadband
- * transient) shaped by the wood/board's resonance, not a pitch. Only the
- * alert/chime sounds (check, low time, game start/over) stay oscillator-
- * based, since those are meant to read as a notification tone, not an
- * object touching another object.
- */
-
 let ctx: AudioContext | null = null;
 
 // Module-level mute switch driven by the Settings page's "Move sounds"
@@ -35,7 +19,7 @@ function ensureAudioContext(): AudioContext {
   const audioCtx = getCtx();
   // Browsers suspend AudioContext until a user gesture; every sound call is
   // triggered by one (a drag, a click), so resuming here is safe and cheap.
-  if (audioCtx.state === 'suspended') void audioCtx.resume();
+  if (audioCtx.state === "suspended") void audioCtx.resume();
   return audioCtx;
 }
 
@@ -62,12 +46,15 @@ function playTones(tones: Tone[]) {
   for (const tone of tones) {
     const osc = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
-    osc.type = tone.type ?? 'sine';
+    osc.type = tone.type ?? "sine";
 
     const start = now + tone.startOffset;
     osc.frequency.setValueAtTime(tone.freq, start);
     if (tone.freqEnd) {
-      osc.frequency.exponentialRampToValueAtTime(tone.freqEnd, start + tone.duration);
+      osc.frequency.exponentialRampToValueAtTime(
+        tone.freqEnd,
+        start + tone.duration,
+      );
     }
 
     const peakGain = tone.gain ?? 0.18;
@@ -116,7 +103,10 @@ function playImpactLayer(layer: ImpactLayer) {
   const start = audioCtx.currentTime + layer.startOffset;
   const attack = layer.attack ?? 0.002;
 
-  const bufferSize = Math.max(1, Math.ceil(audioCtx.sampleRate * layer.duration));
+  const bufferSize = Math.max(
+    1,
+    Math.ceil(audioCtx.sampleRate * layer.duration),
+  );
   const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
   const data = buffer.getChannelData(0);
   for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
@@ -125,7 +115,7 @@ function playImpactLayer(layer: ImpactLayer) {
   source.buffer = buffer;
 
   const filter = audioCtx.createBiquadFilter();
-  filter.type = layer.filterType ?? 'bandpass';
+  filter.type = layer.filterType ?? "bandpass";
   filter.frequency.value = layer.freq;
   filter.Q.value = layer.q;
 
@@ -155,49 +145,92 @@ function jitter(freq: number, amount = 0.04): number {
   return freq * (1 + (Math.random() * 2 - 1) * amount);
 }
 
-/** A normal move: a piece set down on the board. Three layers, matching
- *  how chess.com/lichess-style piece sounds are actually built: a short
- *  high "tick" for the initial edge contact, a quick mid-range "tap" for
- *  the felt-bottomed piece meeting the square, and a low body thud for
- *  the board/table absorbing the rest. Tuned sharper than a plain thud:
- *  higher-pitched top layers, a tighter (higher-Q) resonance so the
- *  attack reads as a crisp "snap" rather than a soft knock, an near-
- *  instant attack, and a shorter/lighter body layer so the low end
- *  doesn't wash out the transient on top. */
+/** A normal move: chess.com's actual move cue is a crisp, present "click"
+ *  — brighter and punchier than a dull thud, with real top-end snap to it,
+ *  not just a low knock. Three layers: a bright, near-instant click for
+ *  the piece's initial edge contact (this is what was missing before and
+ *  made it read as "low"/muffled), a mid tap for the felt-bottomed piece
+ *  meeting the square, and a low body knock underneath for weight. Gains
+ *  pushed up and attacks tightened across the board so the transient
+ *  actually snaps instead of easing in. */
 export function playMoveSound() {
   playImpact([
-    { startOffset: 0, duration: 0.012, gain: 0.1, freq: jitter(3800), q: 6, attack: 0.001 }, // edge tick
-    { startOffset: 0.0015, duration: 0.022, gain: 0.22, freq: jitter(1500), q: 4.5, attack: 0.001 }, // felt tap
-    { startOffset: 0, duration: 0.045, gain: 0.15, freq: jitter(230), q: 2.6 }, // wood body thud
+    {
+      startOffset: 0,
+      duration: 0.018,
+      gain: 0.26,
+      freq: jitter(2600),
+      q: 5,
+      attack: 0.001,
+    }, // bright click
+    {
+      startOffset: 0.001,
+      duration: 0.035,
+      gain: 0.24,
+      freq: jitter(1100),
+      q: 3.4,
+      attack: 0.001,
+    }, // piece contact tap
+    {
+      startOffset: 0,
+      duration: 0.06,
+      gain: 0.2,
+      freq: jitter(220),
+      q: 2.4,
+      attack: 0.002,
+    }, // wood body knock
   ]);
 }
 
-/** A capture: two distinct events overlapping — the captured piece being
- *  knocked aside and the capturing piece landing in its place — which is
- *  why real capture sounds read as "busier" than a move rather than just
- *  louder. Pushed sharper than before: brighter, tighter double-crack up
- *  top with a near-instant attack so it snaps rather than thuds, still
- *  backed by a deep body layer so it stays a step up from playMoveSound,
- *  but shortened so the low end doesn't blunt the crack's edge. */
+/** Capture: single hit, same click+tap+body recipe as playMoveSound —
+ *  no double-hit, since nothing physically knocks a captured piece off
+ *  the board here, just louder and sharper than a plain move so it still
+ *  reads as the bigger event. */
 export function playCaptureSound() {
   playImpact([
-    { startOffset: 0, duration: 0.018, gain: 0.24, freq: jitter(4400), q: 7, attack: 0.001 }, // first crack
-    { startOffset: 0.012, duration: 0.02, gain: 0.16, freq: jitter(3300), q: 6, attack: 0.001 }, // second, softer crack
-    { startOffset: 0.004, duration: 0.075, gain: 0.28, freq: jitter(160), q: 2.4 }, // deep body thud
+    {
+      startOffset: 0,
+      duration: 0.02,
+      gain: 0.3,
+      freq: jitter(2800),
+      q: 5.5,
+      attack: 0.001,
+    }, // bright click
+    {
+      startOffset: 0.001,
+      duration: 0.038,
+      gain: 0.28,
+      freq: jitter(1050),
+      q: 3.6,
+      attack: 0.001,
+    }, // piece contact tap
+    {
+      startOffset: 0,
+      duration: 0.075,
+      gain: 0.28,
+      freq: jitter(195),
+      q: 2.3,
+      attack: 0.002,
+    }, // deep body thud
   ]);
 }
 
-/** Check: a short, bright bell-like "ding" — the way both chess.com and
- *  lichess flag check, as a distinct alert layered on top of (not instead
- *  of) the move/capture sound that triggered it. Built from a fundamental
- *  plus two quiet, very slightly detuned upper partials (a perfect fifth
- *  and an octave-and-a-third) so it reads as a small bell/chime rather
- *  than a plain sine "beep" — real bells are never a single pure tone. */
+/** Check: chess.com's check cue is a short, flat double-tap alert rather
+ *  than lichess's bell/chime — closer to a UI notification "ping-ping"
+ *  than a musical note. Built from square-wave tones (a harder, less
+ *  "musical" timbre than the old sine-bell version) at a single pitch
+ *  repeated twice, quiet and quick so it reads as an alert layered over
+ *  the move/capture sound rather than a separate melody. */
 export function playCheckSound() {
   playTones([
-    { freq: 988, startOffset: 0, duration: 0.22, type: 'sine', gain: 0.14 }, // fundamental
-    { freq: 1480, startOffset: 0, duration: 0.16, type: 'sine', gain: 0.05 }, // fifth above
-    { freq: 2489, startOffset: 0, duration: 0.1, type: 'sine', gain: 0.025 }, // bright top partial
+    { freq: 1175, startOffset: 0, duration: 0.07, type: "square", gain: 0.12 },
+    {
+      freq: 1175,
+      startOffset: 0.1,
+      duration: 0.09,
+      type: "square",
+      gain: 0.12,
+    },
   ]);
 }
 
@@ -210,20 +243,44 @@ export function playGameStartSound() {
   ]);
 }
 
-/** A powerful stinger for berserk: the same click+body impact recipe as
- *  playCaptureSound, scaled up (wider/louder click, deeper/longer body),
- *  plus a quick sine shimmer layered on top purely as a "declaration"
- *  accent — not the impact itself, which is why it's kept as a short quiet
- *  ping rather than a siren sweep. Still the loudest sound in this file on
- *  purpose. */
+/** Berserk: chess.com's berserk cue reads as a quick rising "power-up"
+ *  flourish rather than an impact — closer in spirit to its own
+ *  game-start chime than to a move/capture sound, just faster and more
+ *  aggressive. Three-note rising square-wave sweep (each note itself
+ *  ramping upward) landing on a sharp double-hit impact at the top, so it
+ *  lands with the same tap+body punch as a capture right as the
+ *  flourish peaks. Still the loudest, busiest sound in this file on
+ *  purpose — it's a one-off declaration, not a per-move cue. */
 export function playBerserkSound() {
-  playImpact([
-    { startOffset: 0, duration: 0.045, gain: 0.28, freq: 3000, q: 4.5 }, // wide crack
-    { startOffset: 0.008, duration: 0.17, gain: 0.56, freq: 130, q: 2 }, // deep body thud
-  ]);
   playTones([
-    { freq: 880, startOffset: 0.02, duration: 0.1, type: 'sine', gain: 0.08 },
-    { freq: 1760, startOffset: 0.02, duration: 0.07, type: 'sine', gain: 0.04 },
+    {
+      freq: 440,
+      freqEnd: 660,
+      startOffset: 0,
+      duration: 0.06,
+      type: "square",
+      gain: 0.1,
+    },
+    {
+      freq: 660,
+      freqEnd: 990,
+      startOffset: 0.05,
+      duration: 0.06,
+      type: "square",
+      gain: 0.11,
+    },
+    {
+      freq: 990,
+      freqEnd: 1480,
+      startOffset: 0.1,
+      duration: 0.08,
+      type: "square",
+      gain: 0.12,
+    },
+  ]);
+  playImpact([
+    { startOffset: 0.17, duration: 0.03, gain: 0.3, freq: 1400, q: 3.5, attack: 0.002 }, // landing tap
+    { startOffset: 0.17, duration: 0.15, gain: 0.4, freq: 150, q: 2, attack: 0.003 }, // deep body thud
   ]);
 }
 
@@ -234,8 +291,14 @@ export function playBerserkSound() {
  *  Game.tsx), not on every tick while time stays low. */
 export function playLowTimeSound() {
   playTones([
-    { freq: 1046, startOffset: 0, duration: 0.08, type: 'square', gain: 0.16 },
-    { freq: 1046, startOffset: 0.12, duration: 0.08, type: 'square', gain: 0.16 },
+    { freq: 1046, startOffset: 0, duration: 0.08, type: "square", gain: 0.16 },
+    {
+      freq: 1046,
+      startOffset: 0.12,
+      duration: 0.08,
+      type: "square",
+      gain: 0.16,
+    },
   ]);
 }
 

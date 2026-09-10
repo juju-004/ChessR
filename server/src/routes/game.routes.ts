@@ -10,7 +10,7 @@ import {
   getGame,
   getGameByCodeHandler,
 } from '../controllers/game.controller.js';
-import { getGameOgCard, getGameOgImage } from '../controllers/og.controller.js';
+import { getGameOgCard } from '../controllers/og.controller.js';
 
 const router = Router();
 
@@ -24,7 +24,6 @@ router.get('/active/mine', requireAuth, getMyActiveGames);
 // etc.), which never carry a session. See og.controller.ts for the caveat
 // about needing frontend-side routing for this to actually get hit by them.
 router.get('/code/:code/card', getGameOgCard);
-router.get('/code/:code/card-image.png', getGameOgImage);
 router.get('/code/:code', optionalAuth, getGameByCodeHandler);
 router.get('/:id', optionalAuth, getGame);
 

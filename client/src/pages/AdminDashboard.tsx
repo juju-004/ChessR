@@ -378,9 +378,9 @@ export function AdminDashboard() {
                *  out of sync with the ledger below it. */}
               <Card
                 variant="solid"
-                className="flex items-center justify-between"
+                className="flex flex-wrap items-center justify-between gap-2"
               >
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm text-(--primary)">
                     Admin wallet balance
                   </p>
@@ -392,7 +392,9 @@ export function AdminDashboard() {
                     />
                   </p>
                 </div>
-                <Badge variant="neutral">{revenue.ratePercent}% rake</Badge>
+                <Badge variant="neutral" className="shrink-0">
+                  {revenue.ratePercent}% rake
+                </Badge>
               </Card>
 
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -436,19 +438,19 @@ export function AdminDashboard() {
                       <Card
                         key={e.id}
                         variant="solid"
-                        className="flex items-center justify-between text-sm"
+                        className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between"
                       >
-                        <div className="flex items-center gap-2 text-base-content/70">
-                          <Icon className="h-4 w-4 text-base-content/40" />
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-base-content/70">
+                          <Icon className="h-4 w-4 shrink-0 text-base-content/40" />
                           <span className="capitalize">
                             {SOURCE_LABEL[e.source]}
                           </span>
-                          <span className="text-base-content/40">
+                          <span className="flex items-center gap-1 text-base-content/40">
                             · {e.ratePercent}% of{" "}
                             <RCoinAmount value={e.grossPotTokens} size={12} />
                           </span>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
                           <span className="font-semibold text-base-content">
                             <RCoinAmount value={e.tokens} size={14} />
                           </span>

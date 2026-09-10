@@ -2,7 +2,6 @@ import { z } from "zod";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { getGameByCode } from "../services/game.service.js";
 import { getTournamentByCode } from "../services/tournament.service.js";
-import { renderGameBoardPng } from "../services/boardImage.service.js";
 import { env } from "../config/env.js";
 
 const codeParamSchema = z.object({ code: z.string().min(4).max(10) });
@@ -128,19 +127,10 @@ function escapeHtml(s: string): string {
 // that's the URL people actually share and click.
 const CLIENT_URL = process.env.CLIENT_URL ?? env.CLIENT_ORIGIN;
 
-// This API server's OWN public origin, og:image needs a fully-qualified URL
-// a crawler can fetch directly, and the image itself is served by this
-// server (see app.ts's express.static mount), not the frontend.
-const API_ORIGIN = env.API_ORIGIN ?? `http://localhost:${env.PORT}`;
-const DEFAULT_OG_IMAGE = `${API_ORIGIN}/og-default.png`;
-
 interface PreviewCardInput {
   title: string;
   description: string;
   url: string;
-  /** Fully-qualified image URL. Defaults to DEFAULT_OG_IMAGE when omitted
-   *  (tournaments, and games that fail to load). */
-  image?: string;
 }
 
 /**
@@ -150,15 +140,10 @@ interface PreviewCardInput {
  * iMessage) that don't execute JavaScript and so can never see anything
  * from the actual React app.
  *
- * og:image is REQUIRED, not optional decoration, several crawlers
- * (WhatsApp chief among them) simply render no preview card at all,
- * title/description included, when a page has no image to show. That was
- * the actual cause of "pasting a game link into WhatsApp shows nothing":
- * every tag here was already correct except this one was missing entirely.
- * A game card's og:image now points at getGameOgImage below, a real
- * per-game board-position PNG (see boardImage.service.ts), same idea as
- * Lichess's link previews. Tournament cards, and games that fail to load,
- * still fall back to the static branded DEFAULT_OG_IMAGE.
+ * Deliberately no og:image/twitter:image here (removed after it kept
+ * breaking) — description-only preview cards. Some crawlers (WhatsApp
+ * chief among them) show a smaller/plainer card without an image, but
+ * that's an acceptable tradeoff against the recurring breakage.
  *
  * This alone isn't sufficient to make a shared /game/:code or
  * /tournaments/:code link show a rich preview, those links are served by
@@ -167,15 +152,9 @@ interface PreviewCardInput {
  * requests and route them here instead of the SPA shell. See
  * client/middleware.ts.
  */
-function renderPreviewPage({
-  title,
-  description,
-  url,
-  image,
-}: PreviewCardInput): string {
+function renderPreviewPage({ title, description, url }: PreviewCardInput): string {
   const safeTitle = escapeHtml(title);
   const safeDescription = escapeHtml(description);
-  const imageUrl = image ?? DEFAULT_OG_IMAGE;
   return `<!doctype html>
 <html>
 <head>
@@ -186,14 +165,9 @@ function renderPreviewPage({
 <meta property="og:title" content="${safeTitle}">
 <meta property="og:description" content="${safeDescription}">
 <meta property="og:url" content="${url}">
-<meta property="og:image" content="${imageUrl}">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:type" content="image/png">
-<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="${safeTitle}">
 <meta name="twitter:description" content="${safeDescription}">
-<meta name="twitter:image" content="${imageUrl}">
 <meta http-equiv="refresh" content="0; url=${url}">
 </head>
 <body>
@@ -207,11 +181,9 @@ export const getGameOgCard = asyncHandler(async (req, res) => {
   const { code } = codeParamSchema.parse(req.params);
 
   let description: string;
-  let image: string | undefined;
   try {
     const game = await getGameByCode(code);
     description = describeGame(game as any);
-    image = `${API_ORIGIN}/api/games/code/${encodeURIComponent(code)}/card-image.png`;
   } catch {
     description = "A chess game on Chessr.";
   }
@@ -220,54 +192,10 @@ export const getGameOgCard = asyncHandler(async (req, res) => {
     title: `Chessr · Game ${code.toUpperCase()}`,
     description,
     url: `${CLIENT_URL}/game/${encodeURIComponent(code)}`,
-    image,
   });
 
   res.set("Content-Type", "text/html; charset=utf-8");
   res.send(html);
-});
-
-/** The actual per-game board-position PNG referenced by getGameOgCard's
- *  og:image, kept as its own route (rather than inlined as a data URI)
- *  since crawlers fetch og:image as a plain, separately-cacheable request,
- *  same as they would any other <img src>. Falls back to a redirect to the
- *  static default image on any error, so a bad/unknown code still resolves
- *  to *something* fetchable rather than a broken image icon in the
- *  preview. */
-export const getGameOgImage = asyncHandler(async (req, res) => {
-  const { code } = codeParamSchema.parse(req.params);
-
-  let game: Awaited<ReturnType<typeof getGameByCode>>;
-  try {
-    game = await getGameByCode(code);
-  } catch {
-    return res.redirect(302, DEFAULT_OG_IMAGE);
-  }
-
-  const { whiteName, blackName, statusLine, isLive, isWaiting } = gameCardInfo(game);
-  const png = renderGameBoardPng({
-    fen: game.fen,
-    whiteName,
-    blackName,
-    statusLine,
-    badge: isWaiting ? "waiting" : isLive ? "live" : "finished",
-  });
-
-  // A finished game's position never changes again, cache it hard. A live
-  // game's does, on every move, so crawlers/clients should always refetch
-  // rather than showing a stale position (WhatsApp in particular tends to
-  // cache the very first preview it ever sees for a URL regardless of
-  // headers, but that's a WhatsApp-side limitation, not something a
-  // Cache-Control header here can work around).
-  res.set(
-    "Cache-Control",
-    game.status === "finished" || game.status === "aborted"
-      ? "public, max-age=31536000, immutable"
-      : "public, max-age=30",
-  );
-  res.set("Content-Type", "image/png");
-  res.set("Cross-Origin-Resource-Policy", "cross-origin");
-  res.send(png);
 });
 
 export const getTournamentOgCard = asyncHandler(async (req, res) => {
