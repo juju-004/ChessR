@@ -1,12 +1,27 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { Bell, Check, X, Swords, Shield, Maximize2, PartyPopper, ShieldAlert, Flag, Megaphone } from "lucide-react";
+import {
+  Bell,
+  Check,
+  X,
+  Swords,
+  Shield,
+  Maximize2,
+  PartyPopper,
+  ShieldAlert,
+  Flag,
+  Megaphone,
+  Wallet,
+} from "lucide-react";
 import { pressable } from "@/lib/motion.js";
 import { cn } from "@/lib/cn.js";
 import { Popover } from "./ui/Popover.js";
 import { Avatar, RCoin, TimeControlIcon } from "./ui/index.js";
-import { useNotificationCenter, type NotificationItem } from "../contexts/NotificationCenterContext.js";
+import {
+  useNotificationCenter,
+  type NotificationItem,
+} from "../contexts/NotificationCenterContext.js";
 import type { NotificationType } from "../api/notifications.js";
 
 interface NotificationsMenuProps {
@@ -18,6 +33,7 @@ const SYSTEM_TYPE_ICON: Record<NotificationType, typeof Megaphone> = {
   anticheat_freeze: ShieldAlert,
   report_freeze: Flag,
   admin_message: Megaphone,
+  tournament_naira_prize: Wallet,
 };
 
 function timeControlLabel(tc: {
@@ -41,7 +57,9 @@ export function NotificationsMenu({ className }: NotificationsMenuProps) {
     respondToCageInviteItem,
   } = useNotificationCenter();
 
-  function handleSystemItemClick(item: Extract<NotificationItem, { kind: "system" }>) {
+  function handleSystemItemClick(
+    item: Extract<NotificationItem, { kind: "system" }>,
+  ) {
     setOpen(false);
     navigate(item.link ?? "/notifications");
   }
@@ -79,7 +97,8 @@ export function NotificationsMenu({ className }: NotificationsMenuProps) {
 
         {items.length === 0 && (
           <p className="p-3 text-sm text-base-content/60">
-            Nothing new. Friend requests, challenges, and updates from ChessR will show up here.
+            Friend requests, challenges, and updates from Chessr will show up
+            here.
           </p>
         )}
 

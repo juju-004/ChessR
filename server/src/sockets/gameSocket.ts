@@ -38,6 +38,9 @@ import type { AuthedSocketData } from './socketAuth.js';
 
 const gameRoom = (gameId: string) => `game:${gameId}`;
 const spectatorRoom = (gameId: string) => `game:${gameId}:spectators`;
+// Just the two participants, a subset of gameRoom (which also has
+// spectators in it) — see player_chat:send below and its doc comment.
+const playerRoom = (gameId: string) => `game:${gameId}:players`;
 
 /** io.in(room).fetchSockets() goes over the Redis adapter, it asks every
  *  connected server instance to report its local sockets in that room, and
@@ -115,6 +118,15 @@ const chatSchema = z.object({
 function chatScopeFor(game: { _id: unknown; cageMatchId?: unknown }): { scope: ChatScope; id: string } {
   if (game.cageMatchId) return { scope: 'cage', id: (game.cageMatchId as any).toString() };
   return { scope: 'game', id: (game._id as any).toString() };
+}
+
+// Same id-scoping rule as chatScopeFor above (whole match for a cage leg,
+// otherwise just this game), but a DIFFERENT ChatScope so the two
+// participants' own chat never mixes with the spectator log — see the
+// ChatScope doc comment in chat.service.ts.
+function playerChatScopeFor(game: { _id: unknown; cageMatchId?: unknown }): { scope: ChatScope; id: string } {
+  if (game.cageMatchId) return { scope: 'cage_players', id: (game.cageMatchId as any).toString() };
+  return { scope: 'game_players', id: (game._id as any).toString() };
 }
 
 function emitError(socket: Socket, message: string) {
@@ -407,6 +419,10 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         // this means they never even receive the events for one.
         await socket.join(spectatorRoom(gameId));
         broadcastSpectatorCount(io, gameId).catch((err) => console.error('broadcastSpectatorCount failed:', err));
+      } else {
+        // The two participants' own room, so their chat traffic never
+        // reaches spectators either — see player_chat:send.
+        await socket.join(playerRoom(gameId));
       }
 
       // Reconnecting clears any pending "opponent disconnected" state for this game.
@@ -445,10 +461,16 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       // Spectator chat is now persisted (see chat.service.ts), so a
       // freshly-joining spectator (or one who just refreshed) gets the
       // existing conversation instead of an empty panel. Players never see
-      // the chat UI at all, so there's no point loading history for them.
+      // the spectator chat UI, so there's no point loading spectator
+      // history for them — they get their own separate player_chat
+      // history instead (see playerChatScopeFor).
       const chatHistory =
         role === 'spectator'
           ? await getChatHistory(chatScopeFor(game).scope, chatScopeFor(game).id)
+          : [];
+      const playerChatHistory =
+        role !== 'spectator'
+          ? await getChatHistory(playerChatScopeFor(game).scope, playerChatScopeFor(game).id)
           : [];
 
       socket.emit('game:sync', {
@@ -484,6 +506,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           liveState?.blackRemainingMs ?? (game.timeControl.baseSeconds ? game.timeControl.baseSeconds * 1000 : null),
         turnStartedAtMs: liveState?.turnStartedAtMs ?? Date.now(),
         spectatorChatHistory: chatHistory,
+        playerChatHistory,
       });
 
       if (role !== 'spectator') {
@@ -837,14 +860,15 @@ export function registerGameHandlers(io: Server, socket: Socket) {
     }),
   );
 
-  // Open to anyone in the game, players and spectators alike. Persisted in
-  // Redis (see chat.service.ts): scoped to this gameId normally, or to the
-  // parent cage match if this game is a cage match leg, so the
-  // conversation survives a leg ending and the next one starting.
-  // Broadcast is still just to this leg's current game room, real-time
-  // delivery doesn't need to fan out to past legs' viewers, they've
-  // already moved on to the new leg's game page (and will pull the full
-  // persisted history, past legs included, the moment they join it).
+  // Spectators only (players don't get this chat UI, see player_chat:send
+  // below for their own separate one). Persisted in Redis (see
+  // chat.service.ts): scoped to this gameId normally, or to the parent
+  // cage match if this game is a cage match leg, so the conversation
+  // survives a leg ending and the next one starting. Broadcast is still
+  // just to this leg's current game room, real-time delivery doesn't need
+  // to fan out to past legs' viewers, they've already moved on to the new
+  // leg's game page (and will pull the full persisted history, past legs
+  // included, the moment they join it).
   socket.on(
     'spectator_chat:send',
     safeHandler(socket, async (raw: unknown) => {
@@ -898,6 +922,62 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       });
 
       io.to(spectatorRoom(gameId)).emit('spectator_chat:message', saved);
+    }),
+  );
+
+  // The two participants' own chat, reusing the same schema/rate-limit/
+  // reply-snapshot logic as spectator_chat:send above (and the same
+  // ChatDrawer UI client-side), but scoped and broadcast separately (see
+  // playerChatScopeFor / playerRoom) so it never mixes with spectator
+  // chatter in either direction.
+  socket.on(
+    'player_chat:send',
+    safeHandler(socket, async (raw: unknown) => {
+      const parsed = chatSchema.safeParse(raw);
+      if (!parsed.success) return emitError(socket, 'Invalid chat payload');
+      const { gameId, message, replyToId } = parsed.data;
+
+      if (!socket.rooms.has(playerRoom(gameId))) {
+        return emitError(socket, 'Only the players in this game can use this chat');
+      }
+
+      try {
+        await assertNotRestricted(userId);
+      } catch (err) {
+        return emitError(socket, err instanceof Error ? err.message : 'Chat is currently restricted for your account');
+      }
+
+      if (await isChatRateLimited(userId)) {
+        return emitError(socket, "You're sending messages too fast, slow down a little");
+      }
+      if (await isRepeatMessage(userId, message)) {
+        return emitError(socket, "You already sent that, try saying something new");
+      }
+
+      const game = await Game.findById(gameId).select('cageMatchId').lean();
+      if (!game) return emitError(socket, 'Game not found');
+      const { scope, id } = playerChatScopeFor(game as any);
+
+      let replyTo: { id: string; username: string; message: string } | null = null;
+      if (replyToId) {
+        const history = await getChatHistory(scope, id);
+        const original = history.find((m) => m.id === replyToId);
+        if (original) {
+          replyTo = { id: original.id, username: original.username, message: original.message };
+        }
+      }
+
+      const { username } = socket.data as AuthedSocketData;
+      const user = await User.findById(userId).select('avatarGradient').lean();
+
+      const saved = await addChatMessage(scope, id, {
+        username,
+        avatarGradient: user?.avatarGradient ?? null,
+        message,
+        replyTo,
+      });
+
+      io.to(playerRoom(gameId)).emit('player_chat:message', saved);
     }),
   );
 

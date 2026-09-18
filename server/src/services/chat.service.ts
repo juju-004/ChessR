@@ -18,6 +18,15 @@ import { redis } from '../config/redis.js';
 //                Tournament.chatEnabled). Deleted 10 minutes after the
 //                tournament finishes or is cancelled (see
 //                tournament.service.ts).
+//  - 'game_players' / 'cage_players'  the two participants' own private
+//                chat for a standalone game / cage match, a SEPARATE log
+//                from 'game'/'cage' above rather than just opening the
+//                spectator log up to players — spectators never see this
+//                and players never see spectator chatter. Same key'd-by-
+//                gameId / key'd-by-cageMatchId and same expiry points as
+//                their spectator counterparts (see gameSocket.ts's
+//                player_chat:send and the matching expireChat calls in
+//                game.service.ts/cageMatch.service.ts).
 //
 // Storage is a capped Redis list (most recent MAX_MESSAGES kept), values are
 // JSON-encoded ChatMessage objects, oldest first. No TTL is set while the
@@ -25,7 +34,7 @@ import { redis } from '../config/redis.js';
 // indefinitely until whatever's driving it wraps up. expireChat below is
 // what puts the 10-minute clock on it, callers are responsible for calling
 // it exactly once, right when that happens.
-export type ChatScope = 'game' | 'cage' | 'tournament';
+export type ChatScope = 'game' | 'cage' | 'tournament' | 'game_players' | 'cage_players';
 
 const MAX_MESSAGES = 200;
 const POST_COMPLETION_TTL_SECONDS = 10 * 60;

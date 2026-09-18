@@ -69,6 +69,13 @@ export interface ITournamentPlayer {
   tiebreak: number;
   gamesPlayed: number;
   berserkWins: number;
+  // Arena-only (see applyPairingScore's arena branch): consecutive wins in
+  // a row right now, reset to 0 by a draw, a loss, or a bye. streakWins
+  // counts how many of this player's wins actually landed the streak
+  // bonus (3rd win of a streak onward), same "stat, not a multiplier
+  // input" role berserkWins plays for the berserk bonus.
+  currentWinStreak: number;
+  streakWins: number;
   // Knockout-only: null while still alive, otherwise the round index they
   // were knocked out in (or -1 if they never got placed into the bracket at
   // all, which only happens if someone leaves before the bracket is drawn).
@@ -170,9 +177,31 @@ export interface ITournament extends Document {
   // CREATOR's own balance immediately, so it's never at risk of being
   // under-funded when the tournament actually finishes. Empty schedule = no
   // prize pool for this event.
+  //
+  // prizePoolCurrency gates which of those two payout mechanisms actually
+  // applies. 'tokens' (default) is the flow described above. 'naira' is a
+  // real-money prize pool the platform can't move electronically yet
+  // (Paystack payouts aren't live) — the numbers in prizeSchedule are read
+  // as naira, not R Coins, when this is 'naira', and the tokens field name
+  // on each tier is reused purely to avoid a parallel schema; nothing is
+  // ever deducted from the creator or credited to winners for it. Instead,
+  // once the tournament finishes, nairaWinners below is populated and the
+  // real cash is disbursed manually (see AdminDashboard's "Naira
+  // tournaments" tab and the account-details flow in wallet.service.ts).
+  // Immutable after creation, so a tournament can't flip from a real-money
+  // commitment to a token one (or back) once players may have joined
+  // expecting one or the other.
+  prizePoolCurrency: "tokens" | "naira";
   prizeSchedule: ITournamentPrizeTier[];
-  prizePoolTokens: number; // total committed, = sum(tokens * range size) over prizeSchedule
+  prizePoolTokens: number; // total committed, = sum(tokens * range size) over prizeSchedule. Always 0 for naira pools — see prizePoolCurrency above.
   prizePoolSettled: boolean;
+  // Populated once at finish time for prizePoolCurrency === 'naira' events
+  // (see distributePrize in tournament.service.ts), one entry per rank that
+  // prizeSchedule actually pays. Deliberately does NOT snapshot the
+  // winner's account details — AdminDashboard looks those up live off the
+  // User doc each time it loads, so a late or updated submission always
+  // shows up on refresh without needing to touch this array again.
+  nairaWinners: { user: Types.ObjectId; rank: number; naira: number }[];
   // --- Registration fee: player-funded, paid out to the creator --------------
   // Every joining player (creator included) pays this into escrow; held by
   // the tournament until it finishes, then the pool (minus the platform's
@@ -296,6 +325,8 @@ const playerSchema = new Schema<ITournamentPlayer>(
     tiebreak: { type: Number, default: 0 },
     gamesPlayed: { type: Number, default: 0 },
     berserkWins: { type: Number, default: 0 },
+    currentWinStreak: { type: Number, default: 0 },
+    streakWins: { type: Number, default: 0 },
     eliminatedRound: { type: Number, default: null },
     hadBye: { type: Boolean, default: false },
     paused: { type: Boolean, default: false },
@@ -341,9 +372,23 @@ const tournamentSchema = new Schema<ITournament>(
     berserkAllowed: { type: Boolean, default: true },
     chatEnabled: { type: Boolean, default: false },
     isPublic: { type: Boolean, default: false, index: true },
+    prizePoolCurrency: { type: String, enum: ["tokens", "naira"], default: "tokens" },
     prizeSchedule: { type: [prizeTierSchema], default: [] },
     prizePoolTokens: { type: Number, default: 0 },
     prizePoolSettled: { type: Boolean, default: false },
+    nairaWinners: {
+      type: [
+        new Schema(
+          {
+            user: { type: Schema.Types.ObjectId, ref: "User", required: true },
+            rank: { type: Number, required: true },
+            naira: { type: Number, required: true },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
     regFeeTokens: { type: Number, default: 0, min: 0 },
     regFeePoolTokens: { type: Number, default: 0 },
     regFeeSettled: { type: Boolean, default: false },

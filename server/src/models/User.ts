@@ -88,6 +88,22 @@ export interface IUser extends Document {
    *  rating.service.ts), below that count, ratingCategory reads as
    *  "Unranked" no matter what the hidden number says. */
   ratedGamesPlayed: number;
+  /** Bank payout details for manual (WhatsApp-disbursed) naira tournament
+   *  prizes, see AccountDetails.tsx / wallet.controller.ts. Deliberately
+   *  separate from the Paystack withdrawal flow in Withdraw.tsx, which
+   *  resolves+sends on the spot each time rather than storing anything —
+   *  this is a persisted "where do we send your winnings" record an admin
+   *  reads off the naira-tournament payout list, not something charged
+   *  against automatically. Null until the user has filled it in at least
+   *  once. */
+  payoutAccount?: {
+    bankCode: string;
+    bankName: string;
+    accountNumber: string;
+    accountName: string;
+    phone: string;
+    updatedAt: Date;
+  } | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -134,6 +150,20 @@ const userSchema = new Schema<IUser>(
     tokenVersion: { type: Number, default: 0 },
     rating: { type: Number, default: 1500 },
     ratedGamesPlayed: { type: Number, default: 0, min: 0 },
+    payoutAccount: {
+      type: new Schema(
+        {
+          bankCode: { type: String, required: true },
+          bankName: { type: String, required: true },
+          accountNumber: { type: String, required: true },
+          accountName: { type: String, required: true },
+          phone: { type: String, required: true },
+          updatedAt: { type: Date, default: () => new Date() },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
   },
   { timestamps: true },
 );

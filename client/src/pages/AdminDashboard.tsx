@@ -8,18 +8,22 @@ import {
   Trophy,
   Gamepad2,
   ShieldQuestion,
+  Phone,
+  Landmark,
 } from "lucide-react";
 import {
   listReports,
   getRevenueSummary,
   listGameFlags,
   updateGameFlag,
+  listNairaTournaments,
   type AdminReportListItem,
   type ReportStatus,
   type RevenueSummary,
   type RevenueSource,
   type AdminGameFlag,
   type GameFlagStatus,
+  type AdminNairaTournament,
 } from "../api/admin.js";
 import { clearAdminToken } from "../api/adminAuthStore.js";
 import {
@@ -76,7 +80,7 @@ const flagStatusVariant: Record<GameFlagStatus, "warning" | "success" | "error">
 
 export function AdminDashboard() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"reports" | "gameCheck" | "revenue">("reports");
+  const [tab, setTab] = useState<"reports" | "gameCheck" | "revenue" | "naira">("reports");
   const [status, setStatus] = useState<ReportStatus | "all">("pending");
   const [reports, setReports] = useState<AdminReportListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,6 +96,12 @@ export function AdminDashboard() {
   const [revenueLoading, setRevenueLoading] = useState(true);
   const [revenueError, setRevenueError] = useState("");
   const [revenuePage, setRevenuePage] = useState(1);
+
+  const [nairaTournaments, setNairaTournaments] = useState<AdminNairaTournament[]>([]);
+  const [nairaLoading, setNairaLoading] = useState(true);
+  const [nairaError, setNairaError] = useState("");
+  const [nairaPage, setNairaPage] = useState(1);
+  const [nairaTotalPages, setNairaTotalPages] = useState(1);
 
   useEffect(() => {
     setLoading(true);
@@ -121,6 +131,24 @@ export function AdminDashboard() {
       .catch(() => setRevenueError("Could not load revenue"))
       .finally(() => setRevenueLoading(false));
   }, [tab, revenuePage]);
+
+  function loadNairaTournaments() {
+    setNairaLoading(true);
+    setNairaError("");
+    listNairaTournaments(nairaPage)
+      .then((res) => {
+        setNairaTournaments(res.tournaments);
+        setNairaTotalPages(res.totalPages);
+      })
+      .catch(() => setNairaError("Could not load naira tournaments"))
+      .finally(() => setNairaLoading(false));
+  }
+
+  useEffect(() => {
+    if (tab !== "naira") return;
+    loadNairaTournaments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, nairaPage]);
 
   function handleLogout() {
     clearAdminToken();
@@ -162,11 +190,12 @@ export function AdminDashboard() {
       <div className="mb-4">
         <Tabs
           value={tab}
-          onChange={(v) => setTab(v as "reports" | "gameCheck" | "revenue")}
+          onChange={(v) => setTab(v as "reports" | "gameCheck" | "revenue" | "naira")}
           items={[
             { value: "reports", label: "Reports" },
             { value: "gameCheck", label: "Game check" },
             { value: "revenue", label: "Revenue" },
+            { value: "naira", label: "Naira tournaments" },
           ]}
         />
       </div>
@@ -353,6 +382,123 @@ export function AdminDashboard() {
             ))}
           </div>
         </>
+      ) : tab === "naira" ? (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-base-content/50">
+              Finished naira tournaments with prizes still to disburse.
+              Account details are read live, so refresh any time to pick up
+              a late fill-in or a change.
+            </p>
+            <Button
+              variant="glass"
+              size="sm"
+              onClick={loadNairaTournaments}
+              disabled={nairaLoading}
+            >
+              Refresh
+            </Button>
+          </div>
+
+          {nairaLoading && (
+            <div className="flex justify-center py-10">
+              <Spinner className="text-base-content/40" />
+            </div>
+          )}
+
+          {nairaError && (
+            <Card
+              variant="solid"
+              className="border-red-900/50 bg-red-950/20 text-red-300"
+            >
+              {nairaError}
+            </Card>
+          )}
+
+          {!nairaLoading && !nairaError && nairaTournaments.length === 0 && (
+            <p className="py-10 text-center text-sm text-base-content/50">
+              No naira tournaments have finished yet.
+            </p>
+          )}
+
+          <div className="space-y-3">
+            {nairaTournaments.map((t) => (
+              <Card key={t.id} variant="solid" className="text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Trophy className="h-4 w-4 text-base-content/40" />
+                    <span className="font-semibold text-base-content">
+                      {t.name}
+                    </span>
+                    <span className="text-base-content/40">· {t.code}</span>
+                  </div>
+                  <span className="text-xs text-base-content/40">
+                    {new Date(t.finishedAt).toLocaleString()}
+                  </span>
+                </div>
+
+                <div className="mt-2.5 space-y-2">
+                  {t.winners.map((w) => (
+                    <div
+                      key={w.rank}
+                      className="rounded-lg bg-base-100/60 px-3 py-2"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-medium text-base-content">
+                          #{w.rank} {w.username}
+                        </span>
+                        <Badge variant="success">
+                          ₦{w.naira.toLocaleString()}
+                        </Badge>
+                      </div>
+                      {w.payoutAccount ? (
+                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-base-content/60">
+                          <span className="flex items-center gap-1">
+                            <Landmark className="h-3 w-3" />
+                            {w.payoutAccount.bankName} ·{" "}
+                            {w.payoutAccount.accountNumber} ·{" "}
+                            {w.payoutAccount.accountName}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Phone className="h-3 w-3" /> {w.payoutAccount.phone}
+                          </span>
+                        </div>
+                      ) : (
+                        <p className="mt-1 text-xs text-amber-500">
+                          Hasn't submitted account details yet.
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          {nairaTotalPages > 1 && (
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <Button
+                variant="glass"
+                size="sm"
+                disabled={nairaPage <= 1}
+                onClick={() => setNairaPage((p) => p - 1)}
+              >
+                Previous
+              </Button>
+              <span className="text-xs text-base-content/50">
+                Page {nairaPage} of {nairaTotalPages}
+              </span>
+              <Button
+                variant="glass"
+                size="sm"
+                disabled={nairaPage >= nairaTotalPages}
+                onClick={() => setNairaPage((p) => p + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          )}
+        </div>
       ) : (
         <div className="space-y-4">
           {revenueLoading && (

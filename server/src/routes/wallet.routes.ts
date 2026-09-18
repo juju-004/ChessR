@@ -10,6 +10,8 @@ import {
   resolveAccount,
   withdraw,
   getTransactions,
+  getPayoutAccount,
+  savePayoutAccount,
 } from '../controllers/wallet.controller.js';
 
 const router = Router();
@@ -31,5 +33,7 @@ router.get('/banks', requireAuth, getBanks);
 router.get('/resolve-account', requireAuth, resolveAccount);
 router.post('/withdraw', requireAuth, withdrawLimiter, withdraw);
 router.get('/transactions', requireAuth, getTransactions);
+router.get('/payout-account', requireAuth, getPayoutAccount);
+router.put('/payout-account', requireAuth, savePayoutAccount);
 
 export default router;

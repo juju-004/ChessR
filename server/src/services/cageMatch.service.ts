@@ -324,6 +324,7 @@ async function finalizeCageMatchForfeit(
   // over too, give it the same 10-minute grace period as a standalone
   // game's chat.
   await expireChat("cage", match.id).catch((err) => console.error("expireChat(cage) failed:", err));
+  await expireChat("cage_players", match.id).catch((err) => console.error("expireChat(cage_players) failed:", err));
 
   return match;
 }
@@ -544,6 +545,7 @@ export async function onLegFinished(
     await match.save();
     await settleWinnerTakesAll(match, outcome.winner!).catch((err) => console.error("settleWinnerTakesAll failed:", err));
     await expireChat("cage", match.id).catch((err) => console.error("expireChat(cage) failed:", err));
+    await expireChat("cage_players", match.id).catch((err) => console.error("expireChat(cage_players) failed:", err));
     return { match, standings: computeStandings(match), matchStatus: "match_over", nextLeg: null, matchWinner: outcome.winner };
   }
 

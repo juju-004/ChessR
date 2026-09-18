@@ -45,9 +45,9 @@ export function About() {
   return (
     <Page
       title={
-        <span className="flex justify-start items-center gap-3">
+        <span className="flex justify-start items-center">
           About
-          <img src="/logo.png" alt="Chessr" className="w-24 mb-1" />
+          <img src="/logo.png" alt="Chessr" className="w-24 mb-0.5" />
         </span>
       }
       description="Who we are and what we're building."

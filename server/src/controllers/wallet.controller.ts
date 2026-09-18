@@ -117,6 +117,35 @@ export const getTransactions = asyncHandler(async (req: AuthedRequest, res) => {
   res.json(result);
 });
 
+// --- Payout account details (naira tournament prizes, manual WhatsApp
+// disbursement) -------------------------------------------------------------
+// Deliberately separate from the Paystack withdraw flow above: that one
+// resolves+sends on the spot every time and never persists anything, this
+// one IS meant to be persisted so an admin can read it later off the
+// naira-tournament payout list (see admin.controller.ts's
+// listNairaTournaments), potentially long after the user filled it in.
+
+const payoutAccountSchema = z.object({
+  bankCode: z.string().min(1),
+  bankName: z.string().min(1),
+  accountNumber: z.string().length(10),
+  accountName: z.string().min(1),
+  phone: z.string().trim().min(7).max(20),
+});
+
+export const getPayoutAccount = asyncHandler(async (req: AuthedRequest, res) => {
+  const user = await User.findById(req.user!.id).select('payoutAccount').lean();
+  if (!user) throw ApiError.notFound('User not found');
+  res.json({ payoutAccount: user.payoutAccount ?? null });
+});
+
+export const savePayoutAccount = asyncHandler(async (req: AuthedRequest, res) => {
+  const params = payoutAccountSchema.parse(req.body);
+  const payoutAccount = { ...params, updatedAt: new Date() };
+  await User.updateOne({ _id: req.user!.id }, { $set: { payoutAccount } });
+  res.json({ payoutAccount });
+});
+
 /**
  * Paystack webhook, the actual source of truth for both purchases and
  * withdrawals. Requires the RAW request body for signature verification

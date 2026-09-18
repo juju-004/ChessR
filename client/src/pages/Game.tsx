@@ -28,6 +28,7 @@ import {
   Trophy,
   FlipVertical,
   Settings,
+  Timer,
 } from "lucide-react";
 import { MoveList, MoveStrip } from "../components/MoveLog.js";
 import { PlayerPanelRow, panelMaterial } from "../components/PlayerPanels.js";
@@ -57,6 +58,7 @@ import {
 import { useHoldRepeat } from "../components/game/useHoldRepeat.js";
 import { GameNotificationsOverlay } from "../components/game/GameNotificationsOverlay.js";
 import { GameChatPanel } from "../components/game/GameChatPanel.js";
+import { PlayerChatPanel } from "../components/game/PlayerChatPanel.js";
 import type { ChatMessage } from "../lib/chatTypes.js";
 import { useMyActiveGame } from "../contexts/MyActiveGameContext.js";
 import {
@@ -178,6 +180,11 @@ export function Game() {
   const [gameOverModalDismissed, setGameOverModalDismissed] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatHasUnread, setChatHasUnread] = useState(false);
+  // Player-to-player chat, a separate conversation/history from the
+  // spectator one above — see gameSocket.ts's player_chat:send. Only ever
+  // populated/rendered for the two participants, not spectators.
+  const [playerChatMessages, setPlayerChatMessages] = useState<ChatMessage[]>([]);
+  const [playerChatHasUnread, setPlayerChatHasUnread] = useState(false);
   // Board flip is purely a local viewing preference, it doesn't touch
   // `myColor`/server state at all, just which edge of the board the local
   // player's pieces render on.
@@ -201,6 +208,12 @@ export function Game() {
   useEffect(() => {
     chatSheetOpenRef.current = chatSheetOpen;
   }, [chatSheetOpen]);
+  // Same bottom-sheet-on-mobile treatment as spectator chat above.
+  const [playerChatSheetOpen, setPlayerChatSheetOpen] = useState(false);
+  const playerChatSheetOpenRef = useRef(playerChatSheetOpen);
+  useEffect(() => {
+    playerChatSheetOpenRef.current = playerChatSheetOpen;
+  }, [playerChatSheetOpen]);
   const CLIENT_URL = import.meta.env.VITE_CLIENT_URL ?? "http://localhost:5173";
 
   const chess = useMemo(() => new Chess(fen), [fen]);
@@ -777,6 +790,11 @@ export function Game() {
       if (Array.isArray(payload.spectatorChatHistory)) {
         setChatMessages(payload.spectatorChatHistory);
       }
+      // Only ever present for players (see gameSocket.ts), same
+      // full-replace-on-(re)join semantics as spectatorChatHistory above.
+      if (Array.isArray(payload.playerChatHistory)) {
+        setPlayerChatMessages(payload.playerChatHistory);
+      }
     }
 
     function onMove(payload: any) {
@@ -938,6 +956,13 @@ export function Game() {
       }
     }
 
+    function onPlayerChatMessage(payload: ChatMessage) {
+      setPlayerChatMessages((prev) => [...prev.slice(-199), payload]);
+      if (!playerChatSheetOpenRef.current && payload.username !== user?.username) {
+        setPlayerChatHasUnread(true);
+      }
+    }
+
     function onLegPaused(payload: { gameId: string }) {
       if (payload.gameId !== gameId) return;
       setPausedLeg(true);
@@ -998,6 +1023,7 @@ export function Game() {
     socket.on("game:draw_offered", onDrawOffered);
     socket.on("game:berserked", onBerserked);
     socket.on("spectator_chat:message", onChatMessage);
+    socket.on("player_chat:message", onPlayerChatMessage);
     socket.on("cage:leg_paused", onLegPaused);
     socket.on("cage:leg_resumed", onLegResumed);
     socket.on("cage:pause_request_sent", onPauseRequestSent);
@@ -1026,6 +1052,7 @@ export function Game() {
       socket.off("game:draw_offered", onDrawOffered);
       socket.off("game:berserked", onBerserked);
       socket.off("spectator_chat:message", onChatMessage);
+      socket.off("player_chat:message", onPlayerChatMessage);
       socket.off("cage:leg_paused", onLegPaused);
       socket.off("cage:leg_resumed", onLegResumed);
       socket.off("cage:pause_request_sent", onPauseRequestSent);
@@ -1281,6 +1308,15 @@ export function Game() {
     });
   }
 
+  function handleSendPlayerChat(message: string, replyToId?: string) {
+    if (!socket || !gameMeta) return;
+    socket.emit("player_chat:send", {
+      gameId: gameMeta._id,
+      message,
+      ...(replyToId ? { replyToId } : {}),
+    });
+  }
+
   const isPlayer = role !== "spectator";
   // Keyed off the position actually on screen (live, or historical while
   // browsing, see displayFen above), not always the live `chess` object,
@@ -1334,6 +1370,18 @@ export function Game() {
           </Badge>
         </Link>,
       );
+    // Only arena currently has a fixed duration (the pairing queue stays
+    // open for arenaMinutes then closes) — swiss/round-robin/knockout are
+    // paced by rounds, not a clock, so they have nothing to show here.
+    if (gameMeta?.tournamentId?.format === "arena" && gameMeta.tournamentId.arenaMinutes)
+      list.push(
+        <Badge key="tourney-duration" variant="glass">
+          <span className="inline-flex items-center gap-1">
+            <Timer className="h-3 w-3" />
+            {gameMeta.tournamentId.arenaMinutes} min
+          </span>
+        </Badge>,
+      );
     // White/black berserked badges now live on the player panels themselves,
     // right next to the clock they actually affect, see PlayerPanels.tsx's
     // BerserkBadge.
@@ -1347,6 +1395,10 @@ export function Game() {
   ]);
 
   const showChat = !settings.zenMode && role === "spectator" && live;
+  // Same gating as spectator chat, just the mirror-image role check — see
+  // gameSocket.ts's player_chat:send / playerRoom for why these two never
+  // overlap.
+  const showPlayerChat = !settings.zenMode && isPlayer && live;
 
   // Persistent "White Wins. Timeout" style line for GameDetailsCard, see
   // that component's doc comment on resultSummary for why this needs to
@@ -1635,6 +1687,21 @@ export function Game() {
           },
         ]
       : []),
+    ...(showPlayerChat
+      ? [
+          {
+            label: "Chat",
+            icon: MessageSquare,
+            onClick: () => {
+              setPlayerChatSheetOpen(true);
+              setPlayerChatHasUnread(false);
+            },
+            danger: false,
+            mobilePrimary: true,
+            dot: playerChatHasUnread,
+          },
+        ]
+      : []),
     ...(canReopenRematch
       ? [
           {
@@ -1803,6 +1870,15 @@ export function Game() {
         messages={chatMessages}
         myUsername={user?.username}
         onSend={handleSendChat}
+      />
+
+      <PlayerChatPanel
+        show={showPlayerChat}
+        open={playerChatSheetOpen}
+        onClose={() => setPlayerChatSheetOpen(false)}
+        messages={playerChatMessages}
+        myUsername={user?.username}
+        onSend={handleSendPlayerChat}
       />
 
       {gameOver && !gameOverModalDismissed && (

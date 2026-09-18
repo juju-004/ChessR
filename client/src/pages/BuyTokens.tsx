@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2, XCircle } from "lucide-react";
+import { TestModeBanner } from "../components/TestModeBanner.js";
 import {
   getWalletConfig,
   initPurchase,
@@ -138,13 +139,7 @@ export function BuyTokens() {
       back="/"
       bare
     >
-      <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-500">
-        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        <p>
-          Test mode. No real charge will be made. Use Paystack's test card
-          numbers.
-        </p>
-      </div>
+      <TestModeBanner className="mb-4" />
 
       {error && (
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-3.5 py-2.5 text-sm text-red-400">

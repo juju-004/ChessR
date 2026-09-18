@@ -167,9 +167,9 @@ function EditTournamentForm({
     if (name.trim().length < 3)
       return setError("Give it a name (3+ characters).");
     const regFeeTokens = Math.max(0, Math.floor(Number(regFeeInput) || 0));
-    if (regFeeTokens < MIN_STAKE_TOKENS) {
+    if (regFeeTokens > 0 && regFeeTokens < MIN_STAKE_TOKENS) {
       return setError(
-        `Set a registration fee of at least ${MIN_STAKE_TOKENS} R.`,
+        `Set a registration fee of at least ${MIN_STAKE_TOKENS} R, or 0 for a free tournament.`,
       );
     }
     const scheduledStartAt = new Date(startInput);
@@ -347,11 +347,11 @@ function EditTournamentForm({
           <Input
             label={
               <span className="inline-flex items-center gap-1">
-                Registration fee (<RCoin size={12} /> Coins)
+                Registration fee (<RCoin size={12} /> Coins, optional)
               </span>
             }
             type="number"
-            min={MIN_STAKE_TOKENS}
+            min={0}
             max={MAX_WAGER_TOKENS}
             value={regFeeInput}
             onChange={(e) => setRegFeeInput(e.target.value)}
@@ -363,13 +363,15 @@ function EditTournamentForm({
 
           <div className="space-y-2">
             <p className="text-xs text-base-content/50">
-              Increasing the total debits the difference from you now.
-              Decreasing it refunds the difference.
+              {tournament.prizePoolCurrency === "naira"
+                ? "Naira prize pools aren't deducted from your wallet, editing this just updates the payout schedule we'll disburse manually."
+                : "Increasing the total debits the difference from you now. Decreasing it refunds the difference."}
             </p>
             <PrizePoolEditor
               value={prizeTiers}
               onChange={setPrizeTiers}
               maxPlayers={maxPlayers}
+              currency={tournament.prizePoolCurrency}
             />
           </div>
 
@@ -694,10 +696,12 @@ function PlayerTournamentDetails({
   player: TournamentPlayer;
 }) {
   const isPointsFormat = tournament.format !== "normal";
+  const isArena = tournament.format === "arena";
   const records = pairingsForPlayer(tournament, player.user);
   const stats = [
     { label: "Games", value: player.gamesPlayed },
     { label: "Berserk wins", value: player.berserkWins },
+    isArena && { label: "Streak wins", value: player.streakWins },
     isPointsFormat && { label: "Points", value: player.points },
   ].filter(Boolean) as { label: string; value: number }[];
 
@@ -1409,7 +1413,22 @@ export function TournamentDetail() {
             >
               <CardTitle className="inline-flex items-center gap-1">
                 Prize pool <span className="text-secondary">{"->"}</span>{" "}
-                {tournament.prizePoolTokens} <RCoin size={14} />
+                {tournament.prizePoolCurrency === "naira" ? (
+                  <>
+                    ₦
+                    {tournament.prizeSchedule
+                      .reduce(
+                        (sum, tier) =>
+                          sum + tier.tokens * (tier.toRank - tier.fromRank + 1),
+                        0,
+                      )
+                      .toLocaleString()}
+                  </>
+                ) : (
+                  <>
+                    {tournament.prizePoolTokens} <RCoin size={14} />
+                  </>
+                )}
               </CardTitle>
               <ChevronDown
                 className={`h-4 w-4 shrink-0 text-base-content/40 transition-transform ${
@@ -1436,9 +1455,19 @@ export function TournamentDetail() {
                         : `${tier.fromRank}${ordinalSuffix(tier.fromRank)}–${tier.toRank}${ordinalSuffix(tier.toRank)} place`}
                     </span>
                     <span className="font-medium text-base-content flex items-center">
-                      {tier.tokens} <RCoin size={12} className="ml-1" />
+                      {tournament.prizePoolCurrency === "naira" ? (
+                        <>₦{tier.tokens.toLocaleString()}</>
+                      ) : (
+                        <>
+                          {tier.tokens} <RCoin size={12} className="ml-1" />
+                        </>
+                      )}
                       <span className="ml-1 opacity-85 text-xs">
-                        {tokensLabel(tier).slice(1)}
+                        {tournament.prizePoolCurrency === "naira"
+                          ? tier.fromRank === tier.toRank
+                            ? ""
+                            : "each"
+                          : tokensLabel(tier).slice(1)}
                       </span>
                     </span>
                   </div>
@@ -1493,7 +1522,6 @@ export function TournamentDetail() {
                   <tr className="bg-base-300/50 text-left text-[11px] font-semibold uppercase tracking-wide text-base-content/50">
                     <th className="w-10 px-3 py-2">#</th>
                     <th className="px-3 py-2">Player</th>
-                    <th className="px-3 py-2 text-right">Games</th>
                     <th className="px-3 py-2 text-right">Pts</th>
                   </tr>
                 </thead>
@@ -1546,9 +1574,6 @@ export function TournamentDetail() {
                               player={p}
                             />
                           </ResponsiveOverlay>
-                        </td>
-                        <td className="px-3 py-2 text-right text-base-content/60">
-                          {p.gamesPlayed}
                         </td>
                         <td
                           className={cn(

@@ -58,7 +58,7 @@ export function Players() {
   const [friendSearch, setFriendSearch] = useState("");
   const [tcIndex, setTcIndex] = useState(2);
   const [variant, setVariant] = useState<"standard" | "chess960">("standard");
-  const [wagerInput, setWagerInput] = useState("20");
+  const [wagerInput, setWagerInput] = useState("0");
   const [status, setStatus] = useState<{
     message: string;
     isError: boolean;
@@ -147,9 +147,10 @@ export function Players() {
   function handleChallenge(friendId: string) {
     if (!socket) return;
     const tc = TIME_CONTROLS[tcIndex];
+    // Wagers are opt-in now: 0 = a free game.
     const wagerTokens = Math.min(
       MAX_WAGER_TOKENS,
-      Math.max(MIN_STAKE_TOKENS, Math.floor(Number(wagerInput) || 0)),
+      Math.max(0, Math.floor(Number(wagerInput) || 0)),
     );
     socket.emit("challenge:send", {
       toUserId: friendId,
@@ -459,15 +460,21 @@ export function Players() {
                       <Input
                         label={
                           <span className="inline-flex items-center gap-1">
-                            <RCoin size={12} /> Coin wager
+                            <RCoin size={12} /> Coin wager (optional)
                           </span>
                         }
                         type="number"
-                        min={MIN_STAKE_TOKENS}
+                        min={0}
                         max={MAX_WAGER_TOKENS}
                         step={1}
                         value={wagerInput}
                         onChange={(e) => setWagerInput(e.target.value)}
+                        error={
+                          Number(wagerInput) > 0 &&
+                          Math.floor(Number(wagerInput) || 0) < MIN_STAKE_TOKENS
+                            ? `Enter 0 for a free game, or at least ${MIN_STAKE_TOKENS} R`
+                            : undefined
+                        }
                       />
                       <span className="w-full gap-2 grid grid-cols-2">
                         <Button
@@ -475,8 +482,9 @@ export function Players() {
                           onClick={() => handleChallenge(f.id)}
                           disabled={
                             !f.online ||
-                            Math.floor(Number(wagerInput) || 0) <
-                              MIN_STAKE_TOKENS
+                            (Math.floor(Number(wagerInput) || 0) > 0 &&
+                              Math.floor(Number(wagerInput) || 0) <
+                                MIN_STAKE_TOKENS)
                           }
                         >
                           {f.online ? "Send" : "offline"}

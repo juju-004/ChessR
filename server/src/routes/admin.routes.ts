@@ -8,6 +8,7 @@ import {
   getRevenueSummary,
   listGameFlags,
   updateGameFlag,
+  listNairaTournaments,
 } from '../controllers/admin.controller.js';
 import { requireAdmin } from '../middleware/adminAuth.js';
 
@@ -21,5 +22,6 @@ router.patch('/users/:username/reporting-block', requireAdmin, setUserReportingB
 router.get('/revenue', requireAdmin, getRevenueSummary);
 router.get('/game-flags', requireAdmin, listGameFlags);
 router.patch('/game-flags/:id', requireAdmin, updateGameFlag);
+router.get('/naira-tournaments', requireAdmin, listNairaTournaments);
 
 export default router;

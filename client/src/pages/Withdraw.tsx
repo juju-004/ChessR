@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, Landmark, XCircle } from "lucide-react";
+import { Link } from "react-router-dom";
 import {
   getWalletConfig,
   getBanks,
@@ -9,6 +10,7 @@ import {
 } from "../api/wallet.js";
 import { ApiRequestError } from "../api/http.js";
 import { useTokenBalance } from "../hooks/useTokenBalance.js";
+import { TestModeBanner } from "../components/TestModeBanner.js";
 import {
   Page,
   Card,
@@ -189,6 +191,18 @@ export function Withdraw() {
       back="/"
       bare
     >
+      <TestModeBanner className="mb-4" />
+      <div className="mb-4 flex items-center justify-between rounded-xl border border-base-300 bg-base-100/60 px-3.5 py-2.5 text-sm">
+        <span className="text-base-content/70">
+          Won a naira tournament prize?
+        </span>
+        <Link
+          to="/account-details"
+          className="font-medium text-(--secondary) hover:underline"
+        >
+          Manage payout account details
+        </Link>
+      </div>
       <Card variant="solid" className="w-full space-y-3">
         <p className="mb-4 flex flex-wrap items-center gap-1 text-xs text-base-content/50">
           Rate: ₦{nairaPerToken} per <RCoin size={11} /> Coin · Minimum

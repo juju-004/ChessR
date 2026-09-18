@@ -109,3 +109,35 @@ export function getTransactions(page = 1, limit = 20) {
     `/wallet/transactions?page=${page}&limit=${limit}`,
   );
 }
+
+export interface PayoutAccount {
+  bankCode: string;
+  bankName: string;
+  accountNumber: string;
+  accountName: string;
+  phone: string;
+  updatedAt: string;
+}
+
+// Persisted bank details for manual (WhatsApp) naira tournament prize
+// payouts — separate from withdraw()'s Paystack cashout above, which
+// resolves+sends on the spot and never stores anything. See
+// AccountDetails.tsx.
+export function getPayoutAccount() {
+  return apiFetch<{ payoutAccount: PayoutAccount | null }>(
+    "/wallet/payout-account",
+  );
+}
+
+export function savePayoutAccount(params: {
+  bankCode: string;
+  bankName: string;
+  accountNumber: string;
+  accountName: string;
+  phone: string;
+}) {
+  return apiFetch<{ payoutAccount: PayoutAccount }>("/wallet/payout-account", {
+    method: "PUT",
+    body: JSON.stringify(params),
+  });
+}

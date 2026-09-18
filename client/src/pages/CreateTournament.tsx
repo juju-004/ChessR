@@ -13,6 +13,7 @@ import { useSocket } from "../contexts/SocketContext.js";
 import { useRakePercent } from "../hooks/useRakePercent.js";
 import { HelpTip } from "../components/HelpTip.js";
 import { PrizePoolEditor } from "../components/tournaments/PrizePoolEditor.js";
+import { TestModeBanner } from "../components/TestModeBanner.js";
 import {
   Page,
   Card,
@@ -81,7 +82,8 @@ export function CreateTournament() {
   // --- Money ---
   const [organizerOnly, setOrganizerOnly] = useState(false);
   const [thirdPlaceMatch, setThirdPlaceMatch] = useState(false);
-  const [regFeeInput, setRegFeeInput] = useState("20");
+  const [regFeeInput, setRegFeeInput] = useState("0");
+  const [prizePoolCurrency, setPrizePoolCurrency] = useState<"tokens" | "naira">("tokens");
   const [prizeTiers, setPrizeTiers] = useState<TournamentPrizeTier[]>([]);
 
   useEffect(() => {
@@ -108,6 +110,16 @@ export function CreateTournament() {
     );
   }
 
+  function handlePrizeCurrencyChange(currency: "tokens" | "naira") {
+    if (currency === prizePoolCurrency) return;
+    setPrizePoolCurrency(currency);
+    // The same numbers mean something completely different across
+    // currencies (R Coins vs naira), so carrying the old schedule over
+    // would silently misrepresent it. Clear it and let the organizer
+    // re-enter the schedule in the new currency.
+    setPrizeTiers([]);
+  }
+
   function handleCreate() {
     if (!socket) return;
     if (name.trim().length < 3)
@@ -119,9 +131,11 @@ export function CreateTournament() {
       MAX_WAGER_TOKENS,
       Math.max(0, Math.floor(Number(regFeeInput) || 0)),
     );
-    if (regFeeTokens < MIN_STAKE_TOKENS) {
+    // Registration fee is optional now — 0 means a free tournament. Still
+    // floored at MIN_STAKE_TOKENS if the organizer sets one at all.
+    if (regFeeTokens > 0 && regFeeTokens < MIN_STAKE_TOKENS) {
       return setStatus({
-        message: `Set a registration fee of at least ${MIN_STAKE_TOKENS} R.`,
+        message: `Set a registration fee of at least ${MIN_STAKE_TOKENS} R, or 0 for a free tournament.`,
         isError: true,
       });
     }
@@ -160,6 +174,7 @@ export function CreateTournament() {
       organizerOnly,
       thirdPlaceMatch: format === "normal" ? thirdPlaceMatch : false,
       prizeSchedule: prizeTiers,
+      prizePoolCurrency,
       regFeeTokens,
       swissRounds: format === "swiss" ? swissRounds : null,
       robinRounds: format === "round_robin" ? robinRounds : null,
@@ -315,28 +330,39 @@ export function CreateTournament() {
 
             {/* Money */}
             <section className="space-y-3 border-t border-base-300 pt-4">
+              <TestModeBanner />
               <Input
                 label={
                   <span className="inline-flex items-center gap-1">
-                    Registration fee (<RCoin size={12} /> Coins)
+                    Registration fee (<RCoin size={12} /> Coins, optional)
                     <HelpTip>
                       {rakePercent !== null
-                        ? `Every entrant pays this to join. Held until the tournament ends, then the ${rakePercent}% platform fee is deducted and the rest is paid out to you as the organizer.`
-                        : "Every entrant pays this to join. Held until the tournament ends, then the platform fee is deducted and the rest is paid out to you as the organizer."}
+                        ? `Every entrant pays this to join. Held until the tournament ends, then the ${rakePercent}% platform fee is deducted and the rest is paid out to you as the organizer. Leave at 0 for a free tournament.`
+                        : "Every entrant pays this to join. Held until the tournament ends, then the platform fee is deducted and the rest is paid out to you as the organizer. Leave at 0 for a free tournament."}
                     </HelpTip>
                   </span>
                 }
                 type="number"
-                min={MIN_STAKE_TOKENS}
+                min={0}
                 max={MAX_WAGER_TOKENS}
                 value={regFeeInput}
                 onChange={(e) => setRegFeeInput(e.target.value)}
               />
 
               <PrizePoolEditor
+                key={prizePoolCurrency}
                 value={prizeTiers}
                 onChange={setPrizeTiers}
                 maxPlayers={maxPlayers}
+                currency={prizePoolCurrency}
+              />
+              <Switch
+                checked={prizePoolCurrency === "naira"}
+                onChange={(checked) =>
+                  handlePrizeCurrencyChange(checked ? "naira" : "tokens")
+                }
+                label="Prize pool in naira (₦)"
+                description="Real cash, disbursed manually by us over WhatsApp. Nothing is deducted from or added to any wallet for this — winners just get notified to submit their payout account details."
               />
               <Input
                 label="Password (optional)"

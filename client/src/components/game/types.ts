@@ -18,9 +18,20 @@ export interface GameMeta {
   legIndex?: number | null;
   /** Populated with just the join code by getGameByCode, enough for a
    *  "Back to tournament" link without pulling the whole Tournament doc. */
-  /** Populated with the join code (for the "Back to tournament" link) and
-   *  name (shown on the in-game badge) by getGameByCode. */
-  tournamentId?: { _id: string; code: string; name: string } | null;
+  /** Populated with the join code (for the "Back to tournament" link),
+   *  name (shown on the in-game badge), and — for formats that have a
+   *  fixed duration — format + arenaMinutes, so the game page can show a
+   *  duration badge (see Game.tsx's badges list). arenaMinutes is null
+   *  for every non-arena format, and for arena tournaments started
+   *  without an explicit duration (defaults to 60 server-side at start,
+   *  but the field itself can still be null before then). */
+  tournamentId?: {
+    _id: string;
+    code: string;
+    name: string;
+    format: "normal" | "swiss" | "round_robin" | "arena";
+    arenaMinutes: number | null;
+  } | null;
 }
 
 export interface MoveLogEntry {

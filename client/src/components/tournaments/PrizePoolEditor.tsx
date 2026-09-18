@@ -17,6 +17,28 @@ interface PrizePoolEditorProps {
   /** Used only to flag a tier that reaches past the field cap, a hint,
    *  not a hard block; the real validation still happens on submit. */
   maxPlayers: number;
+  /** 'tokens' (default) shows the RCoin icon everywhere an amount is
+   *  displayed; 'naira' shows a plain ₦ prefix instead. Purely cosmetic —
+   *  the underlying tier numbers and parsing are identical either way,
+   *  see CreateTournament.tsx's currency toggle for what actually changes
+   *  server-side. */
+  currency?: "tokens" | "naira";
+}
+
+function AmountUnit({
+  currency,
+  size = 12,
+  className,
+}: {
+  currency: "tokens" | "naira";
+  size?: number;
+  className?: string;
+}) {
+  return currency === "naira" ? (
+    <span className={`font-medium ${className ?? ""}`}>₦</span>
+  ) : (
+    <RCoin size={size} className={className} />
+  );
 }
 
 /** A single free-form textarea that replaces the old "add a row per prize
@@ -27,6 +49,7 @@ export function PrizePoolEditor({
   value,
   onChange,
   maxPlayers,
+  currency = "tokens",
 }: PrizePoolEditorProps) {
   const [text, setText] = useState(() => prizeTiersToText(value));
   const [errors, setErrors] = useState<string[]>([]);
@@ -48,17 +71,21 @@ export function PrizePoolEditor({
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-1 text-sm text-base-content/80">
-          <span className="text-xs font-medium sm:text-sm">Prize pool</span>
+          <span className="text-xs font-medium sm:text-sm">
+            Prize pool{currency === "naira" ? " (₦)" : ""}
+          </span>
           <HelpTip>
             One place (or range of places) per line: rank, then how much it
             pays. "1st - 500", "2nd - 200", or "5th-10th - 4k" for a range that
             shares the same amount. Ordinal suffixes and spacing don't matter.
             "5-10-4000" parses exactly the same as "5th-10th-4k".
+            {currency === "naira" &&
+              " Amounts are naira here, not R Coins — nothing is deducted from your wallet, this is just the payout schedule we'll disburse manually."}
           </HelpTip>
         </span>
         {total > 0 && (
           <span className="inline-flex items-center gap-1 text-xs text-base-content/50">
-            {total} <RCoin size={12} /> total
+            {total} <AmountUnit currency={currency} /> total
           </span>
         )}
       </div>
@@ -112,9 +139,13 @@ export function PrizePoolEditor({
                   : `${tier.fromRank}${ordinalSuffix(tier.fromRank)}–${tier.toRank}${ordinalSuffix(tier.toRank)} place`}
               </span>
               <span className="font-medium text-base-content flex items-center">
-                {tier.tokens} <RCoin size={12} className="ml-1" />
+                {tier.tokens} <AmountUnit currency={currency} className="ml-1" />
                 <span className="ml-1 opacity-85 text-xs">
-                  {tokensLabel(tier).slice(1)}
+                  {currency === "naira"
+                    ? tier.fromRank === tier.toRank
+                      ? ""
+                      : "each"
+                    : tokensLabel(tier).slice(1)}
                 </span>
               </span>
             </div>

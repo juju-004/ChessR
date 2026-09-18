@@ -18,8 +18,10 @@ import type { AuthedRequest } from "../middleware/auth.js";
 // Sanity ceiling on a single wager, not a business limit, just a guard
 // against fat-fingered/garbage input reaching the wallet layer.
 const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
-// Floor on any single wager/stake/fee amount, kept in sync with
-// MIN_STAKE_TOKENS in client/src/lib/limits.ts.
+// Floor on any single wager/stake/fee amount when a game IS wagered, kept
+// in sync with MIN_STAKE_TOKENS in client/src/lib/limits.ts. 0 is also
+// allowed (a free, unwagered game) — wagers are opt-in, not required, see
+// createOpenGame's existing `wagerTokens > 0` branching in game.service.ts.
 const MIN_STAKE_TOKENS = 20;
 
 const createSchema = z.object({
@@ -31,8 +33,12 @@ const createSchema = z.object({
   wagerTokens: z
     .number()
     .int()
-    .min(MIN_STAKE_TOKENS, `A wager of at least ${MIN_STAKE_TOKENS} R is required for every game`)
-    .max(MAX_WAGER_TOKENS),
+    .min(0)
+    .max(MAX_WAGER_TOKENS)
+    .refine(
+      (v) => v === 0 || v >= MIN_STAKE_TOKENS,
+      `A wager must either be 0 (free game) or at least ${MIN_STAKE_TOKENS} R`,
+    ),
 });
 const idParamSchema = z.object({
   id: z.string().refine(mongoose.isValidObjectId),

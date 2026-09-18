@@ -42,6 +42,18 @@ const STATUS_VARIANT: Record<
 };
 
 function TournamentRow({ t }: { t: Tournament }) {
+  // prizePoolTokens is always 0 for naira tournaments (nothing is ever
+  // actually debited for one, see the ITournament doc comment server-side),
+  // so the total has to be computed from the schedule itself here rather
+  // than reading prizePoolTokens the way the R Coin case does below it.
+  const nairaPrizeTotal =
+    t.prizePoolCurrency === "naira"
+      ? t.prizeSchedule.reduce(
+          (sum, tier) => sum + tier.tokens * (tier.toRank - tier.fromRank + 1),
+          0,
+        )
+      : 0;
+
   return (
     <Link
       to={`/tournaments/${t.code}`}
@@ -67,11 +79,17 @@ function TournamentRow({ t }: { t: Tournament }) {
               · {t.regFeeTokens} <RCoin size={11} className="inline align-[-1px]" /> to join
             </>
           )}
-          {t.prizePoolTokens > 0 && (
-            <>
-              {" "}
-              · {t.prizePoolTokens} <RCoin size={11} className="inline align-[-1px]" /> prize pool
-            </>
+          {t.prizePoolCurrency === "naira" ? (
+            nairaPrizeTotal > 0 && (
+              <> · ₦{nairaPrizeTotal.toLocaleString()} prize pool</>
+            )
+          ) : (
+            t.prizePoolTokens > 0 && (
+              <>
+                {" "}
+                · {t.prizePoolTokens} <RCoin size={11} className="inline align-[-1px]" /> prize pool
+              </>
+            )
           )}
         </div>
       </div>

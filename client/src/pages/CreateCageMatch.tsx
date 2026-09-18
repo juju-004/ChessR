@@ -11,6 +11,7 @@ import { useSocket } from "../contexts/SocketContext.js";
 import { useRakePercent } from "../hooks/useRakePercent.js";
 import { MAX_WAGER_TOKENS, MIN_STAKE_TOKENS } from "../lib/limits.js";
 import { HelpTip } from "../components/HelpTip.js";
+import { TestModeBanner } from "../components/TestModeBanner.js";
 import { CageGamePlanEditor } from "../components/cage/CageGamePlanEditor.js";
 import {
   Page,
@@ -127,6 +128,7 @@ export function CreateCageMatch() {
   return (
     <Page title="Start a cage match" back="/cage">
       <div className="mx-auto space-y-4">
+        <TestModeBanner />
         <Card variant="solid">
           <CardContent className="space-y-5">
             {/* Opponent */}

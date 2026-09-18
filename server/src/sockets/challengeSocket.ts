@@ -19,8 +19,10 @@ const challengeKey = (id: string) => `challenge:${id}`;
 const pendingPairKey = (fromId: string, toId: string) => `challenge:pending:${fromId}:${toId}`;
 
 const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
-// Floor on any single wager/stake/fee amount, kept in sync with
-// MIN_STAKE_TOKENS in client/src/lib/limits.ts.
+// Floor on any single wager/stake/fee amount when a game IS wagered, kept
+// in sync with MIN_STAKE_TOKENS in client/src/lib/limits.ts. Wagers are
+// opt-in now, not required — 0 means a free game, see the `wagerTokens > 0`
+// branching this flows into in game.service.ts's createDirectGame.
 const MIN_STAKE_TOKENS = 20;
 
 const sendSchema = z.object({
@@ -28,7 +30,15 @@ const sendSchema = z.object({
   baseMinutes: z.number().min(1).max(180).nullable().optional().default(10),
   incrementSeconds: z.number().min(0).max(60).optional().default(0),
   variant: z.enum(['standard', 'chess960']).optional().default('standard'),
-  wagerTokens: z.number().int().min(MIN_STAKE_TOKENS, `A wager of at least ${MIN_STAKE_TOKENS} R is required for every game`).max(MAX_WAGER_TOKENS),
+  wagerTokens: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_WAGER_TOKENS)
+    .refine(
+      (v) => v === 0 || v >= MIN_STAKE_TOKENS,
+      `A wager must either be 0 (free game) or at least ${MIN_STAKE_TOKENS} R`,
+    ),
 });
 const respondSchema = z.object({ challengeId: z.string(), accept: z.boolean() });
 

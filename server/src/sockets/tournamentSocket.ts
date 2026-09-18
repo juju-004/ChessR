@@ -53,7 +53,18 @@ const createSchema = z.object({
   // below.
   thirdPlaceMatch: z.boolean().default(false),
   prizeSchedule: z.array(prizeTierSchema).max(20).optional().default([]),
-  regFeeTokens: z.number().int().min(MIN_STAKE_TOKENS, `A registration fee of at least ${MIN_STAKE_TOKENS} R is required for every tournament`).max(MAX_WAGER_TOKENS),
+  // Immutable after creation (see the ITournament doc comment server-side
+  // in Tournament.ts), so also not present in editSchema below.
+  prizePoolCurrency: z.enum(['tokens', 'naira']).optional().default('tokens'),
+  regFeeTokens: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_WAGER_TOKENS)
+    .refine(
+      (v) => v === 0 || v >= MIN_STAKE_TOKENS,
+      `A registration fee must either be 0 (free tournament) or at least ${MIN_STAKE_TOKENS} R`,
+    ),
   swissRounds: z.number().int().min(3).max(15).nullable().optional().default(null),
   robinRounds: z.number().int().min(1).max(4).nullable().optional().default(null),
   arenaMinutes: z.number().int().min(5).max(360).nullable().optional().default(null),
@@ -81,7 +92,16 @@ const editSchema = idSchema.extend({
   chatEnabled: z.boolean().optional(),
   isPublic: z.boolean().optional(),
   prizeSchedule: z.array(prizeTierSchema).max(20).optional(),
-  regFeeTokens: z.number().int().min(MIN_STAKE_TOKENS, `A registration fee of at least ${MIN_STAKE_TOKENS} R is required for every tournament`).max(MAX_WAGER_TOKENS).optional(),
+  regFeeTokens: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_WAGER_TOKENS)
+    .refine(
+      (v) => v === 0 || v >= MIN_STAKE_TOKENS,
+      `A registration fee must either be 0 (free tournament) or at least ${MIN_STAKE_TOKENS} R`,
+    )
+    .optional(),
   swissRounds: z.number().int().min(3).max(15).nullable().optional(),
   robinRounds: z.number().int().min(1).max(4).nullable().optional(),
   arenaMinutes: z.number().int().min(5).max(360).nullable().optional(),

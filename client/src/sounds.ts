@@ -141,78 +141,81 @@ function playImpact(layers: ImpactLayer[]) {
  *  exact same sample on a loop — real pieces landing never resonate at
  *  identically the same frequency twice. +/-4% is subtle enough to still
  *  read as "the same sound" while killing the machine-gun repetition. */
-function jitter(freq: number, amount = 0.04): number {
-  return freq * (1 + (Math.random() * 2 - 1) * amount);
+/** Sept 18 2026: move/capture switched from synthesized tones to David's
+ *  own real audio files (client/public/sounds/move-self.mp3,
+ *  client/public/sounds/capture.mp3) — replaces the plucked-woodblock
+ *  synthesis this comment used to describe. Decoded once via
+ *  AudioContext.decodeAudioData and cached as an AudioBuffer (a plain
+ *  `new Audio(url)` per play would re-fetch/re-decode every single move),
+ *  then played through a BufferSourceNode + GainNode each time, the same
+ *  destination-routing pattern every other sound in this file uses, so
+ *  the soundEnabled gate and AudioContext lifecycle stay consistent
+ *  across synthesized and file-based sounds alike. */
+const SOUND_FILES = {
+  move: "/sounds/move-self.mp3",
+  capture: "/sounds/capture.mp3",
+} as const;
+
+const bufferCache = new Map<string, Promise<AudioBuffer>>();
+
+// getCtx() rather than ensureAudioContext(): decoding doesn't need a
+// running context, just an existing one to decode into, and this is
+// called from the module-level preload below (before any user gesture),
+// where resuming a suspended AudioContext would just be silently ignored
+// by the browser's autoplay policy anyway. ensureAudioContext()'s
+// resume() call happens separately in playSoundFile, right at actual
+// play time, which is always inside a real user gesture (a drag, a click).
+function loadSoundBuffer(url: string): Promise<AudioBuffer> {
+  let pending = bufferCache.get(url);
+  if (!pending) {
+    const audioCtx = getCtx();
+    pending = fetch(url)
+      .then((res) => res.arrayBuffer())
+      .then((data) => audioCtx.decodeAudioData(data));
+    bufferCache.set(url, pending);
+    // Don't cache a failed decode/fetch, a later play call should get to
+    // retry (e.g. the first attempt raced the network) rather than being
+    // stuck replaying the same rejected promise forever.
+    pending.catch(() => bufferCache.delete(url));
+  }
+  return pending;
 }
 
-/** A normal move: chess.com's actual move cue is a crisp, present "click"
- *  — brighter and punchier than a dull thud, with real top-end snap to it,
- *  not just a low knock. Three layers: a bright, near-instant click for
- *  the piece's initial edge contact (this is what was missing before and
- *  made it read as "low"/muffled), a mid tap for the felt-bottomed piece
- *  meeting the square, and a low body knock underneath for weight. Gains
- *  pushed up and attacks tightened across the board so the transient
- *  actually snaps instead of easing in. */
+function playSoundFile(url: string, gain = 0.85) {
+  if (!soundEnabled) return;
+  const audioCtx = ensureAudioContext();
+  loadSoundBuffer(url)
+    .then((buffer) => {
+      const source = audioCtx.createBufferSource();
+      source.buffer = buffer;
+      const gainNode = audioCtx.createGain();
+      gainNode.gain.value = gain;
+      source.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      source.start();
+    })
+    .catch((err) => console.error(`Failed to play sound ${url}:`, err));
+}
+
+// Kicks off the fetch+decode for both files as soon as this module is
+// live rather than waiting for the first move, so the first move of a
+// game doesn't pay the network+decode latency the cache exists to avoid
+// for every move after it. Best-effort: if this fails (offline, etc.),
+// playSoundFile's own loadSoundBuffer call retries on the actual
+// move/capture event.
+void Promise.all(Object.values(SOUND_FILES).map(loadSoundBuffer)).catch(
+  () => {},
+);
+
+/** A normal move: David's own move-self.mp3. */
 export function playMoveSound() {
-  playImpact([
-    {
-      startOffset: 0,
-      duration: 0.018,
-      gain: 0.26,
-      freq: jitter(2600),
-      q: 5,
-      attack: 0.001,
-    }, // bright click
-    {
-      startOffset: 0.001,
-      duration: 0.035,
-      gain: 0.24,
-      freq: jitter(1100),
-      q: 3.4,
-      attack: 0.001,
-    }, // piece contact tap
-    {
-      startOffset: 0,
-      duration: 0.06,
-      gain: 0.2,
-      freq: jitter(220),
-      q: 2.4,
-      attack: 0.002,
-    }, // wood body knock
-  ]);
+  playSoundFile(SOUND_FILES.move);
 }
 
-/** Capture: single hit, same click+tap+body recipe as playMoveSound —
- *  no double-hit, since nothing physically knocks a captured piece off
- *  the board here, just louder and sharper than a plain move so it still
- *  reads as the bigger event. */
+/** Capture: David's own capture.mp3, a hair louder than a plain move so
+ *  it still reads as the bigger event. */
 export function playCaptureSound() {
-  playImpact([
-    {
-      startOffset: 0,
-      duration: 0.02,
-      gain: 0.3,
-      freq: jitter(2800),
-      q: 5.5,
-      attack: 0.001,
-    }, // bright click
-    {
-      startOffset: 0.001,
-      duration: 0.038,
-      gain: 0.28,
-      freq: jitter(1050),
-      q: 3.6,
-      attack: 0.001,
-    }, // piece contact tap
-    {
-      startOffset: 0,
-      duration: 0.075,
-      gain: 0.28,
-      freq: jitter(195),
-      q: 2.3,
-      attack: 0.002,
-    }, // deep body thud
-  ]);
+  playSoundFile(SOUND_FILES.capture, 0.95);
 }
 
 /** Check: chess.com's check cue is a short, flat double-tap alert rather

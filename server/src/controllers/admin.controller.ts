@@ -8,6 +8,7 @@ import { User } from '../models/User.js';
 import { Game } from '../models/Game.js';
 import { GameFlag } from '../models/GameFlag.js';
 import { PlatformRevenue } from '../models/PlatformRevenue.js';
+import { Tournament } from '../models/Tournament.js';
 import { analyzeGameForSuspicion } from '../services/anticheat.service.js';
 import { createNotification } from '../services/notification.service.js';
 
@@ -363,3 +364,53 @@ export const updateGameFlag = asyncHandler(async (req, res) => {
 
   res.json({ id: flag._id, status: flag.status });
 });
+
+// --- Naira tournaments (real-money prize pools, manual WhatsApp payout) ---
+// Deliberately does NOT snapshot winners' account details onto the
+// tournament at finish time (see nairaWinners' doc comment in
+// Tournament.ts) — this endpoint re-reads each winner's current
+// User.payoutAccount fresh on every call, so a late fill-in or an updated
+// account always shows up here on the next refresh with no extra wiring.
+
+const listNairaTournamentsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(20),
+});
+
+export const listNairaTournaments = asyncHandler(async (req, res) => {
+  const { page, limit } = listNairaTournamentsQuerySchema.parse(req.query);
+  const filter = {
+    prizePoolCurrency: 'naira',
+    'nairaWinners.0': { $exists: true },
+  };
+
+  const [tournaments, total] = await Promise.all([
+    Tournament.find(filter)
+      .sort({ endedAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .populate('nairaWinners.user', 'username payoutAccount')
+      .lean(),
+    Tournament.countDocuments(filter),
+  ]);
+
+  res.json({
+    tournaments: tournaments.map((t: any) => ({
+      id: t._id,
+      code: t.code,
+      name: t.name,
+      finishedAt: t.endedAt,
+      winners: t.nairaWinners.map((w: any) => ({
+        rank: w.rank,
+        naira: w.naira,
+        username: w.user?.username ?? '(deleted user)',
+        payoutAccount: w.user?.payoutAccount ?? null,
+      })),
+    })),
+    page,
+    limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+  });
+});
+

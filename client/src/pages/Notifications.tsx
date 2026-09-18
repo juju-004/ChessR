@@ -5,9 +5,9 @@ import {
   ShieldAlert,
   Flag,
   Megaphone,
+  Wallet,
   ChevronLeft,
   ChevronRight,
-  Inbox,
   CheckCheck,
   type LucideIcon,
 } from "lucide-react";
@@ -21,13 +21,21 @@ import {
 import { useNotificationCenter } from "../contexts/NotificationCenterContext.js";
 import { formatRelativeTime } from "../lib/utils.js";
 import { cn } from "../lib/cn.js";
-import { Page, Card, Button, Spinner, Stagger, StaggerItem } from "@/components/ui/index.js";
+import {
+  Page,
+  Card,
+  Button,
+  Spinner,
+  Stagger,
+  StaggerItem,
+} from "@/components/ui/index.js";
 
 const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   welcome: PartyPopper,
   anticheat_freeze: ShieldAlert,
   report_freeze: Flag,
   admin_message: Megaphone,
+  tournament_naira_prize: Wallet,
 };
 
 const TYPE_ICON_CLASSES: Record<NotificationType, string> = {
@@ -35,6 +43,7 @@ const TYPE_ICON_CLASSES: Record<NotificationType, string> = {
   anticheat_freeze: "bg-red-500/12 text-red-400",
   report_freeze: "bg-red-500/12 text-red-400",
   admin_message: "bg-(--primary)/12 text-(--primary)",
+  tournament_naira_prize: "bg-green-500/12 text-green-400",
 };
 
 const PAGE_SIZE = 20;
@@ -60,7 +69,9 @@ export function Notifications() {
 
   function handleSelect(n: AppNotification) {
     if (!n.read) {
-      setItems((prev) => prev.map((it) => (it.id === n.id ? { ...it, read: true } : it)));
+      setItems((prev) =>
+        prev.map((it) => (it.id === n.id ? { ...it, read: true } : it)),
+      );
       setUnread((c) => Math.max(0, c - 1));
       markSystemItemSeenLocally(n.id); // keeps the bell's badge in sync
       markNotificationRead(n.id).catch(() => {});
@@ -79,9 +90,7 @@ export function Notifications() {
   return (
     <Page
       title="Notifications"
-      description="Messages from ChessR about your account."
       back="/"
-      bare
       actions={
         unread > 0 ? (
           <Button variant="glass" size="sm" onClick={handleMarkAllRead}>
@@ -99,10 +108,10 @@ export function Notifications() {
       {!loading && items.length === 0 && (
         <Card variant="solid">
           <div className="flex flex-col items-center gap-2 py-8 text-center">
-            <Inbox className="h-8 w-8 text-base-content/30" />
+            {/* <Inbox className="h-8 w-8 text-base-content/30" /> */}
             <p className="text-sm text-base-content/60">
-              Nothing here yet — this is where ChessR will let you know about anything that needs
-              your attention.
+              Nothing here yet. This is where Chessr will let you know about
+              anything that needs your attention.
             </p>
           </div>
         </Card>
@@ -118,7 +127,10 @@ export function Notifications() {
                   variant="solid"
                   interactive={!!n.link}
                   onClick={n.link ? () => handleSelect(n) : undefined}
-                  className={cn("flex items-start gap-3", !n.read && "ring-1 ring-(--primary)/30")}
+                  className={cn(
+                    "flex items-start gap-3",
+                    !n.read && "ring-1 ring-(--primary)/30",
+                  )}
                 >
                   <span
                     className={cn(
@@ -132,9 +144,13 @@ export function Notifications() {
                   <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-1.5 text-sm font-medium text-base-content">
                       {n.title}
-                      {!n.read && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--primary)" />}
+                      {!n.read && (
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--primary)" />
+                      )}
                     </p>
-                    <p className="mt-0.5 text-sm text-base-content/70">{n.body}</p>
+                    <p className="mt-0.5 text-sm text-base-content/70">
+                      {n.body}
+                    </p>
                     <p className="mt-1 text-xs text-base-content/50">
                       {formatRelativeTime(n.createdAt)}
                     </p>
@@ -161,7 +177,12 @@ export function Notifications() {
 
       {totalPages > 1 && (
         <div className="mt-5 flex items-center justify-center gap-3">
-          <Button variant="glass" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+          <Button
+            variant="glass"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => p - 1)}
+          >
             <ChevronLeft className="h-4 w-4" /> Prev
           </Button>
           <span className="text-sm text-base-content/60">

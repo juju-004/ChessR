@@ -61,7 +61,7 @@ export function InstallAppButton({
         </motion.button>
       ) : (
         <Button onClick={handleClick} variant="gradient">
-          <Download className="h-4 w-4" /> Install Chess R
+          <Download className="h-4 w-4" /> Install Chessr
         </Button>
       )}
       {status && !compact && (
@@ -80,7 +80,7 @@ export function InstallAppButton({
               <span className="text-base-content">Add to Home Screen</span>.
             </li>
             <li>
-              Tap <span className="text-base-content">Add</span>. Chess R will
+              Tap <span className="text-base-content">Add</span>. Chessr will
               open full-screen, just like a normal app.
             </li>
           </ol>

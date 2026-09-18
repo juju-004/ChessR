@@ -10,7 +10,10 @@ import {
   verifyRefreshToken,
 } from "../services/token.service.js";
 import { env, isProd } from "../config/env.js";
-import { getRatingCategory, gamesUntilRanked } from "../services/rating.service.js";
+import {
+  getRatingCategory,
+  gamesUntilRanked,
+} from "../services/rating.service.js";
 import {
   issueEmailVerification,
   consumeEmailVerificationToken,
@@ -49,14 +52,14 @@ const verifyEmailSchema = z.object({
 });
 
 const googleSigninSchema = z.object({
-  // The ID token JWT Google Identity Services hands the client directly, 
+  // The ID token JWT Google Identity Services hands the client directly,
   // see googleAuth.service.ts for what actually happens to it server-side.
   credential: z.string().min(1),
 });
 
 // Local dev: frontend and backend look same-origin (Vite proxies /api), so
 // 'lax' + non-secure works over plain http://localhost. In production,
-// frontend (Vercel) and backend (Railway) are genuinely different origins, 
+// frontend (Vercel) and backend (Railway) are genuinely different origins,
 // browsers will not send a 'lax' cookie on that cross-site request at all,
 // which is exactly what silently breaks session restore after a real deploy.
 // 'none' requires secure:true (HTTPS), which both platforms provide by default.
@@ -104,9 +107,10 @@ function userFields(user: IUser) {
     // value is dropped rather than sent as a stale date, so the client
     // can treat "field present" as "currently restricted" without also
     // comparing it to the current time itself.
-    suspendedUntil: user.suspendedUntil && user.suspendedUntil.getTime() > Date.now()
-      ? user.suspendedUntil
-      : null,
+    suspendedUntil:
+      user.suspendedUntil && user.suspendedUntil.getTime() > Date.now()
+        ? user.suspendedUntil
+        : null,
     ...ratingFields(user),
   };
 }
@@ -156,9 +160,8 @@ function sendWelcomeNotification(userId: string): void {
   createNotification({
     recipientId: userId,
     type: "welcome",
-    title: "Welcome to ChessR",
-    body:
-      "ChessR is multiplayer chess with cage matches, tournaments, and real R-token wagers on the line. Play rated games, challenge friends directly, or enter a tournament. See the About page for a full tour of what you can do here, and the Terms page for the rules around wagers, withdrawals, and fair play before you jump in.",
+    title: "Welcome to Chessr",
+    body: "Chessr is multiplayer chess with cage matches, tournaments, and real R-token wagers on the line. Play rated games, challenge friends directly, or enter a tournament. See the About page for a full tour of what you can do here, and the Terms page for the rules around wagers, withdrawals, and fair play before you jump in.",
     link: "/about",
   }).catch((err) => console.error("Failed to send welcome notification:", err));
 }
@@ -218,7 +221,7 @@ export const signin = asyncHandler(async (req, res) => {
     // against nothing isn't meaningful, and "invalid password" would be a
     // confusing dead end for someone who's never set one.
     throw ApiError.unauthorized(
-      "This account signs in with Google. Use \"Continue with Google\" instead.",
+      'This account signs in with Google. Use "Continue with Google" instead.',
     );
   }
 
@@ -331,9 +334,10 @@ export const me = asyncHandler(async (req: AuthedRequest, res) => {
     friendCount: user.friends.length,
     // See userFields()'s identical treatment above: present only while
     // still active, so the client only ever sees a live countdown target.
-    suspendedUntil: user.suspendedUntil && user.suspendedUntil.getTime() > Date.now()
-      ? user.suspendedUntil
-      : null,
+    suspendedUntil:
+      user.suspendedUntil && user.suspendedUntil.getTime() > Date.now()
+        ? user.suspendedUntil
+        : null,
     ...ratingFields(user),
   });
 });
@@ -342,18 +346,22 @@ export const verifyEmail = asyncHandler(async (req, res) => {
   const { token } = verifyEmailSchema.parse(req.body);
   const user = await consumeEmailVerificationToken(token);
   if (!user) {
-    throw ApiError.badRequest("This verification link is invalid or has expired.");
+    throw ApiError.badRequest(
+      "This verification link is invalid or has expired.",
+    );
   }
   res.json({ verified: true });
 });
 
-export const resendVerification = asyncHandler(async (req: AuthedRequest, res) => {
-  const user = await User.findById(req.user!.id);
-  if (!user) throw ApiError.notFound("User not found");
-  if (user.emailVerified) {
-    res.json({ alreadyVerified: true });
-    return;
-  }
-  await issueEmailVerification(user);
-  res.json({ sent: true });
-});
+export const resendVerification = asyncHandler(
+  async (req: AuthedRequest, res) => {
+    const user = await User.findById(req.user!.id);
+    if (!user) throw ApiError.notFound("User not found");
+    if (user.emailVerified) {
+      res.json({ alreadyVerified: true });
+      return;
+    }
+    await issueEmailVerification(user);
+    res.json({ sent: true });
+  },
+);

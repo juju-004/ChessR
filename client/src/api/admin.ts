@@ -192,3 +192,47 @@ export function updateGameFlag(
     body: JSON.stringify(body),
   });
 }
+
+// --- Naira tournaments (real-money prize pools, manual WhatsApp payout) ----
+// See admin.controller.ts's listNairaTournaments: account details are
+// looked up fresh off each winner's User doc on every call, so refreshing
+// this list always reflects whatever the winner has filled in most
+// recently, no separate "resync" action needed.
+
+export interface AdminNairaPayoutAccount {
+  bankCode: string;
+  bankName: string;
+  accountNumber: string;
+  accountName: string;
+  phone: string;
+  updatedAt: string;
+}
+
+export interface AdminNairaWinner {
+  rank: number;
+  naira: number;
+  username: string;
+  payoutAccount: AdminNairaPayoutAccount | null;
+}
+
+export interface AdminNairaTournament {
+  id: string;
+  code: string;
+  name: string;
+  finishedAt: string;
+  winners: AdminNairaWinner[];
+}
+
+export interface NairaTournamentListResponse {
+  tournaments: AdminNairaTournament[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export function listNairaTournaments(page = 1, limit = 20) {
+  return adminFetch<NairaTournamentListResponse>(
+    `/naira-tournaments?page=${page}&limit=${limit}`,
+  );
+}

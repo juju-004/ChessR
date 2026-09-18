@@ -36,6 +36,7 @@ import {
 import { getIo } from "../sockets/io.js";
 import { isUserWatchingTournament } from "./presence.service.js";
 import { expireChat } from "./chat.service.js";
+import { createNotification } from "./notification.service.js";
 
 const generateCode = customAlphabet("ABCDEFGHJKMNPQRSTUVWXYZ23456789", 6);
 
@@ -361,6 +362,13 @@ export interface CreateTournamentInput {
   // Prize pool: creator-funded, paid out by final rank. Empty/omitted = no
   // prize pool. See the ITournament doc comment in Tournament.ts.
   prizeSchedule?: { fromRank: number; toRank: number; tokens: number }[];
+  // 'tokens' (default) = real R Coin prize pool, debited from the creator
+  // up front. 'naira' = a real-money pool the platform can't move
+  // electronically yet — the same prizeSchedule numbers are read as naira
+  // instead, nothing is deducted from anyone, and payout happens manually
+  // (see the ITournament doc comment in Tournament.ts). Immutable after
+  // creation.
+  prizePoolCurrency?: "tokens" | "naira";
   // Registration fee: player-funded, the whole pool goes to the creator once
   // the event finishes. 0/omitted = no registration fee.
   regFeeTokens?: number;
@@ -435,6 +443,12 @@ function validatePrizeSchedule(
   };
 }
 
+// A person can only be actively running this many tournaments at once
+// (pending or active — a finished/cancelled one no longer counts against
+// the cap). Keeps one organizer from cluttering the open-tournaments list
+// or juggling more concurrent events than they can reasonably run.
+const MAX_ORGANIZED_TOURNAMENTS = 2;
+
 export async function createTournament(
   creatorId: string,
   creatorUsername: string,
@@ -443,6 +457,15 @@ export async function createTournament(
 ): Promise<ITournament> {
   const bounds = FORMAT_BOUNDS[input.format];
   if (!bounds) throw ApiError.badRequest("Unknown tournament format");
+  const organizedCount = await Tournament.countDocuments({
+    createdBy: creatorId,
+    status: { $in: ["pending", "active"] },
+  });
+  if (organizedCount >= MAX_ORGANIZED_TOURNAMENTS) {
+    throw ApiError.badRequest(
+      `You can only organize ${MAX_ORGANIZED_TOURNAMENTS} tournaments at a time. Cancel or finish one before starting another.`,
+    );
+  }
   if (input.name.trim().length < 3)
     throw ApiError.badRequest(
       "Give your tournament a name (at least 3 characters)",
@@ -488,9 +511,13 @@ export async function createTournament(
       "Choose an arena duration between 5 and 360 minutes",
     );
   }
+  // Registration fee is optional now (test-mode wagers, David decided the
+  // platform isn't ready to enforce paid entry) — 0 means a free
+  // tournament. Still floored at MIN_STAKE_TOKENS if the organizer DOES
+  // set one, same reasoning as game/cage-match wagers.
   const regFeeTokens = input.regFeeTokens ?? 0;
-  if (regFeeTokens < MIN_STAKE_TOKENS || regFeeTokens > MAX_WAGER_TOKENS) {
-    throw ApiError.badRequest(`A registration fee of at least ${MIN_STAKE_TOKENS} R is required for every tournament`);
+  if (regFeeTokens !== 0 && (regFeeTokens < MIN_STAKE_TOKENS || regFeeTokens > MAX_WAGER_TOKENS)) {
+    throw ApiError.badRequest(`A registration fee must either be 0 (free tournament) or at least ${MIN_STAKE_TOKENS} R`);
   }
   if (
     input.breakSeconds !== undefined &&
@@ -512,6 +539,12 @@ export async function createTournament(
     input.prizeSchedule ?? [],
     input.maxPlayers,
   );
+  const prizePoolCurrency = input.prizePoolCurrency ?? "tokens";
+  // Naira pools are display/payout-schedule only — never a real R Coin
+  // commitment, so the token total that would otherwise be debited from
+  // the creator is always 0 for one of these regardless of what the
+  // (naira-denominated) tier numbers say.
+  const committedPrizePoolTokens = prizePoolCurrency === "naira" ? 0 : prizePoolTokens;
   const passwordHash = input.password?.trim()
     ? await bcrypt.hash(input.password.trim(), PASSWORD_BCRYPT_ROUNDS)
     : null;
@@ -558,6 +591,8 @@ export async function createTournament(
             tiebreak: 0,
             gamesPlayed: 0,
             berserkWins: 0,
+            currentWinStreak: 0,
+            streakWins: 0,
             eliminatedRound: null,
             hadBye: false,
           },
@@ -566,8 +601,9 @@ export async function createTournament(
     chatEnabled: input.chatEnabled ?? false,
     isPublic: input.isPublic ?? false,
     thirdPlaceMatch: input.format === "normal" ? (input.thirdPlaceMatch ?? false) : false,
+    prizePoolCurrency,
     prizeSchedule,
-    prizePoolTokens,
+    prizePoolTokens: committedPrizePoolTokens,
     regFeeTokens,
     regFeePoolTokens: 0,
     passwordHash,
@@ -584,7 +620,7 @@ export async function createTournament(
   // any other entrant. Either debit failing rolls the whole tournament
   // back rather than leaving a half-funded event around.
   try {
-    if (prizePoolTokens > 0) await debitTournamentPrizeFund(creatorId, tournament.id, prizePoolTokens);
+    if (committedPrizePoolTokens > 0) await debitTournamentPrizeFund(creatorId, tournament.id, committedPrizePoolTokens);
     if (!organizerOnly && regFeeTokens > 0) {
       await debitTournamentRegFee(creatorId, tournament.id, regFeeTokens);
       tournament.regFeePoolTokens = regFeeTokens;
@@ -674,6 +710,8 @@ export async function joinTournament(
     tiebreak: 0,
     gamesPlayed: 0,
     berserkWins: 0,
+    currentWinStreak: 0,
+    streakWins: 0,
     eliminatedRound: null,
     hadBye: false,
     paused: false,
@@ -889,8 +927,8 @@ export async function updateTournament(
   }
 
   const regFeeTokens = input.regFeeTokens ?? tournament.regFeeTokens;
-  if (regFeeTokens < MIN_STAKE_TOKENS || regFeeTokens > MAX_WAGER_TOKENS) {
-    throw ApiError.badRequest(`A registration fee of at least ${MIN_STAKE_TOKENS} R is required for every tournament`);
+  if (regFeeTokens !== 0 && (regFeeTokens < MIN_STAKE_TOKENS || regFeeTokens > MAX_WAGER_TOKENS)) {
+    throw ApiError.badRequest(`A registration fee must either be 0 (free tournament) or at least ${MIN_STAKE_TOKENS} R`);
   }
 
   const breakSeconds = input.breakSeconds ?? tournament.breakSeconds;
@@ -915,6 +953,10 @@ export async function updateTournament(
       tournament.prizeSchedule.map((t) => ({ fromRank: t.fromRank, toRank: t.toRank, tokens: t.tokens })),
     maxPlayers,
   );
+  // prizePoolCurrency is immutable (see the ITournament doc comment), so a
+  // naira tournament's edited schedule still never touches real R Coin
+  // escrow — same reasoning as createTournament's committedPrizePoolTokens.
+  const committedPrizePoolTokens = tournament.prizePoolCurrency === "naira" ? 0 : prizePoolTokens;
 
   // The creator is the only (possible) player so far, so their own reg-fee
   // contribution IS the whole pool, adjusting the fee just means adjusting
@@ -922,7 +964,7 @@ export async function updateTournament(
   // this entirely: the creator was never charged a registration fee at
   // creation time (they're not a player), so there's nothing of theirs to
   // adjust here either, see createTournament's matching skip.
-  const prizeDelta = prizePoolTokens - tournament.prizePoolTokens;
+  const prizeDelta = committedPrizePoolTokens - tournament.prizePoolTokens;
   const regFeeDelta = regFeeTokens - tournament.regFeeTokens;
   if (prizeDelta !== 0) {
     await adjustTournamentEscrow(requesterId, tournament.id, prizeDelta, "tournament_prize_fund");
@@ -949,7 +991,7 @@ export async function updateTournament(
   tournament.chatEnabled = input.chatEnabled ?? tournament.chatEnabled;
   tournament.isPublic = input.isPublic ?? tournament.isPublic;
   tournament.prizeSchedule = prizeSchedule;
-  tournament.prizePoolTokens = prizePoolTokens;
+  tournament.prizePoolTokens = committedPrizePoolTokens;
   tournament.regFeeTokens = regFeeTokens;
   tournament.swissRounds = swissRounds;
   tournament.robinRounds = robinRounds;
@@ -1743,12 +1785,81 @@ export async function retryArenaPairingsForUser(userId: string): Promise<void> {
 
 // --- Scoring ---------------------------------------------------------------
 
+// Minimum number of plies (half-moves) a berserked game has to have
+// actually been played out to before its win counts as "berserked" for
+// scoring purposes. Below this, treat it as an ordinary win instead of
+// doubling it — stops a berserk immediately followed by a fast
+// resignation/disconnect win from farming double points for essentially
+// no game played. "5 moves" per David, read as 5 plies (half-moves)
+// since that's what Game.moves already counts one entry per.
+const ARENA_BERSERK_MIN_PLIES = 5;
+// Consecutive wins (this one included) needed before a win streak starts
+// doubling points, same threshold Lichess arena uses.
+const ARENA_STREAK_THRESHOLD = 3;
+
+/** Arena's own scoring, deliberately kept to exactly two bonus mechanisms
+ *  (per David: "arena tournaments only have a berserk and a new win
+ *  streak") rather than reusing swiss/round-robin's flat +0.5 berserk
+ *  bonus below. A win is worth 1 point, doubled to 2 if EITHER the
+ *  winner berserked (and played out at least ARENA_BERSERK_MIN_PLIES) OR
+ *  the win extends their streak to ARENA_STREAK_THRESHOLD or beyond — the
+ *  two bonuses don't stack multiplicatively, same as Lichess, so a
+ *  berserked win partway through a streak is still just a double, not a
+ *  quadruple. Draws are still worth 0.5 each and always break the streak,
+ *  same as a loss. */
+function applyArenaPairingScore(
+  p1: ITournamentPlayer | null,
+  p2: ITournamentPlayer | null,
+  result: "p1" | "p2" | "draw",
+  berserk: { p1: boolean; p2: boolean },
+  moveCount: number | undefined,
+): void {
+  if (result === "draw") {
+    if (p1) {
+      p1.points += 0.5;
+      p1.gamesPlayed += 1;
+      p1.currentWinStreak = 0;
+    }
+    if (p2) {
+      p2.points += 0.5;
+      p2.gamesPlayed += 1;
+      p2.currentWinStreak = 0;
+    }
+    return;
+  }
+
+  const winner = result === "p1" ? p1 : p2;
+  const loser = result === "p1" ? p2 : p1;
+  const winnerBerserked = result === "p1" ? berserk.p1 : berserk.p2;
+
+  if (winner) {
+    const berserkQualifies = winnerBerserked && (moveCount ?? 0) >= ARENA_BERSERK_MIN_PLIES;
+    winner.currentWinStreak += 1;
+    const streakQualifies = winner.currentWinStreak >= ARENA_STREAK_THRESHOLD;
+    const doubled = berserkQualifies || streakQualifies;
+
+    winner.points += doubled ? 2 : 1;
+    winner.gamesPlayed += 1;
+    if (berserkQualifies) winner.berserkWins += 1;
+    if (streakQualifies) winner.streakWins += 1;
+  }
+  if (loser) {
+    loser.gamesPlayed += 1;
+    loser.currentWinStreak = 0;
+  }
+}
+
 function applyPairingScore(
   tournament: ITournament,
   pairing: ITournamentPairing,
   result: "p1" | "p2" | "draw",
   berserk: { p1: boolean; p2: boolean },
   roundIndex: number,
+  // Only used by the arena branch below, to gate the berserk bonus on the
+  // game actually having been played out a bit (see applyArenaPairingScore).
+  // Swiss/round-robin's berserk bonus doesn't have this gate, so it's fine
+  // for callers scoring those formats to leave it undefined.
+  moveCount?: number,
 ): void {
   const p1 = findPlayer(tournament, pairing.player1);
   const p2 = pairing.player2 ? findPlayer(tournament, pairing.player2) : null;
@@ -1765,7 +1876,16 @@ function applyPairingScore(
   if (!p2) {
     // Bye, counts as having played the round (for pairing/hadBye purposes)
     // but awards no points, unlike a real win. A bye isn't a game anyone
-    // actually won.
+    // actually won. Also breaks either side's win streak, same as a draw
+    // or loss below — a bye isn't a win either.
+    if (p1) p1.currentWinStreak = 0;
+    return;
+  }
+
+  if (tournament.format === "arena") {
+    applyArenaPairingScore(p1, p2, result, berserk, moveCount);
+    if (p1 && p2) p1.tiebreak += p2.points;
+    if (p1 && p2) p2.tiebreak += p1.points;
     return;
   }
 
@@ -2060,6 +2180,51 @@ async function distributePrize(tournament: ITournament): Promise<void> {
     }
   }
 
+  // Naira prize pools never touch prizePoolTokens (always 0 for these, see
+  // createTournament/updateTournament), so they're a fully separate branch
+  // from the token payout above rather than a variant of it — this reuses
+  // the SAME prizePoolSettled flag/claim guard purely for one-shot
+  // idempotency, the two branches can never both apply to the same
+  // tournament (mutually exclusive on prizePoolCurrency), so there's no
+  // collision risk in sharing it.
+  if (
+    tournament.prizePoolCurrency === "naira" &&
+    tournament.prizeSchedule.length > 0 &&
+    !tournament.prizePoolSettled
+  ) {
+    const claimed = await Tournament.findOneAndUpdate(
+      { _id: tournament.id, prizePoolSettled: false },
+      { $set: { prizePoolSettled: true } },
+    );
+    if (claimed) {
+      const ranking = computeFinalRanking(tournament);
+      const winners: { user: Types.ObjectId; rank: number; naira: number }[] = [];
+      for (const tier of tournament.prizeSchedule) {
+        if (tier.tokens <= 0) continue;
+        for (let rank = tier.fromRank; rank <= tier.toRank; rank++) {
+          const userId = ranking[rank - 1];
+          if (!userId) continue;
+          winners.push({ user: userId, rank, naira: tier.tokens });
+        }
+      }
+      if (winners.length > 0) {
+        await Tournament.updateOne(
+          { _id: tournament.id },
+          { $set: { nairaWinners: winners } },
+        );
+        for (const w of winners) {
+          await createNotification({
+            recipientId: w.user.toString(),
+            type: "tournament_naira_prize",
+            title: `You won ₦${w.naira.toLocaleString()} in ${tournament.name}`,
+            body: "Fill in your payout account details so we can send your prize by bank transfer.",
+            link: "/account-details",
+          }).catch((err) => console.error("naira winner notification failed:", err));
+        }
+      }
+    }
+  }
+
   if (tournament.regFeePoolTokens > 0 && !tournament.regFeeSettled) {
     const claimed = await Tournament.findOneAndUpdate(
       { _id: tournament.id, regFeeSettled: false },
@@ -2117,10 +2282,11 @@ export async function advanceTournamentIfPairing(
 
     let resultP: "p1" | "p2" | "draw" = "draw";
     let berserk = { p1: false, p2: false };
+    let moveCount: number | undefined;
 
     if (pairing.gameId) {
       const gameDoc = await Game.findById(pairing.gameId)
-        .select("white black berserk")
+        .select("white black berserk moves")
         .lean();
       if (!gameDoc) throw ApiError.internal("Pairing game record missing");
       const whiteIsP1 = gameDoc.white.toString() === pairing.player1.toString();
@@ -2131,6 +2297,7 @@ export async function advanceTournamentIfPairing(
         p1: whiteIsP1 ? !!gameDoc.berserk?.white : !!gameDoc.berserk?.black,
         p2: whiteIsP1 ? !!gameDoc.berserk?.black : !!gameDoc.berserk?.white,
       };
+      moveCount = gameDoc.moves?.length ?? 0;
     }
 
     // A knockout bracket needs a single decisive winner, there's no natural
@@ -2151,7 +2318,7 @@ export async function advanceTournamentIfPairing(
     pairing.endReason = endReason;
     pairing.berserk = berserk;
 
-    applyPairingScore(tournament, pairing, resultP, berserk, roundIndex);
+    applyPairingScore(tournament, pairing, resultP, berserk, roundIndex, moveCount);
     await tournament.save();
     broadcastUpdate(tournament);
 

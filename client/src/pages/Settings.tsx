@@ -139,12 +139,12 @@ export function Settings() {
           <CardContent>
             {isInstalled ? (
               <p className="text-sm text-green-500">
-                ✓ Installed. you're already running Chess R standalone.
+                ✓ Installed. you're already running Chessr standalone.
               </p>
             ) : (
               <>
                 <p className="mb-3 text-xs text-base-content/50">
-                  Install Chess R on this device for a focused, full-screen
+                  Install Chessr on this device for a focused, full-screen
                   experience. Launch it directly from your home screen or app
                   list without browser tabs or an address bar.
                 </p>

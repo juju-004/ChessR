@@ -105,6 +105,11 @@ const Transactions = lazy(() =>
 const Withdraw = lazy(() =>
   import("./pages/Withdraw.js").then((m) => ({ default: m.Withdraw })),
 );
+const AccountDetails = lazy(() =>
+  import("./pages/AccountDetails.js").then((m) => ({
+    default: m.AccountDetails,
+  })),
+);
 const Settings = lazy(() =>
   import("./pages/Settings.js").then((m) => ({ default: m.Settings })),
 );
@@ -213,7 +218,10 @@ function AppBody() {
          *  padding is needed everywhere on mobile, not just on the game
          *  page. Irrelevant from md up, where the dock doesn't render. */}
         <main className="min-w-0 flex-1 pb-24 md:pb-12">
-          {!isGameRoute && <VerifyEmailBanner />}
+          {/* VerifyEmailBanner removed (per David, still test mode — not
+           *  worth nagging people to verify while nothing real is on the
+           *  line yet). VerifyEmail.tsx and the underlying verification
+           *  flow/endpoint are untouched, just this persistent reminder. */}
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route
@@ -348,6 +356,7 @@ function AppBody() {
                 <Route path="buy" element={<BuyTokens />} />
                 <Route path="transactions" element={<Transactions />} />
                 <Route path="withdraw" element={<Withdraw />} />
+                <Route path="account-details" element={<AccountDetails />} />
               </Route>
               <Route
                 path="/settings"

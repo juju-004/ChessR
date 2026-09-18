@@ -90,7 +90,7 @@ export function Dashboard() {
   const navigate = useNavigate();
   const [tcIndex, setTcIndex] = useState(2);
   const [variant, setVariant] = useState<"standard" | "chess960">("standard");
-  const [wagerInput, setWagerInput] = useState("20");
+  const [wagerInput, setWagerInput] = useState("0");
   const [joinCodeInput, setJoinCodeInput] = useState("");
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
@@ -133,10 +133,13 @@ export function Dashboard() {
     };
   }, []);
 
+  // Wagers are opt-in now: 0 = a free game. Clamp only clears out negative/
+  // garbage input, it no longer forces every game up to MIN_STAKE_TOKENS.
   const wagerTokens = Math.min(
     MAX_WAGER_TOKENS,
-    Math.max(MIN_STAKE_TOKENS, Math.floor(Number(wagerInput) || 0)),
+    Math.max(0, Math.floor(Number(wagerInput) || 0)),
   );
+  const wagerBelowFloor = wagerTokens > 0 && wagerTokens < MIN_STAKE_TOKENS;
   const rakePercent = useRakePercent();
   const wagerRake =
     rakePercent !== null
@@ -381,19 +384,26 @@ export function Dashboard() {
                   <Input
                     label={
                       <span className="inline-flex items-center gap-1">
-                        <RCoin size={12} /> Coin wager
+                        <RCoin size={12} /> Coin wager (optional)
                       </span>
                     }
                     type="number"
-                    min={MIN_STAKE_TOKENS}
+                    min={0}
                     max={MAX_WAGER_TOKENS}
                     step={1}
                     value={wagerInput}
                     onChange={(e) => setWagerInput(e.target.value)}
+                    error={
+                      wagerBelowFloor
+                        ? `Enter 0 for a free game, or at least ${MIN_STAKE_TOKENS} R`
+                        : undefined
+                    }
                     hint={
-                      wagerRake !== null
-                        ? `Winner takes ${wagerTokens * 2 - wagerRake} `
-                        : ``
+                      !wagerBelowFloor && wagerTokens === 0
+                        ? "Free game, no R Coins at stake"
+                        : !wagerBelowFloor && wagerRake !== null
+                          ? `Winner takes ${wagerTokens * 2 - wagerRake} `
+                          : ``
                     }
                   />
 
@@ -401,7 +411,7 @@ export function Dashboard() {
                     className="w-full mt-3"
                     onClick={handleCreate}
                     loading={creating}
-                    disabled={wagerTokens < MIN_STAKE_TOKENS}
+                    disabled={wagerBelowFloor}
                   >
                     Create game
                   </Button>

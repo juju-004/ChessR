@@ -374,11 +374,12 @@ export async function getGameByCode(code: string) {
   const game = await Game.findOne({ joinCode: code.toUpperCase() })
     .populate("white", "username avatarGradient rating ratedGamesPlayed")
     .populate("black", "username avatarGradient rating ratedGamesPlayed")
-    // Just the join code, enough for a "Back to tournament" link without
-    // pulling the whole Tournament doc down for every single game fetch.
-    // code (for the "Back to tournament" link) and name (shown on the
-    // in-game tournament badge instead of a generic "Tournament game" label).
-    .populate("tournamentId", "code name")
+    // Just enough of the tournament for the "Back to tournament" link
+    // (code), the in-game badge label (name), and — for formats that have
+    // one — the duration badge (format + arenaMinutes, see Game.tsx's
+    // badges list). Deliberately not the whole Tournament doc for every
+    // single game fetch.
+    .populate("tournamentId", "code name format arenaMinutes")
     .lean();
   if (!game) throw ApiError.notFound("No game found with that code");
   return game;
@@ -446,6 +447,7 @@ export async function finalizeGame(
   // separately in cageMatch.service.ts, not here per-leg.
   if (updated && !updated.cageMatchId) {
     expireChat('game', gameId).catch((err) => console.error('expireChat(game) failed:', err));
+    expireChat('game_players', gameId).catch((err) => console.error('expireChat(game_players) failed:', err));
   }
 
   // Fire-and-forget, off every real ending (decisive or drawn; aborted/

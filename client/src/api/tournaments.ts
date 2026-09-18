@@ -19,6 +19,10 @@ export interface TournamentPlayer {
   tiebreak: number;
   gamesPlayed: number;
   berserkWins: number;
+  // Arena-only scoring stats (see applyArenaPairingScore server-side).
+  // Always 0 for every other format.
+  currentWinStreak: number;
+  streakWins: number;
   eliminatedRound: number | null;
   hadBye: boolean;
   // Arena-only, see the server's ITournamentPlayer doc comment. Always
@@ -78,6 +82,11 @@ export interface Tournament {
   prizeSchedule: TournamentPrizeTier[];
   prizePoolTokens: number;
   prizePoolSettled: boolean;
+  // 'tokens' (default) or 'naira' — see the ITournament doc comment in
+  // Tournament.ts server-side. Naira prize pools never touch any wallet;
+  // real cash is disbursed manually, see AccountDetails.tsx / the admin
+  // "Naira tournaments" tab.
+  prizePoolCurrency: "tokens" | "naira";
   regFeeTokens: number;
   regFeePoolTokens: number;
   regFeeSettled: boolean;
