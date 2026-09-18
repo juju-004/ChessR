@@ -46,6 +46,11 @@ export interface TournamentPairing {
   result: PairingResult;
   endReason: string | null;
   berserk: { p1: boolean; p2: boolean };
+  // Only meaningful once status is "finished". See the server's
+  // ITournamentPairing doc comment — recorded at scoring time rather than
+  // derivable from `result` alone (arena's doubling can depend on state
+  // that isn't visible on the pairing itself).
+  pointsAwarded: { p1: number; p2: number };
 }
 
 export interface TournamentRound {

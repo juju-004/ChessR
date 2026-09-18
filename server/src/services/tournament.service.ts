@@ -597,7 +597,11 @@ export async function createTournament(
             hadBye: false,
           },
         ],
-    berserkAllowed: input.berserkAllowed,
+    // Berserk only exists for arena (see berserkInTournamentGame's
+    // format check) — force it off at creation for every other format
+    // regardless of what the client sent, rather than trusting the client
+    // to have hidden/disabled its own toggle correctly.
+    berserkAllowed: input.format === "arena" ? input.berserkAllowed : false,
     chatEnabled: input.chatEnabled ?? false,
     isPublic: input.isPublic ?? false,
     thirdPlaceMatch: input.format === "normal" ? (input.thirdPlaceMatch ?? false) : false,
@@ -695,30 +699,76 @@ export async function joinTournament(
   }
   await assertNotRestricted(userId);
 
-  if (tournament.regFeeTokens > 0) {
-    await debitTournamentRegFee(userId, tournament.id, tournament.regFeeTokens);
-    tournament.regFeePoolTokens += tournament.regFeeTokens;
-  }
   const timestamp = Date.now();
   const dateObject = new Date(timestamp);
 
-  tournament.players.push({
-    user: userId as any,
-    username,
-    avatarGradient,
-    points: 0,
-    tiebreak: 0,
-    gamesPlayed: 0,
-    berserkWins: 0,
-    currentWinStreak: 0,
-    streakWins: 0,
-    eliminatedRound: null,
-    hadBye: false,
-    paused: false,
-    joinedAt: dateObject,
-    arenaAvailableSince: dateObject,
-  });
-  await tournament.save();
+  // The findPlayer/players.length checks above are read-then-write: two
+  // near-simultaneous join calls (a double-click, or a client retry that
+  // raced its own first attempt) can both pass them before either has
+  // saved, and Mongoose's array-push .save() doesn't inherently stop two
+  // separate in-memory copies of the same document from each independently
+  // appending a player and calling .save() with no idea the other one just
+  // did too — this is exactly what produced David's duplicate-entry arena
+  // bug, and once a tournament goes active there's no leave path to clean
+  // a duplicate back out (see leaveTournament's doc comment: pending-only,
+  // arena's pause is the only active-tournament exception), so the
+  // duplicate is stuck for good. Making the actual insert atomic and
+  // conditioned on "this user still isn't in players AND the roster still
+  // has room" closes the race outright: at most one of two concurrent
+  // callers can match this filter, the other gets `claimed === null` and
+  // the "already joined"/"tournament is full" error below instead of a
+  // silent duplicate.
+  const claimed = await Tournament.findOneAndUpdate(
+    {
+      _id: tournamentId,
+      "players.user": { $ne: userId },
+      $expr: { $lt: [{ $size: "$players" }, "$maxPlayers"] },
+    },
+    {
+      $push: {
+        players: {
+          user: userId,
+          username,
+          avatarGradient,
+          points: 0,
+          tiebreak: 0,
+          gamesPlayed: 0,
+          berserkWins: 0,
+          currentWinStreak: 0,
+          streakWins: 0,
+          eliminatedRound: null,
+          hadBye: false,
+          paused: false,
+          joinedAt: dateObject,
+          arenaAvailableSince: dateObject,
+        },
+      },
+    },
+    { new: true },
+  );
+  if (!claimed) {
+    // Re-check which of the two guards actually failed, purely to give an
+    // accurate error message, the insert itself is already a lost cause
+    // either way.
+    const fresh = await Tournament.findById(tournamentId);
+    if (fresh && findPlayer(fresh, userId)) {
+      throw ApiError.badRequest("You've already joined this tournament");
+    }
+    throw ApiError.conflict("This tournament is full");
+  }
+
+  if (tournament.regFeeTokens > 0) {
+    try {
+      await debitTournamentRegFee(userId, claimed.id, tournament.regFeeTokens);
+    } catch (err) {
+      // Payment failed after the seat was already claimed atomically above,
+      // pull it back out rather than leaving a player who never paid.
+      await Tournament.updateOne({ _id: tournamentId }, { $pull: { players: { user: userId } } });
+      throw err;
+    }
+    claimed.regFeePoolTokens += tournament.regFeeTokens;
+    await claimed.save();
+  }
 
   // A late joiner into an already-running arena might be pairable right
   // now if someone else happens to be free, no reason to make them wait
@@ -726,11 +776,11 @@ export async function joinTournament(
   // equivalent here: they'll simply be included the next time a round is
   // built (see buildSwissRound), which only happens at a round boundary
   // anyway, not something joining can trigger early.
-  if (tournament.status === "active" && tournament.format === "arena") {
-    await tryArenaPairings(tournament.id);
+  if (claimed.status === "active" && claimed.format === "arena") {
+    await tryArenaPairings(claimed.id);
   }
 
-  return tournament;
+  return claimed;
 }
 
 /** Only valid before the tournament starts, once it's active there's no
@@ -987,7 +1037,11 @@ export async function updateTournament(
   tournament.incrementSeconds = incrementSeconds;
   tournament.maxPlayers = maxPlayers;
   tournament.minPlayers = bounds.min;
-  tournament.berserkAllowed = input.berserkAllowed ?? tournament.berserkAllowed;
+  // Berserk only exists for arena — force off (regardless of what was
+  // sent) the moment the format isn't/isn't-staying arena, same
+  // create-time enforcement as createTournament.
+  tournament.berserkAllowed =
+    format === "arena" ? (input.berserkAllowed ?? tournament.berserkAllowed) : false;
   tournament.chatEnabled = input.chatEnabled ?? tournament.chatEnabled;
   tournament.isPublic = input.isPublic ?? tournament.isPublic;
   tournament.prizeSchedule = prizeSchedule;
@@ -1808,12 +1862,12 @@ const ARENA_STREAK_THRESHOLD = 3;
  *  quadruple. Draws are still worth 0.5 each and always break the streak,
  *  same as a loss. */
 function applyArenaPairingScore(
-  p1: ITournamentPlayer | null,
-  p2: ITournamentPlayer | null,
+  p1: ITournamentPlayer | null | undefined,
+  p2: ITournamentPlayer | null | undefined,
   result: "p1" | "p2" | "draw",
   berserk: { p1: boolean; p2: boolean },
   moveCount: number | undefined,
-): void {
+): { p1: number; p2: number } {
   if (result === "draw") {
     if (p1) {
       p1.points += 0.5;
@@ -1825,12 +1879,13 @@ function applyArenaPairingScore(
       p2.gamesPlayed += 1;
       p2.currentWinStreak = 0;
     }
-    return;
+    return { p1: 0.5, p2: 0.5 };
   }
 
   const winner = result === "p1" ? p1 : p2;
   const loser = result === "p1" ? p2 : p1;
   const winnerBerserked = result === "p1" ? berserk.p1 : berserk.p2;
+  let winnerPoints = 0;
 
   if (winner) {
     const berserkQualifies = winnerBerserked && (moveCount ?? 0) >= ARENA_BERSERK_MIN_PLIES;
@@ -1838,7 +1893,8 @@ function applyArenaPairingScore(
     const streakQualifies = winner.currentWinStreak >= ARENA_STREAK_THRESHOLD;
     const doubled = berserkQualifies || streakQualifies;
 
-    winner.points += doubled ? 2 : 1;
+    winnerPoints = doubled ? 2 : 1;
+    winner.points += winnerPoints;
     winner.gamesPlayed += 1;
     if (berserkQualifies) winner.berserkWins += 1;
     if (streakQualifies) winner.streakWins += 1;
@@ -1847,6 +1903,8 @@ function applyArenaPairingScore(
     loser.gamesPlayed += 1;
     loser.currentWinStreak = 0;
   }
+
+  return result === "p1" ? { p1: winnerPoints, p2: 0 } : { p1: 0, p2: winnerPoints };
 }
 
 function applyPairingScore(
@@ -1883,7 +1941,7 @@ function applyPairingScore(
   }
 
   if (tournament.format === "arena") {
-    applyArenaPairingScore(p1, p2, result, berserk, moveCount);
+    pairing.pointsAwarded = applyArenaPairingScore(p1, p2, result, berserk, moveCount);
     if (p1 && p2) p1.tiebreak += p2.points;
     if (p1 && p2) p2.tiebreak += p1.points;
     return;
@@ -1898,19 +1956,20 @@ function applyPairingScore(
       p2.points += 0.5;
       p2.gamesPlayed += 1;
     }
+    pairing.pointsAwarded = { p1: 0.5, p2: 0.5 };
   } else {
+    // No berserk bonus here — berserk only exists for arena now (see
+    // applyArenaPairingScore above and berserkInTournamentGame's format
+    // check), swiss/round-robin games can never actually be berserked, so
+    // there's nothing for `berserk` to gate here anymore.
     const winner = result === "p1" ? p1 : p2;
     const loser = result === "p1" ? p2 : p1;
-    const winnerBerserked = result === "p1" ? berserk.p1 : berserk.p2;
     if (winner) {
-      // A won-after-berserking game earns a 0.5 bonus on top of the normal
-      // point, same risk/reward shape as Lichess arena berserking, just
-      // applied to swiss/round-robin point totals instead of arena streaks.
-      winner.points += winnerBerserked ? 1.5 : 1;
+      winner.points += 1;
       winner.gamesPlayed += 1;
-      if (winnerBerserked) winner.berserkWins += 1;
     }
     if (loser) loser.gamesPlayed += 1;
+    pairing.pointsAwarded = result === "p1" ? { p1: 1, p2: 0 } : { p1: 0, p2: 1 };
   }
 
   // Simplified Buchholz-style tiebreaker: accumulate each opponent's points
@@ -2347,9 +2406,18 @@ export async function berserkInTournamentGame(
     throw new BerserkNotAllowedError("This isn't a tournament game");
   }
   const tournament = await Tournament.findById(gameDoc.tournamentId).select(
-    "berserkAllowed rounds",
+    "berserkAllowed format rounds",
   );
   if (!tournament) throw ApiError.notFound("Tournament not found");
+  // Berserk only exists for arena now — swiss/round-robin used to allow it
+  // for a small scoring bonus (see applyPairingScore's now-removed bonus
+  // branch) and knockout never allowed it at all. David: keep it to
+  // exactly the one format it actually makes sense for, an arena where
+  // burning your own clock for a shot at extra points is the whole point.
+  if (tournament.format !== "arena")
+    throw new BerserkNotAllowedError(
+      "Berserking is only available in arena tournaments",
+    );
   if (!tournament.berserkAllowed)
     throw new BerserkNotAllowedError(
       "Berserking is turned off for this tournament",

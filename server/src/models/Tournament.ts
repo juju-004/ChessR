@@ -116,6 +116,16 @@ export interface ITournamentPairing {
   result: PairingResult;
   endReason: string | null;
   berserk: { p1: boolean; p2: boolean };
+  // Only meaningful once status is "finished" (both null/0 before then).
+  // Recorded at scoring time (see applyPairingScore/applyArenaPairingScore
+  // in tournament.service.ts) rather than re-derived from `result` on
+  // read, since arena's doubling (berserk-qualified or a 3+ win streak)
+  // can't be reliably reconstructed after the fact from the pairing alone
+  // — the streak part in particular depends on the player's state at the
+  // moment this specific pairing finished, not anything visible on the
+  // pairing itself. Used for the "points this specific game earned" line
+  // in TournamentDetail's player popover instead of a plain Won/Lost.
+  pointsAwarded: { p1: number; p2: number };
 }
 
 export interface ITournamentRound {
@@ -286,6 +296,10 @@ const pairingSchema = new Schema<ITournamentPairing>(
     berserk: {
       p1: { type: Boolean, default: false },
       p2: { type: Boolean, default: false },
+    },
+    pointsAwarded: {
+      p1: { type: Number, default: 0 },
+      p2: { type: Number, default: 0 },
     },
   },
   { _id: false },

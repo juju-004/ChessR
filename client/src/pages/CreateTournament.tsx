@@ -168,7 +168,7 @@ export function CreateTournament() {
       baseMinutes: preset.baseMinutes,
       incrementSeconds: preset.incrementSeconds,
       maxPlayers,
-      berserkAllowed,
+      berserkAllowed: format === "arena" && berserkAllowed,
       chatEnabled,
       isPublic,
       organizerOnly,
@@ -379,12 +379,14 @@ export function CreateTournament() {
                 label="List publicly"
                 description="Visible in the Open tournaments list for anyone to find."
               />
-              <Switch
-                checked={berserkAllowed}
-                onChange={setBerserkAllowed}
-                label="Allow berserk"
-                description="Half clock, no increment, +0.5 point on a win."
-              />
+              {format === "arena" && (
+                <Switch
+                  checked={berserkAllowed}
+                  onChange={setBerserkAllowed}
+                  label="Allow berserk"
+                  description="Half clock, no increment, doubles the point for that win if it's berserked and lasts at least 5 moves (or the win extends a 3+ win streak either way)."
+                />
+              )}
               <Switch
                 checked={chatEnabled}
                 onChange={setChatEnabled}

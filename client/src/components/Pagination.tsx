@@ -24,9 +24,15 @@ export function Pagination({ page, pageCount, onPageChange }: PaginationProps) {
       >
         <ChevronLeft className="h-4 w-4" />
       </button>
-      <span className="text-xs text-base-content/50">
+      {/* Full "Page X of Y" on wider screens; just the bare number on
+       *  mobile between the two arrows (David: shrink it to "< 1 >"),
+       *  where the surrounding chevrons already make "page" and "of N"
+       *  redundant and the fuller text was cramping tighter layouts like
+       *  the standings table header. */}
+      <span className="hidden text-xs text-base-content/50 sm:inline">
         Page {page + 1} of {pageCount}
       </span>
+      <span className="text-xs text-base-content/50 sm:hidden">{page + 1}</span>
       <button
         type="button"
         onClick={() => onPageChange(page + 1)}

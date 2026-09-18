@@ -391,8 +391,10 @@ export const BoardCoordinatesOutside = memo(function BoardCoordinatesOutside({
   boardSize: number;
 }) {
   const squareSize = boardSize / 8;
-  const fontSize = 13;
-  const gutter = 20; // px reserved outside the board edge for each axis
+  // Shrunk and pulled in closer to the board edge (was 13px font / 20px
+  // gutter) — David: too large/far out on wider screens.
+  const fontSize = 11;
+  const gutter = 13; // px reserved outside the board edge for each axis
 
   const { files, ranks } = useMemo(() => {
     const files = orientation === "white" ? FILES : [...FILES].reverse();

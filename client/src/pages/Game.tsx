@@ -146,6 +146,22 @@ export function Game() {
     "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
   );
   const [lastMove, setLastMove] = useState<[string, string] | undefined>();
+  // The last position/lastMove actually confirmed by the server (via
+  // game:sync or game:move), as opposed to `fen`/`lastMove` state above,
+  // which can now be ahead of that — see handleUserMove's optimistic
+  // update below. Only ever written from onSync/onMove, and only ever
+  // read to revert an optimistic move that the server rejects (onError).
+  const confirmedFenRef = useRef(fen);
+  const confirmedLastMoveRef = useRef<[string, string] | undefined>(lastMove);
+  // Set right after an optimistic move is applied+emitted (see
+  // applyOptimisticMove below), cleared the moment game:move confirms
+  // ANY move (ours or the opponent's — either way the position is back in
+  // sync). game:error is a shared channel for every action this socket
+  // handles (draw offers, resign, rematch, claims, not just moves), so
+  // onError only reverts fen/lastMove while this is non-null — otherwise
+  // an unrelated error (e.g. "no disconnect to claim right now") would
+  // incorrectly snap a perfectly fine optimistic position back.
+  const pendingOptimisticMoveRef = useRef(false);
   const [moves, setMoves] = useState<MoveLogEntry[]>([]);
   const [whiteRemainingMs, setWhiteRemainingMs] = useState<number | null>(null);
   const [blackRemainingMs, setBlackRemainingMs] = useState<number | null>(null);
@@ -748,8 +764,11 @@ export function Game() {
       roleRef.current = payload.role;
       setStatus(payload.status);
       setFen(payload.fen);
+      confirmedFenRef.current = payload.fen;
+      pendingOptimisticMoveRef.current = false;
       setMoves(payload.moves ?? []);
       setLastMove(deriveLastMove(payload.moves ?? []));
+      confirmedLastMoveRef.current = deriveLastMove(payload.moves ?? []);
       setWhiteRemainingMs(payload.whiteRemainingMs);
       setBlackRemainingMs(payload.blackRemainingMs);
       setTurnStartedAtMs(payload.turnStartedAtMs);
@@ -800,6 +819,9 @@ export function Game() {
     function onMove(payload: any) {
       setFen(payload.fen);
       setLastMove([payload.from, payload.to]);
+      confirmedFenRef.current = payload.fen;
+      confirmedLastMoveRef.current = [payload.from, payload.to];
+      pendingOptimisticMoveRef.current = false;
       setWhiteRemainingMs(payload.whiteRemainingMs);
       setBlackRemainingMs(payload.blackRemainingMs);
       setTurnStartedAtMs(payload.turnStartedAtMs);
@@ -866,6 +888,14 @@ export function Game() {
 
     function onError(payload: { message: string }) {
       setMoveError(payload.message);
+      // Only revert if a move is actually the thing awaiting confirmation
+      // right now — see pendingOptimisticMoveRef's doc comment, this is a
+      // shared error channel for more than just moves.
+      if (pendingOptimisticMoveRef.current) {
+        pendingOptimisticMoveRef.current = false;
+        setFen(confirmedFenRef.current);
+        setLastMove(confirmedLastMoveRef.current);
+      }
     }
 
     function markConnection(userId: string, connected: boolean) {
@@ -1072,6 +1102,55 @@ export function Game() {
     clearActiveGame,
   ]);
 
+  // Applies a move to the client's OWN copy of the position immediately,
+  // ahead of the server's confirmation, so `fen` (and everything derived
+  // from it: `chess`, `dests`, `premoveDests`, ChessBoard's `turnColor`
+  // prop) reflects the post-move position right away instead of only
+  // after a full round trip.
+  //
+  // This matters for more than just visual snappiness: chessground decides
+  // "is this drag a real move or a premove" by comparing the dragged
+  // piece's color against the `turnColor` prop it was last given. Before
+  // this, `turnColor` only ever changed once the server's game:move echo
+  // came back, so a second drag thrown down in that round-trip window
+  // (exactly what a premove IS — input thrown down before it's your turn)
+  // still saw `turnColor` == your own color, and chessground treated it as
+  // an ordinary move attempt against a position that had already moved on
+  // without it, not as a queued premove. That's what actually made bullet
+  // premoves feel broken rather than just "a little slow": it wasn't
+  // pure latency, it was the second input being misclassified. Optimistic
+  // apply here closes that window: turnColor already flips server-round-
+  // trip. Combined with playPremove() already being called on every sync
+  // (see ChessBoard.tsx), a queued premove now auto-fires the instant the
+  // real confirming position lands, exactly like lichess/chess.com.
+  //
+  // The server's own game:move echo (onMove above) still lands right after
+  // and re-applies the authoritative fen/lastMove — a harmless no-op
+  // when this predicted correctly, which is the overwhelming majority of
+  // the time since dests/premoveDests are themselves computed off this
+  // same local position, so anything chessground let through here was
+  // already locally legal. onError below reverts to confirmedFenRef in
+  // the rare case a move actually gets rejected server-side, so this
+  // never leaves the board stuck out of sync with what actually happened.
+  function applyOptimisticMove(
+    orig: string,
+    dest: string,
+    promotion?: "q" | "r" | "b" | "n",
+  ) {
+    try {
+      const localChess = new Chess(fen);
+      const applied = localChess.move({ from: orig, to: dest, promotion });
+      if (!applied) return;
+      setFen(localChess.fen());
+      setLastMove([orig, dest]);
+      pendingOptimisticMoveRef.current = true;
+    } catch {
+      // Shouldn't happen (see doc comment: dests is computed off this same
+      // position), but if it ever does, just skip the optimistic step and
+      // let the normal server round-trip handle it like before.
+    }
+  }
+
   const handleUserMove = useCallback(
     (orig: string, dest: string) => {
       if (!socket || !gameMeta) return;
@@ -1079,6 +1158,7 @@ export function Game() {
       const localChess = new Chess(fen);
       if (needsPromotion(localChess, orig, dest)) {
         if (settings.autoQueen) {
+          applyOptimisticMove(orig, dest, "q");
           socket.emit("game:move", {
             gameId: gameMeta._id,
             from: orig,
@@ -1090,6 +1170,7 @@ export function Game() {
         setPromoPending({ orig, dest });
         return;
       }
+      applyOptimisticMove(orig, dest);
       socket.emit("game:move", { gameId: gameMeta._id, from: orig, to: dest });
     },
     [socket, gameMeta, fen, settings.autoQueen],
@@ -1097,6 +1178,7 @@ export function Game() {
 
   function handlePromotionPick(piece: "q" | "r" | "b" | "n") {
     if (!promoPending || !socket || !gameMeta) return;
+    applyOptimisticMove(promoPending.orig, promoPending.dest, piece);
     socket.emit("game:move", {
       gameId: gameMeta._id,
       from: promoPending.orig,

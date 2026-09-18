@@ -8,6 +8,7 @@ import {
 import { CornerUpLeft, MessageSquare, Send, X } from "lucide-react";
 import { Avatar, Button } from "../ui/index.js";
 import { overlayIn, overlayOut } from "../../lib/motion.js";
+import { useIsDesktop } from "../../hooks/useIsDesktop.js";
 import type { ChatMessage } from "../../lib/chatTypes.js";
 import { cn } from "@/lib/cn.js";
 
@@ -249,6 +250,13 @@ function ChatDrawerImpl({
   onSend,
 }: ChatDrawerProps) {
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  // Which of the two variants below actually mounts. Both used to render
+  // unconditionally at once (CSS `md:hidden`/`md:flex` just hiding
+  // whichever didn't apply), which meant reconciling the full message
+  // list + composer TWICE on every single open, right as the entrance
+  // animation was trying to run — that's almost certainly the source of
+  // David's "still a bit laggy" report. Only the applicable one mounts now.
+  const isDesktop = useIsDesktop();
 
   function handleSend(message: string, replyToId?: string) {
     onSend(message, replyToId);
@@ -306,36 +314,40 @@ function ChatDrawerImpl({
               a cheaper one). The dark backdrop behind it (bg-black/60,
               just above) is what separates it from the page, not a
               shadow. */}
-          <motion.div
-            className="elevated-flat absolute inset-x-0 bottom-0 flex max-h-[70vh] flex-col rounded-t-2xl border-t border-base-300/60 p-4 md:hidden"
-            style={{
-              paddingBottom: "calc(1rem + env(safe-area-inset-bottom))",
-            }}
-            onClick={(e) => e.stopPropagation()}
-            initial={{ y: "100%" }}
-            animate={{ y: 0, transition: overlayIn }}
-            exit={{ y: "100%", transition: overlayOut }}
-          >
-            {header}
-            {body}
-          </motion.div>
+          {!isDesktop && (
+            <motion.div
+              className="elevated-flat absolute inset-x-0 bottom-0 flex max-h-[70vh] flex-col rounded-t-2xl border-t border-base-300/60 p-4"
+              style={{
+                paddingBottom: "calc(1rem + env(safe-area-inset-bottom))",
+              }}
+              onClick={(e) => e.stopPropagation()}
+              initial={{ y: "100%" }}
+              animate={{ y: 0, transition: overlayIn }}
+              exit={{ y: "100%", transition: overlayOut }}
+            >
+              {header}
+              {body}
+            </motion.div>
+          )}
 
           {/* Right-side drawer, tablet & desktop. Same reasoning as the
               phone sheet above: elevated-flat + a plain border, no
               box-shadow. */}
-          <motion.div
-            className="elevated-flat absolute inset-y-0 right-0 hidden w-full max-w-sm flex-col border-l border-base-300/60 p-4 md:flex"
-            style={{
-              paddingTop: "calc(1rem + env(safe-area-inset-top))",
-            }}
-            onClick={(e) => e.stopPropagation()}
-            initial={{ x: "100%" }}
-            animate={{ x: 0, transition: overlayIn }}
-            exit={{ x: "100%", transition: overlayOut }}
-          >
-            {header}
-            {body}
-          </motion.div>
+          {isDesktop && (
+            <motion.div
+              className="elevated-flat absolute inset-y-0 right-0 flex w-full max-w-sm flex-col border-l border-base-300/60 p-4"
+              style={{
+                paddingTop: "calc(1rem + env(safe-area-inset-top))",
+              }}
+              onClick={(e) => e.stopPropagation()}
+              initial={{ x: "100%" }}
+              animate={{ x: 0, transition: overlayIn }}
+              exit={{ x: "100%", transition: overlayOut }}
+            >
+              {header}
+              {body}
+            </motion.div>
+          )}
         </motion.div>
       )}
     </AnimatePresence>

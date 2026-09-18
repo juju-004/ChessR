@@ -1,6 +1,7 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Modal } from "./Modal.js";
 import { Popover } from "./Popover.js";
+import { useIsDesktop } from "../../hooks/useIsDesktop.js";
 
 export interface ResponsiveOverlayProps {
   /** The element that opens the overlay on click, an icon button, a
@@ -51,20 +52,10 @@ export function ResponsiveOverlay({
   onOpenChange,
   icon,
 }: ResponsiveOverlayProps) {
-  const [isDesktop, setIsDesktop] = useState(
-    () => typeof window !== "undefined" && window.innerWidth >= breakpoint,
-  );
+  const isDesktop = useIsDesktop(breakpoint);
   const [internalOpen, setInternalOpen] = useState(false);
   const open = openProp ?? internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
-
-  useEffect(() => {
-    const mql = window.matchMedia(`(min-width: ${breakpoint}px)`);
-    const update = () => setIsDesktop(mql.matches);
-    update();
-    mql.addEventListener("change", update);
-    return () => mql.removeEventListener("change", update);
-  }, [breakpoint]);
 
   if (isDesktop) {
     return (

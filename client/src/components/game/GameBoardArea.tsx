@@ -109,7 +109,7 @@ export const GameBoardArea = memo(function GameBoardArea({
           }}
         >
           <div
-            className={`relative rounded-2xl flex items-center shadow- overflow-hidden board-theme-${boardTheme} piece-theme-${pieceTheme} justify-center h-full w-full`}
+            className={`relative rounded-md lg:rounded-2xl flex items-center shadow- overflow-hidden board-theme-${boardTheme} piece-theme-${pieceTheme} justify-center h-full w-full`}
           >
             <ChessBoard
               fen={displayFen}

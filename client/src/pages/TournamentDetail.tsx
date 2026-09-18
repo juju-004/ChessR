@@ -195,7 +195,7 @@ function EditTournamentForm({
       baseMinutes: preset.baseMinutes,
       incrementSeconds: preset.incrementSeconds,
       maxPlayers,
-      berserkAllowed: format === "normal" ? false : berserkAllowed,
+      berserkAllowed: format === "arena" && berserkAllowed,
       chatEnabled,
       isPublic,
       prizeSchedule: prizeTiers,
@@ -410,12 +410,12 @@ function EditTournamentForm({
             label="List publicly"
             description="Visible in the Open tournaments list for anyone to find."
           />
-          {format !== "normal" && (
+          {format === "arena" && (
             <Switch
               checked={berserkAllowed}
               onChange={setBerserkAllowed}
               label="Allow berserk"
-              description="Half clock, no increment, +0.5 point on a win."
+              description="Half clock, no increment, doubles the point for that win if it's berserked and lasts at least 5 moves (or the win extends a 3+ win streak either way)."
             />
           )}
           <Switch
@@ -698,6 +698,17 @@ function PlayerTournamentDetails({
   const isPointsFormat = tournament.format !== "normal";
   const isArena = tournament.format === "arena";
   const records = pairingsForPlayer(tournament, player.user);
+  // Most recent game first (David: "make the games they played from
+  // bottom to top") — the underlying array stays in chronological order
+  // (pairingsForPlayer/applyPairingScore both rely on that ordering
+  // elsewhere), this only flips the DISPLAY order, and the "#N"/"RN"
+  // label per row is computed from each record's original chronological
+  // position before reversing, so the most recent game still reads as the
+  // highest number rather than confusingly becoming "#1".
+  const displayRecords = records
+    .map((r, i) => ({ ...r, gameNumber: i + 1 }))
+    .slice()
+    .reverse();
   const stats = [
     { label: "Games", value: player.gamesPlayed },
     { label: "Berserk wins", value: player.berserkWins },
@@ -746,10 +757,10 @@ function PlayerTournamentDetails({
         </div>
       </div>
 
-      {records.length > 0 && (
+      {displayRecords.length > 0 && (
         <div className="space-y-1 w-full">
           <div className="md:max-h-64 max-h-80 space-y-0.5 overflow-y-auto">
-            {records.map(({ roundIndex, pairing, isP1 }, recordIndex) => {
+            {displayRecords.map(({ roundIndex, pairing, isP1, gameNumber }) => {
               const opponentId = isP1 ? pairing.player2 : pairing.player1;
               const oppName = usernameOf(tournament, opponentId);
               const berserked = isP1 ? pairing.berserk.p1 : pairing.berserk.p2;
@@ -770,15 +781,38 @@ function PlayerTournamentDetails({
               if (pairing.status === "finished") {
                 if (opponentId === null) {
                   resultText = "-";
-                } else if (pairing.result === "draw") {
-                  resultText = "Draw";
-                  resultColor = "text-base-content/70";
+                } else if (!isPointsFormat) {
+                  // Knockout has no points table, Won/Lost/Draw is still
+                  // the right thing to show here.
+                  if (pairing.result === "draw") {
+                    resultText = "Draw";
+                    resultColor = "text-base-content/70";
+                  } else {
+                    const won =
+                      (isP1 && pairing.result === "p1") ||
+                      (!isP1 && pairing.result === "p2");
+                    resultText = won ? "Won" : "Lost";
+                    resultColor = won ? "text-green-400" : "text-red-400";
+                  }
                 } else {
-                  const won =
-                    (isP1 && pairing.result === "p1") ||
-                    (!isP1 && pairing.result === "p2");
-                  resultText = won ? "Won" : "Lost";
-                  resultColor = won ? "text-green-400" : "text-red-400";
+                  // The actual points this specific game earned, rather
+                  // than a plain Won/Lost — matters most for arena, where
+                  // a win isn't always worth the same (see
+                  // applyArenaPairingScore server-side: 1 point normally,
+                  // 2 if it was berserked-and-qualified or landed on a 3+
+                  // win streak), but shown the same way across every
+                  // points-based format so the row doesn't change shape
+                  // between them.
+                  const myPoints = isP1
+                    ? pairing.pointsAwarded.p1
+                    : pairing.pointsAwarded.p2;
+                  resultText = `${myPoints} pt${myPoints === 1 ? "" : "s"}`;
+                  resultColor =
+                    pairing.result === "draw"
+                      ? "text-base-content/70"
+                      : myPoints > 0
+                        ? "text-green-400"
+                        : "text-red-400";
                 }
               } else if (pairing.status === "active") {
                 resultText = "Playing";
@@ -791,7 +825,7 @@ function PlayerTournamentDetails({
                   <span className="flex min-w-0 items-center gap-1.5 text-base-content/70">
                     <span className="shrink-0 text-xs text-base-content/40">
                       {tournament.format === "arena"
-                        ? `#${recordIndex + 1}`
+                        ? `#${gameNumber}`
                         : `R${roundIndex + 1}`}
                     </span>
                     {myColor && (
@@ -811,7 +845,7 @@ function PlayerTournamentDetails({
                       <Avatar
                         username={oppName}
                         gradient={gradientOf(tournament, opponentId)}
-                        size="sm"
+                        size="xs"
                       />
                     )}
                     <span className="truncate">
@@ -835,7 +869,7 @@ function PlayerTournamentDetails({
 
               return pairing.joinCode ? (
                 <Link
-                  key={roundIndex}
+                  key={`${roundIndex}-${pairing.index}`}
                   to={`/game/${pairing.joinCode}`}
                   className="flex items-center justify-between gap-2 rounded-lg px-1.5 py-1.5 text-sm transition-colors hover:bg-base-300/40"
                 >
@@ -843,7 +877,7 @@ function PlayerTournamentDetails({
                 </Link>
               ) : (
                 <div
-                  key={roundIndex}
+                  key={`${roundIndex}-${pairing.index}`}
                   className="flex items-center justify-between gap-2 rounded-lg px-1.5 py-1.5 text-sm"
                 >
                   {rowContent}
@@ -1598,31 +1632,37 @@ export function TournamentDetail() {
               <CardTitle>Pairing pool</CardTitle>
             </CardHeader>
             {pairingPool.length > 0 ? (
-              <div className="space-y-1.5">
-                {pairingPool.map((p) => (
-                  <div
-                    key={p.user}
-                    className="flex items-center gap-2 rounded-lg bg-base-200/50 px-3 py-2"
-                  >
-                    <Avatar
-                      username={p.username}
-                      gradient={p.avatarGradient}
-                      size="sm"
-                    />
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium">
+              // Just names, wrapped and centered, rather than one full-width
+              // avatar+points row per person — this list is often the
+              // biggest chunk of players in an active arena (everyone not
+              // mid-game right now), and a stacked row-per-person layout
+              // was by far the tallest/widest thing on the page on mobile.
+              // Avatar and live points are still one tap away in the
+              // standings table's player popover.
+              <p className="text-center text-sm leading-relaxed text-base-content/80">
+                {pairingPool.map((p, i) => (
+                  <span key={p.user}>
+                    <span
+                      className={
+                        p.user === myId
+                          ? "font-semibold text-secondary"
+                          : "font-medium"
+                      }
+                    >
                       {p.username}
-                      {p.user === myId && (
-                        <span className="ml-1.5 text-xs font-normal text-base-content/50">
-                          (you)
-                        </span>
-                      )}
                     </span>
-                    <span className="shrink-0 text-xs text-base-content/50">
-                      {p.points} pt{p.points === 1 ? "" : "s"}
-                    </span>
-                  </div>
+                    {p.user === myId && (
+                      <span className="text-xs font-normal text-base-content/50">
+                        {" "}
+                        (you)
+                      </span>
+                    )}
+                    {i < pairingPool.length - 1 && (
+                      <span className="text-base-content/30">, </span>
+                    )}
+                  </span>
                 ))}
-              </div>
+              </p>
             ) : (
               <p className="text-sm text-base-content/50">
                 Nobody's free to be paired right now, everyone's either mid-game
