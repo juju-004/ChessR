@@ -16,7 +16,10 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  boardTheme: 'brown',
+  // Chessr's own default, per David — not the lichess "brown" default an
+  // earlier request briefly made this. See index.css's board-theme-blue
+  // rule for the actual square colors.
+  boardTheme: 'blue',
   pieceTheme: 'classic',
   pieceAnimation: true,
   autoQueen: false,

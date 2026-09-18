@@ -331,6 +331,7 @@ function emptyPairing(
     result: null,
     endReason: null,
     berserk: { p1: false, p2: false },
+    pointsAwarded: { p1: 0, p2: 0 },
   };
 }
 
