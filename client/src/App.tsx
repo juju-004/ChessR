@@ -21,7 +21,6 @@ import { Navbar } from "./components/Navbar.js";
 import { Sidebar, MobileDock } from "./components/Sidebar.js";
 import { ProtectedRoute } from "./components/ProtectedRoute.js";
 import { AdminProtectedRoute } from "./components/AdminProtectedRoute.js";
-import { VerifyEmailBanner } from "./components/VerifyEmailBanner.js";
 import { PageLoader } from "./components/PageLoader.js";
 import { tryRestoreSession } from "./api/auth.js";
 
@@ -45,7 +44,9 @@ const VerifyEmail = lazy(() =>
   import("./pages/VerifyEmail.js").then((m) => ({ default: m.VerifyEmail })),
 );
 const ChooseUsername = lazy(() =>
-  import("./pages/ChooseUsername.js").then((m) => ({ default: m.ChooseUsername })),
+  import("./pages/ChooseUsername.js").then((m) => ({
+    default: m.ChooseUsername,
+  })),
 );
 const Dashboard = lazy(() =>
   import("./pages/Dashboard.js").then((m) => ({ default: m.Dashboard })),
@@ -114,7 +115,9 @@ const Settings = lazy(() =>
   import("./pages/Settings.js").then((m) => ({ default: m.Settings })),
 );
 const Notifications = lazy(() =>
-  import("./pages/Notifications.js").then((m) => ({ default: m.Notifications })),
+  import("./pages/Notifications.js").then((m) => ({
+    default: m.Notifications,
+  })),
 );
 const WalletLayout = lazy(() =>
   import("./components/WalletLayout.js").then((m) => ({
@@ -173,7 +176,6 @@ function AppBody() {
   // Skip the banner on the game page itself, vertical space there is
   // already tight on mobile (board + panels + the in-game action dock),
   // and it'll still show right back up on every other page.
-  const isGameRoute = location.pathname.startsWith("/game/");
 
   // The admin console renders on its own, without the player Navbar/
   // Sidebar chrome, it's not a player surface, and shouldn't ever look
