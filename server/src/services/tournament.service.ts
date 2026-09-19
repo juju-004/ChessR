@@ -21,10 +21,7 @@ import {
   activeGameLimitMessage,
   type TimeControlInput,
 } from "./game.service.js";
-import {
-  applyBerserk,
-  BerserkNotAllowedError,
-} from "./gameState.service.js";
+import { applyBerserk, BerserkNotAllowedError } from "./gameState.service.js";
 import {
   debitTournamentRegFee,
   debitTournamentPrizeFund,
@@ -53,7 +50,7 @@ const MAX_START_DELAY_MS = 30 * 24 * 60 * 60 * 1000; // and at most 30 days
 // Same shape as the no-show/first-move timers elsewhere in the codebase: an
 // in-memory setTimeout keyed by tournament id, with a reconciliation sweep
 // (reconcileActiveTournaments, called from index.ts) to self-heal if the
-// process restarts mid-break. Much lower stakes than a chess clock though, 
+// process restarts mid-break. Much lower stakes than a chess clock though,
 // a round starting a few seconds late because of a redeploy is a non-event,
 // so there's no urgency to make this bulletproof the way the clock timers
 // are.
@@ -101,7 +98,10 @@ async function scheduleRoundStart(
  *  firing doesn't guarantee the world hasn't changed (tournament finished
  *  some other way, round already active from a reconciliation sweep race,
  *  etc), so this re-verifies rather than trusting the closure's stale doc. */
-async function fireRoundStart(tournamentId: string, roundIndex: number): Promise<void> {
+async function fireRoundStart(
+  tournamentId: string,
+  roundIndex: number,
+): Promise<void> {
   const tournament = await Tournament.findById(tournamentId);
   if (!tournament || tournament.status !== "active") return;
   const round = tournament.rounds[roundIndex];
@@ -116,7 +116,7 @@ async function fireRoundStart(tournamentId: string, roundIndex: number): Promise
  *  already passed (timer lost to a restart) and fires it, and re-arms a
  *  fresh in-memory timer for any break still genuinely in progress so a
  *  redeploy doesn't leave it waiting on the next periodic sweep alone. Also
- *  does the exact same self-heal for scheduleAutoStart's timers below, 
+ *  does the exact same self-heal for scheduleAutoStart's timers below,
  *  same underlying risk (in-memory setTimeout, wiped by a restart), so one
  *  sweep covers both. */
 export async function reconcileActiveTournaments(): Promise<{
@@ -169,7 +169,9 @@ export async function reconcileActiveTournaments(): Promise<{
     } else if (!pendingAutoStartTimers.has(doc.id)) {
       const timer = setTimeout(() => {
         pendingAutoStartTimers.delete(doc.id);
-        fireAutoStart(doc.id).catch((err) => console.error("re-armed auto-start failed:", err));
+        fireAutoStart(doc.id).catch((err) =>
+          console.error("re-armed auto-start failed:", err),
+        );
       }, dueAt - now);
       timer.unref?.();
       pendingAutoStartTimers.set(doc.id, timer);
@@ -177,7 +179,7 @@ export async function reconcileActiveTournaments(): Promise<{
     }
   }
 
-  // Same self-heal, same reasoning, for arena's own in-memory end timer, 
+  // Same self-heal, same reasoning, for arena's own in-memory end timer,
   // a restart mid-arena would otherwise leave arenaEndsAt sitting there
   // with nothing watching it.
   const pendingArenaEnds = await Tournament.find({
@@ -193,7 +195,9 @@ export async function reconcileActiveTournaments(): Promise<{
     } else if (!pendingArenaEndTimers.has(doc.id)) {
       const timer = setTimeout(() => {
         pendingArenaEndTimers.delete(doc.id);
-        fireArenaEnd(doc.id).catch((err) => console.error("re-armed arena end failed:", err));
+        fireArenaEnd(doc.id).catch((err) =>
+          console.error("re-armed arena end failed:", err),
+        );
       }, dueAt - now);
       timer.unref?.();
       pendingArenaEndTimers.set(doc.id, timer);
@@ -225,12 +229,16 @@ function scheduleAutoStart(tournament: ITournament): void {
 
   const delay = tournament.scheduledStartAt.getTime() - Date.now();
   if (delay <= 0) {
-    fireAutoStart(tournament.id).catch((err) => console.error("auto-start failed:", err));
+    fireAutoStart(tournament.id).catch((err) =>
+      console.error("auto-start failed:", err),
+    );
     return;
   }
   const timer = setTimeout(() => {
     pendingAutoStartTimers.delete(tournament.id);
-    fireAutoStart(tournament.id).catch((err) => console.error("scheduled auto-start failed:", err));
+    fireAutoStart(tournament.id).catch((err) =>
+      console.error("scheduled auto-start failed:", err),
+    );
   }, delay);
   timer.unref?.();
   pendingAutoStartTimers.set(tournament.id, timer);
@@ -255,7 +263,9 @@ async function fireAutoStart(tournamentId: string): Promise<void> {
     tournament.scheduledStartAt = null;
     await tournament.save();
     broadcastUpdate(tournament, "tournament:cancelled");
-    await expireChat("tournament", tournament.id).catch((err) => console.error("expireChat(tournament) failed:", err));
+    await expireChat("tournament", tournament.id).catch((err) =>
+      console.error("expireChat(tournament) failed:", err),
+    );
   }
 }
 
@@ -272,12 +282,17 @@ async function fireAutoStart(tournamentId: string): Promise<void> {
 // and arena tolerates a much larger field since players aren't all locked
 // into synchronized rounds together, a big arena just means more
 // simultaneous games, not more rounds.
+// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+// TEMP (David, testing something): every format's min dropped to 3 so
+// small manual test tournaments can actually start. Revert by changing
+// normal/swiss back to 4 below (round_robin/arena were already 3).
+// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 const FORMAT_BOUNDS: Record<TournamentFormat, { min: number; max: number }> = {
-  normal: { min: 4, max: 64 },
-  swiss: { min: 4, max: 64 },
+  normal: { min: 3, max: 64 },
+  swiss: { min: 3, max: 64 },
   robin: { min: 3, max: 20 },
   round_robin: { min: 3, max: 14 },
-  arena: { min: 3, max: 100 },
+  arena: { min: 3, max: 300 },
 };
 
 async function uniqueCode(): Promise<string> {
@@ -339,6 +354,8 @@ function emptyPairing(
 
 export interface CreateTournamentInput {
   name: string;
+  // Optional, freeform. See the ITournament doc comment server-side.
+  description?: string | null;
   format: TournamentFormat;
   variant: "standard" | "chess960";
   baseMinutes: number | null;
@@ -422,13 +439,19 @@ function validatePrizeSchedule(
       );
     }
     if (tier.toRank < tier.fromRank) {
-      throw ApiError.badRequest("Each prize tier's rank range must end at or after where it starts");
+      throw ApiError.badRequest(
+        "Each prize tier's rank range must end at or after where it starts",
+      );
     }
     if (tier.toRank > maxPlayers) {
-      throw ApiError.badRequest(`Prize schedule can't cover a rank beyond the ${maxPlayers}-player cap`);
+      throw ApiError.badRequest(
+        `Prize schedule can't cover a rank beyond the ${maxPlayers}-player cap`,
+      );
     }
     if (tier.tokens < 0 || tier.tokens > MAX_WAGER_TOKENS) {
-      throw ApiError.badRequest("Each prize tier's token amount must be a valid, reasonable number");
+      throw ApiError.badRequest(
+        "Each prize tier's token amount must be a valid, reasonable number",
+      );
     }
     total += tier.tokens * (tier.toRank - tier.fromRank + 1);
     expectedNext = tier.toRank + 1;
@@ -439,7 +462,11 @@ function validatePrizeSchedule(
   }
 
   return {
-    tiers: sorted.map((t) => ({ fromRank: t.fromRank, toRank: t.toRank, tokens: t.tokens })),
+    tiers: sorted.map((t) => ({
+      fromRank: t.fromRank,
+      toRank: t.toRank,
+      tokens: t.tokens,
+    })),
     total,
   };
 }
@@ -517,8 +544,13 @@ export async function createTournament(
   // tournament. Still floored at MIN_STAKE_TOKENS if the organizer DOES
   // set one, same reasoning as game/cage-match wagers.
   const regFeeTokens = input.regFeeTokens ?? 0;
-  if (regFeeTokens !== 0 && (regFeeTokens < MIN_STAKE_TOKENS || regFeeTokens > MAX_WAGER_TOKENS)) {
-    throw ApiError.badRequest(`A registration fee must either be 0 (free tournament) or at least ${MIN_STAKE_TOKENS} R`);
+  if (
+    regFeeTokens !== 0 &&
+    (regFeeTokens < MIN_STAKE_TOKENS || regFeeTokens > MAX_WAGER_TOKENS)
+  ) {
+    throw ApiError.badRequest(
+      `A registration fee must either be 0 (free tournament) or at least ${MIN_STAKE_TOKENS} R`,
+    );
   }
   if (
     input.breakSeconds !== undefined &&
@@ -530,22 +562,26 @@ export async function createTournament(
   }
   const scheduledStartAt = new Date(input.scheduledStartAt);
   const startDelay = scheduledStartAt.getTime() - Date.now();
-  if (Number.isNaN(scheduledStartAt.getTime()) || startDelay < MIN_START_DELAY_MS) {
-    throw ApiError.badRequest("Pick a start time at least a few seconds from now");
+  if (
+    Number.isNaN(scheduledStartAt.getTime()) ||
+    startDelay < MIN_START_DELAY_MS
+  ) {
+    throw ApiError.badRequest(
+      "Pick a start time at least a few seconds from now",
+    );
   }
   if (startDelay > MAX_START_DELAY_MS) {
     throw ApiError.badRequest("That start time is too far in the future");
   }
-  const { tiers: prizeSchedule, total: prizePoolTokens } = validatePrizeSchedule(
-    input.prizeSchedule ?? [],
-    input.maxPlayers,
-  );
+  const { tiers: prizeSchedule, total: prizePoolTokens } =
+    validatePrizeSchedule(input.prizeSchedule ?? [], input.maxPlayers);
   const prizePoolCurrency = input.prizePoolCurrency ?? "tokens";
   // Naira pools are display/payout-schedule only — never a real R Coin
   // commitment, so the token total that would otherwise be debited from
   // the creator is always 0 for one of these regardless of what the
   // (naira-denominated) tier numbers say.
-  const committedPrizePoolTokens = prizePoolCurrency === "naira" ? 0 : prizePoolTokens;
+  const committedPrizePoolTokens =
+    prizePoolCurrency === "naira" ? 0 : prizePoolTokens;
   const passwordHash = input.password?.trim()
     ? await bcrypt.hash(input.password.trim(), PASSWORD_BCRYPT_ROUNDS)
     : null;
@@ -568,6 +604,7 @@ export async function createTournament(
   const tournament = await Tournament.create({
     code,
     name: input.name.trim(),
+    description: input.description?.trim() || null,
     createdBy: creatorId,
     organizerOnly,
     format: input.format,
@@ -605,7 +642,8 @@ export async function createTournament(
     berserkAllowed: input.format === "arena" ? input.berserkAllowed : false,
     chatEnabled: input.chatEnabled ?? false,
     isPublic: input.isPublic ?? false,
-    thirdPlaceMatch: input.format === "normal" ? (input.thirdPlaceMatch ?? false) : false,
+    thirdPlaceMatch:
+      input.format === "normal" ? (input.thirdPlaceMatch ?? false) : false,
     prizePoolCurrency,
     prizeSchedule,
     prizePoolTokens: committedPrizePoolTokens,
@@ -613,7 +651,8 @@ export async function createTournament(
     regFeePoolTokens: 0,
     passwordHash,
     swissRounds: input.format === "swiss" ? input.swissRounds : null,
-    robinRounds: input.format === "round_robin" ? (input.robinRounds ?? 1) : null,
+    robinRounds:
+      input.format === "round_robin" ? (input.robinRounds ?? 1) : null,
     arenaMinutes: input.format === "arena" ? input.arenaMinutes : null,
     breakSeconds: input.breakSeconds ?? DEFAULT_BREAK_SECONDS,
     scheduledStartAt,
@@ -625,7 +664,12 @@ export async function createTournament(
   // any other entrant. Either debit failing rolls the whole tournament
   // back rather than leaving a half-funded event around.
   try {
-    if (committedPrizePoolTokens > 0) await debitTournamentPrizeFund(creatorId, tournament.id, committedPrizePoolTokens);
+    if (committedPrizePoolTokens > 0)
+      await debitTournamentPrizeFund(
+        creatorId,
+        tournament.id,
+        committedPrizePoolTokens,
+      );
     if (!organizerOnly && regFeeTokens > 0) {
       await debitTournamentRegFee(creatorId, tournament.id, regFeeTokens);
       tournament.regFeePoolTokens = regFeeTokens;
@@ -690,7 +734,8 @@ export async function joinTournament(
   if (tournament.players.length >= tournament.maxPlayers)
     throw ApiError.conflict("This tournament is full");
   if (tournament.passwordHash) {
-    const matches = !!password && (await bcrypt.compare(password, tournament.passwordHash));
+    const matches =
+      !!password && (await bcrypt.compare(password, tournament.passwordHash));
     if (!matches) throw ApiError.forbidden("Incorrect tournament password");
   }
 
@@ -764,7 +809,10 @@ export async function joinTournament(
     } catch (err) {
       // Payment failed after the seat was already claimed atomically above,
       // pull it back out rather than leaving a player who never paid.
-      await Tournament.updateOne({ _id: tournamentId }, { $pull: { players: { user: userId } } });
+      await Tournament.updateOne(
+        { _id: tournamentId },
+        { $pull: { players: { user: userId } } },
+      );
       throw err;
     }
     claimed.regFeePoolTokens += tournament.regFeeTokens;
@@ -810,13 +858,32 @@ export async function leaveTournament(
   );
 
   if (tournament.regFeeTokens > 0) {
-    await creditTournamentReturn(userId, tournament.id, tournament.regFeeTokens, "tournament_refund", "reg");
-    tournament.regFeePoolTokens = Math.max(0, tournament.regFeePoolTokens - tournament.regFeeTokens);
+    await creditTournamentReturn(
+      userId,
+      tournament.id,
+      tournament.regFeeTokens,
+      "tournament_refund",
+      "reg",
+    );
+    tournament.regFeePoolTokens = Math.max(
+      0,
+      tournament.regFeePoolTokens - tournament.regFeeTokens,
+    );
   }
 
   const wasCreator = tournament.createdBy.toString() === userId;
-  if (wasCreator && tournament.prizePoolTokens > 0 && !tournament.prizePoolSettled) {
-    await creditTournamentReturn(userId, tournament.id, tournament.prizePoolTokens, "tournament_refund", "prize");
+  if (
+    wasCreator &&
+    tournament.prizePoolTokens > 0 &&
+    !tournament.prizePoolSettled
+  ) {
+    await creditTournamentReturn(
+      userId,
+      tournament.id,
+      tournament.prizePoolTokens,
+      "tournament_refund",
+      "prize",
+    );
     tournament.prizePoolSettled = true;
     tournament.prizePoolTokens = 0;
     tournament.prizeSchedule = [];
@@ -832,7 +899,9 @@ export async function leaveTournament(
   }
   await tournament.save();
   if (tournament.status === "cancelled") {
-    await expireChat("tournament", tournament.id).catch((err) => console.error("expireChat(tournament) failed:", err));
+    await expireChat("tournament", tournament.id).catch((err) =>
+      console.error("expireChat(tournament) failed:", err),
+    );
   }
   return tournament;
 }
@@ -850,7 +919,13 @@ async function refundAllEscrow(tournament: ITournament): Promise<void> {
   if (tournament.regFeeTokens > 0 && !tournament.regFeeSettled) {
     await Promise.all(
       tournament.players.map((p: ITournamentPlayer) =>
-        creditTournamentReturn(p.user.toString(), tournament.id, tournament.regFeeTokens, "tournament_refund", "reg"),
+        creditTournamentReturn(
+          p.user.toString(),
+          tournament.id,
+          tournament.regFeeTokens,
+          "tournament_refund",
+          "reg",
+        ),
       ),
     );
     tournament.regFeeSettled = true;
@@ -885,12 +960,15 @@ export async function cancelTournament(
   tournament.cancelReason = "Cancelled by the organiser";
   tournament.cancelledAt = new Date();
   await tournament.save();
-  await expireChat("tournament", tournament.id).catch((err) => console.error("expireChat(tournament) failed:", err));
+  await expireChat("tournament", tournament.id).catch((err) =>
+    console.error("expireChat(tournament) failed:", err),
+  );
   return tournament;
 }
 
 export interface UpdateTournamentInput {
   name?: string;
+  description?: string | null;
   format?: TournamentFormat;
   variant?: "standard" | "chess960";
   baseMinutes?: number | null;
@@ -935,7 +1013,9 @@ export async function updateTournament(
   // players rather than 1.
   const maxEditablePlayers = tournament.organizerOnly ? 0 : 1;
   if (tournament.players.length > maxEditablePlayers)
-    throw ApiError.conflict("Can't edit a tournament once other players have joined");
+    throw ApiError.conflict(
+      "Can't edit a tournament once other players have joined",
+    );
 
   const format = input.format ?? tournament.format;
   const bounds = FORMAT_BOUNDS[format];
@@ -943,7 +1023,9 @@ export async function updateTournament(
 
   const name = input.name !== undefined ? input.name.trim() : tournament.name;
   if (name.length < 3)
-    throw ApiError.badRequest("Give your tournament a name (at least 3 characters)");
+    throw ApiError.badRequest(
+      "Give your tournament a name (at least 3 characters)",
+    );
 
   const maxPlayers = input.maxPlayers ?? tournament.maxPlayers;
   if (maxPlayers < bounds.min || maxPlayers > bounds.max) {
@@ -952,62 +1034,106 @@ export async function updateTournament(
     );
   }
 
-  const baseMinutes = input.baseMinutes !== undefined ? input.baseMinutes : tournament.baseMinutes;
+  const baseMinutes =
+    input.baseMinutes !== undefined
+      ? input.baseMinutes
+      : tournament.baseMinutes;
   if (baseMinutes !== null && (baseMinutes < 1 || baseMinutes > 180)) {
-    throw ApiError.badRequest("Base time must be between 1 and 180 minutes (or unlimited)");
+    throw ApiError.badRequest(
+      "Base time must be between 1 and 180 minutes (or unlimited)",
+    );
   }
-  const incrementSeconds = input.incrementSeconds ?? tournament.incrementSeconds;
+  const incrementSeconds =
+    input.incrementSeconds ?? tournament.incrementSeconds;
   if (incrementSeconds < 0 || incrementSeconds > 60) {
     throw ApiError.badRequest("Increment must be between 0 and 60 seconds");
   }
 
-  const swissRounds = format === "swiss" ? (input.swissRounds ?? tournament.swissRounds) : null;
-  if (format === "swiss" && (!swissRounds || swissRounds < 3 || swissRounds > 15)) {
-    throw ApiError.badRequest("Choose between 3 and 15 rounds for a swiss tournament");
+  const swissRounds =
+    format === "swiss" ? (input.swissRounds ?? tournament.swissRounds) : null;
+  if (
+    format === "swiss" &&
+    (!swissRounds || swissRounds < 3 || swissRounds > 15)
+  ) {
+    throw ApiError.badRequest(
+      "Choose between 3 and 15 rounds for a swiss tournament",
+    );
   }
 
   const robinRounds =
-    format === "round_robin" ? (input.robinRounds ?? tournament.robinRounds ?? 1) : null;
-  if (format === "round_robin" && robinRounds != null && (robinRounds < 1 || robinRounds > 4)) {
-    throw ApiError.badRequest("Choose between 1 and 4 laps for a round-robin tournament");
+    format === "round_robin"
+      ? (input.robinRounds ?? tournament.robinRounds ?? 1)
+      : null;
+  if (
+    format === "round_robin" &&
+    robinRounds != null &&
+    (robinRounds < 1 || robinRounds > 4)
+  ) {
+    throw ApiError.badRequest(
+      "Choose between 1 and 4 laps for a round-robin tournament",
+    );
   }
 
-  const arenaMinutes = format === "arena" ? (input.arenaMinutes ?? tournament.arenaMinutes) : null;
-  if (format === "arena" && (!arenaMinutes || arenaMinutes < 5 || arenaMinutes > 360)) {
-    throw ApiError.badRequest("Choose an arena duration between 5 and 360 minutes");
+  const arenaMinutes =
+    format === "arena" ? (input.arenaMinutes ?? tournament.arenaMinutes) : null;
+  if (
+    format === "arena" &&
+    (!arenaMinutes || arenaMinutes < 5 || arenaMinutes > 360)
+  ) {
+    throw ApiError.badRequest(
+      "Choose an arena duration between 5 and 360 minutes",
+    );
   }
 
   const regFeeTokens = input.regFeeTokens ?? tournament.regFeeTokens;
-  if (regFeeTokens !== 0 && (regFeeTokens < MIN_STAKE_TOKENS || regFeeTokens > MAX_WAGER_TOKENS)) {
-    throw ApiError.badRequest(`A registration fee must either be 0 (free tournament) or at least ${MIN_STAKE_TOKENS} R`);
+  if (
+    regFeeTokens !== 0 &&
+    (regFeeTokens < MIN_STAKE_TOKENS || regFeeTokens > MAX_WAGER_TOKENS)
+  ) {
+    throw ApiError.badRequest(
+      `A registration fee must either be 0 (free tournament) or at least ${MIN_STAKE_TOKENS} R`,
+    );
   }
 
   const breakSeconds = input.breakSeconds ?? tournament.breakSeconds;
   if (breakSeconds < 0 || breakSeconds > MAX_BREAK_SECONDS) {
-    throw ApiError.badRequest(`Break between rounds must be between 0 and ${MAX_BREAK_SECONDS} seconds`);
+    throw ApiError.badRequest(
+      `Break between rounds must be between 0 and ${MAX_BREAK_SECONDS} seconds`,
+    );
   }
 
   let scheduledStartAt = tournament.scheduledStartAt;
   if (input.scheduledStartAt !== undefined) {
     scheduledStartAt = new Date(input.scheduledStartAt);
     const startDelay = scheduledStartAt.getTime() - Date.now();
-    if (Number.isNaN(scheduledStartAt.getTime()) || startDelay < MIN_START_DELAY_MS) {
-      throw ApiError.badRequest("Pick a start time at least a few seconds from now");
+    if (
+      Number.isNaN(scheduledStartAt.getTime()) ||
+      startDelay < MIN_START_DELAY_MS
+    ) {
+      throw ApiError.badRequest(
+        "Pick a start time at least a few seconds from now",
+      );
     }
     if (startDelay > MAX_START_DELAY_MS) {
       throw ApiError.badRequest("That start time is too far in the future");
     }
   }
 
-  const { tiers: prizeSchedule, total: prizePoolTokens } = validatePrizeSchedule(
-    input.prizeSchedule ??
-      tournament.prizeSchedule.map((t) => ({ fromRank: t.fromRank, toRank: t.toRank, tokens: t.tokens })),
-    maxPlayers,
-  );
+  const { tiers: prizeSchedule, total: prizePoolTokens } =
+    validatePrizeSchedule(
+      input.prizeSchedule ??
+        tournament.prizeSchedule.map((t) => ({
+          fromRank: t.fromRank,
+          toRank: t.toRank,
+          tokens: t.tokens,
+        })),
+      maxPlayers,
+    );
   // prizePoolCurrency is immutable (see the ITournament doc comment), so a
   // naira tournament's edited schedule still never touches real R Coin
   // escrow — same reasoning as createTournament's committedPrizePoolTokens.
-  const committedPrizePoolTokens = tournament.prizePoolCurrency === "naira" ? 0 : prizePoolTokens;
+  const committedPrizePoolTokens =
+    tournament.prizePoolCurrency === "naira" ? 0 : prizePoolTokens;
 
   // The creator is the only (possible) player so far, so their own reg-fee
   // contribution IS the whole pool, adjusting the fee just means adjusting
@@ -1018,10 +1144,20 @@ export async function updateTournament(
   const prizeDelta = committedPrizePoolTokens - tournament.prizePoolTokens;
   const regFeeDelta = regFeeTokens - tournament.regFeeTokens;
   if (prizeDelta !== 0) {
-    await adjustTournamentEscrow(requesterId, tournament.id, prizeDelta, "tournament_prize_fund");
+    await adjustTournamentEscrow(
+      requesterId,
+      tournament.id,
+      prizeDelta,
+      "tournament_prize_fund",
+    );
   }
   if (!tournament.organizerOnly && regFeeDelta !== 0) {
-    await adjustTournamentEscrow(requesterId, tournament.id, regFeeDelta, "tournament_reg_fee");
+    await adjustTournamentEscrow(
+      requesterId,
+      tournament.id,
+      regFeeDelta,
+      "tournament_reg_fee",
+    );
     tournament.regFeePoolTokens = regFeeTokens;
   }
 
@@ -1032,6 +1168,9 @@ export async function updateTournament(
   }
 
   tournament.name = name;
+  if (input.description !== undefined) {
+    tournament.description = input.description?.trim() || null;
+  }
   tournament.format = format;
   tournament.variant = input.variant ?? tournament.variant;
   tournament.baseMinutes = baseMinutes;
@@ -1042,7 +1181,9 @@ export async function updateTournament(
   // sent) the moment the format isn't/isn't-staying arena, same
   // create-time enforcement as createTournament.
   tournament.berserkAllowed =
-    format === "arena" ? (input.berserkAllowed ?? tournament.berserkAllowed) : false;
+    format === "arena"
+      ? (input.berserkAllowed ?? tournament.berserkAllowed)
+      : false;
   tournament.chatEnabled = input.chatEnabled ?? tournament.chatEnabled;
   tournament.isPublic = input.isPublic ?? tournament.isPublic;
   tournament.prizeSchedule = prizeSchedule;
@@ -1106,7 +1247,10 @@ function circleMethodSchedule(
     const lapRounds = rounds.map((round) =>
       round.map(
         ([a, b]) =>
-          (reverseColors ? [b ?? a, b ? a : null] : [a, b]) as [string, string | null],
+          (reverseColors ? [b ?? a, b ? a : null] : [a, b]) as [
+            string,
+            string | null,
+          ],
       ),
     );
     schedule.push(...lapRounds);
@@ -1137,7 +1281,7 @@ function buildKnockoutRound0(playerIds: any[]): ITournamentRound {
  *  then greedily pair each player with the nearest player below them in the
  *  order who they haven't already faced. Not FIDE-caliber (no proper
  *  Buchholz-optimal search, no float-avoidance guarantees) but keeps games
- *  fair and rematch-free for reasonably sized fields, and never stalls, 
+ *  fair and rematch-free for reasonably sized fields, and never stalls,
  *  if literally everyone remaining has already played everyone else, it
  *  falls back to allowing a rematch rather than leaving someone unpaired. */
 /** Smart pairing, swiss half: builds the pairing set for a round using only
@@ -1149,7 +1293,7 @@ function buildKnockoutRound0(playerIds: any[]): ITournamentRound {
  *  back on the page.
  *
  *  The one deliberate escape hatch: if fewer than 2 players are watching
- *  right now, filtering by that would leave nothing to pair at all, 
+ *  right now, filtering by that would leave nothing to pair at all,
  *  rather than stall the whole event indefinitely waiting for people to
  *  show up, this falls back to pairing everyone regardless of presence for
  *  that one round. Presence-based skipping is a fairness nicety, not
@@ -1214,7 +1358,8 @@ function assignColors(
   const b = colorState.get(bId) ?? EMPTY_COLOR_STATE;
 
   const [penalty1, penalty2] = colorPenalties(aId, bId, colorState);
-  if (penalty1 !== penalty2) return penalty1 < penalty2 ? [aId, bId] : [bId, aId];
+  if (penalty1 !== penalty2)
+    return penalty1 < penalty2 ? [aId, bId] : [bId, aId];
 
   const aDiff = a.white - a.black;
   const bDiff = b.white - b.black;
@@ -1234,7 +1379,11 @@ function orderByColor<T extends { user: Types.ObjectId }>(
   b: T,
   colorState: Map<string, ColorState>,
 ): [T, T] {
-  const [whiteId] = assignColors(a.user.toString(), b.user.toString(), colorState);
+  const [whiteId] = assignColors(
+    a.user.toString(),
+    b.user.toString(),
+    colorState,
+  );
   return whiteId === a.user.toString() ? [a, b] : [b, a];
 }
 
@@ -1244,7 +1393,9 @@ async function buildSwissRound(
 ): Promise<ITournamentRound> {
   const candidates = tournament.players;
   const watchingFlags = await Promise.all(
-    candidates.map((p) => isUserWatchingTournament(p.user.toString(), tournament.id)),
+    candidates.map((p) =>
+      isUserWatchingTournament(p.user.toString(), tournament.id),
+    ),
   );
   const watchingOnly = candidates.filter((_, i) => watchingFlags[i]);
   const active = watchingOnly.length >= 2 ? watchingOnly : candidates;
@@ -1314,7 +1465,6 @@ async function buildSwissRound(
 // it, rather than when everyone who saw the listing expected it to, isn't
 // a fair start for players still on their way in.
 
-
 /** Shared by both the manual "Start now" action and the scheduled
  *  auto-start timer firing, builds the first round's pairings and flips
  *  the tournament into 'active'. Assumes the caller has already checked
@@ -1351,7 +1501,8 @@ async function activateTournament(tournament: ITournament): Promise<void> {
   } else {
     // 'robin' (legacy, always 1 lap) or 'round_robin' (robinRounds laps,
     // defaulting to 1 if somehow unset on an older document).
-    const laps = tournament.format === "round_robin" ? (tournament.robinRounds ?? 1) : 1;
+    const laps =
+      tournament.format === "round_robin" ? (tournament.robinRounds ?? 1) : 1;
     const schedule = circleMethodSchedule(
       playerIds.map((id: any) => id.toString()),
       laps,
@@ -1444,7 +1595,10 @@ async function activateRound(
     pairing.gameId = game._id;
     pairing.joinCode = game.joinCode;
     pairing.status = "active";
-    readyPlayers.push({ userId: whiteId, joinCode: game.joinCode }, { userId: blackId, joinCode: game.joinCode });
+    readyPlayers.push(
+      { userId: whiteId, joinCode: game.joinCode },
+      { userId: blackId, joinCode: game.joinCode },
+    );
   }
 
   await tournament.save();
@@ -1457,7 +1611,7 @@ async function activateRound(
  *  is ready, separate from broadcastUpdate's room-wide "something changed,
  *  go refetch" ping, since this needs to reach a specific two people with a
  *  specific joinCode they can act on immediately (auto-redirect if they're
- *  sitting on the tournament page, a "play it now" notification otherwise, 
+ *  sitting on the tournament page, a "play it now" notification otherwise,
  *  see GlobalListeners.tsx's tournament:pairing_ready handler). */
 function notifyPairingReady(
   tournament: ITournament,
@@ -1542,7 +1696,11 @@ function hasActivePairing(tournament: ITournament): boolean {
  *  playing, and finish the tournament itself at that point. */
 async function fireArenaEnd(tournamentId: string): Promise<void> {
   const tournament = await Tournament.findById(tournamentId);
-  if (!tournament || tournament.status !== "active" || tournament.format !== "arena")
+  if (
+    !tournament ||
+    tournament.status !== "active" ||
+    tournament.format !== "arena"
+  )
     return;
   if (!hasActivePairing(tournament)) await finishTournament(tournament);
 }
@@ -1577,7 +1735,9 @@ async function arenaAvailablePlayers(
     (p) => !p.paused && !busy.has(p.user.toString()),
   );
   const watchingFlags = await Promise.all(
-    candidates.map((p) => isUserWatchingTournament(p.user.toString(), tournament.id)),
+    candidates.map((p) =>
+      isUserWatchingTournament(p.user.toString(), tournament.id),
+    ),
   );
   return candidates.filter((_, i) => watchingFlags[i]);
 }
@@ -1598,21 +1758,29 @@ function colorPenalties(
   const b = colorState.get(bId) ?? EMPTY_COLOR_STATE;
   const threeInARow = (s: ColorState, color: "white" | "black") =>
     s.lastColor === color && s.streak >= 2;
-  const penalty1 = (threeInARow(a, "white") ? 1 : 0) + (threeInARow(b, "black") ? 1 : 0);
-  const penalty2 = (threeInARow(b, "white") ? 1 : 0) + (threeInARow(a, "black") ? 1 : 0);
+  const penalty1 =
+    (threeInARow(a, "white") ? 1 : 0) + (threeInARow(b, "black") ? 1 : 0);
+  const penalty2 =
+    (threeInARow(b, "white") ? 1 : 0) + (threeInARow(a, "black") ? 1 : 0);
   return [penalty1, penalty2];
 }
 
-/** Every current player's single most recent opponent, keyed by userId, 
+/** Every current player's single most recent opponent, keyed by userId,
  *  the "you can't immediately rematch this person" constraint for arena
  *  pairing. Computed once per tryArenaPairings call rather than re-scanning
  *  round history per player: walks rounds newest-first and stops as soon
  *  as every player currently in the tournament has an entry, rather than
  *  always scanning the tournament's entire history regardless of size. */
-function computeLastArenaOpponents(tournament: ITournament): Map<string, string> {
+function computeLastArenaOpponents(
+  tournament: ITournament,
+): Map<string, string> {
   const lastOpponent = new Map<string, string>();
   const total = tournament.players.length;
-  for (let i = tournament.rounds.length - 1; i >= 0 && lastOpponent.size < total; i--) {
+  for (
+    let i = tournament.rounds.length - 1;
+    i >= 0 && lastOpponent.size < total;
+    i--
+  ) {
     const pairing = tournament.rounds[i].pairings[0];
     if (!pairing?.player2) continue;
     const a = pairing.player1.toString();
@@ -1626,7 +1794,7 @@ function computeLastArenaOpponents(tournament: ITournament): Map<string, string>
 /** True if pairing a against b would immediately repeat either of their
  *  most recent games. Checked in both directions deliberately: if A played
  *  someone else more recently than B did, A's own "last opponent" entry no
- *  longer points at B even though B's still does (B hasn't played since), 
+ *  longer points at B even though B's still does (B hasn't played since),
  *  checking only a's side would let that stale-on-B's-end rematch slip
  *  through. */
 function isImmediateArenaRematch(
@@ -1739,47 +1907,61 @@ function matchArenaPairsSmart(
  *  previous call just committed, not a stale snapshot from before this
  *  function was even entered. */
 async function tryArenaPairings(tournamentId: string): Promise<void> {
-  const result = await withLock(`tournament:arena-pairing:${tournamentId}`, async () => {
-    const tournament = await Tournament.findById(tournamentId);
-    if (!tournament) return;
-    if (tournament.status !== "active" || tournament.format !== "arena") return;
-    if (!tournament.arenaEndsAt || Date.now() >= tournament.arenaEndsAt.getTime())
-      return;
+  const result = await withLock(
+    `tournament:arena-pairing:${tournamentId}`,
+    async () => {
+      const tournament = await Tournament.findById(tournamentId);
+      if (!tournament) return;
+      if (tournament.status !== "active" || tournament.format !== "arena")
+        return;
+      if (
+        !tournament.arenaEndsAt ||
+        Date.now() >= tournament.arenaEndsAt.getTime()
+      )
+        return;
 
-    const pool = await arenaAvailablePlayers(tournament);
-    if (pool.length < 2) return;
-    const lastOpponent = computeLastArenaOpponents(tournament);
-    const colorState = computeColorState(tournament);
-    const rankIndex = new Map(
-      rankPlayers(tournament).map((p, i) => [p.user.toString(), i]),
-    );
-    const pairs = matchArenaPairsSmart(pool, lastOpponent, colorState, rankIndex);
-    const newRoundIndexes: number[] = [];
+      const pool = await arenaAvailablePlayers(tournament);
+      if (pool.length < 2) return;
+      const lastOpponent = computeLastArenaOpponents(tournament);
+      const colorState = computeColorState(tournament);
+      const rankIndex = new Map(
+        rankPlayers(tournament).map((p, i) => [p.user.toString(), i]),
+      );
+      const pairs = matchArenaPairsSmart(
+        pool,
+        lastOpponent,
+        colorState,
+        rankIndex,
+      );
+      const newRoundIndexes: number[] = [];
 
-    for (const [a, b] of pairs) {
-      const roundIndex = tournament.rounds.length;
-      const [white, black] = orderByColor(a, b, colorState);
-      tournament.rounds.push({
-        index: roundIndex,
-        status: "pending",
-        pairings: [emptyPairing(0, white.user, black.user)],
-      });
-      newRoundIndexes.push(roundIndex);
-    }
+      for (const [a, b] of pairs) {
+        const roundIndex = tournament.rounds.length;
+        const [white, black] = orderByColor(a, b, colorState);
+        tournament.rounds.push({
+          index: roundIndex,
+          status: "pending",
+          pairings: [emptyPairing(0, white.user, black.user)],
+        });
+        newRoundIndexes.push(roundIndex);
+      }
 
-    if (newRoundIndexes.length === 0) return;
-    tournament.currentRoundIndex = tournament.rounds.length - 1;
-    await tournament.save();
-    // Sequential, not Promise.all, each activateRound call creates a real
-    // Game document and re-saves the same in-memory tournament doc; running
-    // them concurrently would race that shared save.
-    for (const roundIndex of newRoundIndexes) {
-      await activateRound(tournament, roundIndex);
-    }
-  });
+      if (newRoundIndexes.length === 0) return;
+      tournament.currentRoundIndex = tournament.rounds.length - 1;
+      await tournament.save();
+      // Sequential, not Promise.all, each activateRound call creates a real
+      // Game document and re-saves the same in-memory tournament doc; running
+      // them concurrently would race that shared save.
+      for (const roundIndex of newRoundIndexes) {
+        await activateRound(tournament, roundIndex);
+      }
+    },
+  );
 
   if (result === null) {
-    console.error(`arena pairing lock timed out for tournament ${tournamentId}`);
+    console.error(
+      `arena pairing lock timed out for tournament ${tournamentId}`,
+    );
   }
 }
 
@@ -1889,7 +2071,8 @@ function applyArenaPairingScore(
   let winnerPoints = 0;
 
   if (winner) {
-    const berserkQualifies = winnerBerserked && (moveCount ?? 0) >= ARENA_BERSERK_MIN_PLIES;
+    const berserkQualifies =
+      winnerBerserked && (moveCount ?? 0) >= ARENA_BERSERK_MIN_PLIES;
     winner.currentWinStreak += 1;
     const streakQualifies = winner.currentWinStreak >= ARENA_STREAK_THRESHOLD;
     const doubled = berserkQualifies || streakQualifies;
@@ -1905,7 +2088,9 @@ function applyArenaPairingScore(
     loser.currentWinStreak = 0;
   }
 
-  return result === "p1" ? { p1: winnerPoints, p2: 0 } : { p1: 0, p2: winnerPoints };
+  return result === "p1"
+    ? { p1: winnerPoints, p2: 0 }
+    : { p1: 0, p2: winnerPoints };
 }
 
 function applyPairingScore(
@@ -1942,7 +2127,13 @@ function applyPairingScore(
   }
 
   if (tournament.format === "arena") {
-    pairing.pointsAwarded = applyArenaPairingScore(p1, p2, result, berserk, moveCount);
+    pairing.pointsAwarded = applyArenaPairingScore(
+      p1,
+      p2,
+      result,
+      berserk,
+      moveCount,
+    );
     if (p1 && p2) p1.tiebreak += p2.points;
     if (p1 && p2) p2.tiebreak += p1.points;
     return;
@@ -1970,7 +2161,8 @@ function applyPairingScore(
       winner.gamesPlayed += 1;
     }
     if (loser) loser.gamesPlayed += 1;
-    pairing.pointsAwarded = result === "p1" ? { p1: 1, p2: 0 } : { p1: 0, p2: 1 };
+    pairing.pointsAwarded =
+      result === "p1" ? { p1: 1, p2: 0 } : { p1: 0, p2: 1 };
   }
 
   // Simplified Buchholz-style tiebreaker: accumulate each opponent's points
@@ -2074,7 +2266,11 @@ async function advanceAfterRound(
         .filter((p) => p.player2 !== null)
         .map((p) => (p.result === "p1" ? p.player2! : p.player1));
       if (losers.length === 2) {
-        const thirdPlacePairing = emptyPairing(nextPairings.length, losers[0], losers[1]);
+        const thirdPlacePairing = emptyPairing(
+          nextPairings.length,
+          losers[0],
+          losers[1],
+        );
         thirdPlacePairing.isThirdPlace = true;
         nextPairings.push(thirdPlacePairing);
       }
@@ -2155,7 +2351,9 @@ async function finishTournament(
   await tournament.save();
   await distributePrize(tournament);
   broadcastUpdate(tournament, "tournament:finished");
-  await expireChat("tournament", tournament.id).catch((err) => console.error("expireChat(tournament) failed:", err));
+  await expireChat("tournament", tournament.id).catch((err) =>
+    console.error("expireChat(tournament) failed:", err),
+  );
 }
 
 /** Full 1st-through-last ordering for the whole field, used to match players
@@ -2186,7 +2384,8 @@ function computeFinalRanking(tournament: ITournament): Types.ObjectId[] {
       .filter((p: ITournamentPlayer) => !seen.has(p.user.toString()))
       .sort(
         (a: ITournamentPlayer, b: ITournamentPlayer) =>
-          (b.eliminatedRound ?? -1) - (a.eliminatedRound ?? -1) || a.username.localeCompare(b.username),
+          (b.eliminatedRound ?? -1) - (a.eliminatedRound ?? -1) ||
+          a.username.localeCompare(b.username),
       );
     for (const p of rest) order.push(p.user);
     return order;
@@ -2258,7 +2457,8 @@ async function distributePrize(tournament: ITournament): Promise<void> {
     );
     if (claimed) {
       const ranking = computeFinalRanking(tournament);
-      const winners: { user: Types.ObjectId; rank: number; naira: number }[] = [];
+      const winners: { user: Types.ObjectId; rank: number; naira: number }[] =
+        [];
       for (const tier of tournament.prizeSchedule) {
         if (tier.tokens <= 0) continue;
         for (let rank = tier.fromRank; rank <= tier.toRank; rank++) {
@@ -2279,7 +2479,9 @@ async function distributePrize(tournament: ITournament): Promise<void> {
             title: `You won ₦${w.naira.toLocaleString()} in ${tournament.name}`,
             body: "Fill in your payout account details so we can send your prize by bank transfer.",
             link: "/account-details",
-          }).catch((err) => console.error("naira winner notification failed:", err));
+          }).catch((err) =>
+            console.error("naira winner notification failed:", err),
+          );
         }
       }
     }
@@ -2291,21 +2493,32 @@ async function distributePrize(tournament: ITournament): Promise<void> {
       { $set: { regFeeSettled: true } },
     );
     if (claimed) {
-      const { rakeTokens, netTokens } = computeRake(tournament.regFeePoolTokens);
+      const { rakeTokens, netTokens } = computeRake(
+        tournament.regFeePoolTokens,
+      );
       await creditTournamentReturn(
         tournament.createdBy.toString(),
         tournament.id,
         netTokens,
         "tournament_reg_revenue",
       );
-      await recordRake("tournament", tournament.id, rakeTokens, tournament.regFeePoolTokens);
+      await recordRake(
+        "tournament",
+        tournament.id,
+        rakeTokens,
+        tournament.regFeePoolTokens,
+      );
     }
   }
 }
 
 function broadcastUpdate(
   tournament: ITournament,
-  event: "tournament:update" | "tournament:finished" | "tournament:started" | "tournament:cancelled" = "tournament:update",
+  event:
+    | "tournament:update"
+    | "tournament:finished"
+    | "tournament:started"
+    | "tournament:cancelled" = "tournament:update",
 ) {
   try {
     getIo()
@@ -2378,7 +2591,14 @@ export async function advanceTournamentIfPairing(
     pairing.endReason = endReason;
     pairing.berserk = berserk;
 
-    applyPairingScore(tournament, pairing, resultP, berserk, roundIndex, moveCount);
+    applyPairingScore(
+      tournament,
+      pairing,
+      resultP,
+      berserk,
+      roundIndex,
+      moveCount,
+    );
     await tournament.save();
     broadcastUpdate(tournament);
 
@@ -2522,7 +2742,9 @@ const CANCELLED_TOURNAMENT_RETENTION_MS = 10 * 60 * 1000; // 10 minutes
  *  grace period above. Called once on boot and then periodically alongside
  *  reconcileActiveTournaments (see index.ts), cheap either way, since
  *  cancelledAt is indexed and most sweeps will find nothing to do. */
-export async function sweepCancelledTournaments(): Promise<{ deleted: number }> {
+export async function sweepCancelledTournaments(): Promise<{
+  deleted: number;
+}> {
   const cutoff = new Date(Date.now() - CANCELLED_TOURNAMENT_RETENTION_MS);
   const result = await Tournament.deleteMany({
     status: "cancelled",

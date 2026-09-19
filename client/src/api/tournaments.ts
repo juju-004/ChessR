@@ -63,6 +63,8 @@ export interface Tournament {
   _id: string;
   code: string;
   name: string;
+  // Optional, freeform. null/empty means no description card renders.
+  description: string | null;
   createdBy: string;
   /** True if the creator set up this tournament purely to run it, they
    *  never occupy a player slot and were never charged the registration

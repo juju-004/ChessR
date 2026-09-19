@@ -140,6 +140,11 @@ export interface ITournament extends Document {
   _id: Types.ObjectId;
   code: string;
   name: string;
+  // Optional, freeform, shown in a collapsible card on the tournament page
+  // (same collapsed-by-default pattern as the prize pool card) — rules,
+  // context, whatever the organizer wants players to see before joining.
+  // null/empty means no card renders at all.
+  description: string | null;
   createdBy: Types.ObjectId;
   // True when the creator set this up purely to run it, see
   // createTournament in tournament.service.ts: when set, the creator is
@@ -353,6 +358,7 @@ const tournamentSchema = new Schema<ITournament>(
   {
     code: { type: String, required: true, unique: true, index: true },
     name: { type: String, required: true, trim: true, maxlength: 60 },
+    description: { type: String, default: null, trim: true, maxlength: 1000 },
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: "User",

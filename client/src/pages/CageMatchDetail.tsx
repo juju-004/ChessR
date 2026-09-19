@@ -12,6 +12,7 @@ import { useAuth } from "../contexts/AuthContext.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useNotify } from "../contexts/NotificationContext.js";
 import { useConfirm } from "../contexts/ConfirmContext.js";
+import { PageError } from "../components/PageError.js";
 import {
   Page,
   Card,
@@ -118,16 +119,7 @@ export function CageMatchDetail() {
   }
 
   if (loadError) {
-    return (
-      <div className="mx-auto mt-6 max-w-lg px-4">
-        <Card
-          variant="solid"
-          className="border-red-900/50 bg-red-950/20 text-center text-red-300"
-        >
-          {loadError}
-        </Card>
-      </div>
-    );
+    return <PageError message={loadError} className="px-4" />;
   }
   if (!match) {
     return (

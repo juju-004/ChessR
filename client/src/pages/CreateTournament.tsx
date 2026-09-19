@@ -19,6 +19,7 @@ import {
   Card,
   CardContent,
   Input,
+  Textarea,
   Select,
   Button,
   Switch,
@@ -29,7 +30,11 @@ import {
 // which is exactly what let it drift out of sync with every other select
 // in the app.
 import { TIME_CONTROLS as TIME_PRESETS } from "../timeControls.js";
-import { MAX_WAGER_TOKENS, MIN_STAKE_TOKENS, MAX_EVENT_NAME_LENGTH } from "../lib/limits.js";
+import {
+  MAX_WAGER_TOKENS,
+  MIN_STAKE_TOKENS,
+  MAX_EVENT_NAME_LENGTH,
+} from "../lib/limits.js";
 
 const FORMAT_DEFAULT_MAX: Record<TournamentFormat, number> = {
   normal: 16,
@@ -61,6 +66,7 @@ export function CreateTournament() {
 
   // --- Basics ---
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [format, setFormat] = useState<TournamentFormat>("swiss");
   const [variant, setVariant] = useState<"standard" | "chess960">("standard");
   const [presetIdx, setPresetIdx] = useState(3);
@@ -83,7 +89,9 @@ export function CreateTournament() {
   const [organizerOnly, setOrganizerOnly] = useState(false);
   const [thirdPlaceMatch, setThirdPlaceMatch] = useState(false);
   const [regFeeInput, setRegFeeInput] = useState("0");
-  const [prizePoolCurrency, setPrizePoolCurrency] = useState<"tokens" | "naira">("tokens");
+  const [prizePoolCurrency, setPrizePoolCurrency] = useState<
+    "tokens" | "naira"
+  >("tokens");
   const [prizeTiers, setPrizeTiers] = useState<TournamentPrizeTier[]>([]);
 
   useEffect(() => {
@@ -106,7 +114,9 @@ export function CreateTournament() {
   function handleFormatChange(f: TournamentFormat) {
     setFormat(f);
     setMaxPlayers(
-      f === "swiss" || f === "arena" ? FORMAT_MAX_PLAYERS[f] : FORMAT_DEFAULT_MAX[f],
+      f === "swiss" || f === "arena"
+        ? FORMAT_MAX_PLAYERS[f]
+        : FORMAT_DEFAULT_MAX[f],
     );
   }
 
@@ -163,6 +173,7 @@ export function CreateTournament() {
     setSubmitting(true);
     socket.emit("tournament:create", {
       name: name.trim(),
+      description: description.trim() || null,
       format,
       variant,
       baseMinutes: preset.baseMinutes,
@@ -188,6 +199,7 @@ export function CreateTournament() {
   return (
     <Page title="Create a tournament" back="/tournaments">
       <div className="mx-auto space-y-4">
+        <TestModeBanner />
         <Card variant="solid">
           <CardContent className="space-y-5">
             {/* Basics */}
@@ -198,6 +210,15 @@ export function CreateTournament() {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Friday Night Blitz"
                 maxLength={MAX_EVENT_NAME_LENGTH}
+              />
+
+              <Textarea
+                label="Description (optional)"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Rules, context, anything players should know before joining…"
+                maxLength={1000}
+                rows={3}
               />
 
               <div>
@@ -330,11 +351,10 @@ export function CreateTournament() {
 
             {/* Money */}
             <section className="space-y-3 border-t border-base-300 pt-4">
-              <TestModeBanner />
               <Input
                 label={
                   <span className="inline-flex items-center gap-1">
-                    Registration fee (<RCoin size={12} /> Coins, optional)
+                    Registration fee (<RCoin size={12} /> Coins)
                     <HelpTip>
                       {rakePercent !== null
                         ? `Every entrant pays this to join. Held until the tournament ends, then the ${rakePercent}% platform fee is deducted and the rest is paid out to you as the organizer. Leave at 0 for a free tournament.`
@@ -362,7 +382,7 @@ export function CreateTournament() {
                   handlePrizeCurrencyChange(checked ? "naira" : "tokens")
                 }
                 label="Prize pool in naira (₦)"
-                description="Real cash, disbursed manually by us over WhatsApp. Nothing is deducted from or added to any wallet for this — winners just get notified to submit their payout account details."
+                description="Real cash, disbursed manually by us over WhatsApp. "
               />
               <Input
                 label="Password (optional)"

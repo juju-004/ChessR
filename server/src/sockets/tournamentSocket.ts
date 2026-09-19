@@ -39,6 +39,7 @@ const prizeTierSchema = z.object({
 
 const createSchema = z.object({
   name: z.string().trim().min(3).max(60),
+  description: z.string().trim().max(1000).nullable().optional(),
   format: z.enum(['normal', 'swiss', 'round_robin', 'arena']),
   variant: z.enum(['standard', 'chess960']).default('standard'),
   baseMinutes: z.number().min(1).max(180).nullable(),
@@ -83,6 +84,7 @@ const pauseSchema = idSchema.extend({ paused: z.boolean() });
 // since this is a partial edit of something that already exists.
 const editSchema = idSchema.extend({
   name: z.string().trim().min(3).max(60).optional(),
+  description: z.string().trim().max(1000).nullable().optional(),
   format: z.enum(['normal', 'swiss', 'round_robin', 'arena']).optional(),
   variant: z.enum(['standard', 'chess960']).optional(),
   baseMinutes: z.number().min(1).max(180).nullable().optional(),

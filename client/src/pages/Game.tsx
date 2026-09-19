@@ -58,6 +58,7 @@ import {
 import { useHoldRepeat } from "../components/game/useHoldRepeat.js";
 import { GameNotificationsOverlay } from "../components/game/GameNotificationsOverlay.js";
 import { GameChatPanel } from "../components/game/GameChatPanel.js";
+import { PageError } from "../components/PageError.js";
 import { PlayerChatPanel } from "../components/game/PlayerChatPanel.js";
 import type { ChatMessage } from "../lib/chatTypes.js";
 import { useMyActiveGame } from "../contexts/MyActiveGameContext.js";
@@ -1446,9 +1447,18 @@ export function Game() {
       );
     if (gameMeta?.tournamentId)
       list.push(
-        <Link key="tourney" to={`/tournaments/${gameMeta.tournamentId.code}`}>
-          <Badge variant="glass" className="hover:brightness-110">
-            {gameMeta.tournamentId.name}
+        <Link
+          key="tourney"
+          to={`/tournaments/${gameMeta.tournamentId.code}`}
+          title={gameMeta.tournamentId.name}
+          aria-label={`Playing in tournament: ${gameMeta.tournamentId.name}`}
+        >
+          <Badge
+            variant="glass"
+            className="hover:brightness-110"
+            title={gameMeta.tournamentId.name}
+          >
+            <Trophy className="h-3 w-3" />
           </Badge>
         </Link>,
       );
@@ -1464,6 +1474,24 @@ export function Game() {
           </span>
         </Badge>,
       );
+    // Same icon-only treatment as the tournament badge above. Links
+    // straight to the match by its raw id rather than a fetched matchCode
+    // — getCageMatchByCode's own lookup already falls back to _id when
+    // given a valid ObjectId (see cageMatch.service.ts), so there's no
+    // need to populate cageMatchId just for this.
+    if (gameMeta?.cageMatchId)
+      list.push(
+        <Link
+          key="cage"
+          to={`/cage/${gameMeta.cageMatchId}`}
+          title="View cage match"
+          aria-label="Playing in a cage match — view details"
+        >
+          <Badge variant="glass" className="hover:brightness-110" title="View cage match">
+            <Swords className="h-3 w-3" />
+          </Badge>
+        </Link>,
+      );
     // White/black berserked badges now live on the player panels themselves,
     // right next to the clock they actually affect, see PlayerPanels.tsx's
     // BerserkBadge.
@@ -1474,6 +1502,7 @@ export function Game() {
     gameMeta?.variant,
     gameMeta?.wagerTokens,
     gameMeta?.tournamentId,
+    gameMeta?.cageMatchId,
   ]);
 
   const showChat = !settings.zenMode && role === "spectator" && live;
@@ -1548,16 +1577,7 @@ export function Game() {
   );
 
   if (loadError) {
-    return (
-      <div className="mx-auto mt-6 max-w-2xl px-4">
-        <Card
-          variant="solid"
-          className="border-red-900/50 bg-red-950/20 text-red-300"
-        >
-          {loadError}
-        </Card>
-      </div>
-    );
+    return <PageError message={loadError} className="px-4" />;
   }
 
   if (mode === "loading") {
@@ -1859,7 +1879,20 @@ export function Game() {
           viewOnly={
             !isPlayer || status !== "active" || pausedLeg || isViewingHistory
           }
-          turnColor={chess.turn() === "w" ? "white" : "black"}
+          // Read straight off displayFen's own active-color field (2nd
+          // space-separated part of a FEN string) rather than chess.turn()
+          // — chess/`fen` are always the LIVE position, but displayFen can
+          // be a historical one while scrubbing through the move list (see
+          // displayFen above). chessground's `check` highlight picks which
+          // king to mark based on this turnColor prop, not by scanning the
+          // fen itself, so a mismatch here doesn't just mislabel whose turn
+          // it is — with inCheck already correctly historical-aware (see
+          // its own useMemo above), it was highlighting the WRONG king
+          // during replay: inCheck said "someone's in check" using the
+          // right position, but turnColor was telling chessground it was
+          // still the live game's side to move, so it painted that side's
+          // king instead of whichever one displayFen actually has in check.
+          turnColor={displayFen.split(" ")[1] === "w" ? "white" : "black"}
           dests={dests}
           premoveDests={premoveDests}
           inCheck={inCheck}

@@ -19,6 +19,7 @@ import {
 import { sendFriendRequest, removeFriend } from "../api/friends.js";
 import { updateAuthUser } from "../api/authStore.js";
 import { ApiRequestError } from "../api/http.js";
+import { PageError } from "../components/PageError.js";
 import { formatTimeControl } from "../timeControls.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useConfirm } from "../contexts/ConfirmContext.js";
@@ -134,16 +135,7 @@ export function Profile() {
   }
 
   if (error) {
-    return (
-      <div className="mx-auto mt-6 max-w-2xl px-4">
-        <Card
-          variant="solid"
-          className="border-red-900/50 bg-red-950/20 text-red-300"
-        >
-          {error}
-        </Card>
-      </div>
-    );
+    return <PageError message={error} className="px-4" />;
   }
 
   if (!profile) {

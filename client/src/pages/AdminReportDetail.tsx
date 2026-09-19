@@ -9,6 +9,7 @@ import {
   type ReportStatus,
 } from "../api/admin.js";
 import { Card, Badge, Spinner, Button } from "../components/ui/index.js";
+import { PageError } from "../components/PageError.js";
 
 const STATUS_OPTIONS: ReportStatus[] = ["pending", "reviewing", "actioned", "dismissed"];
 
@@ -72,7 +73,7 @@ export function AdminReportDetail() {
   }
 
   if (!report) {
-    return <p className="p-6 text-base-content/60">Report not found.</p>;
+    return <PageError message="Report not found" className="mx-6" />;
   }
 
   const game = report.game;

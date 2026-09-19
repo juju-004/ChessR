@@ -43,6 +43,7 @@ import {
 } from "../components/tournaments/KnockoutBracket.js";
 import { Pagination } from "../components/Pagination.js";
 import { HelpTip } from "../components/HelpTip.js";
+import { PageError } from "../components/PageError.js";
 import { TIME_CONTROLS as TIME_PRESETS } from "../timeControls.js";
 import {
   MAX_WAGER_TOKENS,
@@ -74,6 +75,7 @@ import {
   Badge,
   Spinner,
   Input,
+  Textarea,
   Select,
   Switch,
   Avatar,
@@ -104,6 +106,7 @@ function EditTournamentForm({
 }) {
   const socket = useSocket();
   const [name, setName] = useState(tournament.name);
+  const [description, setDescription] = useState(tournament.description ?? "");
   const [format, setFormat] = useState<TournamentFormat>(tournament.format);
   const [variant, setVariant] = useState<"standard" | "chess960">(
     tournament.variant,
@@ -190,6 +193,7 @@ function EditTournamentForm({
     socket.emit("tournament:edit", {
       tournamentId: tournament._id,
       name: name.trim(),
+      description: description.trim() || null,
       format,
       variant,
       baseMinutes: preset.baseMinutes,
@@ -224,6 +228,15 @@ function EditTournamentForm({
             value={name}
             onChange={(e) => setName(e.target.value)}
             maxLength={MAX_EVENT_NAME_LENGTH}
+          />
+
+          <Textarea
+            label="Description (optional)"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Rules, context, anything players should know before joining…"
+            maxLength={1000}
+            rows={3}
           />
 
           <div>
@@ -717,7 +730,7 @@ function PlayerTournamentDetails({
   ].filter(Boolean) as { label: string; value: number }[];
 
   return (
-    <div className="w-full flex flex-col items-center max-w-full space-y-2">
+    <div className="w-full flex flex-col min-w-60 items-center max-w-full space-y-2">
       <div className="w-full rounded-xl bg-base-200/70 px-2 py-2.5">
         <div className="flex items-center gap-3 pb-3 pt-1">
           <Avatar
@@ -806,7 +819,7 @@ function PlayerTournamentDetails({
                   const myPoints = isP1
                     ? pairing.pointsAwarded.p1
                     : pairing.pointsAwarded.p2;
-                  resultText = `${myPoints} pt${myPoints === 1 ? "" : "s"}`;
+                  resultText = `${myPoints}`;
                   resultColor =
                     pairing.result === "draw"
                       ? "text-base-content/70"
@@ -992,6 +1005,7 @@ export function TournamentDetail() {
   // something you need to see every time you land on the page, especially
   // once the header/card title already shows the total.
   const [prizePoolOpen, setPrizePoolOpen] = useState(false);
+  const [descriptionOpen, setDescriptionOpen] = useState(false);
   const [standingsPage, setStandingsPage] = useState(0);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatSheetOpen, setChatSheetOpen] = useState(false);
@@ -1082,16 +1096,7 @@ export function TournamentDetail() {
   }, [socket, tournament?._id]);
 
   if (error) {
-    return (
-      <div className="mx-auto mt-6 max-w-lg px-4">
-        <Card
-          variant="solid"
-          className="border-red-900/50 bg-red-950/20 text-center text-red-300"
-        >
-          {error}
-        </Card>
-      </div>
-    );
+    return <PageError message={error} className="px-4" />;
   }
   if (!tournament) {
     return (
@@ -1437,6 +1442,35 @@ export function TournamentDetail() {
           </Card>
         )}
 
+        {tournament.description && (
+          <Card variant="solid">
+            <button
+              type="button"
+              onClick={() => setDescriptionOpen((v) => !v)}
+              className="flex w-full items-center justify-between text-left"
+              aria-expanded={descriptionOpen}
+            >
+              <CardTitle>Description</CardTitle>
+              <ChevronDown
+                className={`h-4 w-4 shrink-0 text-base-content/40 transition-transform ${
+                  descriptionOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+            {/* Same CSS-only grid-template-rows collapse as the prize pool
+             *  card below (see its comment) rather than Framer Motion's
+             *  height: "auto". */}
+            <div
+              className="grid overflow-hidden transition-[grid-template-rows] duration-200 ease-in-out"
+              style={{ gridTemplateRows: descriptionOpen ? "1fr" : "0fr" }}
+            >
+              <div className="min-h-0 pt-2 text-sm whitespace-pre-wrap text-base-content/70">
+                {tournament.description}
+              </div>
+            </div>
+          </Card>
+        )}
+
         {tournament.prizeSchedule.length > 0 && (
           <Card variant="solid">
             <button
@@ -1628,9 +1662,6 @@ export function TournamentDetail() {
 
         {tournament.format === "arena" && tournament.status === "active" && (
           <Card variant="solid">
-            <CardHeader>
-              <CardTitle>Pairing pool</CardTitle>
-            </CardHeader>
             {pairingPool.length > 0 ? (
               // Just names, wrapped and centered, rather than one full-width
               // avatar+points row per person — this list is often the
