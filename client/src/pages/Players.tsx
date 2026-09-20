@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/Button.js";
 import { Avatar } from "@/components/ui/Avatar.js";
 import { RCoin } from "@/components/ui/RCoin.js";
 import { ResponsiveOverlay } from "@/components/ui/ResponsiveOverlay.js";
+import { Spinner } from "@/components/ui/Spinner.js";
 import { RatingBadge } from "@/components/RatingBadge.js";
 
 /** Merged "Players" page, search-for-anyone (the old /find) and your
@@ -55,6 +56,11 @@ export function Players() {
     [notificationItems],
   );
   const [friends, setFriends] = useState<Friend[]>([]);
+  // True only until the very first fetch resolves (see refreshFriends
+  // below, which is also reused for background refreshes on friend
+  // accept/remove/online-status socket events — those shouldn't re-flash
+  // a spinner over an already-loaded list, just the initial mount should).
+  const [friendsLoading, setFriendsLoading] = useState(true);
   const [friendSearch, setFriendSearch] = useState("");
   const [tcIndex, setTcIndex] = useState(2);
   const [variant, setVariant] = useState<"standard" | "chess960">("standard");
@@ -77,7 +83,9 @@ export function Players() {
   );
 
   const refreshFriends = useCallback(() => {
-    listFriends().then((res) => setFriends(res.friends));
+    listFriends()
+      .then((res) => setFriends(res.friends))
+      .finally(() => setFriendsLoading(false));
   }, []);
 
   useEffect(() => {
@@ -360,17 +368,23 @@ export function Players() {
             </div>
           </div>
 
-          {friends.length === 0 && (
-            <p className="text-sm text-base-content/60">
-              No friends yet. Search for players above and add some!
-            </p>
-          )}
-          {friends.length > 0 && visibleFriends.length === 0 && (
-            <p className="text-sm text-base-content/60">
-              No friends match "{friendSearch}".
-            </p>
-          )}
-          {visibleFriends.map((f) => (
+          {friendsLoading ? (
+            <div className="flex justify-center py-6">
+              <Spinner className="text-base-content/40" />
+            </div>
+          ) : (
+            <>
+              {friends.length === 0 && (
+                <p className="text-sm text-base-content/60">
+                  No friends yet. Search for players above and add some!
+                </p>
+              )}
+              {friends.length > 0 && visibleFriends.length === 0 && (
+                <p className="text-sm text-base-content/60">
+                  No friends match "{friendSearch}".
+                </p>
+              )}
+              {visibleFriends.map((f) => (
             <div
               key={f.id}
               onClick={() => navigate(`/profile/${f.username}`)}
@@ -505,6 +519,8 @@ export function Players() {
               </span>
             </div>
           ))}
+            </>
+          )}
         </Card>
       </div>
     </Page>

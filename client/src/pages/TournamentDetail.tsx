@@ -730,7 +730,7 @@ function PlayerTournamentDetails({
   ].filter(Boolean) as { label: string; value: number }[];
 
   return (
-    <div className="w-full flex flex-col min-w-60 items-center max-w-full space-y-2">
+    <div className="w-full flex flex-col items-center max-w-full space-y-2">
       <div className="w-full rounded-xl bg-base-200/70 px-2 py-2.5">
         <div className="flex items-center gap-3 pb-3 pt-1">
           <Avatar
@@ -819,7 +819,7 @@ function PlayerTournamentDetails({
                   const myPoints = isP1
                     ? pairing.pointsAwarded.p1
                     : pairing.pointsAwarded.p2;
-                  resultText = `${myPoints}`;
+                  resultText = `${myPoints} pt${myPoints === 1 ? "" : "s"}`;
                   resultColor =
                     pairing.result === "draw"
                       ? "text-base-content/70"
@@ -1028,7 +1028,23 @@ export function TournamentDetail() {
   useEffect(() => {
     if (!socket || !tournament) return;
     const tournamentId = tournament._id;
-    socket.emit("tournament:watch", { tournamentId });
+    // Re-emits tournament:watch both on mount AND on every later 'connect'
+    // event, not just once — a dropped/reconnected socket gets a brand
+    // new connection server-side, and Socket.IO room membership does NOT
+    // survive that automatically, so without this, a tab that's been open
+    // long enough to hit a reconnect (idle timeout, brief network blip, a
+    // server deploy) silently stops receiving tournament:update broadcasts
+    // for the rest of its session — the page still looks "connected" the
+    // whole time since socket.io-client reconnects transparently, so
+    // there's no visible sign anything dropped, it just quietly stops
+    // updating until a full page refresh establishes a fresh connection
+    // and re-runs this effect from scratch. Game.tsx's game:join already
+    // does exactly this for the same reason (see its joinRoom/'connect'
+    // wiring), this just brings the tournament page in line with it.
+    function watch() {
+      if (!socket) return;
+      socket.emit("tournament:watch", { tournamentId });
+    }
     function onUpdate(payload: { code: string }) {
       if (payload.code === code) refresh();
     }
@@ -1049,6 +1065,7 @@ export function TournamentDetail() {
         setChatHasUnread(true);
       }
     }
+    socket.on("connect", watch);
     socket.on("tournament:update", onUpdate);
     socket.on("tournament:started", onUpdate);
     socket.on("tournament:cancelled", onUpdate);
@@ -1056,7 +1073,12 @@ export function TournamentDetail() {
     socket.on("tournament:error", onError);
     socket.on("tournament:chat_history", onChatHistory);
     socket.on("tournament:chat_message", onChatMessage);
+    // Covers the common case where the socket is already connected by the
+    // time this effect runs (normal navigation to the page) — 'connect'
+    // itself won't fire again for an already-open connection.
+    if (socket.connected) watch();
     return () => {
+      socket.off("connect", watch);
       socket.off("tournament:update", onUpdate);
       socket.off("tournament:started", onUpdate);
       socket.off("tournament:cancelled", onUpdate);
@@ -1662,6 +1684,9 @@ export function TournamentDetail() {
 
         {tournament.format === "arena" && tournament.status === "active" && (
           <Card variant="solid">
+            <CardHeader>
+              <CardTitle>Pairing pool</CardTitle>
+            </CardHeader>
             {pairingPool.length > 0 ? (
               // Just names, wrapped and centered, rather than one full-width
               // avatar+points row per person — this list is often the

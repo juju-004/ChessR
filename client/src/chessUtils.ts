@@ -331,6 +331,133 @@ export function addChess960CastlingDests(
   return dests;
 }
 
+/**
+ * Replays a single recorded move against a scratch `Chess` instance, for
+ * rebuilding historical positions (move-list navigation, and the
+ * no-stored-fen fallback for finished/aborted games).
+ *
+ * For a Chess960 game, a castle is recorded server-side as the literal SAN
+ * "O-O"/"O-O-O" (see gameState.service.ts), but every 960 game is created
+ * with castling rights hard-set to '-' (chess.js has no notion of
+ * non-standard castling — see chess960.service.ts), so a plain
+ * `chess.move('O-O')` sees "no castling rights available" and throws. That
+ * exception used to propagate out of the *entire* replay loop (it's wrapped
+ * in one try/catch), silently breaking history navigation for any 960 game
+ * that contained a castle anywhere in it, and making the no-fen fallback
+ * fall back to the STARTING position instead of the final one.
+ *
+ * This reimplements the server's manual castle (chess960Castling.ts's
+ * attemptCastle) purely to replay a move the server already validated once
+ * — no legality checking here, just moving the pieces and updating the FEN
+ * the same way. Standard games, and every non-castle 960 move, still go
+ * through chess.js's own `.move()` as before.
+ */
+export function replayMove(
+  chess: Chess,
+  san: string,
+  variant: 'standard' | 'chess960' | undefined,
+  initialFen: string,
+): void {
+  if (variant === 'chess960' && (san === 'O-O' || san === 'O-O-O')) {
+    const color = chess.turn(); // 'w' | 'b' — whoever's move this is
+    const rank = color === 'w' ? '1' : '8';
+    const files = getChess960StartingFiles(initialFen);
+    const side: 'kingside' | 'queenside' = san === 'O-O' ? 'kingside' : 'queenside';
+    const rookFile = side === 'kingside' ? files.kingsideRookFile : files.queensideRookFile;
+    const kingDestFile = side === 'kingside' ? 6 : 2; // g-file / c-file
+    const rookDestFile = side === 'kingside' ? 5 : 3; // f-file / d-file
+    const sq = (file: number) => `${FILES[file]}${rank}`;
+
+    chess.remove(sq(files.kingFile) as any);
+    chess.remove(sq(rookFile) as any);
+    chess.put({ type: 'k', color }, sq(kingDestFile) as any);
+    chess.put({ type: 'r', color }, sq(rookDestFile) as any);
+
+    // chess.js's remove/put don't advance the turn or move counters
+    // themselves, so patch the FEN fields a real .move() would have.
+    const parts = chess.fen().split(' ');
+    parts[1] = color === 'w' ? 'b' : 'w'; // turn
+    parts[2] = '-'; // castling rights (already '-' for every 960 game)
+    parts[3] = '-'; // en passant target (a castle never sets one)
+    parts[4] = String(Number(parts[4]) + 1); // halfmove clock (not a pawn move/capture)
+    if (color === 'b') parts[5] = String(Number(parts[5]) + 1); // fullmove
+    chess.load(parts.join(' '));
+    return;
+  }
+
+  chess.move(san);
+}
+
+/**
+ * Client-side counterpart to the server's chess960Castling.ts
+ * (detectCastlingAttempt + attemptCastle). chess.js has no notion of 960
+ * castling, and every 960 game's castling rights are hard-set to '-', so
+ * `chess.move({from, to})` for a castling drag (king dropped onto its own
+ * rook, or dragged straight to the g/c-file) always just returns null —
+ * chess.js doesn't recognize the shape, legal or not. Before this,
+ * Game.tsx's optimistic move application silently did nothing for a 960
+ * castle: the piece only actually moved once the server's `game:move` echo
+ * came back a full round-trip later, which is exactly what showed up as
+ * "movement feels laggy/hesitates" specifically on castling in 960 games.
+ *
+ * This detects the same two drag conventions the server does and applies
+ * the castle locally, speculatively — no legality checking (through-check,
+ * blocked squares, etc), the server remains the authority and will
+ * reject/correct this the normal way (onError reverting to
+ * confirmedFenRef) on the rare occasion it guesses wrong.
+ *
+ * Returns true if (from, to) was treated as a castle and applied to
+ * `chess` in place; false if it wasn't a castling shape at all, so the
+ * caller should fall through to a normal chess.move() call.
+ */
+export function applyChess960CastleMove(
+  chess: Chess,
+  from: string,
+  to: string,
+  initialFen: string,
+): boolean {
+  const piece = chess.get(from as any);
+  if (!piece || piece.type !== 'k') return false;
+  const color = piece.color; // 'w' | 'b'
+  const rank = color === 'w' ? '1' : '8';
+  if (to[1] !== rank) return false;
+
+  const files = getChess960StartingFiles(initialFen);
+  const toFile = FILES.indexOf(to[0]);
+  const fromFile = FILES.indexOf(from[0]);
+
+  const targetPiece = chess.get(to as any);
+  let side: 'kingside' | 'queenside' | null = null;
+  if (targetPiece && targetPiece.type === 'r' && targetPiece.color === color) {
+    if (toFile === files.kingsideRookFile) side = 'kingside';
+    else if (toFile === files.queensideRookFile) side = 'queenside';
+    else return false;
+  } else if (fromFile === files.kingFile) {
+    if (toFile === 6) side = 'kingside'; // g-file
+    else if (toFile === 2) side = 'queenside'; // c-file
+  }
+  if (!side) return false;
+
+  const rookFile = side === 'kingside' ? files.kingsideRookFile : files.queensideRookFile;
+  const kingDestFile = side === 'kingside' ? 6 : 2;
+  const rookDestFile = side === 'kingside' ? 5 : 3;
+  const sq = (file: number) => `${FILES[file]}${rank}`;
+
+  chess.remove(sq(files.kingFile) as any);
+  chess.remove(sq(rookFile) as any);
+  chess.put({ type: 'k', color }, sq(kingDestFile) as any);
+  chess.put({ type: 'r', color }, sq(rookDestFile) as any);
+
+  const parts = chess.fen().split(' ');
+  parts[1] = color === 'w' ? 'b' : 'w';
+  parts[2] = '-';
+  parts[3] = '-';
+  parts[4] = String(Number(parts[4]) + 1);
+  if (color === 'b') parts[5] = String(Number(parts[5]) + 1);
+  chess.load(parts.join(' '));
+  return true;
+}
+
 // ================= PREMOVE LOGIC =================
 /**
  * Premove destinations for chessground's `premovable.customDests`, confirmed
@@ -434,3 +561,90 @@ function castlingPremoveTargets(chess: Chess, color: 'white' | 'black'): string[
   return targets;
 }
 // =============== END PREMOVE LOGIC ================
+
+// ================= PGN EXPORT =================
+
+export interface PgnMoveEntry {
+  moveNumber: number; // ply, 1-based (odd = White, even = Black) — same as MoveLogEntry
+  san: string;
+}
+
+export interface PgnGameInfo {
+  white: string;
+  black: string;
+  result: "white" | "black" | "draw" | null;
+  variant: "standard" | "chess960";
+  initialFen: string;
+  moves: PgnMoveEntry[];
+  /** Game creation date, ISO string or Date. Defaults to now if omitted. */
+  date?: string | Date;
+  timeControl?: { baseSeconds: number | null; incrementSeconds: number };
+  site?: string;
+}
+
+/**
+ * Builds a standard PGN transcript for a finished game, for the "Copy PGN"
+ * export action (see Game.tsx's handleCopyPgn). Built from the game's own
+ * `moves` list (SAN + ply number) rather than chess.js's own `.pgn()`
+ * output: a Chess960 game's castling move gets to `chess` via a manual
+ * `remove/put/load` (see replayMove above), not `.move()`, and chess.js
+ * clears its internal move history on `.load()` — so `.pgn()` would come
+ * back missing moves, or empty, for any 960 game with a castle in it.
+ * Building the text directly from the move list sidesteps that entirely
+ * and works the same way for every variant.
+ */
+export function buildPgn(info: PgnGameInfo): string {
+  const resultTag =
+    info.result === "white"
+      ? "1-0"
+      : info.result === "black"
+        ? "0-1"
+        : info.result === "draw"
+          ? "1/2-1/2"
+          : "*";
+
+  const date = info.date ? new Date(info.date) : new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const dateTag = Number.isNaN(date.getTime())
+    ? "????.??.??"
+    : `${date.getFullYear()}.${pad(date.getMonth() + 1)}.${pad(date.getDate())}`;
+
+  // PGN header values can't contain a literal `"` — strip rather than
+  // escape, a username/site is never going to need one.
+  const clean = (s: string) => s.replace(/"/g, "");
+
+  const headers: Array<[string, string]> = [
+    ["Event", "Chessr Game"],
+    ["Site", clean(info.site ?? "chessr.app")],
+    ["Date", dateTag],
+    ["Round", "-"],
+    ["White", clean(info.white)],
+    ["Black", clean(info.black)],
+    ["Result", resultTag],
+  ];
+  if (info.timeControl) {
+    const { baseSeconds, incrementSeconds } = info.timeControl;
+    headers.push([
+      "TimeControl",
+      baseSeconds === null ? "-" : `${baseSeconds}+${incrementSeconds}`,
+    ]);
+  }
+  if (info.variant === "chess960") {
+    // Standard PGN tags for a non-default starting position — every PGN
+    // reader (lichess, chess.com, chess.js itself) needs SetUp+FEN to
+    // replay a 960 game correctly, Variant alone isn't enough.
+    headers.push(["Variant", "Chess960"]);
+    headers.push(["SetUp", "1"]);
+    headers.push(["FEN", info.initialFen]);
+  }
+  const headerText = headers.map(([k, v]) => `[${k} "${v}"]`).join("\n");
+
+  const parts: string[] = [];
+  for (const m of info.moves) {
+    if (m.moveNumber % 2 === 1) parts.push(`${Math.ceil(m.moveNumber / 2)}.`);
+    parts.push(m.san);
+  }
+  parts.push(resultTag);
+
+  return `${headerText}\n\n${parts.join(" ")}\n`;
+}

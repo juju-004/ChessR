@@ -376,10 +376,11 @@ export async function getGameByCode(code: string) {
     .populate("black", "username avatarGradient rating ratedGamesPlayed")
     // Just enough of the tournament for the "Back to tournament" link
     // (code), the in-game badge label (name), and — for formats that have
-    // one — the duration badge (format + arenaMinutes, see Game.tsx's
-    // badges list). Deliberately not the whole Tournament doc for every
-    // single game fetch.
-    .populate("tournamentId", "code name format arenaMinutes")
+    // one — the live countdown badge (format + arenaEndsAt; arenaMinutes
+    // kept too since it's the fallback shown before arenaEndsAt gets set
+    // at actual arena start, see Game.tsx's badges list). Deliberately
+    // not the whole Tournament doc for every single game fetch.
+    .populate("tournamentId", "code name format arenaMinutes arenaEndsAt")
     .lean();
   if (!game) throw ApiError.notFound("No game found with that code");
   return game;
@@ -655,4 +656,50 @@ export async function reconcileActiveGames(): Promise<{
   }
 
   return { resumed, timedOut, aborted, idleCancelled };
+}
+
+// An aborted game (nobody played it out — cancelled while waiting, or
+// abandoned/idle-timed-out with under 2 moves) has no game history worth
+// keeping, same reasoning as sweepCancelledTournaments for a cancelled
+// tournament. 24h, not sweepCancelledTournaments' 10 minutes, since
+// there's more reason here to leave a short window for a player to look
+// back at what just happened (e.g. "wait, why did that get aborted?")
+// before it's gone for good.
+const ABORTED_GAME_RETENTION_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Deletes standalone aborted games older than the retention window. Scoped
+ * to `status: 'aborted'` with `Game.status` leading the existing
+ * {status, createdAt} index, so this is an index-scan filtered by a plain
+ * equality + range, not a collection scan — cheap enough to run on every
+ * tick of the same periodic sweep reconcileActiveGames already runs on
+ * (see index.ts), rather than needing its own once-a-day schedule.
+ *
+ * Deliberately excludes any game that's a cage match leg or tournament
+ * pairing: CageMatch.legs[].gameId and Tournament.pairings[].gameId both
+ * reference the game by id (see those models), and deleting it out from
+ * under a pairing/leg would leave that slot in the match/tournament's
+ * history pointing at nothing. Those still age out on their own, just via
+ * the cage match / tournament's own lifecycle instead of this sweep. A
+ * wagered aborted game's stake has always already been refunded by the
+ * time status flips to 'aborted' (finalizeGame's callers all pair the two),
+ * so nothing financial is left unsettled by deleting it — Transaction docs
+ * do keep a `game` ref for the refund, which this leaves dangling, but
+ * that only costs the refund's own "view game" deep link, nothing about
+ * the transaction record (amount, type, timestamp) itself.
+ */
+export async function sweepAbortedGames(): Promise<{ deleted: number }> {
+  const cutoff = new Date(Date.now() - ABORTED_GAME_RETENTION_MS);
+  const result = await Game.deleteMany({
+    status: "aborted",
+    cageMatchId: { $exists: false },
+    tournamentId: { $exists: false },
+    // Also catches an aborted game from before endedAt existed on the
+    // schema (backfilled as null/missing) — same reasoning as
+    // sweepCancelledTournaments' cancelledAt fallback, no reason to let
+    // those sit around forever just because we don't know exactly when
+    // they ended.
+    $or: [{ endedAt: { $lte: cutoff } }, { endedAt: null }],
+  });
+  return { deleted: result.deletedCount ?? 0 };
 }

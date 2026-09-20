@@ -28,7 +28,6 @@ import {
   Trophy,
   FlipVertical,
   Settings,
-  Timer,
 } from "lucide-react";
 import { MoveList, MoveStrip } from "../components/MoveLog.js";
 import { PlayerPanelRow, panelMaterial } from "../components/PlayerPanels.js";
@@ -59,6 +58,7 @@ import { useHoldRepeat } from "../components/game/useHoldRepeat.js";
 import { GameNotificationsOverlay } from "../components/game/GameNotificationsOverlay.js";
 import { GameChatPanel } from "../components/game/GameChatPanel.js";
 import { PageError } from "../components/PageError.js";
+import { ArenaCountdownBadge } from "../components/game/ArenaCountdownBadge.js";
 import { PlayerChatPanel } from "../components/game/PlayerChatPanel.js";
 import type { ChatMessage } from "../lib/chatTypes.js";
 import { useMyActiveGame } from "../contexts/MyActiveGameContext.js";
@@ -74,6 +74,9 @@ import {
   isInCheck,
   computePremoveDests,
   addChess960CastlingDests,
+  applyChess960CastleMove,
+  replayMove,
+  buildPgn,
   computeMaterialDiff,
   computeLowTimeThresholdMs,
   computeFirstMoveThresholdMs,
@@ -163,6 +166,11 @@ export function Game() {
   // an unrelated error (e.g. "no disconnect to claim right now") would
   // incorrectly snap a perfectly fine optimistic position back.
   const pendingOptimisticMoveRef = useRef(false);
+  // The fen applyOptimisticMove predicted, so onMove (the server's echo)
+  // can tell "this is confirming the move I already showed" apart from
+  // "this is new information" (the opponent's move, or a correction). See
+  // onMove's own comment for why that distinction matters.
+  const optimisticFenRef = useRef<string | null>(null);
   const [moves, setMoves] = useState<MoveLogEntry[]>([]);
   const [whiteRemainingMs, setWhiteRemainingMs] = useState<number | null>(null);
   const [blackRemainingMs, setBlackRemainingMs] = useState<number | null>(null);
@@ -303,7 +311,7 @@ export function Game() {
       const fens = canExtend ? [...cache!.fens] : [replay.fen()];
       const startIndex = canExtend ? cache!.moves.length : 0;
       for (let i = startIndex; i < moves.length; i++) {
-        replay.move(moves[i].san);
+        replayMove(replay, moves[i].san, gameMeta?.variant, gameMeta?.initialFen ?? "");
         fens.push(replay.fen());
       }
 
@@ -677,7 +685,7 @@ export function Game() {
         if (!finalFen) {
           try {
             const replay = new Chess(game.initialFen);
-            for (const m of movesList) replay.move(m.san);
+            for (const m of movesList) replayMove(replay, m.san, game.variant, game.initialFen);
             finalFen = replay.fen();
           } catch {
             finalFen = game.initialFen;
@@ -767,6 +775,7 @@ export function Game() {
       setFen(payload.fen);
       confirmedFenRef.current = payload.fen;
       pendingOptimisticMoveRef.current = false;
+      optimisticFenRef.current = null;
       setMoves(payload.moves ?? []);
       setLastMove(deriveLastMove(payload.moves ?? []));
       confirmedLastMoveRef.current = deriveLastMove(payload.moves ?? []);
@@ -818,11 +827,29 @@ export function Game() {
     }
 
     function onMove(payload: any) {
-      setFen(payload.fen);
-      setLastMove([payload.from, payload.to]);
+      // If this is the server simply confirming the move WE just made
+      // (already shown via applyOptimisticMove, predicted fen matches),
+      // skip re-setting fen/lastMove: the board already displays this
+      // exact position, and setting the same fen again still forces a
+      // second chessground sync pass (a new `lastMove` array reference
+      // re-triggers ChessBoard's sync useLayoutEffect even though nothing
+      // actually needs to move) — real, avoidable synchronous work landing
+      // right on the highest-frequency moment of the game, which is most
+      // noticeable moving fast under time pressure. The opponent's moves,
+      // and any rare case where the optimistic guess didn't match the
+      // server's result, still go through the normal full update below so
+      // the board can self-correct.
+      const isOwnConfirmedMove =
+        pendingOptimisticMoveRef.current &&
+        payload.fen === optimisticFenRef.current;
+      if (!isOwnConfirmedMove) {
+        setFen(payload.fen);
+        setLastMove([payload.from, payload.to]);
+      }
       confirmedFenRef.current = payload.fen;
       confirmedLastMoveRef.current = [payload.from, payload.to];
       pendingOptimisticMoveRef.current = false;
+      optimisticFenRef.current = null;
       setWhiteRemainingMs(payload.whiteRemainingMs);
       setBlackRemainingMs(payload.blackRemainingMs);
       setTurnStartedAtMs(payload.turnStartedAtMs);
@@ -894,6 +921,7 @@ export function Game() {
       // shared error channel for more than just moves.
       if (pendingOptimisticMoveRef.current) {
         pendingOptimisticMoveRef.current = false;
+        optimisticFenRef.current = null;
         setFen(confirmedFenRef.current);
         setLastMove(confirmedLastMoveRef.current);
       }
@@ -1140,11 +1168,27 @@ export function Game() {
   ) {
     try {
       const localChess = new Chess(fen);
+      // Chess960 castling can't go through chess.js's own .move() at all
+      // (see applyChess960CastleMove's doc comment) — without this branch
+      // the optimistic apply below silently no-ops for a castle drag, and
+      // the piece only actually moves once the server's echo comes back,
+      // which is what showed up as "movement hesitates" on castling.
+      if (
+        gameMeta?.variant === "chess960" &&
+        applyChess960CastleMove(localChess, orig, dest, gameMeta.initialFen)
+      ) {
+        setFen(localChess.fen());
+        setLastMove([orig, dest]);
+        pendingOptimisticMoveRef.current = true;
+        optimisticFenRef.current = localChess.fen();
+        return;
+      }
       const applied = localChess.move({ from: orig, to: dest, promotion });
       if (!applied) return;
       setFen(localChess.fen());
       setLastMove([orig, dest]);
       pendingOptimisticMoveRef.current = true;
+      optimisticFenRef.current = localChess.fen();
     } catch {
       // Shouldn't happen (see doc comment: dests is computed off this same
       // position), but if it ever does, just skip the optimistic step and
@@ -1319,6 +1363,26 @@ export function Game() {
     }, 2000);
   };
 
+  // Only reachable once the game is finished (see the Share dropdown in
+  // the render below) — moves/result/gameMeta are all settled by then, no
+  // point handling the "still live" shape of any of those here.
+  const handleCopyPgn = () => {
+    if (!gameMeta) return;
+    const pgn = buildPgn({
+      white: gameMeta.white?.username ?? "White",
+      black: gameMeta.black?.username ?? "Black",
+      result: (gameOver?.result as "white" | "black" | "draw" | null) ?? null,
+      variant: gameMeta.variant,
+      initialFen: gameMeta.initialFen,
+      moves,
+      date: gameMeta.createdAt,
+      timeControl: gameMeta.timeControl,
+    });
+    copyToClipboard(pgn);
+    const n = notify("Copied PGN");
+    setTimeout(() => dismiss(n), 2000);
+  };
+
   function handleFlipBoard() {
     setBoardFlipped((f) => !f);
   }
@@ -1463,16 +1527,17 @@ export function Game() {
         </Link>,
       );
     // Only arena currently has a fixed duration (the pairing queue stays
-    // open for arenaMinutes then closes) — swiss/round-robin/knockout are
-    // paced by rounds, not a clock, so they have nothing to show here.
-    if (gameMeta?.tournamentId?.format === "arena" && gameMeta.tournamentId.arenaMinutes)
+    // open until arenaEndsAt, then closes) — swiss/round-robin/knockout
+    // are paced by rounds, not a clock, so they have nothing to show here.
+    // A live-ticking countdown against the real deadline, not a static
+    // "N min" readout of the configured duration (see
+    // ArenaCountdownBadge's own doc comment for why that changed).
+    if (gameMeta?.tournamentId?.format === "arena" && gameMeta.tournamentId.arenaEndsAt)
       list.push(
-        <Badge key="tourney-duration" variant="glass">
-          <span className="inline-flex items-center gap-1">
-            <Timer className="h-3 w-3" />
-            {gameMeta.tournamentId.arenaMinutes} min
-          </span>
-        </Badge>,
+        <ArenaCountdownBadge
+          key="tourney-duration"
+          endsAt={gameMeta.tournamentId.arenaEndsAt}
+        />,
       );
     // Same icon-only treatment as the tournament badge above. Links
     // straight to the match by its raw id rather than a fetched matchCode
@@ -1506,10 +1571,16 @@ export function Game() {
   ]);
 
   const showChat = !settings.zenMode && role === "spectator" && live;
-  // Same gating as spectator chat, just the mirror-image role check — see
-  // gameSocket.ts's player_chat:send / playerRoom for why these two never
-  // overlap.
-  const showPlayerChat = !settings.zenMode && isPlayer && live;
+  // Deliberately NOT gated on zenMode, unlike spectator chat above: Zen
+  // Mode is meant to strip ambient distractions (the crowd, cage-match
+  // banners, etc), not the two players' own ability to talk to each
+  // other mid-game — that's a feature, not noise. It used to share
+  // spectator chat's exact condition, which meant turning Zen Mode on
+  // silently hid the one chat you actually want in a 1:1 game (and,
+  // since it's a localStorage setting shared across tabs of the same
+  // browser, made it look "broken for both players" when testing both
+  // sides in one browser).
+  const showPlayerChat = isPlayer && live;
 
   // Persistent "White Wins. Timeout" style line for GameDetailsCard, see
   // that component's doc comment on resultSummary for why this needs to
@@ -1859,6 +1930,7 @@ export function Game() {
             badges={badges}
             code={code}
             onShare={handleShareGame}
+            onCopyPgn={status === "finished" ? handleCopyPgn : undefined}
             zenMode={settings.zenMode}
             spectatorCount={spectatorCount}
             moveListEntries={moveListEntries}

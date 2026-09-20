@@ -5,7 +5,7 @@ import { disconnectRedis } from './config/redis.js';
 import { createApp } from './app.js';
 import { initSocketServer } from './sockets/index.js';
 import { getIo } from './sockets/io.js';
-import { reconcileActiveGames } from './services/game.service.js';
+import { reconcileActiveGames, sweepAbortedGames } from './services/game.service.js';
 import { reconcileActiveTournaments, sweepCancelledTournaments } from './services/tournament.service.js';
 import { FriendRequest } from './models/FriendRequest.js';
 
@@ -69,6 +69,14 @@ async function main() {
     })
     .catch((err) => console.error('sweepCancelledTournaments failed on boot:', err));
 
+  // Same idea, for standalone aborted games (see sweepAbortedGames' own
+  // comment for what's excluded and why).
+  sweepAbortedGames()
+    .then(({ deleted }) => {
+      if (deleted) console.log(`🗑️  Swept ${deleted} aborted game(s) on boot.`);
+    })
+    .catch((err) => console.error('sweepAbortedGames failed on boot:', err));
+
   // Runs much more often than IDLE_PHASE_ABANDON_MS (5 min, in game.service.ts)
   // on purpose, if this ran every 5 minutes too, a game that just missed one
   // sweep could sit idle for close to double the intended threshold before
@@ -79,6 +87,7 @@ async function main() {
     reconcileActiveGames().catch((err) => console.error('periodic reconcileActiveGames failed:', err));
     reconcileActiveTournaments().catch((err) => console.error('periodic reconcileActiveTournaments failed:', err));
     sweepCancelledTournaments().catch((err) => console.error('periodic sweepCancelledTournaments failed:', err));
+    sweepAbortedGames().catch((err) => console.error('periodic sweepAbortedGames failed:', err));
   }, 60 * 1000);
   reconcileInterval.unref();
 

@@ -16,6 +16,9 @@ export interface GameMeta {
   wagerTokens?: number;
   cageMatchId?: string | null;
   legIndex?: number | null;
+  /** Set by mongoose timestamps, used for the PGN export's [Date] tag
+   *  (see chessUtils.ts's buildPgn / Game.tsx's handleCopyPgn). */
+  createdAt: string;
   /** Populated with just the join code by getGameByCode, enough for a
    *  "Back to tournament" link without pulling the whole Tournament doc. */
   /** Populated with the join code (for the "Back to tournament" link),
@@ -31,6 +34,12 @@ export interface GameMeta {
     name: string;
     format: "normal" | "swiss" | "round_robin" | "arena";
     arenaMinutes: number | null;
+    // Set once the arena tournament actually starts (see the server's
+    // ITournament doc comment) — always non-null in practice by the time
+    // a game page exists for one, since a game only gets created once
+    // pairing is live. Drives the live countdown badge in Game.tsx;
+    // arenaMinutes above is just the fallback while it's still null.
+    arenaEndsAt: string | null;
   } | null;
 }
 

@@ -1,12 +1,17 @@
 import { memo, type ReactNode, type RefObject } from "react";
-import { Share2, Users } from "lucide-react";
+import { Share2, Users, FileText } from "lucide-react";
 import { Card } from "../ui/index.js";
+import { Dropdown } from "../ui/Dropdown.js";
 import { cn } from "@/lib/cn.js";
 
 interface GameDetailsCardProps {
   badges: ReactNode[];
   code: string;
   onShare: () => void;
+  /** Only passed once the game is finished (see Game.tsx) — its presence,
+   *  not a separate status prop, is what decides whether Share becomes a
+   *  dropdown (Copy PGN + the normal share) or stays the plain button. */
+  onCopyPgn?: () => void;
   zenMode: boolean;
   spectatorCount: number;
   moveListEntries: ReactNode;
@@ -40,6 +45,7 @@ const RESULT_TONE_CLASS: Record<
 export const GameDetailsCard = memo(function GameDetailsCard({
   badges,
   onShare,
+  onCopyPgn,
   zenMode,
   spectatorCount,
   moveListEntries,
@@ -53,8 +59,23 @@ export const GameDetailsCard = memo(function GameDetailsCard({
        *  badges are showing, on phone this card is a flex-shrink:0
        *  sibling of the board, so any wobble here directly steals from
        *  or gives back space to the board. */}
-      <div className="flex min-h-6 flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
+      {/* min-h keeps this row's height stable whether 0 or several
+       *  badges are showing, on phone this card is a flex-shrink:0
+       *  sibling of the board, so any wobble here directly steals from
+       *  or gives back space to the board.
+       *
+       *  items-start + no flex-wrap on this outer row (was items-center +
+       *  flex-wrap) so the two halves — badges, and spectator-count/Share —
+       *  are always side by side on the same first line and never wrap as
+       *  whole units; Share getting pushed to its own line once there were
+       *  enough badges to fill a phone-width row was exactly that whole-
+       *  unit wrapping. The badges group itself still wraps internally
+       *  (flex-wrap + min-w-0 so it's actually allowed to shrink below its
+       *  content width instead of overflowing), items-start keeps Share
+       *  pinned to the top of that group instead of vertically re-centering
+       *  against it once it's two lines tall. */}
+      <div className="flex min-h-6 items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           {badges.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">{badges}</div>
           )}
@@ -68,15 +89,34 @@ export const GameDetailsCard = memo(function GameDetailsCard({
               <Users className="h-3.5 w-3.5" /> {spectatorCount}
             </span>
           )}
-          <button
-            type="button"
-            onClick={onShare}
-            aria-label="Copy game link"
-            title="Copy game link"
-            className="rounded-md cursor-pointer flex items-center gap-2 p-1 text-base-content/50 transition-colors hover:bg-base-300/60 hover:text-base-content"
-          >
-            <Share2 className="h-3.5 w-3.5" /> Share
-          </button>
+          {onCopyPgn ? (
+            <Dropdown
+              trigger={
+                <button
+                  type="button"
+                  aria-label="Share or export game"
+                  title="Share or export game"
+                  className="rounded-md cursor-pointer flex items-center gap-2 p-1 text-base-content/50 transition-colors hover:bg-base-300/60 hover:text-base-content"
+                >
+                  <Share2 className="h-3.5 w-3.5" /> Share
+                </button>
+              }
+              items={[
+                { label: "Copy PGN", icon: FileText, onClick: onCopyPgn },
+                { label: "Share game", icon: Share2, onClick: onShare },
+              ]}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={onShare}
+              aria-label="Copy game link"
+              title="Copy game link"
+              className="rounded-md cursor-pointer flex items-center gap-2 p-1 text-base-content/50 transition-colors hover:bg-base-300/60 hover:text-base-content"
+            >
+              <Share2 className="h-3.5 w-3.5" /> Share
+            </button>
+          )}
         </span>
       </div>
 

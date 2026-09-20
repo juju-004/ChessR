@@ -755,9 +755,17 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       }
 
       // Swap colors for the rematch, standard etiquette, and it means the same
-      // player isn't stuck playing white (or black) twice in a row.
-      const newWhite = isWhite ? game.black!.toString() : game.white.toString();
-      const newBlack = isWhite ? game.white.toString() : game.black!.toString();
+      // player isn't stuck playing white (or black) twice in a row. This must
+      // NOT depend on which of the two players happened to accept the offer
+      // (isWhite/isBlack above are only for the "were you even in this game"
+      // check) — it's a flat swap of the previous game's colors, full stop.
+      // Conditioning it on isWhite used to mean the swap only actually
+      // happened when the accepter was white; when the accepter was black
+      // (e.g. after the first rematch already flipped them to black) it
+      // silently produced the SAME colors as before, so rematches only ever
+      // alternated once and then got stuck.
+      const newWhite = game.black!.toString();
+      const newBlack = game.white.toString();
 
       try {
         await assertUnderActiveGameLimit(pending.fromUserId);

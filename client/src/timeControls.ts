@@ -46,7 +46,9 @@ export function animationDurationForTimeControl(
   if (baseSeconds === null) return 260; // unlimited/correspondence, treat as classical
   const baseMinutes = baseSeconds / 60;
   if (baseMinutes < 3) return 90; // bullet, quick snaps
-  if (baseMinutes < 10) return 140; // blitz, faster
+  // Blitz: was 140ms — David: still felt sluggish next to the pace of the
+  // clock, cut closer to bullet's snappiness.
+  if (baseMinutes < 10) return 100; // blitz, faster
   if (baseMinutes < 30) return 200; // rapid, the old fixed default
   return 260; // classical, normal, slower
 }
