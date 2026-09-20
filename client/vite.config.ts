@@ -11,24 +11,27 @@ export default defineConfig({
       // else going forward) import as `@/components/ui/...` instead of a
       // pile of `../../`. Existing app code keeps its relative imports —
       // this is additive, not a migration.
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
   server: {
     port: 5173,
     proxy: {
-      '/api': {
-        target: 'http://localhost:4000',
+      "/api": {
+        target: "http://localhost:4000",
         changeOrigin: true,
       },
       // Socket.IO client connects to `/` by default, which Vite would otherwise
       // try to serve itself. `ws: true` is required for the WebSocket upgrade —
       // without it the initial handshake proxies fine but upgrades silently fail.
-      '/socket.io': {
-        target: 'http://localhost:4000',
+      "/socket.io": {
+        target: "http://localhost:4000",
         changeOrigin: true,
         ws: true,
       },
     },
+  },
+  build: {
+    sourcemap: true,
   },
 });
