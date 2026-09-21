@@ -130,12 +130,26 @@ export async function scheduleFirstMoveTimer(gameId: string): Promise<void> {
   const gameDoc = await Game.findById(gameId).select('cageMatchId tournamentId').lean();
   const isSeriesGame = !!(gameDoc?.cageMatchId || gameDoc?.tournamentId);
   const graceMs = computeFirstMoveGraceMs(isSeriesGame);
+  // Captured now, checked again in fire() below: if a move actually lands
+  // (or the game is paused/rescheduled) before this timer goes off, that
+  // move's own finalizeMove call resets turnStartedAtMs — so a mismatch
+  // here means "something happened since I was scheduled", independent of
+  // (and a stronger check than) moveCount alone.
+  const expectedTurnStartedAtMs = state.turnStartedAtMs;
   const remaining = graceMs - (Date.now() - state.turnStartedAtMs);
 
   const fire = async () => {
     firstMoveTimers.delete(gameId);
     const fresh = await getLiveState(gameId);
-    if (!fresh || fresh.status !== 'active' || fresh.paused || fresh.moveCount >= 2) return;
+    if (
+      !fresh ||
+      fresh.status !== 'active' ||
+      fresh.paused ||
+      fresh.moveCount >= 2 ||
+      fresh.turnStartedAtMs !== expectedTurnStartedAtMs
+    ) {
+      return;
+    }
     const expiredSide = getSideToMove(fresh.fen);
     if (firstMoveTimeoutHandler) await firstMoveTimeoutHandler(gameId, expiredSide);
   };
@@ -145,9 +159,16 @@ export async function scheduleFirstMoveTimer(gameId: string): Promise<void> {
     return;
   }
 
+  // Same reasoning as scheduleGameTimer's FLAG_FALL_GRACE_MS just above: a
+  // move sent right as this reads 0 still has to travel over the network
+  // and go through applyMove's own two Redis round trips (read, then
+  // write) before moveCount actually reflects it — firing at the exact
+  // nominal deadline with zero buffer meant a move landing right at the
+  // wire could lose that race and get wrongly aborted out from under a
+  // player who, from their own screen, had actually made it in time.
   const timer = setTimeout(() => {
     fire().catch((err) => console.error('first-move timeout handling failed:', err));
-  }, remaining);
+  }, remaining + FLAG_FALL_GRACE_MS);
   timer.unref?.();
   firstMoveTimers.set(gameId, timer);
 }

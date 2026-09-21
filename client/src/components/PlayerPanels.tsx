@@ -9,6 +9,7 @@ import {
 import { Avatar } from "./ui/index.js";
 import { RatingBadge } from "./RatingBadge.js";
 import { cn } from "../lib/cn.js";
+import { serverNow } from "../lib/clockSync.js";
 
 // Black-tinted glyphs represent pieces captured *from* black (shown on
 // white's panel); white-tinted glyphs represent pieces captured from white
@@ -175,7 +176,11 @@ function FirstMoveBadge({
     return () => window.clearInterval(interval);
   }, []);
 
-  const elapsedMs = Date.now() - turnStartedAtMs;
+  // serverNow(), not a bare Date.now() — same reasoning as computeLiveMs
+  // below: turnStartedAtMs came from the server, so this needs the same
+  // clock-offset correction or two players can see different grace
+  // countdowns for the same actual deadline.
+  const elapsedMs = serverNow() - turnStartedAtMs;
   const remainingMs = graceMs - elapsedMs;
 
   // Not yet 5s in, or already expired (the server-side timeout will resolve
@@ -220,8 +225,13 @@ function computeLiveMs(
   isTicking: boolean,
 ): number | null {
   if (baseRemainingMs === null) return null;
+  // serverNow(), not a bare Date.now(): turnStartedAtMs is a timestamp the
+  // SERVER generated, so counting down against this device's own
+  // uncorrected clock only shows the same number on both players' screens
+  // if their two system clocks happen to agree — nothing guarantees that,
+  // and they measurably don't always. See clockSync.ts.
   return isTicking
-    ? baseRemainingMs - (Date.now() - turnStartedAtMs)
+    ? baseRemainingMs - (serverNow() - turnStartedAtMs)
     : baseRemainingMs;
 }
 
@@ -273,11 +283,17 @@ function ClockBadge({
   return (
     <div
       className={cn(
+        // No transition-colors, no animate-pulse: this badge re-renders
+        // every 100ms while ticking (see this component's own doc
+        // comment), so both the active/inactive color transition and the
+        // low-time pulse were re-triggering constantly during play, not
+        // just on the state changes they were meant for. David: flagged
+        // as a likely contributor to move lag.
         size === "sm"
-          ? "rounded-md px-1.5 py-1 font-mono text-xs font-bold tabular-nums transition-colors"
-          : "shrink-0 rounded-lg px-2.5 py-1 text-right font-mono text-sm font-bold tabular-nums transition-colors",
+          ? "rounded-md px-1.5 py-1 font-mono text-xs font-bold tabular-nums"
+          : "shrink-0 rounded-lg px-2.5 py-1 text-right font-mono text-sm font-bold tabular-nums",
         isLow
-          ? "animate-pulse bg-red-500/15 text-red-500"
+          ? "bg-red-500/15 text-red-500"
           : isTurn
             ? "gradient-brand text-white shadow-sm shadow-(--primary)/30"
             : "bg-base-300/60 text-base-content/80",

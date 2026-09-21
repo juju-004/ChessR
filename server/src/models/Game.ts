@@ -172,4 +172,19 @@ const gameSchema = new Schema<IGame>(
 // Fast lookup of a user's open game to join, and open-game listing.
 gameSchema.index({ status: 1, createdAt: -1 });
 
+// Supports getUserGames (a profile's game history): filters on
+// {status: 'finished', $or: [{white}, {black}]}, sorted by endedAt. There
+// was previously no index covering this at all — MongoDB had to do a full
+// collection scan plus an in-memory sort on every single request, which
+// gets slower as the total games collection grows over time (fast at
+// launch when the collection was tiny, much slower months later, exactly
+// the "it used to be quick, now it's 1s+" pattern this was caught from).
+// Two indexes rather than one {white, black, ...} compound, since the
+// query is an $or across two different fields (a game's white and black
+// side aren't the same field) — Mongo can satisfy each branch of the $or
+// from its own matching index this way, rather than neither branch
+// matching anything and falling back to a full scan.
+gameSchema.index({ white: 1, status: 1, endedAt: -1 });
+gameSchema.index({ black: 1, status: 1, endedAt: -1 });
+
 export const Game = mongoose.model<IGame>('Game', gameSchema);

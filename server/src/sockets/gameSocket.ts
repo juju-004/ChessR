@@ -162,7 +162,7 @@ async function endGameAndBroadcast(
 ) {
   clearGameTimer(gameId);
   clearFirstMoveTimer(gameId);
-  clearPendingDisconnect(gameId);
+  clearAllPendingDisconnects(gameId);
   const finalState = await endGame(gameId, result, endReason);
 
   // Wager settlement and rating are both quick and only happen once per
@@ -272,7 +272,7 @@ export function registerFirstMoveTimeoutHandler(io: Server) {
     if (!state) return;
 
     clearGameTimer(gameId);
-    clearPendingDisconnect(gameId);
+    clearAllPendingDisconnects(gameId);
     await finalizeGame(gameId, state.fen, 'aborted', null, 'first_move_timeout', {
       whiteRemainingMs: state.whiteRemainingMs,
       blackRemainingMs: state.blackRemainingMs,
@@ -300,10 +300,33 @@ interface PendingDisconnect {
   disconnectedUserId: string;
   expiresAt: number;
 }
+// Keyed by `${gameId}:${userId}`, NOT just gameId — a single game has two
+// players, and either one can independently disconnect/reconnect (most
+// visibly: reload both tabs of a self-play test close together). A
+// gameId-only key meant the second player's disconnect record silently
+// overwrote the first's, so the first player's own reconnect could never
+// find a matching entry to clear — leaving a permanently-stuck "opponent
+// disconnected" banner for a player who was actually back and playing.
 const pendingDisconnects = new Map<string, PendingDisconnect>();
 
-function clearPendingDisconnect(gameId: string) {
-  pendingDisconnects.delete(gameId);
+function pendingKey(gameId: string, userId: string): string {
+  return `${gameId}:${userId}`;
+}
+
+/** Clears one specific player's pending-disconnect record — e.g. on that
+ *  player's own reconnect. Does not touch the other player's, if any. */
+function clearPendingDisconnect(gameId: string, userId: string) {
+  pendingDisconnects.delete(pendingKey(gameId, userId));
+}
+
+/** Clears both players' pending-disconnect records at once — for
+ *  whole-game-ends cleanup (resign/abort/timeout/etc), where either or
+ *  neither side might have an entry and it doesn't matter which. */
+function clearAllPendingDisconnects(gameId: string) {
+  const prefix = `${gameId}:`;
+  for (const key of pendingDisconnects.keys()) {
+    if (key.startsWith(prefix)) pendingDisconnects.delete(key);
+  }
 }
 
 // --- Rematches ---------------------------------------------------------------
@@ -363,7 +386,7 @@ async function handlePotentialDisconnect(io: Server, gameId: string, userId: str
       if (freshState.moveCount < 2) return;
 
       const expiresAt = Date.now() + DISCONNECT_GRACE_MS;
-      pendingDisconnects.set(gameId, { disconnectedUserId: userId, expiresAt });
+      pendingDisconnects.set(pendingKey(gameId, userId), { disconnectedUserId: userId, expiresAt });
       io.to(gameRoom(gameId)).emit('game:opponent_disconnected', {
         userId,
         graceMs: DISCONNECT_GRACE_MS,
@@ -371,8 +394,8 @@ async function handlePotentialDisconnect(io: Server, gameId: string, userId: str
 
       setTimeout(async () => {
         // Only fire if nothing has changed this in the meantime (reconnect, resign, etc.)
-        const pending = pendingDisconnects.get(gameId);
-        if (!pending || pending.disconnectedUserId !== userId) return;
+        const pending = pendingDisconnects.get(pendingKey(gameId, userId));
+        if (!pending) return;
         const stillGone = !(await userStillInRoom(io, gameId, userId));
         if (!stillGone) return;
         io.to(gameRoom(gameId)).emit('game:claim_available', { userId });
@@ -425,10 +448,12 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         await socket.join(playerRoom(gameId));
       }
 
-      // Reconnecting clears any pending "opponent disconnected" state for this game.
-      const pending = pendingDisconnects.get(gameId);
-      if (pending && pending.disconnectedUserId === userId) {
-        clearPendingDisconnect(gameId);
+      // Reconnecting clears any pending "opponent disconnected" state for
+      // THIS player specifically (see pendingKey's own comment for why it's
+      // not just gameId) — the other player's own pending entry, if they
+      // also happen to be mid-reconnect right now, is untouched.
+      if (pendingDisconnects.has(pendingKey(gameId, userId))) {
+        clearPendingDisconnect(gameId, userId);
         io.to(gameRoom(gameId)).emit('game:opponent_reconnected', { userId });
       }
 
@@ -681,19 +706,34 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       if (!parsed.success) return emitError(socket, 'Invalid payload');
       const { gameId, claim } = parsed.data;
 
-      const pending = pendingDisconnects.get(gameId);
+      const state = await getLiveState(gameId);
+      if (!state) return emitError(socket, 'Game is not active');
+      if (state.whiteId !== userId && state.blackId !== userId) {
+        return emitError(socket, 'You are not a player in this game');
+      }
+      const opponentId = state.whiteId === userId ? state.blackId : state.whiteId;
+      if (!opponentId) return emitError(socket, 'There is no disconnect to claim right now');
+
+      const pending = pendingDisconnects.get(pendingKey(gameId, opponentId));
       if (!pending) return emitError(socket, 'There is no disconnect to claim right now');
       if (Date.now() < pending.expiresAt) {
         return emitError(socket, 'The grace period has not finished yet');
       }
 
-      const state = await getLiveState(gameId);
-      if (!state) return emitError(socket, 'Game is not active');
-
-      const isOpponent =
-        (state.whiteId === userId && state.blackId === pending.disconnectedUserId) ||
-        (state.blackId === userId && state.whiteId === pending.disconnectedUserId);
-      if (!isOpponent) return emitError(socket, 'You are not eligible to claim this game');
+      // Re-check live presence right now, rather than trusting the pending
+      // record on its own: it's only ever a snapshot from whenever the
+      // grace window opened, and could in principle be stale by the time
+      // someone actually clicks "claim" (a slow reconnect landing in the
+      // gap, a missed/delayed opponent_reconnected broadcast, or simply a
+      // future change to this bookkeeping). A win/draw claim ends the game
+      // outright, so it gets this one extra check rather than trusting
+      // cached state for something with that much weight.
+      const stillGone = !(await userStillInRoom(io, gameId, opponentId));
+      if (!stillGone) {
+        clearPendingDisconnect(gameId, opponentId);
+        io.to(gameRoom(gameId)).emit('game:opponent_reconnected', { userId: opponentId });
+        return emitError(socket, 'Your opponent is back — nothing to claim');
+      }
 
       const result = claim === 'draw' ? 'draw' : state.whiteId === userId ? 'white' : 'black';
       await endGameAndBroadcast(io, gameId, result, 'abandoned');
@@ -854,7 +894,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
 
       clearGameTimer(gameId);
       clearFirstMoveTimer(gameId);
-      clearPendingDisconnect(gameId);
+      clearAllPendingDisconnects(gameId);
       await finalizeGame(gameId, state.fen, 'aborted', null, 'aborted_no_moves', {
         whiteRemainingMs: state.whiteRemainingMs,
         blackRemainingMs: state.blackRemainingMs,

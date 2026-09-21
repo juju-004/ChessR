@@ -20,9 +20,11 @@ import { sendFriendRequest, removeFriend } from "../api/friends.js";
 import { updateAuthUser } from "../api/authStore.js";
 import { ApiRequestError } from "../api/http.js";
 import { PageError } from "../components/PageError.js";
-import { formatTimeControl } from "../timeControls.js";
+import { formatTimeControl, TIME_CONTROLS } from "../timeControls.js";
+import { MAX_WAGER_TOKENS, MIN_STAKE_TOKENS } from "../lib/limits.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useConfirm } from "../contexts/ConfirmContext.js";
+import { useNotify } from "../contexts/NotificationContext.js";
 import {
   Page,
   Card,
@@ -31,6 +33,10 @@ import {
   Badge,
   Spinner,
   TimeControlIcon,
+  Select,
+  Input,
+  ResponsiveOverlay,
+  RCoin,
 } from "../components/ui/index.js";
 import { EditProfileModal } from "../components/EditProfileModal.js";
 import { ReportUserModal } from "../components/ReportUserModal.js";
@@ -60,6 +66,14 @@ export function Profile() {
   const [friendRequestSent, setFriendRequestSent] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const { notify } = useNotify();
+  // Same challenge-form fields/defaults as the Players page's popover —
+  // kept local here rather than shared state since this page only ever
+  // challenges the one profile it's showing.
+  const [challengeOpen, setChallengeOpen] = useState(false);
+  const [tcIndex, setTcIndex] = useState(0);
+  const [variant, setVariant] = useState<"standard" | "chess960">("standard");
+  const [wagerInput, setWagerInput] = useState("0");
 
   useEffect(() => {
     if (!username) return;
@@ -103,6 +117,25 @@ export function Profile() {
       socket.off("friend:removed", onFriendRemoved);
     };
   }, [socket, profile?.id]);
+
+  // Same events the Players page's challenge popover listens for — the
+  // server doesn't ack challenge:send directly, success/failure come back
+  // as their own separate events instead.
+  useEffect(() => {
+    if (!socket) return;
+    function onSent() {
+      notify("Challenge sent. Waiting for a response…", [], 3000);
+    }
+    function onError(payload: { message: string }) {
+      notify(payload.message, [], 4000);
+    }
+    socket.on("challenge:sent", onSent);
+    socket.on("challenge:error", onError);
+    return () => {
+      socket.off("challenge:sent", onSent);
+      socket.off("challenge:error", onError);
+    };
+  }, [socket, notify]);
 
   // Lazy-loaded in pages of GAMES_PER_PAGE via "Load more" below, rather
   // than click-through pagination, each click appends to `games` instead
@@ -169,6 +202,29 @@ export function Profile() {
     setProfile((prev) => (prev ? { ...prev, isFriend: false } : prev));
   }
 
+  function handleChallenge() {
+    if (!socket || !profile) return;
+    // Being in a game doesn't block the challenge (they can just answer it
+    // once that game's done) — this is only a heads-up so it isn't a
+    // surprise later that the challenge sat unanswered for a while.
+    if (profile.activeGameCode) {
+      notify(`${profile.username} is currently in a game — sending anyway.`, [], 3000);
+    }
+    const tc = TIME_CONTROLS[tcIndex];
+    const wagerTokens = Math.min(
+      MAX_WAGER_TOKENS,
+      Math.max(0, Math.floor(Number(wagerInput) || 0)),
+    );
+    socket.emit("challenge:send", {
+      toUserId: profile.id,
+      baseMinutes: tc.baseMinutes,
+      incrementSeconds: tc.incrementSeconds,
+      variant,
+      wagerTokens,
+    });
+    setChallengeOpen(false);
+  }
+
   const gamesPlayed = profile.stats.gamesPlayed || 1;
   const winPct = Math.round((profile.stats.wins / gamesPlayed) * 100);
   const hasMoreGames = games.length < totalGames;
@@ -230,6 +286,88 @@ export function Profile() {
                       <Eye className="h-4 w-4" /> Watch
                     </Button>
                   </Link>
+                )}
+                {/* Only friends can be challenged (the server enforces this
+                    too — see challenge:send's own isFriend check — this just
+                    keeps the UI from offering an action that would only
+                    come back as an error). Being in a game right now
+                    doesn't hide it, see handleChallenge for that case. */}
+                {profile.isFriend && (
+                  <ResponsiveOverlay
+                    title={`Challenge ${profile.username}`}
+                    align="end"
+                    className="w-72 max-w-[calc(100vw-2rem)]"
+                    open={challengeOpen}
+                    onOpenChange={setChallengeOpen}
+                    icon={<Swords />}
+                    trigger={
+                      <Button variant="secondary" size="sm">
+                        <Swords className="h-4 w-4" /> Challenge
+                      </Button>
+                    }
+                  >
+                    <div className="space-y-3 px-4 md:px-2">
+                      {profile.activeGameCode && (
+                        <p className="text-xs text-base-content/50">
+                          {profile.username} is currently in a game — you can
+                          still send this, they'll see it once they're free.
+                        </p>
+                      )}
+                      <Select
+                        label="Time control"
+                        value={tcIndex}
+                        onChange={(e) => setTcIndex(Number(e.target.value))}
+                      >
+                        {TIME_CONTROLS.map((tc, i) => (
+                          <option key={tc.label} value={i}>
+                            {tc.label}
+                          </option>
+                        ))}
+                      </Select>
+                      <Select
+                        label="Variant"
+                        value={variant}
+                        onChange={(e) =>
+                          setVariant(e.target.value as "standard" | "chess960")
+                        }
+                      >
+                        <option value="standard">Standard</option>
+                        <option value="chess960">
+                          Chess960 (Fischer Random)
+                        </option>
+                      </Select>
+                      <Input
+                        label={
+                          <span className="inline-flex items-center gap-1">
+                            <RCoin size={12} /> Coin wager (optional)
+                          </span>
+                        }
+                        type="number"
+                        min={0}
+                        max={MAX_WAGER_TOKENS}
+                        step={1}
+                        value={wagerInput}
+                        onChange={(e) => setWagerInput(e.target.value)}
+                        error={
+                          Number(wagerInput) > 0 &&
+                          Math.floor(Number(wagerInput) || 0) < MIN_STAKE_TOKENS
+                            ? `Enter 0 for a free game, or at least ${MIN_STAKE_TOKENS} R`
+                            : undefined
+                        }
+                      />
+                      <Button
+                        className="w-full"
+                        variant="secondary"
+                        onClick={handleChallenge}
+                        disabled={
+                          Math.floor(Number(wagerInput) || 0) > 0 &&
+                          Math.floor(Number(wagerInput) || 0) < MIN_STAKE_TOKENS
+                        }
+                      >
+                        Send
+                      </Button>
+                    </div>
+                  </ResponsiveOverlay>
                 )}
                 {profile.isFriend ? (
                   <Button

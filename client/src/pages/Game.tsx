@@ -10,6 +10,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { Chess } from "chess.js";
 import { getGameByCode, joinGame, cancelGame } from "../api/games.js";
 import { ApiRequestError } from "../api/http.js";
+import { serverNow } from "../lib/clockSync.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useNotify } from "../contexts/NotificationContext.js";
@@ -589,8 +590,12 @@ export function Game() {
         myColor === "white" ? whiteRemainingMs : blackRemainingMs;
       if (remainingMs === null) return;
       const isMyTurn = turnColor(chess) === myColor;
+      // serverNow(), not a bare Date.now() — same clock-offset correction
+      // as PlayerPanels' computeLiveMs, so this sound fires in sync with
+      // what the clock is actually showing rather than by this device's
+      // own uncorrected clock. See clockSync.ts.
       const liveMs = isMyTurn
-        ? remainingMs - (Date.now() - turnStartedAtMs)
+        ? remainingMs - (serverNow() - turnStartedAtMs)
         : remainingMs;
       if (liveMs > 0 && liveMs <= lowTimeThresholdMs) {
         if (!lowTimeWarnedRef.current) {
@@ -621,10 +626,21 @@ export function Game() {
   // whatever position they're looking at).
   useEffect(() => {
     if (viewPly !== null) return;
-    const list = moveListScrollRef.current;
-    if (list) list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
-    const strip = moveStripScrollRef.current;
-    if (strip) strip.scrollTo({ left: strip.scrollWidth, behavior: "smooth" });
+    // requestAnimationFrame, not a synchronous read right here: reading
+    // scrollHeight/scrollWidth immediately after the move-list DOM update
+    // (a new move just got appended) forces the browser to do a layout
+    // pass RIGHT NOW instead of on its own schedule — a forced reflow, on
+    // literally every move, that gets more expensive as the move list
+    // grows over the course of a game. Deferring one frame lets this read
+    // land on layout work the browser was about to do anyway for the
+    // just-appended move, instead of adding an extra one.
+    const raf = requestAnimationFrame(() => {
+      const list = moveListScrollRef.current;
+      if (list) list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
+      const strip = moveStripScrollRef.current;
+      if (strip) strip.scrollTo({ left: strip.scrollWidth, behavior: "smooth" });
+    });
+    return () => cancelAnimationFrame(raf);
   }, [moves.length, viewPly]);
 
   // The board's allotted space can be either width- or height-bound
@@ -1970,7 +1986,7 @@ export function Game() {
           inCheck={inCheck}
           displayLastMove={displayLastMove}
           onUserMove={handleUserMove}
-          animationEnabled={settings.pieceAnimation}
+          animationEnabled={settings.pieceAnimation && animationDurationMs > 0}
           animationDurationMs={animationDurationMs}
           showCoordinates={settings.showCoordinates}
           showLegalMoves={settings.showLegalMoves}

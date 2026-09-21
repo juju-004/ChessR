@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, memo } from "react";
 import { useSocket } from "../contexts/SocketContext.js";
 import { Tooltip } from "./ui/Tooltip.js";
 import { cn } from "@/lib/cn.js";
+import { recordClockOffsetSample, resetClockOffset } from "@/lib/clockSync.js";
 
 type ConnState = "connecting" | "connected" | "reconnecting" | "disconnected";
 
@@ -90,6 +91,7 @@ export const ConnectionStatus = memo(function ConnectionStatus({
       setState("connecting");
       setLatencyMs(null);
       smoothedLatencyRef.current = null;
+      resetClockOffset();
       return;
     }
 
@@ -104,17 +106,26 @@ export const ConnectionStatus = memo(function ConnectionStatus({
         smoothedLatencyRef.current = null;
         setLatencyMs(null);
       }, PING_TIMEOUT_MS);
-      socket.emit("ping:check", sentAt, () => {
-        if (pingTimeoutRef.current) window.clearTimeout(pingTimeoutRef.current);
-        const sample = Date.now() - sentAt;
-        const prev = smoothedLatencyRef.current;
-        const next =
-          prev === null
-            ? sample
-            : Math.round(prev + LATENCY_EMA_ALPHA * (sample - prev));
-        smoothedLatencyRef.current = next;
-        setLatencyMs(next);
-      });
+      socket.emit(
+        "ping:check",
+        sentAt,
+        (payload: { clientSentAt: number; serverTime: number }) => {
+          if (pingTimeoutRef.current) window.clearTimeout(pingTimeoutRef.current);
+          const receivedAt = Date.now();
+          const sample = receivedAt - sentAt;
+          const prev = smoothedLatencyRef.current;
+          const next =
+            prev === null
+              ? sample
+              : Math.round(prev + LATENCY_EMA_ALPHA * (sample - prev));
+          smoothedLatencyRef.current = next;
+          setLatencyMs(next);
+          // Same round trip, no extra network cost: also feeds the shared
+          // clock-offset estimate the game clock display corrects with —
+          // see clockSync.ts for why this matters.
+          recordClockOffsetSample(payload.serverTime, sentAt, receivedAt);
+        },
+      );
     }
 
     function onConnect() {
@@ -127,6 +138,7 @@ export const ConnectionStatus = memo(function ConnectionStatus({
     function onDisconnect(reason: string) {
       setLatencyMs(null);
       smoothedLatencyRef.current = null;
+      resetClockOffset();
       if (pingTimerRef.current) window.clearInterval(pingTimerRef.current);
       // 'io server disconnect' / 'io client disconnect' are deliberate
       // (logout, server kicked us), anything else is the socket trying to

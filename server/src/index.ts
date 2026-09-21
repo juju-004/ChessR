@@ -8,6 +8,7 @@ import { getIo } from './sockets/io.js';
 import { reconcileActiveGames, sweepAbortedGames } from './services/game.service.js';
 import { reconcileActiveTournaments, sweepCancelledTournaments } from './services/tournament.service.js';
 import { FriendRequest } from './models/FriendRequest.js';
+import { Game } from './models/Game.js';
 
 async function main() {
   await connectMongo();
@@ -25,6 +26,17 @@ async function main() {
   // one-off migration script someone has to remember to run.
   await FriendRequest.syncIndexes().catch((err) => {
     console.error('FriendRequest.syncIndexes failed:', err);
+  });
+
+  // Same reasoning as FriendRequest above: guarantees the two indexes
+  // getUserGames needs (see Game.ts) actually get built on deploy rather
+  // than relying on autoIndex alone. On a games collection that's already
+  // grown a fair amount, building these for the first time isn't
+  // instant — MongoDB does it in the background without blocking reads or
+  // writes, but the old, slow, unindexed query plan is still what serves
+  // requests until the build finishes.
+  await Game.syncIndexes().catch((err) => {
+    console.error('Game.syncIndexes failed:', err);
   });
 
   const app = createApp();

@@ -8,7 +8,7 @@ export interface TimeControlOption {
 // creation, tournament creation, cage match leg editor, etc). Previously
 // three near-identical lists had drifted out of sync (different bullet/
 // blitz presets, tournament creation missing "Unlimited", the cage match
-// editor missing "Hyper Bullet"/"Bullet · 2+1"/the two Rapid variants), 
+// editor missing "Hyper Bullet"/"Bullet · 2+1"/the two Rapid variants),
 // this is now the one list every page imports, so a preset added or
 // changed here shows up everywhere consistently.
 export const TIME_CONTROLS: TimeControlOption[] = [
@@ -43,14 +43,17 @@ export function formatTimeControl(tc: {
 export function animationDurationForTimeControl(
   baseSeconds: number | null,
 ): number {
-  if (baseSeconds === null) return 260; // unlimited/correspondence, treat as classical
+  if (baseSeconds === null) return 220; // unlimited/correspondence, treat as classical
   const baseMinutes = baseSeconds / 60;
-  if (baseMinutes < 3) return 90; // bullet, quick snaps
-  // Blitz: was 140ms — David: still felt sluggish next to the pace of the
-  // clock, cut closer to bullet's snappiness.
-  if (baseMinutes < 10) return 100; // blitz, faster
-  if (baseMinutes < 30) return 200; // rapid, the old fixed default
-  return 260; // classical, normal, slower
+  // Bullet: David found piece animation actively hurt at this speed —
+  // 0 here means "no animation" (see the animationEnabled derivation in
+  // Game.tsx, which treats a 0 duration as disabling animation outright
+  // rather than asking chessground to animate over 0ms).
+  if (baseMinutes < 3) return 0; // bullet, instant
+  if (baseMinutes < 5) return 80; // blitz, still snappy but not zero
+  if (baseMinutes < 10) return 120; // blitz, still snappy but not zero
+  if (baseMinutes < 30) return 150; // rapid
+  return 220; // classical, normal, slower
 }
 
 export type TimeControlCategory =
@@ -85,4 +88,3 @@ export function timeControlCategoryFromSeconds(
 ): TimeControlCategory {
   return timeControlCategory(baseSeconds === null ? null : baseSeconds / 60);
 }
-
