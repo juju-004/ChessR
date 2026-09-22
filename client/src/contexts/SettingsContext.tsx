@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-export type BoardTheme = 'brown' | 'green' | 'blue' | 'gray' | 'purple' | 'walnut' | 'coral' | 'ic';
+export type BoardTheme = 'brown' | 'green' | 'blue' | 'gray' | 'purple';
 export type PieceTheme = 'classic' | 'mono' | 'contrast' | 'wood';
 
 export interface Settings {
@@ -16,10 +16,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  // Chessr's own default, per David — not the lichess "brown" default an
-  // earlier request briefly made this. See index.css's board-theme-blue
-  // rule for the actual square colors.
-  boardTheme: 'blue',
+  boardTheme: 'brown',
   pieceTheme: 'classic',
   pieceAnimation: true,
   autoQueen: false,
@@ -69,7 +66,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }
 
   // settings gets a brand-new object on every update anyway, so the
-  // useMemo here isn't about that, it's about *not* creating yet another
+  // useMemo here isn't about that — it's about *not* creating yet another
   // new value object (and re-rendering every useSettings() consumer)
   // whenever SettingsProvider re-renders for a reason that has nothing to
   // do with settings at all.

@@ -1,19 +1,16 @@
 import { useEffect, useState, memo } from "react";
-import { Link } from "react-router-dom";
-import { Swords, UserRound } from "lucide-react";
+import { Swords } from "lucide-react";
 import {
   formatClock,
   type CapturedPieceCount,
   type MaterialDiff,
 } from "../chessUtils.js";
 import { Avatar } from "./ui/index.js";
-import { RatingBadge } from "./RatingBadge.js";
 import { cn } from "../lib/cn.js";
-import { serverNow } from "../lib/clockSync.js";
 
 // Black-tinted glyphs represent pieces captured *from* black (shown on
 // white's panel); white-tinted glyphs represent pieces captured from white
-// (shown on black's panel), same visual convention lichess/chess.com use.
+// (shown on black's panel) — same visual convention lichess/chess.com use.
 const BLACK_GLYPH: Record<CapturedPieceCount["type"], string> = {
   q: "♛",
   r: "♜",
@@ -34,50 +31,36 @@ export interface PanelData {
   avatarGradient?: string | null;
   isTurn: boolean;
   connected: boolean;
-  /** Server-confirmed remaining time as of `turnStartedAtMs`. NOT a live
+  /** Server-confirmed remaining time as of `turnStartedAtMs` — NOT a live
    *  value. `ClockBadge` below derives the live countdown itself. */
   baseRemainingMs: number | null;
   turnStartedAtMs: number;
   /** True only while this side's clock is actively counting down. */
   isTicking: boolean;
   clockKnown: boolean;
-  /** From computeLowTimeThresholdMs, 0 means "never low" (unlimited time). */
+  /** From computeLowTimeThresholdMs — 0 means "never low" (unlimited time). */
   lowTimeThresholdMs: number;
   /** Net (already-cancelled) piece-type breakdown of this side's material
-   *  lead, empty if this side isn't ahead. */
+   *  lead — empty if this side isn't ahead. */
   pieceDiff: CapturedPieceCount[];
   glyphs: Record<CapturedPieceCount["type"], string>;
   /** Points this side is ahead by, 0 or negative if not ahead (or even). */
   advantage: number;
   /** Non-null only while THIS side's first move is the one still pending
-   *  (moveCount 0 for white, 1 for black), the grace window in ms from
+   *  (moveCount 0 for white, 1 for black) — the grace window in ms from
    *  computeFirstMoveThresholdMs. Renders in the same slot as MaterialBadge
    *  below the username, since the two can never be relevant at once (no
    *  capture is possible before either side's first move has even landed),
    *  which is what keeps this from ever pushing the board around. */
   firstMoveGraceMs: number | null;
-  /** True once this side has berserked, shows a small icon next to the
+  /** True once this side has berserked — shows a small icon next to the
    *  clock, close enough that it reads as "this clock got halved" rather
    *  than a generic status tag. */
   berserked: boolean;
-  /** Set only once a real player occupies this seat (not the "White"/
-   *  "Black" placeholder shown before anyone's joined), when present, the
-   *  panel's avatar/name link through to that player's profile. */
-  profileHref?: string | null;
-  /** Only meaningful once profileHref is set (a real player, not the
-   *  placeholder seat), the compact RatingBadge renders off of
-   *  `profileHref` being present, not this being non-null, since null
-   *  itself is a real state to show ("Unranked"). */
-  ratingCategory?: string | null;
-  /** Strips identity (avatar, username, profile link, rating badge) and
-   *  material difference down to a neutral placeholder, everything else
-   *  (clock, berserk, first-move countdown) still renders as normal, see
-   *  GameDetailsCard for zen mode's other effects (move list, badges). */
-  zenMode?: boolean;
 }
 
 /** Builds the display props one side's panel needs out of the raw material
- *  diff, the net per-type piece breakdown plus the point advantage, so
+ *  diff — the net per-type piece breakdown plus the point advantage — so
  *  callers don't have to repeat the white/black branching for every panel
  *  they render (a row on desktop, a flank column on mobile, etc). */
 export function panelMaterial(
@@ -97,7 +80,7 @@ export function panelMaterial(
       };
 }
 
-/** Material-diff display, the net per-type piece icons this side is up
+/** Material-diff display — the net per-type piece icons this side is up
  *  (already cancelled against the other side's captures of the same
  *  type, so a pawn-for-pawn trade shows nothing), plus a "+N" total point
  *  badge. Renders nothing at all when this side isn't ahead. */
@@ -112,16 +95,7 @@ function MaterialBadge({
   advantage: number;
   size?: "md" | "sm";
 }) {
-  // Piece icons and the point total are gated separately on purpose: which
-  // pieces THIS side captured shouldn't depend on the overall score. If
-  // you're up a bishop but down a rook elsewhere, `advantage` (the net
-  // point total) is negative even though you genuinely captured a bishop
-  //, the old `advantage <= 0` check hid the icons in that case too, which
-  // is the bug where a capture just silently didn't show on either panel
-  // whenever the two sides' captures happened to net out even overall.
-  // The "+N" point total, on the other hand, only makes sense on whichever
-  // side is actually ahead, so that part stays gated on advantage > 0.
-  if (pieceDiff.length === 0 && advantage <= 0) return null;
+  if (advantage <= 0) return null;
   return (
     <div
       className={cn(
@@ -138,16 +112,14 @@ function MaterialBadge({
           {glyphs[p.type].repeat(Math.min(p.count, 9))}
         </span>
       ))}
-      {advantage > 0 && (
-        <span
-          className={cn(
-            "font-bold text-(--primary)",
-            size === "sm" ? "text-[10px]" : "ml-0.5 text-xs",
-          )}
-        >
-          +{advantage}
-        </span>
-      )}
+      <span
+        className={cn(
+          "font-bold text-(--primary)",
+          size === "sm" ? "text-[10px]" : "ml-0.5 text-xs",
+        )}
+      >
+        +{advantage}
+      </span>
     </div>
   );
 }
@@ -155,8 +127,8 @@ function MaterialBadge({
 /**
  * Countdown for a still-pending first move, in the same slot MaterialBadge
  * would otherwise occupy (see the `firstMoveGraceMs` doc comment above for
- * why that's safe). Deliberately stays invisible for the first 5 seconds, 
- * nobody needs to be told to hurry up the instant the board loads, then
+ * why that's safe). Deliberately stays invisible for the first 5 seconds —
+ * nobody needs to be told to hurry up the instant the board loads — then
  * counts down the seconds left before this side's first move costs them the
  * game (or the game gets aborted, for a plain non-series game).
  */
@@ -176,15 +148,11 @@ function FirstMoveBadge({
     return () => window.clearInterval(interval);
   }, []);
 
-  // serverNow(), not a bare Date.now() — same reasoning as computeLiveMs
-  // below: turnStartedAtMs came from the server, so this needs the same
-  // clock-offset correction or two players can see different grace
-  // countdowns for the same actual deadline.
-  const elapsedMs = serverNow() - turnStartedAtMs;
+  const elapsedMs = Date.now() - turnStartedAtMs;
   const remainingMs = graceMs - elapsedMs;
 
   // Not yet 5s in, or already expired (the server-side timeout will resolve
-  // the game momentarily), render nothing rather than a stale "0s".
+  // the game momentarily) — render nothing rather than a stale "0s".
   if (elapsedMs < 5000 || remainingMs <= 0) return null;
 
   const seconds = Math.ceil(remainingMs / 1000);
@@ -194,7 +162,7 @@ function FirstMoveBadge({
         "flex min-w-0 items-center gap-1 font-semibold text-red-400",
         size === "sm" ? "justify-center text-[10px]" : "text-xs",
       )}
-      title="Move now: running out of time costs this game"
+      title="Move now — running out of time costs this game"
     >
       <span className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-red-400" />
       Move in {seconds}s
@@ -203,7 +171,7 @@ function FirstMoveBadge({
 }
 
 /** Small badge icon shown right next to the clock once a side has
- *  berserked, a halved clock is a big deal, so it stays close to the thing
+ *  berserked — a halved clock is a big deal, so it stays close to the thing
  *  it actually affects rather than living up with the game-level badges. */
 function BerserkBadge({ size = "md" }: { size?: "md" | "sm" }) {
   return (
@@ -212,7 +180,7 @@ function BerserkBadge({ size = "md" }: { size?: "md" | "sm" }) {
         "inline-flex shrink-0 items-center justify-center rounded-full bg-red-500/20 text-red-400",
         size === "sm" ? "h-4 w-4" : "h-5 w-5",
       )}
-      title="Berserked: clock halved for a bonus point if they win"
+      title="Berserked — clock halved for a bonus point if they win"
     >
       <Swords className={size === "sm" ? "h-2.5 w-2.5" : "h-3 w-3"} />
     </span>
@@ -225,14 +193,7 @@ function computeLiveMs(
   isTicking: boolean,
 ): number | null {
   if (baseRemainingMs === null) return null;
-  // serverNow(), not a bare Date.now(): turnStartedAtMs is a timestamp the
-  // SERVER generated, so counting down against this device's own
-  // uncorrected clock only shows the same number on both players' screens
-  // if their two system clocks happen to agree — nothing guarantees that,
-  // and they measurably don't always. See clockSync.ts.
-  return isTicking
-    ? baseRemainingMs - (serverNow() - turnStartedAtMs)
-    : baseRemainingMs;
+  return isTicking ? baseRemainingMs - (Date.now() - turnStartedAtMs) : baseRemainingMs;
 }
 
 /**
@@ -241,7 +202,7 @@ function computeLiveMs(
  * node instead of the whole game page.
  *
  * This used to be a value (`liveMs`) computed in Game.tsx's render body
- * from a page-level 100ms `setInterval`, which meant every clock tick
+ * from a page-level 100ms `setInterval` — which meant every clock tick
  * re-rendered the entire page (board, sidebar, any open modal) 10x/sec.
  * On low-end devices that main-thread churn was enough to visibly stutter
  * unrelated things like a modal's entrance animation. Moving the tick
@@ -283,17 +244,11 @@ function ClockBadge({
   return (
     <div
       className={cn(
-        // No transition-colors, no animate-pulse: this badge re-renders
-        // every 100ms while ticking (see this component's own doc
-        // comment), so both the active/inactive color transition and the
-        // low-time pulse were re-triggering constantly during play, not
-        // just on the state changes they were meant for. David: flagged
-        // as a likely contributor to move lag.
         size === "sm"
-          ? "rounded-md px-1.5 py-1 font-mono text-xs font-bold tabular-nums"
-          : "shrink-0 rounded-lg px-2.5 py-1 text-right font-mono text-sm font-bold tabular-nums",
+          ? "rounded-md px-1.5 py-1 font-mono text-xs font-bold tabular-nums transition-colors"
+          : "shrink-0 rounded-lg px-2.5 py-1 text-right font-mono text-sm font-bold tabular-nums transition-colors",
         isLow
-          ? "bg-red-500/15 text-red-500"
+          ? "animate-pulse bg-red-500/15 text-red-500"
           : isTurn
             ? "gradient-brand text-white shadow-sm shadow-(--primary)/30"
             : "bg-base-300/60 text-base-content/80",
@@ -304,7 +259,7 @@ function ClockBadge({
   );
 }
 
-/** Wide horizontal row, avatar, name + captured tray, clock, all in a
+/** Wide horizontal row — avatar, name + captured tray, clock, all in a
  *  line. Used for the desktop sidebar where there's room to spare. */
 export const PlayerPanelRow = memo(function PlayerPanelRow({
   username,
@@ -321,74 +276,36 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
   advantage,
   firstMoveGraceMs,
   berserked,
-  profileHref,
-  ratingCategory,
-  zenMode,
 }: PanelData) {
   return (
-    <div className="flex h-[54px] items-center gap-3 rounded-xl bg-base-200/70 px-3 py-2 text-base-content">
-      {zenMode ? (
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-base-300/70 text-base-content/40">
-          <UserRound className="h-4 w-4" />
-        </span>
-      ) : profileHref ? (
-        <Link to={profileHref} className="shrink-0">
-          <Avatar
-            username={username}
-            gradient={avatarGradient}
-            size="sm"
-            status={connected ? "online" : "offline"}
-          />
-        </Link>
-      ) : (
-        <Avatar
-          username={username}
-          gradient={avatarGradient}
-          size="sm"
-          status={connected ? "online" : "offline"}
-        />
-      )}
-      {/* No min-h reserved here on purpose, when neither badge below has
-       *  anything to show, this column is just the username line, and
-       *  `items-center` on the row centers it normally. The row itself is
-       *  a fixed height (above), not this column, so when a badge *does*
-       *  render, the now-taller two-line column re-centers (shifting the
-       *  username up to make room) without changing the row's own size, 
-       *  which matters because on phone this row is a flex sibling of the
-       *  board itself (see .game-area-toppanel/-bottompanel in Game.tsx),
-       *  so a resizing row would resize the board mid-game. */}
+    <div className="flex items-center gap-3 rounded-xl bg-base-200/70 px-3 py-2 text-base-content">
+      <Avatar
+        username={username}
+        gradient={avatarGradient}
+        size="sm"
+        status={connected ? "online" : "offline"}
+      />
       <div className="min-w-0 flex-1">
-        {zenMode ? (
-          <p className="truncate text-sm font-semibold text-base-content/40">
-            Hidden
-          </p>
-        ) : profileHref ? (
-          <Link
-            to={profileHref}
-            className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-base-content hover:text-(--primary)"
-          >
-            <span className="min-w-0 truncate">{username}</span>
-            <RatingBadge category={ratingCategory ?? null} compact />
-          </Link>
-        ) : (
-          <p className="truncate text-sm font-semibold text-base-content">
-            {username}
-          </p>
-        )}
-        {firstMoveGraceMs !== null ? (
-          <FirstMoveBadge
-            turnStartedAtMs={turnStartedAtMs}
-            graceMs={firstMoveGraceMs}
-          />
-        ) : (
-          !zenMode && (
+        <p className="truncate text-sm font-semibold text-base-content">
+          {username}
+        </p>
+        {/* Fixed height regardless of what's inside (or nothing at all) —
+         *  both FirstMoveBadge and MaterialBadge can render null, and on
+         *  phone this row is a flex sibling of the board itself (see
+         *  .game-area-toppanel/-bottompanel in Game.tsx), so letting this
+         *  line's height come and go with material captures would resize
+         *  the board mid-game every time a piece gets taken. */}
+        <div className="min-h-[18px]">
+          {firstMoveGraceMs !== null ? (
+            <FirstMoveBadge turnStartedAtMs={turnStartedAtMs} graceMs={firstMoveGraceMs} />
+          ) : (
             <MaterialBadge
               pieceDiff={pieceDiff}
               glyphs={glyphs}
               advantage={advantage}
             />
-          )
-        )}
+          )}
+        </div>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
         {berserked && <BerserkBadge />}
@@ -405,7 +322,7 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
   );
 });
 
-/** Narrow vertical column, avatar/name/clock/captures stacked. Used to
+/** Narrow vertical column — avatar/name/clock/captures stacked. Used to
  *  flank the board on mobile, where there's height (alongside the board)
  *  but very little width to work with. */
 export const PlayerPanelFlank = memo(function PlayerPanelFlank({
@@ -423,7 +340,6 @@ export const PlayerPanelFlank = memo(function PlayerPanelFlank({
   advantage,
   firstMoveGraceMs,
   berserked,
-  profileHref,
   className,
 }: PanelData & { className?: string }) {
   return (
@@ -433,35 +349,15 @@ export const PlayerPanelFlank = memo(function PlayerPanelFlank({
         className,
       )}
     >
-      {profileHref ? (
-        <Link to={profileHref}>
-          <Avatar
-            username={username}
-            gradient={avatarGradient}
-            size="sm"
-            status={connected ? "online" : "offline"}
-          />
-        </Link>
-      ) : (
-        <Avatar
-          username={username}
-          gradient={avatarGradient}
-          size="sm"
-          status={connected ? "online" : "offline"}
-        />
-      )}
-      {profileHref ? (
-        <Link
-          to={profileHref}
-          className="w-full truncate text-[11px] font-semibold text-base-content hover:text-(--primary) hover:underline"
-        >
-          {username}
-        </Link>
-      ) : (
-        <p className="w-full truncate text-[11px] font-semibold text-base-content">
-          {username}
-        </p>
-      )}
+      <Avatar
+        username={username}
+        gradient={avatarGradient}
+        size="sm"
+        status={connected ? "online" : "offline"}
+      />
+      <p className="w-full truncate text-[11px] font-semibold text-base-content">
+        {username}
+      </p>
       <div className="flex shrink-0 items-center gap-1">
         {berserked && <BerserkBadge size="sm" />}
         <ClockBadge
@@ -475,14 +371,10 @@ export const PlayerPanelFlank = memo(function PlayerPanelFlank({
         />
       </div>
       {/* Fixed height for the same reason as PlayerPanelRow's equivalent
-       *  slot, see its comment. */}
-      <div className="min-h-3.5 w-full">
+       *  slot — see its comment. */}
+      <div className="min-h-[14px] w-full">
         {firstMoveGraceMs !== null ? (
-          <FirstMoveBadge
-            turnStartedAtMs={turnStartedAtMs}
-            graceMs={firstMoveGraceMs}
-            size="sm"
-          />
+          <FirstMoveBadge turnStartedAtMs={turnStartedAtMs} graceMs={firstMoveGraceMs} size="sm" />
         ) : (
           <MaterialBadge
             pieceDiff={pieceDiff}

@@ -3,21 +3,13 @@ import { apiFetch } from './http.js';
 export interface Friend {
   id: string;
   username: string;
-  avatarUrl?: string | null;
-  avatarGradient?: string | null;
-  ratingCategory: string | null;
   online: boolean;
   activeGameCode: string | null;
 }
 
 export interface IncomingRequest {
   _id: string;
-  from: {
-    _id: string;
-    username: string;
-    avatarGradient?: string | null;
-    ratingCategory: string | null;
-  };
+  from: { _id: string; username: string };
 }
 
 export function listFriends() {

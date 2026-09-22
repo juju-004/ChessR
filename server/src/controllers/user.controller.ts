@@ -4,32 +4,22 @@ import { Game } from '../models/Game.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { getActiveGameCodeForUser } from '../services/game.service.js';
-import { getRatingCategory, gamesUntilRanked, pointsToNextTier } from '../services/rating.service.js';
 import type { AuthedRequest } from '../middleware/auth.js';
 
 const searchSchema = z.object({
   q: z.string().trim().min(1).max(24),
 });
 
-// Mirrors the ids in client/src/lib/avatarGradients.ts, kept as a plain
+// Mirrors the ids in client/src/lib/avatarGradients.ts — kept as a plain
 // allow-list here (not colors, we don't need those server-side) so a
 // gradient value can never end up holding an arbitrary/unstyled string.
 const VALID_AVATAR_GRADIENTS = [
   'brand', 'sunset', 'ocean', 'forest', 'berry', 'fire', 'midnight', 'gold', 'rose', 'ice',
 ] as const;
 
-const usernameSchema = z
-  .string()
-  .trim()
-  .min(3)
-  .max(24)
-  .regex(/^[a-zA-Z0-9_]+$/, 'Username may only contain letters, numbers, underscores');
-
 const updateProfileSchema = z.object({
   avatarGradient: z.enum(VALID_AVATAR_GRADIENTS).optional(),
   bio: z.string().trim().max(160).optional(),
-  username: usernameSchema.optional(),
-  acceptChallenges: z.boolean().optional(),
 });
 
 export const updateMyProfile = asyncHandler(async (req: AuthedRequest, res) => {
@@ -38,20 +28,9 @@ export const updateMyProfile = asyncHandler(async (req: AuthedRequest, res) => {
   const update: Record<string, unknown> = {};
   if (body.avatarGradient !== undefined) update.avatarGradient = body.avatarGradient;
   if (body.bio !== undefined) update.bio = body.bio;
-  if (body.acceptChallenges !== undefined) update.acceptChallenges = body.acceptChallenges;
-  if (body.username !== undefined) {
-    const usernameLower = body.username.toLowerCase();
-    const taken = await User.exists({
-      usernameLower,
-      _id: { $ne: req.user!.id },
-    });
-    if (taken) throw ApiError.conflict('That username is already taken');
-    update.username = body.username;
-    update.usernameLower = usernameLower;
-  }
 
   const user = await User.findByIdAndUpdate(req.user!.id, update, { new: true })
-    .select('username avatarUrl avatarGradient bio acceptChallenges')
+    .select('username avatarUrl avatarGradient bio')
     .lean();
   if (!user) throw ApiError.notFound('User not found');
 
@@ -60,57 +39,25 @@ export const updateMyProfile = asyncHandler(async (req: AuthedRequest, res) => {
     avatarUrl: user.avatarUrl,
     avatarGradient: user.avatarGradient,
     bio: user.bio,
-    acceptChallenges: user.acceptChallenges,
   });
 });
 
-// Self-only, deliberately not folded into getProfile (which any signed-in
-// visitor can call for any :username): the gap to someone's next tier is
-// only meaningful for your own progress, and repeatedly reading it for
-// someone else would let a determined visitor slowly triangulate their
-// hidden rating. The badge's help-tip popover fetches this on demand
-// rather than it riding along with every profile load.
-export const getMyRatingProgress = asyncHandler(async (req: AuthedRequest, res) => {
-  const user = await User.findById(req.user!.id).select('rating ratedGamesPlayed').lean();
-  if (!user) throw ApiError.notFound('User not found');
-
-  res.json({
-    ratingCategory: getRatingCategory(user.rating, user.ratedGamesPlayed),
-    ratedGamesUntilRanked: gamesUntilRanked(user.ratedGamesPlayed),
-    pointsToNextTier: pointsToNextTier(user.rating, user.ratedGamesPlayed),
-  });
-});
-
-export const searchUsers = asyncHandler(async (req: AuthedRequest, res) => {
+export const searchUsers = asyncHandler(async (req, res) => {
   const { q } = searchSchema.parse(req.query);
   const regex = new RegExp('^' + q.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
-  const users = await User.find({
-    usernameLower: regex,
-    // optionalAuth, so req.user may be undefined (a logged-out visitor
-    // searching players), only exclude when there's actually a self to
-    // exclude.
-    ...(req.user ? { _id: { $ne: req.user.id } } : {}),
-  })
-    .select('username avatarUrl avatarGradient rating ratedGamesPlayed')
+  const users = await User.find({ usernameLower: regex })
+    .select('username avatarUrl avatarGradient')
     .limit(20)
     .lean();
 
-  res.json({
-    users: users.map((u) => ({
-      _id: u._id,
-      username: u.username,
-      avatarUrl: u.avatarUrl,
-      avatarGradient: u.avatarGradient,
-      ratingCategory: getRatingCategory(u.rating, u.ratedGamesPlayed),
-    })),
-  });
+  res.json({ users });
 });
 
 export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
   const { username } = req.params;
   const user = await User.findOne({ usernameLower: username.toLowerCase() })
-    .select('username avatarUrl avatarGradient bio friends createdAt rating ratedGamesPlayed')
+    .select('username avatarUrl avatarGradient bio friends createdAt')
     .lean();
 
   if (!user) throw ApiError.notFound('User not found');
@@ -139,11 +86,11 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
 
   const isFriend = req.user ? user.friends.some((f) => f.toString() === req.user!.id) : false;
   const isSelf = req.user?.id === user._id.toString();
-  // Only worth checking once we know it isn't the viewer's own profile, 
+  // Only worth checking once we know it isn't the viewer's own profile —
   // there's no "watch yourself" button to show either way.
-  const activeGameCode = isSelf ? null : await getActiveGameCodeForUser(user._id.toString(), req.user?.id);
+  const activeGameCode = isSelf ? null : await getActiveGameCodeForUser(user._id.toString());
 
-  // Head-to-head record against whoever's looking at this profile, only
+  // Head-to-head record against whoever's looking at this profile — only
   // makes sense when someone's logged in and it's not their own profile.
   let h2h: { wins: number; losses: number; draws: number } | null = null;
   if (req.user && !isSelf) {
@@ -173,7 +120,7 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
       }),
     ]);
     const total = viewerWins + viewerLosses + viewerDraws;
-    // null (not a zeroed object) when they've simply never played, lets
+    // null (not a zeroed object) when they've simply never played — lets
     // the client skip rendering the h2h card entirely rather than showing
     // an empty "0-0-0" for every stranger's profile.
     h2h = total > 0 ? { wins: viewerWins, losses: viewerLosses, draws: viewerDraws } : null;
@@ -186,8 +133,6 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
     avatarGradient: user.avatarGradient,
     bio: user.bio,
     memberSince: user.createdAt,
-    ratingCategory: getRatingCategory(user.rating, user.ratedGamesPlayed),
-    ratedGamesUntilRanked: gamesUntilRanked(user.ratedGamesPlayed),
     stats: { wins, losses, draws, gamesPlayed: wins + losses + draws },
     isFriend,
     isSelf,
@@ -237,7 +182,7 @@ export const getUserGames = asyncHandler(async (req, res) => {
       result: myResult,
       endReason: g.endReason,
       timeControl: g.timeControl,
-      // game.moves.length is a *ply* count (one entry per half-move. White's
+      // game.moves.length is a *ply* count (one entry per half-move — White's
       // e4 and Black's e5 are two separate entries). The number chess
       // players actually mean by "N moves" only increments once per full
       // move pair, so this needs to be halved (rounding up, since a game

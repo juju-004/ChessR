@@ -13,7 +13,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { getTransactions, type Transaction } from "../api/wallet.js";
-import { TestModeBanner } from "../components/TestModeBanner.js";
 import {
   Page,
   Card,
@@ -59,7 +58,7 @@ const typeIcons: Record<Transaction["type"], LucideIcon> = {
 };
 
 // Whether a transaction type ADDS to the balance (+) or REMOVES from it (-)
-//, shown as a colored sign next to the token amount so it's clear at a
+// — shown as a colored sign next to the token amount so it's clear at a
 // glance which way the tokens moved, not just how many.
 const typeAddsTokens: Record<Transaction["type"], boolean> = {
   purchase: true,
@@ -100,7 +99,6 @@ export function Transactions() {
       back="/"
       bare
     >
-      <TestModeBanner className="mb-4" />
       {loading && (
         <div className="flex justify-center py-16">
           <Spinner />
@@ -132,12 +130,10 @@ export function Transactions() {
                       {typeLabels[t.type]}
                       <span
                         className={`inline-flex items-center gap-1 text-xs font-normal ${
-                          typeAddsTokens[t.type]
-                            ? "text-green-400"
-                            : "text-red-400"
+                          typeAddsTokens[t.type] ? "text-green-400" : "text-red-400"
                         }`}
                       >
-                        {typeAddsTokens[t.type] ? "+" : "-"}
+                        · {typeAddsTokens[t.type] ? "+" : "-"}
                         <RCoin size={12} /> {t.tokens}
                       </span>
                     </p>

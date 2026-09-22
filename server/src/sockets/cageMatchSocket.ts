@@ -13,27 +13,23 @@ import {
   getCageMatchByCode,
   type CageLegInput,
 } from '../services/cageMatch.service.js';
-import { assertUnderActiveGameLimit, countActiveGamesForUser, MAX_ACTIVE_GAMES_PER_USER, activeGameLimitMessage } from '../services/game.service.js';
-import { assertNotRestricted } from '../services/suspension.service.js';
+import { assertUnderActiveGameLimit, countActiveGamesForUser, MAX_ACTIVE_GAMES_PER_USER } from '../services/game.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
 const CAGE_INVITE_TTL_SECONDS = 90;
 const inviteKey = (id: string) => `cageInvite:${id}`;
-// Same anti-spam pattern as challengeSocket.ts's pendingPairKey, blocks a
+// Same anti-spam pattern as challengeSocket.ts's pendingPairKey — blocks a
 // second cage:send to the same person while one's still unanswered.
 const pendingInvitePairKey = (fromId: string, toId: string) => `cageInvite:pending:${fromId}:${toId}`;
 
-// Pause/resume requests are short-lived, Redis-backed, and keyed by match, 
+// Pause/resume requests are short-lived, Redis-backed, and keyed by match —
 // same pattern as a normal challenge invite, just scoped to a specific match
 // rather than a specific pair of strangers.
 const PAUSE_REQUEST_TTL_SECONDS = 60;
 const pauseRequestKey = (matchId: string) => `cagePauseReq:${matchId}`;
 const resumeRequestKey = (matchId: string) => `cageResumeReq:${matchId}`;
 
-const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
-// Floor on any single wager/stake/fee amount, kept in sync with
-// MIN_STAKE_TOKENS in client/src/lib/limits.ts.
-const MIN_STAKE_TOKENS = 20;
+const MAX_WAGER_TOKENS = 100_000;
 
 const legSchema = z.object({
   variant: z.enum(['standard', 'chess960']).default('standard'),
@@ -46,8 +42,8 @@ const sendSchema = z.object({
   legs: z.array(legSchema).min(2).max(30),
   winnerMode: z.enum(['total_score', 'most_categories', 'first_to_n']).default('total_score'),
   targetWins: z.number().int().min(1).max(30).nullable().optional().default(null),
-  wagerMode: z.enum(['winner_takes_all', 'per_leg', 'split_even']).default('winner_takes_all'),
-  wagerTokens: z.number().int().min(MIN_STAKE_TOKENS, `A wager of at least ${MIN_STAKE_TOKENS} R is required for every cage match`).max(MAX_WAGER_TOKENS),
+  wagerMode: z.enum(['none', 'winner_takes_all', 'per_leg', 'split_even']).default('none'),
+  wagerTokens: z.number().int().min(0).max(MAX_WAGER_TOKENS).default(0),
 });
 const respondSchema = z.object({ inviteId: z.string(), accept: z.boolean() });
 const cancelSchema = z.object({ inviteId: z.string() });
@@ -70,7 +66,7 @@ function safeHandler<T>(socket: Socket, fn: (payload: T) => Promise<void>): (pay
   };
 }
 
-// Rough per-player commitment for the up-front "can you afford this" check, 
+// Rough per-player commitment for the up-front "can you afford this" check —
 // mirrors the soft balance check in challengeSocket.ts. The authoritative
 // debit(s) still happen at the moment tokens actually need to move.
 function estimatedMaxCommitment(wagerMode: string, wagerTokens: number, legCount: number): number {
@@ -102,14 +98,8 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
       if (winnerMode === 'first_to_n' && (!targetWins || targetWins < 1)) {
         return emitError(socket, 'Choose a target win count for a first-to-N match');
       }
-      if (wagerTokens <= 0) {
+      if (wagerMode !== 'none' && wagerTokens <= 0) {
         return emitError(socket, 'Enter a valid wager amount');
-      }
-
-      try {
-        await assertNotRestricted(userId);
-      } catch (err) {
-        return emitError(socket, err instanceof Error ? err.message : "You can't start new games right now");
       }
 
       const me = await User.findById(userId).select('friends tokenBalance').lean();
@@ -119,11 +109,6 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
       const online = await isUserOnline(toUserId);
       if (!online) return emitError(socket, 'That friend is currently offline');
 
-      const target = await User.findById(toUserId).select('acceptChallenges').lean();
-      if (target && target.acceptChallenges === false) {
-        return emitError(socket, "That player isn't accepting challenges right now.");
-      }
-
       const commitment = estimatedMaxCommitment(wagerMode, wagerTokens, legs.length);
       if (commitment > 0 && (me?.tokenBalance ?? 0) < commitment) {
         return emitError(socket, "You don't have enough R tokens for that wager");
@@ -131,7 +116,10 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
 
       const myActiveCount = await countActiveGamesForUser(userId);
       if (myActiveCount >= MAX_ACTIVE_GAMES_PER_USER) {
-        return emitError(socket, activeGameLimitMessage("starting a cage match"));
+        return emitError(
+          socket,
+          `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before starting a cage match.`,
+        );
       }
 
       const alreadyPending = await redis.exists(pendingInvitePairKey(userId, toUserId));
@@ -193,15 +181,9 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
       }
 
       try {
-        await assertNotRestricted(toId);
-      } catch (err) {
-        return emitError(socket, err instanceof Error ? err.message : "You can't accept new games right now");
-      }
-
-      try {
         await assertUnderActiveGameLimit(fromId);
       } catch {
-        const message = activeGameLimitMessage('accepting');
+        const message = `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before accepting.`;
         emitError(socket, 'That player already has too many active games to start another right now.');
         io.to(`user:${fromId}`).emit('cage:error', { message });
         return;
@@ -209,7 +191,7 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
       try {
         await assertUnderActiveGameLimit(toId);
       } catch {
-        const message = activeGameLimitMessage('accepting');
+        const message = `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before accepting.`;
         emitError(socket, message);
         io.to(`user:${fromId}`).emit('cage:error', {
           message: 'That player already has too many active games to accept right now.',

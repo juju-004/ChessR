@@ -1,6 +1,7 @@
 import { type ReactNode, memo } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
+import { X } from "lucide-react";
 import { cn } from "@/lib/cn.js";
 import { modalBackdrop, modalContent } from "@/lib/motion.js";
 
@@ -8,10 +9,6 @@ export interface ModalProps {
   open: boolean;
   onClose: () => void;
   title?: string;
-  /** Renders to the left of the title, e.g. an alert triangle for a
-   *  destructive action or a trophy for a tournament prompt. Purely
-   *  decorative, sized and colored by the caller. */
-  icon?: ReactNode;
   children: ReactNode;
   className?: string;
 }
@@ -19,35 +16,21 @@ export interface ModalProps {
 /**
  * Portal-rendered so it always sits above everything regardless of where
  * it's mounted, with a solid darkened backdrop and an elevated content
- * panel (no backdrop-filter, see the .elevated comment in index.css).
- * Backdrop and content each animate on their own opacity/scale/y, no
+ * panel (no backdrop-filter — see the .glass comment in index.css).
+ * Backdrop and content each animate on their own opacity/scale/y — no
  * layout-affecting properties, per @/lib/motion.ts.
- *
- * Always centered, on every viewport including phone, there used to be a
- * `position="bottom"` variant that docked this as a draggable bottom
- * sheet instead, but that's gone now (see ResponsiveOverlay.tsx, which
- * used to opt into it for its phone-width Popover replacement and now
- * just renders this same centered dialog there too).
  */
-export const Modal = memo(function Modal({
-  open,
-  onClose,
-  title,
-  icon,
-  children,
-  className,
-}: ModalProps) {
+export const Modal = memo(function Modal({ open, onClose, title, children, className }: ModalProps) {
   const header = title && (
-    <div className="mb-5 flex w-full items-center gap-3 pt-2 px-2 pb-3">
-      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-        {icon}
-      </div>
-
-      <h2 className="text-[17px] font-semibold tracking-tight text-base-content">
-        {title}
-      </h2>
-
-      <div className="ml-auto h-px flex-1 bg-linear-to-r from-primary/60 to-transparent" />
+    <div className="mb-4 flex items-center justify-between">
+      <h2 className="text-lg font-semibold text-base-content">{title}</h2>
+      <button
+        onClick={onClose}
+        aria-label="Close"
+        className="rounded-lg p-1 text-base-content/50 transition-colors hover:bg-black/5 hover:text-base-content dark:hover:bg-white/10"
+      >
+        <X className="h-5 w-5" />
+      </button>
     </div>
   );
 
@@ -71,19 +54,14 @@ export const Modal = memo(function Modal({
             role="dialog"
             aria-modal="true"
             aria-label={title}
-            className={cn(
-              "relative w-full max-w-md overflow-hidden rounded-2xl elevated-strong",
-              className,
-            )}
+            className={cn("glass-strong relative w-full max-w-md rounded-2xl p-5", className)}
           >
-            <div className="max-h-[85vh] overflow-y-auto overscroll-contain px-2 py-3">
-              {header}
-              {children}
-            </div>
+            {header}
+            {children}
           </motion.div>
         </div>
       )}
     </AnimatePresence>,
     document.body,
   );
-});
+})

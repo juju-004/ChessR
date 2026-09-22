@@ -20,7 +20,7 @@ export interface ButtonProps extends Omit<
 > {
   variant?: ButtonVariant;
   size?: ButtonSize;
-  /** Shows a spinner and disables the button, for an in-flight async action. */
+  /** Shows a spinner and disables the button — for an in-flight async action. */
   loading?: boolean;
   fullWidth?: boolean;
   children?: React.ReactNode;
@@ -33,7 +33,7 @@ const VARIANT_CLASSES: Record<ButtonVariant, string> = {
     "bg-(--secondary) text-white shadow-md shadow-(--secondary)/25 hover:brightness-110",
   gradient:
     "gradient-brand text-white shadow-lg shadow-(--primary)/25 hover:brightness-110",
-  glass: "elevated text-base-content hover:bg-base-content/5",
+  glass: "glass text-base-content hover:bg-base-content/5",
   outline:
     "border border-(--primary) text-(--primary) bg-transparent hover:bg-(--primary)/10",
   ghost:

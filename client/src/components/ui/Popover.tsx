@@ -1,10 +1,10 @@
 import { useLayoutEffect, useEffect, useRef, useState, type CSSProperties, type ReactNode, memo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/cn.js";
-import { popoverContent } from "@/lib/motion.js";
+import { scaleIn } from "@/lib/motion.js";
 
 export interface PopoverProps {
-  /** The element that opens the popover on click. Rendered as-is, the
+  /** The element that opens the popover on click. Rendered as-is — the
    *  click handler is attached to a wrapping <span>, so pass whatever you
    *  like (an icon button, a Button, plain text). */
   trigger: ReactNode;
@@ -12,7 +12,7 @@ export interface PopoverProps {
   align?: "start" | "end" | "center";
   side?: "bottom" | "top";
   className?: string;
-  /** Omit to let Popover manage its own open state (the common case), pass
+  /** Omit to let Popover manage its own open state (the common case) — pass
    *  both to drive it externally (e.g. Dropdown does this). */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -22,14 +22,14 @@ const HIDDEN_STYLE: CSSProperties = { position: "fixed", top: 0, left: 0, visibi
 
 /**
  * The shared floating-panel primitive behind Dropdown (and anything else
- * that needs a "click to reveal a elevated panel anchored to a trigger"
+ * that needs a "click to reveal a glass panel anchored to a trigger"
  * pattern). Closes on outside click or Escape. Entrance/exit is opacity +
  * scale only (see @/lib/motion.ts) with `transformOrigin` set to the
  * corner it's anchored from, so it visibly "grows out of" the trigger
  * rather than just scaling from its own center.
  *
  * Positioning is `position: fixed`, computed from the trigger's actual
- * on-screen rect and clamped to the viewport (with a small margin), 
+ * on-screen rect and clamped to the viewport (with a small margin) —
  * rather than pure CSS `left-0`/`right-0` anchoring, which has no idea
  * how much room is actually left on screen and will happily run a wide
  * panel straight off the edge when the trigger sits near it. A
@@ -79,7 +79,7 @@ export const Popover = memo(function Popover({
 
   // Measure the trigger + panel and pick a fixed, viewport-clamped
   // position. Runs in a layout effect so it resolves before the browser
-  // paints, no visible jump from the fallback HIDDEN_STYLE corner.
+  // paints — no visible jump from the fallback HIDDEN_STYLE corner.
   useLayoutEffect(() => {
     if (!open) {
       setStyle(HIDDEN_STYLE);
@@ -96,10 +96,10 @@ export const Popover = memo(function Popover({
       if (!trigger || !panel) return;
       const triggerRect = trigger.getBoundingClientRect();
       // offsetWidth/offsetHeight, not getBoundingClientRect(), for the
-      // panel's own size: the panel is mid-entrance-animation (popoverContent
-      // starts at scale: 0.94), and getBoundingClientRect reports the
+      // panel's own size: the panel is mid-entrance-animation (scaleIn
+      // starts at scale: 0.92), and getBoundingClientRect reports the
       // currently-transformed box, so measuring it here would size the
-      // panel as if it were still slightly shrunk, off by just enough
+      // panel as if it were still slightly shrunk — off by just enough
       // to look "deformed" until something (e.g. scroll) re-triggers a
       // reposition after the animation has settled. offsetWidth/Height
       // are the untransformed layout box, so they're correct from the
@@ -133,7 +133,7 @@ export const Popover = memo(function Popover({
     // them: a layout-forcing getBoundingClientRect() read immediately
     // followed by a React setState. Un-throttled and non-passive, that's
     // the browser blocking the actual scroll from compositing until that
-    // JS finishes, real, measurable scroll jank, but *only* while a
+    // JS finishes — real, measurable scroll jank, but *only* while a
     // Popover/Dropdown happens to be open, which is why it wouldn't show
     // up as constant lag. rAF-throttling collapses a whole flurry of
     // scroll events into at most one reposition per animation frame, and
@@ -162,7 +162,7 @@ export const Popover = memo(function Popover({
     ...style,
     transformOrigin: `${side === "bottom" ? "top" : "bottom"} ${align === "start" ? "left" : align === "end" ? "right" : "center"}`,
   };
-  const panelClassName = cn("elevated-strong z-50 min-w-40 rounded-xl p-1.5", className);
+  const panelClassName = cn("glass-strong z-50 min-w-40 rounded-xl p-1.5", className);
 
   return (
     <div ref={containerRef} className="relative inline-block">
@@ -174,7 +174,7 @@ export const Popover = memo(function Popover({
             initial="hidden"
             animate="visible"
             exit="exit"
-            variants={popoverContent}
+            variants={scaleIn}
             style={panelStyle}
             className={panelClassName}
           >

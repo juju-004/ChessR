@@ -5,126 +5,122 @@
 @import "@fontsource/poppins/700.css";
 
 /* ---------------------------------------------------------------------------
-   Theming
+   daisyUI + theming
    -------------------------------------------------------------------------
-   Plain Tailwind v4 CSS-first theming, no daisyUI. `@theme` below
-   registers a handful of color tokens (base-100/200/300, base-content,
-   primary, secondary, accent, neutral, info/success/warning/error, each
-   with a -content pairing) as first-class Tailwind colors, which is what
-   makes utilities like `bg-base-100`, `text-base-content/50`,
-   `border-base-300` etc. exist at all. Tailwind generates those from
-   any `--color-*` name it finds in `@theme`, opacity modifiers included.
-
-   Each token here points at a plain CSS custom property (`var(--base-100)`
-   etc.) rather than a literal value, and those plain properties are what
-   actually differ between light/dark, defined once under `:root` /
-   `[data-theme="light"]` and overridden under `[data-theme="dark"]`.
+   Tailwind v4 config is CSS-first (no tailwind.config.js), so daisyUI is
+   wired up the same way: `@plugin "daisyui"` registers the plugin itself,
+   and each `@plugin "daisyui/theme"` block defines one selectable theme.
    `data-theme="light"` / `data-theme="dark"` on <html> (see
-   contexts/ThemeContext.tsx) is what switches between them: since the
-   `@theme` tokens are indirections, the browser's own cascade re-resolves
-   every `bg-base-100` etc. the instant that attribute changes, no JS
-   re-render needed.
+   contexts/ThemeContext.tsx) is what actually switches between them.
+
+   NOTE: this was written against daisyUI v5's documented CSS-variable theme
+   API from memory (no network access while building this) — if your
+   installed daisyui version expects slightly different variable names,
+   the fix is just adjusting the names in the two blocks below; everything
+   else in this file (the gradient/glass utilities, the `@/components/ui`
+   kit) is plain CSS/Tailwind and doesn't depend on daisyUI internals at all.
    --------------------------------------------------------------------- */
-@theme {
-  --color-base-100: var(--base-100);
-  --color-base-200: var(--base-200);
-  --color-base-300: var(--base-300);
-  --color-base-content: var(--base-content);
-  --color-primary: var(--primary);
-  --color-primary-content: var(--primary-content);
-  --color-secondary: var(--secondary);
-  --color-secondary-content: var(--secondary-content);
-  --color-accent: var(--accent);
-  --color-accent-content: var(--accent-content);
-  --color-neutral: var(--neutral);
-  --color-neutral-content: var(--neutral-content);
-  --color-info: var(--info);
-  --color-info-content: var(--info-content);
-  --color-success: var(--success);
-  --color-success-content: var(--success-content);
-  --color-warning: var(--warning);
-  --color-warning-content: var(--warning-content);
-  --color-error: var(--error);
-  --color-error-content: var(--error-content);
+@plugin "daisyui" {
+  themes:
+    light --default,
+    dark --prefersdark;
+}
+
+@plugin "daisyui/theme" {
+  name: "light";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+  --color-base-100: #f8fafc;
+  --color-base-200: #eef1f6;
+  --color-base-300: #e2e6ee;
+  --color-base-content: #1c1c1e;
+  --color-primary: #3b82f6;
+  --color-primary-content: #ffffff;
+  --color-secondary: #8b5cf6;
+  --color-secondary-content: #ffffff;
+  --color-accent: #60a5fa;
+  --color-accent-content: #ffffff;
+  --color-neutral: #e2e6ee;
+  --color-neutral-content: #1c1c1e;
+  --color-info: #60a5fa;
+  --color-info-content: #ffffff;
+  --color-success: #22c55e;
+  --color-success-content: #ffffff;
+  --color-warning: #f59e0b;
+  --color-warning-content: #1c1c1e;
+  --color-error: #ef4444;
+  --color-error-content: #ffffff;
+  --radius-selector: 0.75rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+
+@plugin "daisyui/theme" {
+  name: "dark";
+  default: false;
+  prefersdark: true;
+  color-scheme: dark;
+  --color-base-100: #14141a;
+  --color-base-200: #0e0e13;
+  --color-base-300: #09090c;
+  --color-base-content: #f2f2f5;
+  --color-primary: #3b82f6;
+  --color-primary-content: #ffffff;
+  --color-secondary: #8b5cf6;
+  --color-secondary-content: #ffffff;
+  --color-accent: #a78bfa;
+  --color-accent-content: #ffffff;
+  --color-neutral: #1c1c24;
+  --color-neutral-content: #f2f2f5;
+  --color-info: #60a5fa;
+  --color-info-content: #0e0e13;
+  --color-success: #22c55e;
+  --color-success-content: #06170c;
+  --color-warning: #f59e0b;
+  --color-warning-content: #1c1c1e;
+  --color-error: #ef4444;
+  --color-error-content: #ffffff;
+  --radius-selector: 0.75rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
 }
 
 :root,
 [data-theme="light"] {
-  color-scheme: light;
-  --base-100: #f8fafc;
-  --base-200: #eef1f6;
-  --base-300: #e2e6ee;
-  --base-content: #1c1c1e;
   --primary: #3b82f6;
-  --primary-content: #ffffff;
   --primary-light: #60a5fa;
   --secondary: #8b5cf6;
-  --secondary-content: #ffffff;
   --secondary-light: #a78bfa;
-  --accent: #60a5fa;
-  --accent-content: #ffffff;
-  --neutral: #e2e6ee;
-  --neutral-content: #1c1c1e;
-  --info: #60a5fa;
-  --info-content: #ffffff;
-  --success: #22c55e;
-  --success-content: #ffffff;
-  --warning: #f59e0b;
-  --warning-content: #1c1c1e;
-  --error: #ef4444;
-  --error-content: #ffffff;
 
-  /* Elevated-surface tokens, solid, no gradient. The card and the page
-     itself are both essentially white (--surface-bg vs. bg-base-100 on
-     <body> in index.html), so a border alone, especially a faint
-     brand-tinted one, doesn't reliably separate a card from the page
-     it's sitting on; some renders/zoom levels/monitors will show
-     basically nothing. A shadow separates them regardless of whether
-     the two colors are identical, so that's now the primary elevation
-     cue (see --surface-shadow-* below and the `box-shadow` declarations
-     on .elevated/.elevated-strong/.dock). The border sticks around as a
-     secondary, subtler brand-tint cue, not the only one. "strong" steps
-     up the fill, border, and shadow a notch for surfaces that need to
-     read as sitting above another elevated surface (modals, popovers). */
+  /* Elevated-surface tokens — an opaque card design (no backdrop-filter)
+     used by .glass/.glass-strong below. Replaces the old translucent
+     "liquid glass" look, which relied on backdrop-filter blur and was a
+     measurable jank/battery cost on older/lower-end phones. */
   --surface-bg: #ffffff;
-  --surface-bg-strong: #f7f9ff;
-  --surface-border: rgba(59, 130, 246, 0.14);
-  --surface-border-strong: rgba(59, 130, 246, 0.22);
-  --surface-shadow-tight: rgba(15, 23, 42, 0.08);
-  --surface-shadow-soft: rgba(15, 23, 42, 0.1);
+  --surface-bg-strong: #ffffff;
+  --surface-border: rgba(15, 23, 42, 0.1);
+  --surface-border-strong: rgba(15, 23, 42, 0.13);
+  --surface-highlight: rgba(255, 255, 255, 0.8);
 }
 
 [data-theme="dark"] {
-  color-scheme: dark;
-  --base-100: #14141a;
-  --base-200: #0e0e13;
-  --base-300: #09090c;
-  --base-content: #f2f2f5;
   --primary: #3b82f6;
-  --primary-content: #ffffff;
   --primary-light: #60a5fa;
   --secondary: #8b5cf6;
-  --secondary-content: #ffffff;
   --secondary-light: #a78bfa;
-  --accent: #a78bfa;
-  --accent-content: #ffffff;
-  --neutral: #1c1c24;
-  --neutral-content: #f2f2f5;
-  --info: #60a5fa;
-  --info-content: #0e0e13;
-  --success: #22c55e;
-  --success-content: #06170c;
-  --warning: #f59e0b;
-  --warning-content: #1c1c1e;
-  --error: #ef4444;
-  --error-content: #ffffff;
 
   --surface-bg: #1b1b23;
   --surface-bg-strong: #202029;
-  --surface-border: rgba(96, 165, 250, 0.18);
-  --surface-border-strong: rgba(96, 165, 250, 0.28);
-  --surface-shadow-tight: rgba(0, 0, 0, 0.4);
-  --surface-shadow-soft: rgba(0, 0, 0, 0.5);
+  --surface-border: rgba(255, 255, 255, 0.07);
+  --surface-border-strong: rgba(255, 255, 255, 0.09);
+  --surface-highlight: rgba(255, 255, 255, 0.04);
 }
 
 html {
@@ -133,7 +129,7 @@ html {
 body {
   font-family: "Poppins", sans-serif;
 }
-/* Gradients built from the tokens above, used by Button/Card variants and
+/* Gradients built from the tokens above — used by Button/Card variants and
    available anywhere as plain classes. */
 .gradient-primary {
   background-image: linear-gradient(
@@ -167,213 +163,44 @@ body {
   color: transparent;
 }
 
-/* Elevated surface, the shared look for Card/Modal/Popover/glass Button
+/* Elevated surface — the shared look for Card/Modal/Popover/glass Button
    variants etc. This used to be a translucent, blurred "liquid glass"
-   panel (backdrop-filter: blur+saturate), which was a measurable
-   jank/battery cost on older/lower-end phones. This version is solid and
-   flat, a plain background-color, no gradient fill, no blur, separated
-   from the page behind it primarily by a shadow (box-shadow, see
-   --surface-shadow-* above), with a faint brand-tinted border as a
-   secondary accent rather than the only separation cue. Class names are
-   `.elevated`/`.elevated-strong`, deliberately NOT named `.glass`,
-   because daisyUI ships its own `.glass` utility class (real
-   backdrop-filter blur + saturate + shadow baked in). Reusing that name
-   only "worked" because this rule happened to be later in the cascade and
-   used !important to stomp daisyUI's declarations, fragile, and exactly
-   the kind of thing that silently breaks again the moment daisyUI's own
-   output order changes (a version bump, a build-tool change, etc). A
-   distinct name means there's no collision to begin with. The
-   `variant="glass"` prop on Button/Card/Badge is unchanged (that's just a
-   semantic name in our own API), only the underlying CSS class it maps
-   to changed.
-
-   box-shadow, not filter: drop-shadow(): these used to use drop-shadow()
-   because it clips to the actual alpha shape (rounded corners included)
-   rather than the box's rectangle. The problem: `filter` (any value other
-   than none) forces the browser to composite the element as its own
-   layer and re-render that entire layer from scratch on every frame
-   anything inside it animates, including a pure-transform, GPU-only
-   animation like Tabs' sliding active-pill indicator (@/lib/motion.ts's
-   whole premise is that transform/opacity are compositor-only and don't
-   force a repaint, which filter quietly defeats). That's what was
-   producing visible lag on the Tabs indicator even on desktop. box-shadow
-   doesn't have that side effect and, since every one of these surfaces
-   has a solid (non-transparent) background matching its own border-
-   radius, it clips to the rounded corners just as correctly here. */
-.elevated {
+   panel (backdrop-filter: blur+saturate), then a plain opaque panel with
+   a soft box-shadow. box-shadow turned out to have its own cost: any
+   blurred shadow forces the browser to rasterize a separate shadow layer
+   and keep recompositing it, and on low-end devices that's exactly what
+   was causing the laggy scroll/UI — the same class of problem as
+   backdrop-filter, just from a different property. This version drops
+   box-shadow entirely and fakes the same "distinct floating panel" read
+   with things that are cheap to paint:
+     - a real hairline border (already doing real elevation work, not
+       decorative)
+     - a background color that's a deliberate shade off the page
+       background (--surface-bg / --surface-bg-strong vs --color-base-100),
+       so the panel reads as "raised" from contrast alone
+     - a top-to-bottom gradient "sheen" baked into background-image
+       instead of an inset box-shadow — it's just part of the normal
+       background paint, computed once, no separate shadow layer to
+       recomposite on scroll.
+   Class names are kept as `.glass`/`.glass-strong` so every existing
+   usage across the app picks up the new look automatically. */
+.glass {
   background-color: var(--surface-bg);
-  box-shadow:
-    0 1px 2px var(--surface-shadow-tight),
-    0 6px 16px var(--surface-shadow-soft);
+  background-image: linear-gradient(
+    -50deg,
+    var(--surface-highlight) 0%,
+    transparent 42%
+  );
+  border: 0px solid var(--surface-border);
 }
-/* elevated-strong's blur radius trimmed down from 32px to 18px, this class
-   is what Modal/Popover/Tooltip all use, so its shadow gets rasterized on
-   every single frame of their entrance/exit animation (a wider blur means
-   more pixels to blur, every frame), and that's what was showing up as lag
-   once actually tested on a real phone rather than a dev machine. Still
-   reads as "elevated", just a tighter, cheaper shadow. */
-.elevated-strong {
+.glass-strong {
   background-color: var(--surface-bg-strong);
-  box-shadow:
-    0 2px 4px var(--surface-shadow-tight),
-    0 8px 18px var(--surface-shadow-soft);
-}
-/* Same background as .elevated, no shadow at all, for a surface that
-   doesn't need to visually float above the page and where the shadow was
-   removed outright (not just made cheaper) on request, e.g. Tabs. */
-.elevated-flat {
-  background-color: var(--surface-bg);
-}
-/* Same look as .elevated, but the shadow is swapped for a plain border on
-   phone and only becomes a shadow from `sm` up, opt-in per component
-   (Dashboard's wallet balance card, Page's back button) for spots
-   specifically reported as laggy on a real phone, rather than baked into
-   the shared .elevated class everywhere. A border has none of a shadow's
-   per-frame blur-rasterization cost, which matters here because both of
-   these are interactive elements that scale on tap (see @/lib/motion.ts's
-   pressable/liftable), so on phone the shadow would otherwise repaint on
-   every frame of that animation. */
-.elevated-responsive {
-  background-color: var(--surface-bg);
-  border: 1px solid var(--surface-border);
-  box-shadow: none;
-}
-@media (min-width: 640px) {
-  .elevated-responsive {
-    border: none;
-    box-shadow:
-      0 1px 2px var(--surface-shadow-tight),
-      0 6px 16px var(--surface-shadow-soft);
-  }
-}
-
-/* Settings page layout. Named areas so the mobile-only reorder (App above
-   Preview, above the rest of the settings cards) is just a repositioning
-   of each existing grid item, not a second mounted copy, since the
-   Preview card owns a live Chessground board instance that can't safely
-   be duplicated. Desktop (lg+) keeps the original two-column look: App
-   and the rest of the cards stacked in the left column, Preview spanning
-   both rows on the right. */
-.settings-grid {
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: 1fr;
-  grid-template-areas:
-    "app"
-    "preview"
-    "rest";
-}
-.settings-grid-app {
-  grid-area: app;
-}
-.settings-grid-preview {
-  grid-area: preview;
-  height: fit-content;
-}
-.settings-grid-rest {
-  grid-area: rest;
-}
-@media (min-width: 1024px) {
-  .settings-grid {
-    grid-template-columns: 1fr 240px;
-    grid-template-areas:
-      "app preview"
-      "rest preview";
-  }
-}
-
-/* ---------------------------------------------------------------------------
-   Mobile bottom dock
-   -------------------------------------------------------------------------
-   A floating pill inset from the screen edges (phone only), matching the
-   floating-pill look of the top Navbar, rather than a bar flush against
-   the bottom edge. Replaces both the old dropdown nav trigger and the old
-   floating action pill. Two mutually-exclusive components render into
-   this same visual slot and share these classes: MobileDock (site
-   navigation, see components/Sidebar.tsx) hides itself on /game/:code,
-   and the in-game action bar (see components/game/GameActionBar.tsx) only
-   ever mounts on /game/:code, so exactly one is ever on screen, and from
-   the person's point of view it reads as one dock whose contents change
-   with context rather than two competing fixed-position elements.
-
-   Note this class deliberately does NOT set `display`, visibility/layout
-   (flex on phone, hidden from md up) is left entirely to Tailwind's own
-   `flex md:hidden` utilities on the elements using this class. Tailwind
-   v4's utilities live inside its own cascade layer, and plain unlayered
-   rules like this one always win over ANY layered rule regardless of
-   source order or specificity, so a `display: flex` written here would
-   silently beat `md:hidden` at every viewport width, which is exactly
-   what was causing the dock to stay visible on desktop/laptop. Keeping
-   `display` out of this file sidesteps that entirely. */
-.docker {
-  position: fixed;
-  left: 0.75rem;
-  right: 0.75rem;
-  bottom: calc(0.75rem + env(safe-area-inset-bottom));
-  z-index: 40;
-  align-items: stretch;
-  border-radius: 9999px;
-  background-color: var(--surface-bg-strong);
-  padding: 0.2rem 0.4rem;
-  box-shadow:
-    0 2px 5px var(--surface-shadow-tight),
-    0 14px 32px var(--surface-shadow-soft);
-}
-.docker-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.1rem;
-  min-width: 0;
-  padding: 0.4rem 0.25rem;
-  border-radius: 9999px;
-  font-size: 0.5rem;
-  font-weight: 600;
-  line-height: 1;
-  color: var(--color-base-content);
-  opacity: 0.55;
-  transition:
-    opacity 0.15s ease,
-    color 0.15s ease,
-    background-color 0.15s ease;
-}
-.docker-item span {
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-.docker-item:disabled {
-  opacity: 0.25;
-  pointer-events: none;
-}
-.docker-item-active {
-  opacity: 1;
-  color: var(--primary);
-  background-color: color-mix(in srgb, var(--primary) 12%, transparent);
-}
-.docker-item-danger {
-  color: #ef4444;
-  opacity: 0.75;
-}
-
-.docker > * {
-  flex: 1 1 0%;
-}
-
-.game .docker-item {
-  opacity: 1;
-  padding: 0.7rem 0.25rem;
-}
-.game .docker-item:disabled {
-  opacity: 0.55;
-}
-.game .docker-item:active {
-  transition:
-    color 1s ease-out,
-    background-color 1s ease-out;
-  color: var(--primary);
-  background-color: color-mix(in srgb, var(--primary) 12%, transparent);
+  background-image: linear-gradient(
+    180deg,
+    var(--surface-highlight) 0%,
+    transparent 52%
+  );
+  border: 0px solid var(--surface-border-strong);
 }
 
 @import "@lichess-org/chessground/assets/chessground.base.css";
@@ -389,35 +216,47 @@ body {
   display: block;
 }
 
-/* Coordinates (rank/file labels) are drawn ourselves now, see
-   BoardCoordinates in ChessBoard.tsx, instead of relying on
-   chessground's own `coordinates` option, which is always passed `false`.
-   That used to need a `text-size-adjust: 100%` override here plus a
-   lowercase-transform rule for its `coords coord` elements; neither is
-   needed anymore since our own overlay is plain React-rendered text that
-   was never subject to either issue. */
+/* Chessground draws the rank/file coordinate labels at a small fixed
+   font-size (a handful of CSS px). Mobile Safari/Chrome's automatic text
+   inflation ("text size adjust") — the feature that boosts small text so
+   pinch-zoomed-out pages stay legible — kicks in specifically for text
+   that small, and does so per-element rather than uniformly, so each
+   coordinate label gets inflated by a slightly different amount depending
+   on its surrounding layout. That's what makes them look randomly
+   "scattered" on phone while sitting perfectly on desktop, where that
+   inflation behavior doesn't apply at all. Opting the whole board out of
+   it makes every label render at its actual authored size, so they line
+   up with the squares exactly the same way on every device. */
+.cg-wrap,
+.cg-wrap * {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
 
-/* Board themes, real square colors, not a color-shifted copy of the brown
+/* File coordinates (a-h) should read as lowercase, matching standard chess
+   notation — algebraic squares are always written "e4", never "E4". Forced
+   explicitly rather than relying on whatever case chessground happens to
+   render its labels in, since that can vary by version/theme and isn't
+   worth depending on. Rank numbers are unaffected either way. */
+.cg-wrap coords coord {
+  text-transform: lowercase;
+}
+
+/* Board themes — real square colors, not a color-shifted copy of the brown
    texture. `cg-board`'s own default rule (from the imported
    chessground.brown.css) sets `background-color: #f0d9b5` plus a tiny
-   embedded checkerboard SVG whose "dark" cells are just 20%-opacity black, 
+   embedded checkerboard SVG whose "dark" cells are just 20%-opacity black —
    i.e. the dark square color there is *always* derived from the light one,
    it's not an independent color. These rules replace both properties
    together per theme instead: the SVG below is the same real nested-`<use>`
    checkerboard pattern chessground itself ships, rebuilt with the dark cells
    given a real solid fill color instead of a translucent black overlay, so
-   light and dark squares are each an actual chosen color, the same
+   light and dark squares are each an actual chosen color — the same
    mechanism lila uses for its own non-brown board themes, not a filter.
-   `brown` gets one of these too now (David's own light-square pick,
-   #e9d3b0 — a couple shades cooler/more muted than the stock chessground
-   #f0d9b5 — paired with the stock dark square #b58863), even though it
-   didn't originally need one. Colors match the swatches shown on the
-   Settings page. Wrapper classes are set from the Settings page's
+   `brown` needs no override — it already gets the real thing for free from
+   the imported chessground.brown.css. Colors match the swatches shown on
+   the Settings page. Wrapper classes are set from the Settings page's
    boardTheme/pieceTheme. */
-.board-theme-brown .cg-wrap cg-board {
-  background-color: #e9d3b0;
-  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOng9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHZpZXdCb3g9IjAgMCA4IDgiIHNoYXBlLXJlbmRlcmluZz0iY3Jpc3BFZGdlcyI+CjxnIGlkPSJhIj4KICA8ZyBpZD0iYiI+CiAgICA8ZyBpZD0iYyI+CiAgICAgIDxnIGlkPSJkIj4KICAgICAgICA8cmVjdCB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBpZD0iZSIgb3BhY2l0eT0iMCIvPgogICAgICAgIDx1c2UgeD0iMSIgeT0iMSIgaHJlZj0iI2UiIHg6aHJlZj0iI2UiLz4KICAgICAgICA8cmVjdCB5PSIxIiB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBpZD0iZiIgZmlsbD0iI2I1ODg2MyIvPgogICAgICAgIDx1c2UgeD0iMSIgeT0iLTEiIGhyZWY9IiNmIiB4OmhyZWY9IiNmIi8+CiAgICAgIDwvZz4KICAgICAgPHVzZSB4PSIyIiBocmVmPSIjZCIgeDpocmVmPSIjZCIvPgogICAgPC9nPgogICAgPHVzZSB4PSI0IiBocmVmPSIjYyIgeDpocmVmPSIjYyIvPgogIDwvZz4KICA8dXNlIHk9IjIiIGhyZWY9IiNiIiB4OmhyZWY9IiNiIi8+CjwvZz4KPHVzZSB5PSI0IiBocmVmPSIjYSIgeDpocmVmPSIjYSIvPgo8L3N2Zz4K");
-}
 .board-theme-green .cg-wrap cg-board {
   background-color: #eeeed2;
   background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOng9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHZpZXdCb3g9IjAgMCA4IDgiIHNoYXBlLXJlbmRlcmluZz0iY3Jpc3BFZGdlcyI+CjxnIGlkPSJhIj4KICA8ZyBpZD0iYiI+CiAgICA8ZyBpZD0iYyI+CiAgICAgIDxnIGlkPSJkIj4KICAgICAgICA8cmVjdCB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBpZD0iZSIgb3BhY2l0eT0iMCIvPgogICAgICAgIDx1c2UgeD0iMSIgeT0iMSIgaHJlZj0iI2UiIHg6aHJlZj0iI2UiLz4KICAgICAgICA8cmVjdCB5PSIxIiB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBpZD0iZiIgZmlsbD0iIzc2OTY1NiIvPgogICAgICAgIDx1c2UgeD0iMSIgeT0iLTEiIGhyZWY9IiNmIiB4OmhyZWY9IiNmIi8+CiAgICAgIDwvZz4KICAgICAgPHVzZSB4PSIyIiBocmVmPSIjZCIgeDpocmVmPSIjZCIvPgogICAgPC9nPgogICAgPHVzZSB4PSI0IiBocmVmPSIjYyIgeDpocmVmPSIjYyIvPgogIDwvZz4KICA8dXNlIHk9IjIiIGhyZWY9IiNiIiB4OmhyZWY9IiNiIi8+CjwvZz4KPHVzZSB5PSI0IiBocmVmPSIjYSIgeDpocmVmPSIjYSIvPgo8L3N2Zz4K");
@@ -434,30 +273,18 @@ body {
   background-color: #e8e3f0;
   background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOng9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHZpZXdCb3g9IjAgMCA4IDgiIHNoYXBlLXJlbmRlcmluZz0iY3Jpc3BFZGdlcyI+CjxnIGlkPSJhIj4KICA8ZyBpZD0iYiI+CiAgICA8ZyBpZD0iYyI+CiAgICAgIDxnIGlkPSJkIj4KICAgICAgICA8cmVjdCB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBpZD0iZSIgb3BhY2l0eT0iMCIvPgogICAgICAgIDx1c2UgeD0iMSIgeT0iMSIgaHJlZj0iI2UiIHg6aHJlZj0iI2UiLz4KICAgICAgICA8cmVjdCB5PSIxIiB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBpZD0iZiIgZmlsbD0iIzg4NzdiNSIvPgogICAgICAgIDx1c2UgeD0iMSIgeT0iLTEiIGhyZWY9IiNmIiB4OmhyZWY9IiNmIi8+CiAgICAgIDwvZz4KICAgICAgPHVzZSB4PSIyIiBocmVmPSIjZCIgeDpocmVmPSIjZCIvPgogICAgPC9nPgogICAgPHVzZSB4PSI0IiBocmVmPSIjYyIgeDpocmVmPSIjYyIvPgogIDwvZz4KICA8dXNlIHk9IjIiIGhyZWY9IiNiIiB4OmhyZWY9IiNiIi8+CjwvZz4KPHVzZSB5PSI0IiBocmVmPSIjYSIgeDpocmVmPSIjYSIvPgo8L3N2Zz4K");
 }
-.board-theme-walnut .cg-wrap cg-board {
-  background-color: #e8c99b;
-  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOng9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHZpZXdCb3g9IjAgMCA4IDgiIHNoYXBlLXJlbmRlcmluZz0iY3Jpc3BFZGdlcyI+CjxnIGlkPSJhIj4KICA8ZyBpZD0iYiI+CiAgICA8ZyBpZD0iYyI+CiAgICAgIDxnIGlkPSJkIj4KICAgICAgICA8cmVjdCB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBpZD0iZSIgb3BhY2l0eT0iMCIvPgogICAgICAgIDx1c2UgeD0iMSIgeT0iMSIgaHJlZj0iI2UiIHg6aHJlZj0iI2UiLz4KICAgICAgICA8cmVjdCB5PSIxIiB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBpZD0iZiIgZmlsbD0iIzhiNWEyYiIvPgogICAgICAgIDx1c2UgeD0iMSIgeT0iLTEiIGhyZWY9IiNmIiB4OmhyZWY9IiNmIi8+CiAgICAgIDwvZz4KICAgICAgPHVzZSB4PSIyIiBocmVmPSIjZCIgeDpocmVmPSIjZCIvPgogICAgPC9nPgogICAgPHVzZSB4PSI0IiBocmVmPSIjYyIgeDpocmVmPSIjYyIvPgogIDwvZz4KICA8dXNlIHk9IjIiIGhyZWY9IiNiIiB4OmhyZWY9IiNiIi8+CjwvZz4KPHVzZSB5PSI0IiBocmVmPSIjYSIgeDpocmVmPSIjYSIvPgo8L3N2Zz4K");
-}
-.board-theme-coral .cg-wrap cg-board {
-  background-color: #fbe0d4;
-  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOng9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHZpZXdCb3g9IjAgMCA4IDgiIHNoYXBlLXJlbmRlcmluZz0iY3Jpc3BFZGdlcyI+CjxnIGlkPSJhIj4KICA8ZyBpZD0iYiI+CiAgICA8ZyBpZD0iYyI+CiAgICAgIDxnIGlkPSJkIj4KICAgICAgICA8cmVjdCB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBpZD0iZSIgb3BhY2l0eT0iMCIvPgogICAgICAgIDx1c2UgeD0iMSIgeT0iMSIgaHJlZj0iI2UiIHg6aHJlZj0iI2UiLz4KICAgICAgICA8cmVjdCB5PSIxIiB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBpZD0iZiIgZmlsbD0iI2Q5Nzg1YyIvPgogICAgICAgIDx1c2UgeD0iMSIgeT0iLTEiIGhyZWY9IiNmIiB4OmhyZWY9IiNmIi8+CiAgICAgIDwvZz4KICAgICAgPHVzZSB4PSIyIiBocmVmPSIjZCIgeDpocmVmPSIjZCIvPgogICAgPC9nPgogICAgPHVzZSB4PSI0IiBocmVmPSIjYyIgeDpocmVmPSIjYyIvPgogIDwvZz4KICA8dXNlIHk9IjIiIGhyZWY9IiNiIiB4OmhyZWY9IiNiIi8+CjwvZz4KPHVzZSB5PSI0IiBocmVmPSIjYSIgeDpocmVmPSIjYSIvPgo8L3N2Zz4K");
-}
-.board-theme-ic .cg-wrap cg-board {
-  background-color: #dde6ea;
-  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOng9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHZpZXdCb3g9IjAgMCA4IDgiIHNoYXBlLXJlbmRlcmluZz0iY3Jpc3BFZGdlcyI+CjxnIGlkPSJhIj4KICA8ZyBpZD0iYiI+CiAgICA8ZyBpZD0iYyI+CiAgICAgIDxnIGlkPSJkIj4KICAgICAgICA8cmVjdCB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBpZD0iZSIgb3BhY2l0eT0iMCIvPgogICAgICAgIDx1c2UgeD0iMSIgeT0iMSIgaHJlZj0iI2UiIHg6aHJlZj0iI2UiLz4KICAgICAgICA8cmVjdCB5PSIxIiB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBpZD0iZiIgZmlsbD0iIzVmOGJhMyIvPgogICAgICAgIDx1c2UgeD0iMSIgeT0iLTEiIGhyZWY9IiNmIiB4OmhyZWY9IiNmIi8+CiAgICAgIDwvZz4KICAgICAgPHVzZSB4PSIyIiBocmVmPSIjZCIgeDpocmVmPSIjZCIvPgogICAgPC9nPgogICAgPHVzZSB4PSI0IiBocmVmPSIjYyIgeDpocmVmPSIjYyIvPgogIDwvZz4KICA8dXNlIHk9IjIiIGhyZWY9IiNiIiB4OmhyZWY9IiNiIi8+CjwvZz4KPHVzZSB5PSI0IiBocmVmPSIjYSIgeDpocmVmPSIjYSIvPgo8L3N2Zz4K");
-}
 
-/* Piece themes, real, distinct artwork per theme, embedded the same way
+/* Piece themes — real, distinct artwork per theme, embedded the same way
    chessground.cburnett.css itself embeds cburnett (one background-image
    data URI per role+color combo). "classic" is the bundled cburnett set
    (see the @imports above); mono/contrast/wood below are the "alpha",
-   "maestro", and "merida" sets respectively, genuinely different piece
+   "maestro", and "merida" sets respectively — genuinely different piece
    silhouettes, not a color filter over cburnett's shapes. */
 .piece-theme-classic .cg-wrap piece {
   filter: none;
 }
 
-/* mono, the "alpha" set: flat, minimalist geometric silhouettes. */
+/* mono — the "alpha" set: flat, minimalist geometric silhouettes. */
 .piece-theme-mono .cg-wrap piece.bishop.black {
   background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDQ4IDIwNDgiPjxwYXRoIGZpbGw9IiNmOWY5ZjkiIGQ9Ik03MzIgMTI5MCA2MjggOTkzbDM4Ni00MTcgNDIxIDM3NS0xMzIgMzgwIDQ5IDE1Mi02NTgtOXoiLz48cGF0aCBmaWxsPSIjMTAxMDEwIiBkPSJNNzY4IDEzNjVxLTUgMzktMjYgODJoNTY0cS0xOC0zNi0yNi04MnptNDk1LTczIDQ2LTczcS0xNDItNDktMjg1LTQ3LTE0NC0yLTI4NSA0N2w0NiA3M3ExMTgtNDAgMjM5LTM4IDEyMC0yIDIzOSAzOHptLTQzMiAyMjdINjI0cTY3LTExNiA3Mi0yMjktMTE0LTExOS0xNjItMjIzdC02LTIyNHEzMy05NiAxMTgtMTg5dDMxMi0yNDdxLTE3LTExLTQ2LTM2dC0yOS03OXEwLTU4IDQxLTk2dDEwMC0zOHE1OCAwIDEwMCAzOHQ0MSA5NnEwIDU0LTI5IDc5dC00NiAzNnEyMjYgMTUzIDMxMSAyNDd0MTE5IDE4OXE0MiAxMTktNiAyMjR0LTE2MiAyMjNxNCAxMTMgNzIgMjI5aC0yMDdsMTAgMTZxMzMgNTMgNzAgNjB0ODkgN2gyNTBxNzYgMCAxNDIgNjJ0NjUgMTc5aC00OTVxLTEyMyAwLTIyMy04NHQtMTAxLTE5OXEwIDExNC0xMDEgMTk5dC0yMjMgODRIMjA1cTAtMTE3IDY1LTE3OXQxNDItNjJoMjUwcTUxIDAgODgtN3Q3MS02MGwxMC0xNnptMTQ2LTcwMWgtOTV2ODloOTV2MTY1aDk0VjkwN2g5NXYtODloLTk1VjcxNGgtOTR6Ii8+PC9zdmc+");
 }
@@ -495,7 +322,7 @@ body {
   background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDQ4IDIwNDgiPjxwYXRoIGZpbGw9IiNmOWY5ZjkiIGQ9Im00MzUgMTgwNCAxNi0yMTIgMTUyLTExNSA1MS02ODgtMTQ4LTExNS03LTI3NiAyMTAtMiA0IDEzOCAxOTggMiA3LTE0MCAyMTItMyAxNCAxNDUgMTkzLTQgNS0xMzhoMjA0bC03IDI4NS0xNDUgMTA2IDQyIDY5MyAxNzIgMTI0IDE5IDIwN3oiLz48cGF0aCBmaWxsPSIjMTAxMDEwIiBkPSJNMTAyNCAxNTAxSDY0M2w1LTc0aDc1Mmw1IDc0em0wLTY2MUg2OTJsNS03NGg2NTRsNSA3NHptMCAxMDAzSDM4M2wyOS0yNjQgMTU5LTExOCA1MC02NTktMTQ5LTEwNy0xNy0zNDFoMjg5djE0N2gxMzdWMzU0aDI4NnYxNDdoMTM3VjM1NGgyODlsLTE3IDM0MS0xNDkgMTA3IDUwIDY1OSAxNTkgMTE4IDI5IDI2NHptMC03NGg1NTdsLTE1LTE0OS0xNjEtMTE5LTU0LTczNSAxNTItMTA5IDEzLTIzMGgtMTM4djE0OGgtMjg1VjQyN0g5NTV2MTQ4SDY3MFY0MjdINTMybDEzIDIzMCAxNTIgMTA5LTU0IDczNS0xNjEgMTE5LTE1IDE0OXoiLz48L3N2Zz4=");
 }
 
-/* contrast, the "maestro" set: bold, blocky, high-contrast pieces. */
+/* contrast — the "maestro" set: bold, blocky, high-contrast pieces. */
 .piece-theme-contrast .cg-wrap piece.bishop.black {
   background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGNsaXAtcnVsZT0iZXZlbm9kZCIgaW1hZ2UtcmVuZGVyaW5nPSJvcHRpbWl6ZVF1YWxpdHkiIHNoYXBlLXJlbmRlcmluZz0iZ2VvbWV0cmljUHJlY2lzaW9uIiB0ZXh0LXJlbmRlcmluZz0iZ2VvbWV0cmljUHJlY2lzaW9uIiB2aWV3Qm94PSIwIDEuNSA1MCA1MCI+PGRlZnM+PGZpbHRlciBpZD0iZCIgd2lkdGg9IjEuMTYiIGhlaWdodD0iMS4wNyIgeD0iLS4wOCIgeT0iLS4wMyIgY29sb3ItaW50ZXJwb2xhdGlvbi1maWx0ZXJzPSJzUkdCIj48ZmVHYXVzc2lhbkJsdXIgc3RkRGV2aWF0aW9uPSIuNDEiLz48L2ZpbHRlcj48ZmlsdGVyIGlkPSJlIiB3aWR0aD0iMS4zIiBoZWlnaHQ9IjEuMTciIHg9Ii0uMTUiIHk9Ii0uMDgiIGNvbG9yLWludGVycG9sYXRpb24tZmlsdGVycz0ic1JHQiI+PGZlR2F1c3NpYW5CbHVyIHN0ZERldmlhdGlvbj0iLjYyIi8+PC9maWx0ZXI+PGZpbHRlciBpZD0iaCIgd2lkdGg9IjEuMjIiIGhlaWdodD0iMS40NCIgeD0iLS4xMSIgeT0iLS4yMiIgY29sb3ItaW50ZXJwb2xhdGlvbi1maWx0ZXJzPSJzUkdCIj48ZmVHYXVzc2lhbkJsdXIgc3RkRGV2aWF0aW9uPSIuNDIiLz48L2ZpbHRlcj48ZmlsdGVyIGlkPSJpIiB3aWR0aD0iMS4yOSIgaGVpZ2h0PSIxLjU4IiB4PSItLjE0IiB5PSItLjI5IiBjb2xvci1pbnRlcnBvbGF0aW9uLWZpbHRlcnM9InNSR0IiPjxmZUdhdXNzaWFuQmx1ciBzdGREZXZpYXRpb249Ii4zNSIvPjwvZmlsdGVyPjxmaWx0ZXIgaWQ9ImoiIHdpZHRoPSIxLjM5IiBoZWlnaHQ9IjEuMTUiIHg9Ii0uMiIgeT0iLS4wNyIgY29sb3ItaW50ZXJwb2xhdGlvbi1maWx0ZXJzPSJzUkdCIj48ZmVHYXVzc2lhbkJsdXIgc3RkRGV2aWF0aW9uPSIuMTIiLz48L2ZpbHRlcj48ZmlsdGVyIGlkPSJrIiB3aWR0aD0iMS40MyIgaGVpZ2h0PSIxLjM1IiB4PSItLjIxIiB5PSItLjE3IiBjb2xvci1pbnRlcnBvbGF0aW9uLWZpbHRlcnM9InNSR0IiPjxmZUdhdXNzaWFuQmx1ciBzdGREZXZpYXRpb249Ii4yNyIvPjwvZmlsdGVyPjxsaW5lYXJHcmFkaWVudCB4bGluazpocmVmPSIjYSIgaWQ9ImIiIHgxPSIxNC41NiIgeDI9IjM1LjkyIiB5MT0iMjUuOTMiIHkyPSIyNS45MyIgZ3JhZGllbnRUcmFuc2Zvcm09Im1hdHJpeCgxLjA3MzkgMCAwIDEuMDI2OSAtMi4yNiAtLjM4KSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiLz48bGluZWFyR3JhZGllbnQgaWQ9ImEiIHgxPSI5LjI0IiB4Mj0iNDAuNzYiIHkxPSIyNy4yNyIgeTI9IjI3LjI3IiBncmFkaWVudFRyYW5zZm9ybT0ibWF0cml4KDEuMDE1NSAwIDAgMS4wMTAzIC0uMzkgLjQ4KSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzczNzM3MyIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzMwMzAzMCIvPjwvbGluZWFyR3JhZGllbnQ+PGxpbmVhckdyYWRpZW50IHhsaW5rOmhyZWY9IiNhIiBpZD0iYyIgeDE9IjIxLjM1IiB4Mj0iMjkuMTQiIHkxPSIxMC4zMSIgeTI9IjEwLjMxIiBncmFkaWVudFRyYW5zZm9ybT0ibWF0cml4KC44MzQ3NSAwIDAgLjkwODgzIDMuNzUgMS4xKSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiLz48bGluZWFyR3JhZGllbnQgeGxpbms6aHJlZj0iI2EiIGlkPSJmIiB4MT0iNS42MSIgeDI9IjI1LjkyIiB5MT0iNDIuMyIgeTI9IjQyLjMiIGdyYWRpZW50VHJhbnNmb3JtPSJtYXRyaXgoMS4wODU2IDAgMCAuOTQwNjIgLTIuNTYgMi45NCkiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIi8+PGxpbmVhckdyYWRpZW50IHhsaW5rOmhyZWY9IiNhIiBpZD0iZyIgeDE9IjI0Ljg1IiB4Mj0iNDUuMTYiIHkxPSI0Mi4zIiB5Mj0iNDIuMyIgZ3JhZGllbnRUcmFuc2Zvcm09Im1hdHJpeCgxLjA4NTYgMCAwIC45NDA2MiAtMi41NiAyLjk0KSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiLz48L2RlZnM+PHBhdGggZmlsbD0idXJsKCNiKSIgc3Ryb2tlPSIjMDAwIiBzdHJva2UtbGluZWNhcD0icm91bmQiIGQ9Im0zMS4wMiAzMi4yNyA0LjcyLTUuOTUtMTAuMTktMTIuOTdoLS43di0uMDFoLS43MUwxMy45NSAyNi4zbDQuNzMgNS45NS0xLjU1IDQuODZjLS4wMy4zOSAzLjEgMi4wNCA3LjcyIDIuMDRzNy43NC0xLjY1IDcuNzEtMi4wNHoiLz48cGF0aCBmaWxsPSJ1cmwoI2MpIiBzdHJva2U9IiMwMDAiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgZD0iTTI0LjgzIDcuN2MtMS41NSAwLTIuODEgMS4yNC0yLjgxIDIuNzdzMS4yNiAyLjc2IDIuOCAyLjc2IDIuODEtMS4yNCAyLjgxLTIuNzdhMi43OSAyLjc5IDAgMCAwLTIuOC0yLjc2eiIvPjxwYXRoIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzAwMCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBkPSJNMjIuMSAyNC42Nmg1LjVtLTIuNzUtMi43NXY1LjUiLz48cGF0aCBkPSJNLTU0OS43NS00MjIuMTZjMy40MSAxLjgxLjUgNC45My0xLjUzIDUuMi40Ny4yLjk4LjMyIDEuNTMuMzIgNS41My0xLjc2IDEuMzItNS42NSAwLTUuNTJ6bS0uNjkgNS41MmMzLjEgNC4xMSA1Ljg1IDguNDYgOC43MyAxMi43bC00LjgxIDUuMiAxLjA5IDQuNDMgMyAuODYtMS4zNS00LjY3IDQuNTctNS44MS05Ljg2LTEyLjdoLS42OHYtLjAxeiIgZmlsdGVyPSJ1cmwoI2QpIiBvcGFjaXR5PSIuMiIgc3R5bGU9Im1peC1ibGVuZC1tb2RlOm5vcm1hbCIgdHJhbnNmb3JtPSJtYXRyaXgoMS4wMzM0IDAgMCAxLjAyMTggNTkyLjk1IDQzOS4wOCkiLz48cGF0aCBkPSJNMjYuMDcgMzUuNjJjLTMuMDguMDEtNi40LjUtOC4zNyAxLjc3IDIuMTkgMS41IDUuOCAxLjgyIDguODkgMS43Ny03LjE0LTEuNDUgMi4wMy0yLjk3IDQuODQtM2EyNS4xMyAyNS4xMyAwIDAgMC01LjM2LS41NHoiIG9wYWNpdHk9Ii4xNSIvPjxwYXRoIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzAwMCIgZD0iTTE3LjEzIDM3LjEyczEuOTMtMS41NiA3LjcyLTEuNTYgNy43MSAxLjU2IDcuNzEgMS41Nm0tMTMuODgtNC44NnMxLjg2LTEuMDIgNi4xNy0xLjAzYzQuMzEgMCA2LjE4IDEuMDMgNi4xOCAxLjAzIi8+PHBhdGggZmlsbD0iI2ZmZiIgZD0ibTE4Ljg3IDMxLjU4LTQuMTctNS4yNiA5Ljc0LTEyLjQzLTguMDggMTIuMzh6IiBmaWx0ZXI9InVybCgjZSkiIG9wYWNpdHk9Ii4zIi8+PHBhdGggZD0iTTI1IDM5LjE2Yy01LjYyIDAtNy4zLTEuNzctNy4zLTEuNzdzMS42OC0xLjc3IDcuMy0xLjc3IDcuMyAxLjc3IDcuMyAxLjc3LTEuNjggMS43Ny03LjMgMS43N3oiIG9wYWNpdHk9Ii4yIi8+PHBhdGggZmlsbD0idXJsKCNmKSIgc3Ryb2tlPSIjMDAwIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGQ9Ik0yMi42NSAzOS4xNmMtNS4yIDYuMjUtMTEuNzktMi45Mi0xOC41MyAzLjQ4bDEuOTYgMy42NkMxMC40OCA0MC42MiAyNSA1MS41IDI1IDM5LjE2eiIvPjxwYXRoIGZpbGw9InVybCgjZykiIHN0cm9rZT0iIzAwMCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBkPSJNMjcuMzUgMzkuMTZjNS4yIDYuMjUgMTEuNzktMi45MiAxOC41MyAzLjQ4bC0xLjk3IDMuNjZDMzkuNTEgNDAuNjIgMjUgNTEuNSAyNSAzOS4xNnoiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJtNC44MyA0Mi43MyAxLjQgMi42LS4zNC0yLjM0YzMuMTItMi4zOSA1Ljk2LTEuNjIgOC4wNC0xLjYgMCAwLTUuODUtMS45NS05LjEgMS4zNXoiIGZpbHRlcj0idXJsKCNoKSIgb3BhY2l0eT0iLjMiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJtNDUuMjQgNDIuNzctLjQ5Ljg5Yy0xLjktMi4zMy0zLjc0LTIuNzYtNS4zMi0yLjc2IDAgMCAzLjAyLS43MiA1LjgxIDEuODd6IiBmaWx0ZXI9InVybCgjaSkiIG9wYWNpdHk9Ii4yIi8+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTIzLjY3IDEyLjM3Yy0uMjUuMDYtMi42LTIuNDIuNDItMy45OC0uMDkgMC0xLjc2IDIuMTQtLjQyIDMuOTh6IiBmaWx0ZXI9InVybCgjaikiIG9wYWNpdHk9Ii4yIi8+PHBhdGggZmlsbD0iI2ZmZiIgZD0ibTYwMy43Ni02Ny41NyAxLjA1LTMuM3MuMzctLjI2IDEuNDUtLjQ0YzAgMC0uNzQgMi4yMy41MSAzLjA0LTIuMTUuMzQtMi41My41Ni0zLjAxLjd6IiBmaWx0ZXI9InVybCgjaykiIG9wYWNpdHk9Ii4xIiB0cmFuc2Zvcm09Im1hdHJpeCgxLjAwMDcgMCAwIC45ODkzMSAtNTg2LjA0IDEwMi43OSkiLz48L3N2Zz4=");
 }
@@ -533,7 +360,7 @@ body {
   background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBpbWFnZS1yZW5kZXJpbmc9Im9wdGltaXplUXVhbGl0eSIgc2hhcGUtcmVuZGVyaW5nPSJnZW9tZXRyaWNQcmVjaXNpb24iIHRleHQtcmVuZGVyaW5nPSJnZW9tZXRyaWNQcmVjaXNpb24iIHZpZXdCb3g9IjAgMS41IDUwIDUwIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImEiIHgxPSI5LjAwNSIgeDI9IjQwLjk5NSIgeTE9IjI2Ljc2MiIgeTI9IjI2Ljc2MiIgZ3JhZGllbnRUcmFuc2Zvcm09InRyYW5zbGF0ZSgwIDEuMDI5KSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iI2VjZTlkZiIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI2Y0ZTBjOCIvPjwvbGluZWFyR3JhZGllbnQ+PGxpbmVhckdyYWRpZW50IGlkPSJjIiB4MT0iLTM2LjEzMyIgeDI9Ii05LjkzOCIgeTE9Ii0zMTMuOTciIHkyPSItMzEzLjk3IiBncmFkaWVudFRyYW5zZm9ybT0ibWF0cml4KC0xIDAgMCAxIDEuOTY0IDMzMy4yOCkiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBvZmZzZXQ9IjAiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3Atb3BhY2l0eT0iMCIvPjwvbGluZWFyR3JhZGllbnQ+PGZpbHRlciBpZD0iYiIgd2lkdGg9IjEuMjIzIiBoZWlnaHQ9IjEuMDYxIiB4PSItLjExMiIgeT0iLS4wMyIgY29sb3ItaW50ZXJwb2xhdGlvbi1maWx0ZXJzPSJzUkdCIj48ZmVHYXVzc2lhbkJsdXIgc3RkRGV2aWF0aW9uPSIuNDYzIi8+PC9maWx0ZXI+PC9kZWZzPjxwYXRoIGZpbGw9InVybCgjYSkiIHN0cm9rZT0iIzAwMCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBkPSJNMTIuOTczIDQxLjU3aDI0LjEyMW0tMjQuMTI3LTQuMzcxaDI0LjA2Nm0tMjAuMDYxLTQuMDUySDMzLjAzTTE3LjA2MiAyMS41M2gxNS44NzltLTIxLjAzOC00LjQzMmgyNi4xOTZtLTI2LjE5Ni03LjgxdjcuODFsNS4xNTggNC40MzMtLjA5IDExLjYxOC00LjAwMyA0LjA1MXY0LjM3MUg5LjUwNXY0LjcyNmgzMC45OVY0MS41N2gtMy40NjJWMzcuMmwtNC4wMDQtNC4wNTItLjA5LTExLjYxOCA1LjE1OS00LjQzM3YtNy44MWgtNS41OTN2My4zNDdoLTQuNjEzVjkuMjg2aC01Ljc4M3YzLjM0OGgtNC42MTNWOS4yODZ6Ii8+PHBhdGggZD0iTTQ2LjE5OS0yNjguMzh2Ny43MjVsLTUuMDIgNC4zODYuMDg5IDExLjQ4OSA0LjQxMyA0LjAwNnY0LjMyM2gyLjgyOXY0LjY3M2gyLjYzMnYtNC42NzNoLTMuMzU4di00LjMyMkw0My45LTI0NC43OGwtLjA4OC0xMS40OTIgNS4wMDItNC4zODN2LTcuNzI1eiIgZmlsdGVyPSJ1cmwoI2IpIiBvcGFjaXR5PSIuMTUiIHN0eWxlPSJtaXgtYmxlbmQtbW9kZTpub3JtYWwiIHRyYW5zZm9ybT0ibWF0cml4KDEuMDMxIDAgMCAxLjAxMTIgLTEyLjIzMiAyODAuNjcpIi8+PHBhdGggZmlsbD0iI2ZmZiIgZD0ibTEyLjQ2NiAxNi41MjUtLjA0MS02LjY3NSAzLjMyOC0uMDk1LTEuOTk3LjcxMXY1LjM1Nmw0LjcwNC42Njd6bTUuMTMgNS41MDZoNy41OGwtNi40NjcgMXY4LjU5OGwtMS4xNjEuOTIyeiIgb3BhY2l0eT0iLjgiIHN0eWxlPSJtaXgtYmxlbmQtbW9kZTpub3JtYWwiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJtMTQuMzU4IDM2LjU4MiAyLjg2LTIuODNoMS40NzlsLTIuNCAyLjgzem0tLjg0IDEuMjEyLjAwNSAzLjIxNGgxLjUyNGwtLjAwMy0zLjIyNXptLTMuNDUxIDQuMzFoMS4wMTV2Mi42NmwzLjg3Mi45ODdoLTQuODg3eiIgb3BhY2l0eT0iLjciIHN0eWxlPSJtaXgtYmxlbmQtbW9kZTpub3JtYWwiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJtMjIuNjUxIDkuNzk0LS4wMTcgMi40MzNjLjY1OC0xLjIzIDEuMzYzLTIuMTc2IDMuMDI2LTIuNDI0eiIgb3BhY2l0eT0iLjgiIHN0eWxlPSJtaXgtYmxlbmQtbW9kZTpub3JtYWwiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJtMzMuMDUxIDkuODA3LS4wMTcgMi40MzNjLjM4OC0xLjUyIDEuMTExLTIuMzkgMy4wMjYtMi40MjV6IiBvcGFjaXR5PSIuNyIgc3R5bGU9Im1peC1ibGVuZC1tb2RlOm5vcm1hbCIvPjxwYXRoIGZpbGw9InVybCgjYykiIGQ9Ik0zOC4wOTggMTcuMDk3SDExLjkwM2w1LjE2IDQuNDMzSDMyLjk0eiIgb3BhY2l0eT0iLjE1Ii8+PC9zdmc+");
 }
 
-/* wood, the "merida" set: warm-toned, classic tournament-style pieces. */
+/* wood — the "merida" set: warm-toned, classic tournament-style pieces. */
 .piece-theme-wood .cg-wrap piece.bishop.black {
   background-image: url("data:image/svg+xml;base64,PHN2ZyBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGZpbGwtcnVsZT0iZXZlbm9kZCIgaGVpZ2h0PSI1MG1tIiBpbWFnZS1yZW5kZXJpbmc9Im9wdGltaXplUXVhbGl0eSIgc2hhcGUtcmVuZGVyaW5nPSJnZW9tZXRyaWNQcmVjaXNpb24iIHRleHQtcmVuZGVyaW5nPSJnZW9tZXRyaWNQcmVjaXNpb24iIHZpZXdCb3g9IjAgMCA1MCA1MCIgd2lkdGg9IjUwbW0iIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGxpbmVhckdyYWRpZW50IGlkPSJhIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgeDE9IjIxLjA5NCIgeDI9Ijc3LjY2OSIgeTE9IjM3LjEwMSIgeTI9IjM3LjQ2OSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjZmZmIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjZmZmIiBzdG9wLW9wYWNpdHk9IjAiLz48L2xpbmVhckdyYWRpZW50PjxwYXRoIGQ9Ik0yNSA0Mi4xNjJjLS4yMjkuOTQtLjUxNiAxLjU5Mi0uODQ3IDEuOTU2LS4zMy4zNjQtLjc2Mi43NDUtMS4zMTIgMS4xNDMtLjU5My40MTUtMS4yOTUuNzYyLTIuMTA4IDEuMDUtLjgxMy4yODgtMS43MS4zNjQtMi43MDEuMjExbC02Ljk2OC0uOTY1YTIuODU4IDIuODU4IDAgMCAwLS43NjIgMGMtLjIyLjAzNC0uNDMyLjA1MS0uNjM1LjA1MS0uMzQ3IDAtLjc4Ny4wNzYtMS4zMi4yMzctLjU0My4xNTMtLjk1OC4zODEtMS4yNTQuNjc3bC0yLjQwNS0zLjk0NWMuMjk3LS4zMy41Ni0uNTU5Ljc4OC0uNjk0LjIzNy0uMTI3LjUwOC0uMjcxLjgyMS0uNDE1YTkuMTc5IDkuMTc5IDAgMCAxIDMuMDczLS44MjFjLjQ2Ni0uMDM0LjkyMy0uMDQzIDEuMzY0LS4wMjZhOS44IDkuOCAwIDAgMCAxLjM5Ny0uMDVjLjg4OS4xNTIgMS43ODYuMjg3IDIuNjg0LjQwNi45MDUuMTI3IDEuODExLjI1NCAyLjcxNy4zOS45OTEgMCAxLjY2LS4xMDIgMi4wMDctLjI5Ny4xODYtLjEwMi40NzQtLjI4OC44NzItLjU1LjM5OC0uMjYzLjc5Ni0uNjUyIDEuMTk0LTEuMTY5LS44OC0uMDkzLTEuNzctLjI2Mi0yLjY4NC0uNTA4YTI0LjA5NCAyNC4wOTQgMCAwIDEtMi40MDUtLjc1M2wyLjU4My02LjQwMWMtMS4yOTYtLjc0NS0yLjE5My0xLjMzOC0yLjcxLTEuNzk1YTUuMyA1LjMgMCAwIDEtMS4yMS0xLjU3NWMtLjQzMi0uNzYyLS43MTItMS40OTgtLjgzLTIuMjFhOS4zNDEgOS4zNDEgMCAwIDEtLjE2LTEuOTEzYy4wMTYtLjk5LjI0NS0yLjA4My43MDItMy4yODUuNDU3LTEuMTk0IDEuMzEyLTIuMjcgMi41NjUtMy4yMDlhNzkuMDkxIDc5LjA5MSAwIDAgMCAzLjA1Ny0yLjQ1NSAyNy43NDYgMjcuNzQ2IDAgMCAwIDIuOTQ2LTIuOTU1Yy0xLjIyLS42MjctMS44MjktMS42MjYtMS44MjktMi45OTcgMC0uOTMyLjMyMi0xLjcyLjk3NC0yLjM4OC42NTItLjY2IDEuNDU2LS45OSAyLjM5Ni0uOTkuOTIzIDAgMS43MTkuMzMgMi4zOC45OS42Ni42NjkuOTkgMS40NTYuOTkgMi4zODggMCAxLjM1NC0uNjEgMi4zNTMtMS44MyAyLjk5N2EyNi43OTYgMjYuNzk2IDAgMCAwIDIuOTE0IDIuOTU1IDU2Ljc0IDU2Ljc0IDAgMCAwIDMuMDkgMi40NTVjMS4yMzYuOTQgMi4wODMgMi4wMTUgMi41MjMgMy4yMDkuNDQ5IDEuMjAyLjY5NCAyLjI5NC43MiAzLjI4NSAwIC41NjctLjA1MSAxLjIwMi0uMTcgMS45MTNzLS4zOCAxLjQ0OC0uNzk2IDIuMjFhNi4wODQgNi4wODQgMCAwIDEtMS4yNTMgMS41NzVjLS41LjQ1Ny0xLjM4OCAxLjA1LTIuNjY3IDEuNzk1bDIuNTgzIDYuNGMtLjcyOS4yNjMtMS41NS41MTctMi40NTYuNzU0LS45MTQuMjQ2LTEuNzg2LjQxNS0yLjYzMy41MDguMzgxLjUxNy43Ny45MDYgMS4xNjggMS4xNjkuMzk4LjI2Mi42OTUuNDQ4Ljg5OC41NS4zNDcuMTk1IDEuMDE2LjI5NiAyLjAwNy4yOTZhMjYzLjM1IDI2My4zNSAwIDAgMSAyLjY5Mi0uMzkgODEuMTMgODEuMTMgMCAwIDAgMi43MTgtLjQwNmMuNDQuMDUxLjg4OS4wNjggMS4zNDYuMDUxYTEzLjEyIDEzLjEyIDAgMCAxIDEuNDA1LjAyNiA5LjYyNyA5LjYyNyAwIDAgMSAzLjA3NC44MmMuMjk2LjE0NS41NjcuMjg5LjgwNC40MTYuMjQ2LjEzNS41MDguMzY0LjgwNC42OTRsLTIuNDMgMy45NDVjLS4yOTYtLjI5Ni0uNzEtLjUyNC0xLjI1My0uNjc3LS41MzMtLjE2LS45NjUtLjIzNy0xLjI5NS0uMjM3LS4yMiAwLS40NC0uMDE3LS42Ni0uMDVhMi43OTQgMi43OTQgMCAwIDAtLjc1NCAwbC02Ljk1Ljk2NGMtLjk5Mi4xNTMtMS45MTQuMDg1LTIuNzYxLS4xOTQtLjg1NS0uMjgtMS41NTgtLjY1Mi0yLjEtMS4xMTgtLjU0Mi0uNDQ5LS45ODItLjgzLTEuMzA0LTEuMTUxLS4zMjEtLjMyMi0uNTkyLS45NTctLjgwNC0xLjg5N3oiIGZpbGw9IiMxZjFhMTciLz48cGF0aCBkPSJNMjQuMDg2IDIzLjcwNXYyLjEwOGMwIC42MS4zMDQuOTE0LjkxNC45MTRzLjkxNC0uMzA0LjkxNC0uOTE0di0yLjEzNGgyLjIzNmMuNTc1IDAgLjg3Mi0uMjk2Ljg3Mi0uODk3IDAtLjU5My0uMjk3LS44ODktLjg3Mi0uODg5aC0yLjIzNnYtMi4yMzVjMC0uNjEtLjMwNC0uOTE1LS45MTQtLjkxNXMtLjkxNC4zMDUtLjkxNC45MTV2Mi4yMzVIMjEuOWMtLjU4NCAwLS44NzIuMjk2LS44NzIuODg5IDAgLjYwMS4yODguODk3Ljg3Mi44OTd6bTcuNTEgMTMuNzQxbC0xLjA0Mi0yLjUzMWMtMS42ODUtLjM2NC0zLjUzOS0uNTQyLTUuNTU0LS41NDItMS45OTggMC0zLjgzNS4xNzgtNS41MDMuNTQybC0xLjA0MiAyLjUwNmMyLjA1LS41MTcgNC4yMzQtLjc3IDYuNTQ1LS43NyAyLjI4NiAwIDQuNDc5LjI2MiA2LjU5Ni43OTV6bS0yLjA4My01LjExNGwtLjcyLTEuNzM1di0uNjdhMjcuMDMgMjcuMDMgMCAwIDAtMy43OTMtLjI3IDI3LjM1IDI3LjM1IDAgMCAwLTMuNzY4LjI3bC0uMDI1LjY3LS42NjkgMS43MzVBMjUuODUgMjUuODUgMCAwIDEgMjUgMzEuOTZjMS41OTIgMCAzLjA5LjEyNyA0LjUxMy4zNzJ6bS0uODY0IDkuMzgxYy0uNjYtLjUtMS4zMy0xLjI4Ny0xLjk5LTIuMzYyaC0uNzg3YzAgLjgxMy4xODYgMS42LjU2NyAyLjM2MnptLTUuMTE0IDBjLjM4MS0uODEyLjU3Ni0xLjYuNTc2LTIuMzYyaC0uNzk2Yy0uNjQzIDEuMDU5LTEuMzEyIDEuODQ2LTIuMDE1IDIuMzYyeiIgZmlsbD0idXJsKCNhKSIvPjwvc3ZnPg==");
 }
@@ -580,7 +407,7 @@ body {
   );
 }
 
-/* Game page layout, the pairing of "which area sits next to which"
+/* Game page layout — the pairing of "which area sits next to which"
    genuinely changes shape between phone/tablet/desktop (a top strip becomes
    a left column, side flanks become a right column, etc), not just a size
    tweak, so it's expressed as one authored grid with named areas per
@@ -619,6 +446,10 @@ body {
   .game-grid .game-area-rightpanel {
     grid-area: rightpanel;
     display: flex;
+  }
+  .game-grid .game-area-toppanel,
+  .game-grid .game-area-bottompanel {
+    display: none;
   }
 }
 

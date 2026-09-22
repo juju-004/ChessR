@@ -1,7 +1,7 @@
 import bcrypt from "bcrypt";
 import type { Response } from "express";
 import { z } from "zod";
-import { User, type IUser } from "../models/User.js";
+import { User } from "../models/User.js";
 import { ApiError } from "../utils/ApiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import {
@@ -10,16 +10,6 @@ import {
   verifyRefreshToken,
 } from "../services/token.service.js";
 import { env, isProd } from "../config/env.js";
-import {
-  getRatingCategory,
-  gamesUntilRanked,
-} from "../services/rating.service.js";
-import {
-  issueEmailVerification,
-  consumeEmailVerificationToken,
-} from "../services/verification.service.js";
-import { verifyGoogleCredential } from "../services/googleAuth.service.js";
-import { createNotification } from "../services/notification.service.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 
 const BCRYPT_ROUNDS = 12;
@@ -40,130 +30,25 @@ const signupSchema = z.object({
 });
 
 const signinSchema = z.object({
-  // Accepts either an email or a username, signin() below sniffs which
-  // one it's looking at and queries accordingly. Not further validated
-  // as an email/username shape here since it might be either.
-  identifier: z.string().trim().min(1),
+  email: z.string().trim().email(),
   password: z.string().min(1),
 });
 
-const verifyEmailSchema = z.object({
-  token: z.string().min(1),
-});
-
-const googleSigninSchema = z.object({
-  // The ID token JWT Google Identity Services hands the client directly,
-  // see googleAuth.service.ts for what actually happens to it server-side.
-  credential: z.string().min(1),
-});
-
-// Local dev: frontend and backend look same-origin (Vite proxies /api), so
-// 'lax' + non-secure works over plain http://localhost. In production,
-// frontend (Vercel) and backend (Railway) are genuinely different origins,
-// browsers will not send a 'lax' cookie on that cross-site request at all,
-// which is exactly what silently breaks session restore after a real deploy.
-// 'none' requires secure:true (HTTPS), which both platforms provide by default.
-//
-// Pulled out as one shared object (rather than inlined separately in
-// setRefreshCookie and logout) so the two can never drift apart. A
-// clearCookie() whose attributes don't match the cookie's original
-// secure/sameSite is not guaranteed to actually remove it, some browsers
-// (Safari in particular) end up leaving the old `SameSite=None; Secure`
-// refresh_token cookie in place, which is exactly what caused logout to
-// "work" (local state cleared, redirected to /signin) right up until the
-// next page refresh silently signed you back in via /auth/refresh.
-const crossOrigin = isProd;
-const REFRESH_COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: env.COOKIE_SECURE || crossOrigin,
-  sameSite: (crossOrigin ? "none" : "lax") as "none" | "lax",
-  path: "/api/auth",
-};
-
 function setRefreshCookie(res: Response, token: string) {
+  // Local dev: frontend and backend look same-origin (Vite proxies /api), so
+  // 'lax' + non-secure works over plain http://localhost. In production,
+  // frontend (Vercel) and backend (Railway) are genuinely different origins —
+  // browsers will not send a 'lax' cookie on that cross-site request at all,
+  // which is exactly what silently breaks session restore after a real deploy.
+  // 'none' requires secure:true (HTTPS), which both platforms provide by default.
+  const crossOrigin = isProd;
   res.cookie(REFRESH_COOKIE, token, {
-    ...REFRESH_COOKIE_OPTIONS,
+    httpOnly: true,
+    secure: env.COOKIE_SECURE || crossOrigin,
+    sameSite: crossOrigin ? "none" : "lax",
+    path: "/api/auth",
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   });
-}
-
-function ratingFields(user: { rating: number; ratedGamesPlayed: number }) {
-  return {
-    ratingCategory: getRatingCategory(user.rating, user.ratedGamesPlayed),
-    ratedGamesUntilRanked: gamesUntilRanked(user.ratedGamesPlayed),
-  };
-}
-
-function userFields(user: IUser) {
-  return {
-    id: user.id,
-    username: user.username,
-    email: user.email,
-    avatarGradient: user.avatarGradient ?? null,
-    emailVerified: user.emailVerified,
-    acceptChallenges: user.acceptChallenges,
-    // Present only while an active play/chat restriction is in effect
-    // (see suspension.service.ts / User.suspendedUntil), a past or unset
-    // value is dropped rather than sent as a stale date, so the client
-    // can treat "field present" as "currently restricted" without also
-    // comparing it to the current time itself.
-    suspendedUntil:
-      user.suspendedUntil && user.suspendedUntil.getTime() > Date.now()
-        ? user.suspendedUntil
-        : null,
-    ...ratingFields(user),
-  };
-}
-
-function issueSession(res: Response, user: IUser) {
-  const accessToken = signAccessToken({
-    sub: user.id,
-    username: user.username,
-  });
-  const refreshToken = signRefreshToken(user.id, user.tokenVersion);
-  setRefreshCookie(res, refreshToken);
-  return accessToken;
-}
-
-/** Turns "Ada Lovelace" / "ada.lovelace@site.com" into a username-shaped,
- *  available slug, strips anything outside [a-zA-Z0-9_], pads short
- *  results, truncates long ones, and appends a numeric suffix until it
- *  finds one nobody's taken yet. Used only for brand-new Google sign-ins,
- *  where there's no username the person typed themselves to fall back on. */
-async function generateAvailableUsername(seed: string): Promise<string> {
-  const base =
-    seed
-      .normalize("NFKD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-zA-Z0-9_]/g, "")
-      .slice(0, 20) || "player";
-  const padded = base.length >= 3 ? base : `${base}player`.slice(0, 20);
-
-  for (let suffix = 0; suffix < 1000; suffix++) {
-    const candidate = suffix === 0 ? padded : `${padded}${suffix}`.slice(0, 24);
-    const usernameLower = candidate.toLowerCase();
-    // eslint-disable-next-line no-await-in-loop
-    const taken = await User.exists({ usernameLower });
-    if (!taken) return candidate;
-  }
-  // Astronomically unlikely to be reached, but keeps the function total.
-  return `player${Date.now()}`;
-}
-
-// Sent once, automatically, on account creation, see the notifications
-// system (models/Notification.ts) — a first-party "here's what this app
-// is" message rather than an empty inbox on day one. Deliberately doesn't
-// try to restate the Terms in full (or wager rules, fair-play policy,
-// etc.), those live on their own pages and change independently of this
-// fixed welcome copy; this just points there.
-function sendWelcomeNotification(userId: string): void {
-  createNotification({
-    recipientId: userId,
-    type: "welcome",
-    title: "Welcome to Chessr",
-    body: "Chessr is multiplayer chess with cage matches, tournaments, and real R-token wagers on the line. Play rated games, challenge friends directly, or enter a tournament. See the About page for a full tour of what you can do here, and the Terms page for the rules around wagers, withdrawals, and fair play before you jump in.",
-    link: "/about",
-  }).catch((err) => console.error("Failed to send welcome notification:", err));
 }
 
 export const signup = asyncHandler(async (req, res) => {
@@ -185,103 +70,40 @@ export const signup = asyncHandler(async (req, res) => {
     passwordHash,
   });
 
-  // Fire off the verification email, but don't let a mail-provider hiccup
-  // fail account creation, the account exists either way, and "resend
-  // verification" (see resendVerification below) covers this if the first
-  // send silently drops.
-  issueEmailVerification(user).catch((err) =>
-    console.error("Failed to send verification email on signup:", err),
-  );
-  sendWelcomeNotification(user._id.toString());
-
-  const accessToken = issueSession(res, user);
+  const accessToken = signAccessToken({
+    sub: user.id,
+    username: user.username,
+  });
+  const refreshToken = signRefreshToken(user.id, user.tokenVersion);
+  setRefreshCookie(res, refreshToken);
 
   res.status(201).json({
     accessToken,
-    user: userFields(user),
+    user: { id: user.id, username: user.username, email: user.email, avatarGradient: user.avatarGradient ?? null },
   });
 });
 
 export const signin = asyncHandler(async (req, res) => {
-  const { identifier, password } = signinSchema.parse(req.body);
+  const { email, password } = signinSchema.parse(req.body);
 
-  // A bare heuristic ("contains an @") is enough to tell email and
-  // username apart here, usernames are restricted to
-  // [a-zA-Z0-9_] at signup, so they can never contain one.
-  const isEmail = identifier.includes("@");
-  const user = await User.findOne(
-    isEmail
-      ? { email: identifier.toLowerCase() }
-      : { usernameLower: identifier.toLowerCase() },
-  ).select("+passwordHash");
-  if (!user) throw ApiError.unauthorized("Invalid username/email or password");
-
-  if (!user.passwordHash) {
-    // A Google-only account trying the password form, bcrypt.compare
-    // against nothing isn't meaningful, and "invalid password" would be a
-    // confusing dead end for someone who's never set one.
-    throw ApiError.unauthorized(
-      'This account signs in with Google. Use "Continue with Google" instead.',
-    );
-  }
+  const user = await User.findOne({ email: email.toLowerCase() }).select(
+    "+passwordHash",
+  );
+  if (!user) throw ApiError.unauthorized("Invalid email or password");
 
   const valid = await bcrypt.compare(password, user.passwordHash);
-  if (!valid) throw ApiError.unauthorized("Invalid username/email or password");
+  if (!valid) throw ApiError.unauthorized("Invalid email or password");
 
-  const accessToken = issueSession(res, user);
-
-  res.json({
-    accessToken,
-    user: userFields(user),
+  const accessToken = signAccessToken({
+    sub: user.id,
+    username: user.username,
   });
-});
-
-export const googleSignin = asyncHandler(async (req, res) => {
-  const { credential } = googleSigninSchema.parse(req.body);
-  const profile = await verifyGoogleCredential(credential);
-
-  let user = await User.findOne({ googleId: profile.googleId });
-  // Only true for the "brand new account, just this instant" branch below
-  //, an existing account (found by googleId OR linked by email) is never
-  // "new" even on its first-ever Google sign-in. Told to the client so it
-  // knows whether to route through the one-time "pick a username" step
-  // (see ChooseUsername.tsx) rather than straight to the dashboard.
-  let isNewUser = false;
-
-  if (!user) {
-    // Not seen this Google account before, but if the email matches an
-    // existing local (password) account, link Google onto it rather than
-    // creating a duplicate account under the same address (the unique
-    // index on email would reject that anyway, but this gives a much
-    // better outcome: one account, now signable-into either way).
-    user = await User.findOne({ email: profile.email.toLowerCase() });
-    if (user) {
-      user.googleId = profile.googleId;
-      if (profile.emailVerified) user.emailVerified = true;
-      await user.save();
-    } else {
-      const username = await generateAvailableUsername(profile.name);
-      user = await User.create({
-        username,
-        usernameLower: username.toLowerCase(),
-        email: profile.email,
-        googleId: profile.googleId,
-        // Google already owns and verifies this address, so there's no
-        // "click the link" step needed on top of that, trust its claim
-        // the same way every "Sign in with Google" button elsewhere does.
-        emailVerified: profile.emailVerified,
-      });
-      isNewUser = true;
-      sendWelcomeNotification(user._id.toString());
-    }
-  }
-
-  const accessToken = issueSession(res, user);
+  const refreshToken = signRefreshToken(user.id, user.tokenVersion);
+  setRefreshCookie(res, refreshToken);
 
   res.json({
     accessToken,
-    user: userFields(user),
-    isNewUser,
+    user: { id: user.id, username: user.username, email: user.email, avatarGradient: user.avatarGradient ?? null },
   });
 });
 
@@ -311,12 +133,12 @@ export const refresh = asyncHandler(async (req, res) => {
 
   res.json({
     accessToken,
-    user: userFields(user),
+    user: { id: user.id, username: user.username, email: user.email, avatarGradient: user.avatarGradient ?? null },
   });
 });
 
 export const logout = asyncHandler(async (_req, res) => {
-  res.clearCookie(REFRESH_COOKIE, REFRESH_COOKIE_OPTIONS);
+  res.clearCookie(REFRESH_COOKIE, { path: "/api/auth" });
   res.status(204).send();
 });
 
@@ -328,40 +150,7 @@ export const me = asyncHandler(async (req: AuthedRequest, res) => {
     username: user.username,
     email: user.email,
     avatarGradient: user.avatarGradient ?? null,
-    emailVerified: user.emailVerified,
-    acceptChallenges: user.acceptChallenges,
     tokenBalance: user.tokenBalance,
     friendCount: user.friends.length,
-    // See userFields()'s identical treatment above: present only while
-    // still active, so the client only ever sees a live countdown target.
-    suspendedUntil:
-      user.suspendedUntil && user.suspendedUntil.getTime() > Date.now()
-        ? user.suspendedUntil
-        : null,
-    ...ratingFields(user),
   });
 });
-
-export const verifyEmail = asyncHandler(async (req, res) => {
-  const { token } = verifyEmailSchema.parse(req.body);
-  const user = await consumeEmailVerificationToken(token);
-  if (!user) {
-    throw ApiError.badRequest(
-      "This verification link is invalid or has expired.",
-    );
-  }
-  res.json({ verified: true });
-});
-
-export const resendVerification = asyncHandler(
-  async (req: AuthedRequest, res) => {
-    const user = await User.findById(req.user!.id);
-    if (!user) throw ApiError.notFound("User not found");
-    if (user.emailVerified) {
-      res.json({ alreadyVerified: true });
-      return;
-    }
-    await issueEmailVerification(user);
-    res.json({ sent: true });
-  },
-);

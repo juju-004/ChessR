@@ -10,13 +10,11 @@ import {
   resolveAccount,
   withdraw,
   getTransactions,
-  getPayoutAccount,
-  savePayoutAccount,
 } from '../controllers/wallet.controller.js';
 
 const router = Router();
 
-// Withdrawals move real money, much tighter limit than the general API.
+// Withdrawals move real money — much tighter limit than the general API.
 const withdrawLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: 5,
@@ -33,7 +31,5 @@ router.get('/banks', requireAuth, getBanks);
 router.get('/resolve-account', requireAuth, resolveAccount);
 router.post('/withdraw', requireAuth, withdrawLimiter, withdraw);
 router.get('/transactions', requireAuth, getTransactions);
-router.get('/payout-account', requireAuth, getPayoutAccount);
-router.put('/payout-account', requireAuth, savePayoutAccount);
 
 export default router;

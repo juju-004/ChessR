@@ -12,17 +12,11 @@ import {
   getGameByCode,
   listFriendsActiveGames,
 } from "../services/game.service.js";
-import { getRatingCategory } from "../services/rating.service.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 
-// Sanity ceiling on a single wager, not a business limit, just a guard
+// Sanity ceiling on a single wager — not a business limit, just a guard
 // against fat-fingered/garbage input reaching the wallet layer.
-const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
-// Floor on any single wager/stake/fee amount when a game IS wagered, kept
-// in sync with MIN_STAKE_TOKENS in client/src/lib/limits.ts. 0 is also
-// allowed (a free, unwagered game) — wagers are opt-in, not required, see
-// createOpenGame's existing `wagerTokens > 0` branching in game.service.ts.
-const MIN_STAKE_TOKENS = 20;
+const MAX_WAGER_TOKENS = 100_000;
 
 const createSchema = z.object({
   isPrivate: z.boolean().optional().default(false),
@@ -35,10 +29,8 @@ const createSchema = z.object({
     .int()
     .min(0)
     .max(MAX_WAGER_TOKENS)
-    .refine(
-      (v) => v === 0 || v >= MIN_STAKE_TOKENS,
-      `A wager must either be 0 (free game) or at least ${MIN_STAKE_TOKENS} R`,
-    ),
+    .optional()
+    .default(0),
 });
 const idParamSchema = z.object({
   id: z.string().refine(mongoose.isValidObjectId),
@@ -85,7 +77,7 @@ export const joinGame = asyncHandler(async (req: AuthedRequest, res) => {
 });
 
 export const getOpenGames = asyncHandler(async (_req: AuthedRequest, res) => {
-  // Deliberately includes the caller's own open games now, the client needs
+  // Deliberately includes the caller's own open games now — the client needs
   // to see them to offer a "Cancel" action instead of a "Join" one.
   const games = await listOpenGames();
   res.json({ games });
@@ -115,26 +107,8 @@ export const getMyActiveGames = asyncHandler(
   },
 );
 
-// Swaps a populated white/black user sub-doc's raw rating fields for the
-// computed, client-safe category before anything reaches res.json, 
-// getGameByCode selects `rating`/`ratedGamesPlayed` on the populate purely
-// so this can compute from them; neither should ever leave the server.
-function withRatingCategory<T extends { rating?: number; ratedGamesPlayed?: number } | null>(
-  player: T,
-) {
-  if (!player) return player;
-  const { rating, ratedGamesPlayed, ...rest } = player as any;
-  return { ...rest, ratingCategory: getRatingCategory(rating ?? 1500, ratedGamesPlayed ?? 0) };
-}
-
 export const getGameByCodeHandler = asyncHandler(async (req, res) => {
   const { code } = codeParamSchema.parse(req.params);
   const game = await getGameByCode(code);
-  res.json({
-    game: {
-      ...game,
-      white: withRatingCategory(game.white as any),
-      black: withRatingCategory(game.black as any),
-    },
-  });
+  res.json({ game });
 });

@@ -1,17 +1,16 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, Navigate, Link } from "react-router-dom";
-import { signup, googleSignin } from "../api/auth.js";
+import { signup } from "../api/auth.js";
 import { isLoggedIn } from "../api/authStore.js";
 import { ApiRequestError } from "../api/http.js";
 import { Input, Button } from "../components/ui/index.js";
 import { AuthLayout } from "../components/AuthLayout.js";
-import { GoogleSignInButton } from "../components/GoogleSignInButton.js";
 import { LockOpen, Mail, User2, Eye, EyeOff, AlertCircle } from "lucide-react";
 
 export function SignUp() {
   const navigate = useNavigate();
 
-  // Already signed in? There's nothing for this page to do, bounce straight
+  // Already signed in? There's nothing for this page to do — bounce straight
   // to the dashboard instead of showing a signup form to someone who doesn't
   // need one.
   if (isLoggedIn()) return <Navigate to="/" replace />;
@@ -37,23 +36,10 @@ export function SignUp() {
     }
   }
 
-  async function handleGoogleCredential(credential: string) {
-    setError("");
-    setLoading(true);
-    try {
-      const { isNewUser } = await googleSignin(credential);
-      // See SignIn.tsx's identical handler for why this branches.
-      navigate(isNewUser ? "/choose-username" : "/");
-    } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Google sign up failed");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
     <AuthLayout
-      title="Register"
+      title="Create your account"
+      subtitle="Join up and get your first game going in seconds."
       footer={
         <>
           Already have an account?{" "}
@@ -73,7 +59,7 @@ export function SignUp() {
           minLength={3}
           maxLength={24}
           pattern="[a-zA-Z0-9_]+"
-          hint="3-24 characters, letters, numbers, and underscores only."
+          hint="3-24 characters — letters, numbers, and underscores only."
           value={username}
           onChange={(e) => setUsername(e.target.value)}
         />
@@ -114,24 +100,10 @@ export function SignUp() {
         </Button>
 
         <p className="text-center text-xs text-base-content/50">
-          By signing up, you agree to our{" "}
-          <Link
-            to="/terms"
-            className="font-medium text-(--primary) hover:underline"
-          >
-            Terms of Service
-          </Link>{" "}, server-side move validation means everyone plays fair, and
-          everyone else does too.
+          By signing up, you agree to play fair — server-side move validation
+          means everyone else does too.
         </p>
       </form>
-
-      <div className="my-5 flex items-center gap-3 text-xs text-base-content/40">
-        <div className="h-px flex-1 bg-base-300" />
-        or
-        <div className="h-px flex-1 bg-base-300" />
-      </div>
-
-      <GoogleSignInButton text="signup_with" onCredential={handleGoogleCredential} />
     </AuthLayout>
   );
 }

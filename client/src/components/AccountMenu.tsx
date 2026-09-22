@@ -2,7 +2,6 @@ import { useNavigate } from "react-router-dom";
 import { ChevronDown, User, Coins, LogOut, Moon, Sun } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext.js";
 import { useTokenBalance } from "../hooks/useTokenBalance.js";
-import { useBalanceVisibility } from "../hooks/useBalanceVisibility.js";
 import { logout } from "../api/auth.js";
 import { Avatar } from "./ui/Avatar.js";
 import { Dropdown, type DropdownItem } from "./ui/Dropdown.js";
@@ -10,15 +9,14 @@ import { RCoin } from "./ui/RCoin.js";
 import { ConnectionStatus } from "./ConnectionStatus.js";
 import { useTheme } from "@/contexts/ThemeContext.js";
 
-/** Everything account-related, the Rabah Coin balance, profile link, username,
- *  logout, collapsed into a single pill in the navbar. The
+/** Everything account-related — R Coin balance, profile link, username,
+ *  logout — collapsed into a single pill in the navbar. The
  *  balance stays visible at a glance on the trigger itself; the rest lives
  *  behind the dropdown. */
 export function AccountMenu() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { balance } = useTokenBalance();
-  const { hidden: balanceHidden } = useBalanceVisibility();
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === "dark";
 
@@ -36,7 +34,7 @@ export function AccountMenu() {
       onClick: () => navigate(`/profile/${user.username}`),
     },
     {
-      label: "Buy RCoins",
+      label: "Buy R Coins",
       icon: Coins,
       onClick: () => navigate("/wallet/buy"),
     },
@@ -58,26 +56,14 @@ export function AccountMenu() {
         </div>
       }
       trigger={
-        <button className="elevated flex h-9 items-center gap-2 rounded-full py-1 pr-3 pl-1 text-sm font-medium text-base-content transition-colors hover:bg-base-content/5">
-          <Avatar
-            username={user.username}
-            gradient={user.avatarGradient}
-            size="xs"
-          />
+        <button className="glass flex h-9 items-center gap-2 rounded-full py-1 pr-3 pl-1 text-sm font-medium text-base-content transition-colors hover:bg-base-content/5">
+          <Avatar username={user.username} gradient={user.avatarGradient} size="xs" />
           <span className="hidden sm:inline">{user.username}</span>
-          <span className="flex items-center gap-1 rounded-full bg-(--primary)/15 py-0.5 pr-1 pl-2 text-xs font-semibold text-(--primary)">
+          <span className="items-center gap-1 flex  rounded-full bg-(--primary)/15 px-2 py-0.5 text-xs font-semibold text-(--primary) sm:flex">
             <RCoin size={12} />
-            {balanceHidden ? (
-              <span className="tracking-widest" aria-label="Balance hidden">
-                •••
-              </span>
-            ) : balance ? (
-              balance.toLocaleString()
-            ) : (
-              "…"
-            )}
+            {balance ?? "…"}
           </span>
-          <ChevronDown className="h-3.5 w-3.5 text-base-content/50" />
+          <ChevronDown className="h-3.5 sm:flex hidden w-3.5 text-base-content/50" />
         </button>
       }
       items={items}

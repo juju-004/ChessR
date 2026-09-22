@@ -52,23 +52,16 @@ export interface IGame extends Document {
   // 0 means a free (unwagered) game.
   wagerTokens: number;
   // Flips to true exactly once, the moment the wager for this game has been
-  // paid out or refunded, guards against double-crediting tokens if the
+  // paid out or refunded — guards against double-crediting tokens if the
   // settlement path is ever triggered twice for the same game (e.g. a
   // reconciliation sweep racing the live socket flow after a restart).
   wagerSettled: boolean;
-  /** Flips to true exactly once, the moment this game's result has been
-   *  folded into both players' hidden rating (see rating.service.ts's
-   *  applyRatingForGame), same double-application guard pattern as
-   *  wagerSettled, for the same reason (more than one code path can reach
-   *  a decisive finish for the same game: the live game-over flow and
-   *  boot-time reconciliation). */
-  ratingApplied: boolean;
-  // Set when this game is one leg of a cage match, links back to the parent
+  // Set when this game is one leg of a cage match — links back to the parent
   // CageMatch document and records this leg's position in its ordered list.
   // Left undefined for standalone games (the overwhelming majority).
   cageMatchId?: Types.ObjectId;
   legIndex?: number;
-  // Set when this game is one pairing of a tournament round, links back to
+  // Set when this game is one pairing of a tournament round — links back to
   // the parent Tournament document. Left undefined for standalone games and
   // cage match legs.
   tournamentId?: Types.ObjectId;
@@ -81,15 +74,6 @@ export interface IGame extends Document {
   createdAt: Date;
   startedAt?: Date;
   endedAt?: Date;
-  // Each side's clock, frozen at the moment the game ended, never
-  // touched again after that (see finalizeGame). null for an untimed
-  // game (no time control) or a game that ended before either clock
-  // started running. Everything else about a game's live state lives in
-  // Redis and evaporates once the game is over; this is the one exception,
-  // persisted specifically so a finished game's replay can still show a
-  // real final clock reading instead of "∞".
-  whiteRemainingMs?: number | null;
-  blackRemainingMs?: number | null;
 }
 
 const moveSchema = new Schema<IMove>(
@@ -115,7 +99,7 @@ const timeControlSchema = new Schema<ITimeControl>(
 
 const gameSchema = new Schema<IGame>(
   {
-    // Short, shareable, human-typeable identifier, this is what shows up in the
+    // Short, shareable, human-typeable identifier — this is what shows up in the
     // URL and what a friend types in to join. The Mongo _id stays internal.
     joinCode: { type: String, required: true, unique: true, index: true },
     variant: { type: String, enum: ['standard', 'chess960'], default: 'standard' },
@@ -148,7 +132,6 @@ const gameSchema = new Schema<IGame>(
     isPrivate: { type: Boolean, default: false },
     wagerTokens: { type: Number, default: 0, min: 0 },
     wagerSettled: { type: Boolean, default: false },
-    ratingApplied: { type: Boolean, default: false },
     cageMatchId: { type: Schema.Types.ObjectId, ref: 'CageMatch', index: true },
     legIndex: { type: Number },
     tournamentId: { type: Schema.Types.ObjectId, ref: 'Tournament', index: true },
@@ -163,28 +146,11 @@ const gameSchema = new Schema<IGame>(
     },
     startedAt: { type: Date },
     endedAt: { type: Date },
-    whiteRemainingMs: { type: Number, default: null },
-    blackRemainingMs: { type: Number, default: null },
   },
   { timestamps: { createdAt: true, updatedAt: false } },
 );
 
 // Fast lookup of a user's open game to join, and open-game listing.
 gameSchema.index({ status: 1, createdAt: -1 });
-
-// Supports getUserGames (a profile's game history): filters on
-// {status: 'finished', $or: [{white}, {black}]}, sorted by endedAt. There
-// was previously no index covering this at all — MongoDB had to do a full
-// collection scan plus an in-memory sort on every single request, which
-// gets slower as the total games collection grows over time (fast at
-// launch when the collection was tiny, much slower months later, exactly
-// the "it used to be quick, now it's 1s+" pattern this was caught from).
-// Two indexes rather than one {white, black, ...} compound, since the
-// query is an $or across two different fields (a game's white and black
-// side aren't the same field) — Mongo can satisfy each branch of the $or
-// from its own matching index this way, rather than neither branch
-// matching anything and falling back to a full scan.
-gameSchema.index({ white: 1, status: 1, endedAt: -1 });
-gameSchema.index({ black: 1, status: 1, endedAt: -1 });
 
 export const Game = mongoose.model<IGame>('Game', gameSchema);

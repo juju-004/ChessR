@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   useSettings,
   DEFAULT_SETTINGS,
@@ -6,11 +5,6 @@ import {
   type PieceTheme,
 } from "../contexts/SettingsContext.js";
 import { useConfirm } from "../contexts/ConfirmContext.js";
-import { useAuth } from "../contexts/AuthContext.js";
-import { useNotify } from "../contexts/NotificationContext.js";
-import { updateMyProfile } from "../api/users.js";
-import { updateAuthUser } from "../api/authStore.js";
-import { ApiRequestError } from "../api/http.js";
 import { ChessBoard } from "../components/ChessBoard.js";
 import { InstallAppButton } from "../components/InstallAppButton.js";
 import { useInstallPrompt } from "../hooks/useInstallPrompt.js";
@@ -32,9 +26,6 @@ const BOARD_THEMES: { value: BoardTheme; label: string; swatch: string }[] = [
   { value: "blue", label: "Blue", swatch: "bg-[#4b7399]" },
   { value: "gray", label: "Gray", swatch: "bg-[#7a7a7a]" },
   { value: "purple", label: "Purple", swatch: "bg-[#8877b5]" },
-  { value: "walnut", label: "Walnut", swatch: "bg-[#8b5a2b]" },
-  { value: "coral", label: "Coral", swatch: "bg-[#d9785c]" },
-  { value: "ic", label: "Ice", swatch: "bg-[#5f8ba3]" },
 ];
 
 const PIECE_THEMES: {
@@ -46,27 +37,25 @@ const PIECE_THEMES: {
   {
     value: "classic",
     label: "Classic",
-    description:
-      "A refined, versatile set with a clean and familiar chess aesthetic.",
+    description: "The cburnett set.",
     available: true,
   },
   {
     value: "mono",
     label: "Monochrome",
-    description: "Minimalist silhouettes with a clean, modern visual style.",
+    description: "The alpha set — flat, minimalist silhouettes.",
     available: true,
   },
   {
     value: "contrast",
     label: "High contrast",
-    description: "Bold, defined shapes designed for strong visual clarity.",
+    description: "The maestro set — bold, blocky, high-contrast pieces.",
     available: true,
   },
   {
     value: "wood",
     label: "Wood",
-    description:
-      "A classic tournament-inspired set with warm, traditional character.",
+    description: "The merida set — warm-toned, classic tournament style.",
     available: true,
   },
 ];
@@ -75,38 +64,6 @@ export function Settings() {
   const { settings, updateSetting, resetSettings } = useSettings();
   const { isInstalled } = useInstallPrompt();
   const confirmDialog = useConfirm();
-  const { user } = useAuth();
-  const { notify } = useNotify();
-  // This one, unlike everything in useSettings() above, is account-level
-  // (persisted server-side on the User doc, enforced server-side too, see
-  // challengeSocket.ts's challenge:send handler), not a per-device
-  // localStorage preference, so it's tracked and saved separately: local
-  // state for a snappy toggle plus an in-flight PATCH, rather than
-  // updateSetting's fire-and-forget localStorage write.
-  const [acceptChallenges, setAcceptChallenges] = useState(
-    user?.acceptChallenges ?? true,
-  );
-  const [savingAcceptChallenges, setSavingAcceptChallenges] = useState(false);
-
-  async function handleAcceptChallengesChange(value: boolean) {
-    setAcceptChallenges(value);
-    setSavingAcceptChallenges(true);
-    try {
-      await updateMyProfile({ acceptChallenges: value });
-      updateAuthUser({ acceptChallenges: value });
-    } catch (err) {
-      setAcceptChallenges(!value);
-      notify(
-        err instanceof ApiRequestError
-          ? err.message
-          : "Couldn't save that change",
-        [],
-        4000,
-      );
-    } finally {
-      setSavingAcceptChallenges(false);
-    }
-  }
 
   const previewChess = new Chess();
 
@@ -131,36 +88,36 @@ export function Settings() {
         </Button>
       }
     >
-      <div className="settings-grid">
-        <Card variant="solid" className="settings-grid-app">
-          <CardHeader>
-            <CardTitle>App</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isInstalled ? (
-              <p className="text-sm text-green-500">
-                ✓ Installed. you're already running Chessr standalone.
-              </p>
-            ) : (
-              <>
-                <p className="mb-3 text-xs text-base-content/50">
-                  Install Chessr on this device for a focused, full-screen
-                  experience. Launch it directly from your home screen or app
-                  list without browser tabs or an address bar.
-                </p>
-                <InstallAppButton />
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="settings-grid-rest space-y-4">
+      <div className="grid gap-4 md:grid-cols-[1fr_240px]">
+        <div className="space-y-4">
           <Card variant="solid">
             <CardHeader>
-              <CardTitle>Board Theme</CardTitle>
+              <CardTitle>App</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
+              {isInstalled ? (
+                <p className="text-sm text-green-500">
+                  ✓ Installed — you're already running Chess R standalone.
+                </p>
+              ) : (
+                <>
+                  <p className="mb-3 text-xs text-base-content/50">
+                    Install Chess R on this device for a full-screen, standalone
+                    experience — no browser tabs or address bar, launches from
+                    your home screen/app list like any other app.
+                  </p>
+                  <InstallAppButton />
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card variant="solid">
+            <CardHeader>
+              <CardTitle>Board theme</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
                 {BOARD_THEMES.map((t) => (
                   <button
                     key={t.value}
@@ -183,12 +140,12 @@ export function Settings() {
 
           <Card variant="solid">
             <CardHeader>
-              <CardTitle>Piece Theme</CardTitle>
+              <CardTitle>Piece theme</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="mb-3 text-xs text-base-content/50">
-                Explore authentic chess piece sets, each with its own
-                distinctive artistic style.
+                Each option is real, distinct piece artwork — cburnett, alpha,
+                maestro, and merida — not a color filter over the same shapes.
               </p>
               <div className="flex flex-wrap gap-2">
                 {PIECE_THEMES.map((t) => (
@@ -218,54 +175,54 @@ export function Settings() {
 
           <Card variant="solid">
             <CardHeader>
-              <CardTitle>Board & Gameplay</CardTitle>
+              <CardTitle>Board & gameplay</CardTitle>
             </CardHeader>
             <CardContent className="space-y-1">
               <Switch
-                label="Piece Animation"
-                description="Animate pieces smoothly when they move. Disable this for instant movement."
+                label="Piece animation"
+                description="Animate pieces sliding into place. Turn off for instant snaps."
                 checked={settings.pieceAnimation}
                 onChange={(v) => updateSetting("pieceAnimation", v)}
                 className="rounded-lg px-1 py-2 hover:bg-base-100"
               />
               <Switch
-                label="Show Board Coordinates"
-                description="Display file and rank labels along the edges of the board."
+                label="Show board coordinates"
+                description="File/rank labels around the edge of the board."
                 checked={settings.showCoordinates}
                 onChange={(v) => updateSetting("showCoordinates", v)}
                 className="rounded-lg px-1 py-2 hover:bg-base-100"
               />
               <Switch
-                label="Show Legal Moves"
-                description="Highlight the legal destination squares for the selected piece."
+                label="Show legal moves"
+                description="Highlight the destination squares a selected piece can move to."
                 checked={settings.showLegalMoves}
                 onChange={(v) => updateSetting("showLegalMoves", v)}
                 className="rounded-lg px-1 py-2 hover:bg-base-100"
               />
               <Switch
                 label="Auto-queen"
-                description="Automatically promote to a queen. Disable this to choose the promotion piece each time."
+                description="Automatically promote to a queen without asking — untick to choose the piece every time."
                 checked={settings.autoQueen}
                 onChange={(v) => updateSetting("autoQueen", v)}
                 className="rounded-lg px-1 py-2 hover:bg-base-100"
               />
               <Switch
-                label="Move Sounds"
-                description="Play a subtle sound for moves, captures, and checks."
+                label="Move sounds"
+                description="A short sound on moves, captures, and checks."
                 checked={settings.soundEnabled}
                 onChange={(v) => updateSetting("soundEnabled", v)}
                 className="rounded-lg px-1 py-2 hover:bg-base-100"
               />
               <Switch
-                label="Confirm Resignation"
-                description="Ask for confirmation before resigning a game."
+                label="Confirm resignation"
+                description="Ask 'are you sure?' before resigning a game."
                 checked={settings.confirmResign}
                 onChange={(v) => updateSetting("confirmResign", v)}
                 className="rounded-lg px-1 py-2 hover:bg-base-100"
               />{" "}
               <Switch
-                label="Zen Mode"
-                description="Keep your focus on the board and clock by hiding the move list, chat, and extra badges."
+                label="Zen mode"
+                description="Hides move list, chat, and extra badges during a game — just the board and clock."
                 checked={settings.zenMode}
                 onChange={(v) => updateSetting("zenMode", v)}
                 className="rounded-lg px-1 py-2 hover:bg-base-100"
@@ -273,24 +230,9 @@ export function Settings() {
             </CardContent>
           </Card>
 
-          <Card variant="solid">
-            <CardHeader>
-              <CardTitle>General</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1">
-              <Switch
-                label="Accept Challenges"
-                description="Let other players send you direct challenges or cage match invites. Turn this off and both are rejected automatically, tournaments are unaffected."
-                checked={acceptChallenges}
-                onChange={handleAcceptChallengesChange}
-                disabled={savingAcceptChallenges}
-                className="rounded-lg px-1 py-2 hover:bg-base-100"
-              />
-            </CardContent>
-          </Card>
         </div>
 
-        <Card variant="solid" className="settings-grid-preview">
+        <Card variant="solid" className="h-fit">
           <CardHeader>
             <CardTitle>Preview</CardTitle>
           </CardHeader>
@@ -309,22 +251,20 @@ export function Settings() {
                 animationEnabled={settings.pieceAnimation}
                 showCoordinates={settings.showCoordinates}
                 showLegalMoves={settings.showLegalMoves}
-                forceInsideCoordinates
               />
             </div>
             <p className="mt-2 text-xs text-base-content/50">
-              Drag a piece to preview legal-move highlighting and piece
-              animations in real time.
+              Try dragging a piece to see legal-move highlighting and animation
+              settings live.
             </p>
           </CardContent>
         </Card>
       </div>
 
       <p className="mt-4 text-xs text-base-content/40">
-        Board and gameplay preferences are saved on this device only. Defaults:{" "}
+        These preferences are saved on this device only (defaults:{" "}
         {DEFAULT_SETTINGS.boardTheme} board, animation{" "}
-        {DEFAULT_SETTINGS.pieceAnimation ? "on" : "off"}. "Accept challenges" is
-        saved to your account and applies everywhere you're signed in.
+        {DEFAULT_SETTINGS.pieceAnimation ? "on" : "off"}).
       </p>
     </Page>
   );

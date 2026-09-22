@@ -4,41 +4,27 @@ import mongoose from 'mongoose';
 import { nanoid } from 'nanoid';
 import { redis } from '../config/redis.js';
 import { User } from '../models/User.js';
-import { createDirectGame, assertUnderActiveGameLimit, countActiveGamesForUser, MAX_ACTIVE_GAMES_PER_USER, activeGameLimitMessage } from '../services/game.service.js';
-import { assertNotRestricted } from '../services/suspension.service.js';
+import { createDirectGame, assertUnderActiveGameLimit, countActiveGamesForUser, MAX_ACTIVE_GAMES_PER_USER } from '../services/game.service.js';
 import { isUserOnline } from '../services/presence.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
 const CHALLENGE_TTL_SECONDS = 60;
 const challengeKey = (id: string) => `challenge:${id}`;
 // Tracks "userId already has an unanswered challenge out to this specific
-// person", same TTL as the challenge itself. Blocks challenge:send from
+// person" — same TTL as the challenge itself. Blocks challenge:send from
 // firing again for the same pair while one's still pending, which is what
 // actually stops a repeated-challenge spam burst at the source, rather than
 // just hiding the resulting notifications on the receiving end.
 const pendingPairKey = (fromId: string, toId: string) => `challenge:pending:${fromId}:${toId}`;
 
-const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
-// Floor on any single wager/stake/fee amount when a game IS wagered, kept
-// in sync with MIN_STAKE_TOKENS in client/src/lib/limits.ts. Wagers are
-// opt-in now, not required — 0 means a free game, see the `wagerTokens > 0`
-// branching this flows into in game.service.ts's createDirectGame.
-const MIN_STAKE_TOKENS = 20;
+const MAX_WAGER_TOKENS = 100_000;
 
 const sendSchema = z.object({
   toUserId: z.string().refine(mongoose.isValidObjectId),
   baseMinutes: z.number().min(1).max(180).nullable().optional().default(10),
   incrementSeconds: z.number().min(0).max(60).optional().default(0),
   variant: z.enum(['standard', 'chess960']).optional().default('standard'),
-  wagerTokens: z
-    .number()
-    .int()
-    .min(0)
-    .max(MAX_WAGER_TOKENS)
-    .refine(
-      (v) => v === 0 || v >= MIN_STAKE_TOKENS,
-      `A wager must either be 0 (free game) or at least ${MIN_STAKE_TOKENS} R`,
-    ),
+  wagerTokens: z.number().int().min(0).max(MAX_WAGER_TOKENS).optional().default(0),
 });
 const respondSchema = z.object({ challengeId: z.string(), accept: z.boolean() });
 
@@ -73,12 +59,6 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
 
       if (toUserId === userId) return emitError(socket, "You can't challenge yourself");
 
-      try {
-        await assertNotRestricted(userId);
-      } catch (err) {
-        return emitError(socket, err instanceof Error ? err.message : "You can't start new games right now");
-      }
-
       const me = await User.findById(userId).select('friends tokenBalance').lean();
       const isFriend = me?.friends.some((f) => f.toString() === toUserId);
       if (!isFriend) return emitError(socket, 'You can only challenge friends');
@@ -86,23 +66,21 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
       const online = await isUserOnline(toUserId);
       if (!online) return emitError(socket, 'That friend is currently offline');
 
-      const target = await User.findById(toUserId).select('acceptChallenges').lean();
-      if (target && target.acceptChallenges === false) {
-        return emitError(socket, "That player isn't accepting challenges right now.");
-      }
-
       // Soft check up front so a challenger can't send a stake they can't
-      // cover, the authoritative debit still happens for both sides at
+      // cover — the authoritative debit still happens for both sides at
       // acceptance time, since balances can change in the meantime.
       if (wagerTokens > 0 && (me?.tokenBalance ?? 0) < wagerTokens) {
         return emitError(socket, "You don't have enough R tokens for that wager");
       }
 
-      // Same soft-check pattern for the active-game cap, the authoritative
+      // Same soft-check pattern for the active-game cap — the authoritative
       // check happens again for both sides at acceptance time.
       const myActiveCount = await countActiveGamesForUser(userId);
       if (myActiveCount >= MAX_ACTIVE_GAMES_PER_USER) {
-        return emitError(socket, activeGameLimitMessage("challenging someone else"));
+        return emitError(
+          socket,
+          `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before challenging someone else.`,
+        );
       }
 
       // Stops a repeated-challenge spam burst at the source: while an
@@ -164,22 +142,12 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
         return;
       }
 
-      // Authoritative re-check for both sides, either could have picked up
-      // a play restriction in the time between the challenge being sent
-      // and answered (same reasoning as the active-game-limit re-check
-      // right below).
-      try {
-        await assertNotRestricted(toId);
-      } catch (err) {
-        return emitError(socket, err instanceof Error ? err.message : "You can't accept new games right now");
-      }
-
-      // Authoritative re-check for both sides, either could have hit the
+      // Authoritative re-check for both sides — either could have hit the
       // cap in the time between the challenge being sent and answered.
       try {
         await assertUnderActiveGameLimit(fromId);
       } catch {
-        const message = activeGameLimitMessage('accepting');
+        const message = `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before accepting.`;
         emitError(socket, 'That player already has too many active games to start another right now.');
         io.to(`user:${fromId}`).emit('challenge:error', { message });
         return;
@@ -187,7 +155,7 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
       try {
         await assertUnderActiveGameLimit(toId);
       } catch {
-        const message = activeGameLimitMessage('accepting');
+        const message = `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before accepting.`;
         emitError(socket, message);
         io.to(`user:${fromId}`).emit('challenge:error', {
           message: 'That player already has too many active games to accept right now.',
@@ -208,8 +176,8 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
         );
       } catch (err) {
         // Most likely: one side's R token balance dropped below the wager
-        // between sending/accepting. Nobody's tokens are left committed, 
-        // createDirectGame already unwound any partial debit, so just tell
+        // between sending/accepting. Nobody's tokens are left committed —
+        // createDirectGame already unwound any partial debit — so just tell
         // both sides the game never started.
         const message = err instanceof Error ? err.message : 'Could not start the game';
         emitError(socket, message);

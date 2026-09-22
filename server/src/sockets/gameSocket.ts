@@ -2,7 +2,6 @@ import type { Server, Socket } from 'socket.io';
 import { z } from 'zod';
 import mongoose from 'mongoose';
 import { Game } from '../models/Game.js';
-import { User } from '../models/User.js';
 import {
   applyMove,
   endGame,
@@ -18,14 +17,11 @@ import {
   settleWager,
   refundWagerBothSides,
   assertUnderActiveGameLimit,
-  activeGameLimitMessage,
+  MAX_ACTIVE_GAMES_PER_USER,
 } from '../services/game.service.js';
 import { advanceCageMatchLeg } from '../services/cageMatch.service.js';
 import { advanceTournamentIfPairing, berserkInTournamentGame } from '../services/tournament.service.js';
-import { applyRatingForGame, getRatingCategory } from '../services/rating.service.js';
 import { getLagCompensationMs } from '../services/latency.service.js';
-import { addChatMessage, getChatHistory, isChatRateLimited, isRepeatMessage, type ChatScope } from '../services/chat.service.js';
-import { assertNotRestricted } from '../services/suspension.service.js';
 import {
   scheduleGameTimer,
   clearGameTimer,
@@ -38,46 +34,8 @@ import type { AuthedSocketData } from './socketAuth.js';
 
 const gameRoom = (gameId: string) => `game:${gameId}`;
 const spectatorRoom = (gameId: string) => `game:${gameId}:spectators`;
-// Just the two participants, a subset of gameRoom (which also has
-// spectators in it) — see player_chat:send below and its doc comment.
-const playerRoom = (gameId: string) => `game:${gameId}:players`;
-
-/** io.in(room).fetchSockets() goes over the Redis adapter, it asks every
- *  connected server instance to report its local sockets in that room, and
- *  waits (default 5s) for all of them to reply. If one instance never
- *  answers, usually a previous deploy's process that got hard-killed before
- *  it could cleanly unsubscribe from Redis, this throws a timeout well after
- *  the fact rather than returning a snapshot. All of these snapshots are
- *  soft, self-correcting presence info (a spectator count, a connection
- *  dot), not anything load-bearing, so a failed fetch degrades to "nobody
- *  here right now" instead of blowing up the whole handler, it'll be right
- *  again on the next join/leave/connect event either way. */
-async function safeFetchSockets(io: Server, room: string) {
-  try {
-    return await io.in(room).fetchSockets();
-  } catch (err) {
-    console.error(`fetchSockets(${room}) failed, treating room as empty for this snapshot:`, err);
-    return [];
-  }
-}
-
-/** Counts *distinct users* currently in a game's spectator room (not raw
- *  sockets, someone with two tabs open shouldn't count twice) and
- *  broadcasts it to the whole game room, players included, since the
- *  spectator-count badge on the game page is visible to everyone there.
- *  excludeSocketId is for the disconnecting case: Socket.IO's
- *  'disconnecting' event fires just before it actually removes room
- *  membership, so without this the departing socket would still be
- *  counted as present in the room snapshot fetched here. */
-async function broadcastSpectatorCount(io: Server, gameId: string, excludeSocketId?: string): Promise<void> {
-  const sockets = await safeFetchSockets(io, spectatorRoom(gameId));
-  const remaining = excludeSocketId ? sockets.filter((s) => s.id !== excludeSocketId) : sockets;
-  const uniqueUserIds = new Set(remaining.map((s) => (s.data as AuthedSocketData).userId));
-  io.to(gameRoom(gameId)).emit('game:spectator_count', { gameId, count: uniqueUserIds.size });
-}
 
 const joinSchema = z.object({ gameId: z.string().refine(mongoose.isValidObjectId) });
-const leaveSchema = joinSchema;
 const moveSchema = z.object({
   gameId: z.string().refine(mongoose.isValidObjectId),
   from: z.string().length(2),
@@ -99,50 +57,10 @@ const berserkSchema = z.object({ gameId: z.string().refine(mongoose.isValidObjec
 const chatSchema = z.object({
   gameId: z.string().refine(mongoose.isValidObjectId),
   message: z.string().trim().min(1).max(300),
-  // Id of the message being replied to (WhatsApp-style swipe-to-reply). A
-  // small denormalized snapshot of that message is stored alongside the
-  // reply itself (see buildReplySnapshot below) rather than just the id, so
-  // rendering a reply preview never needs a second lookup, and the preview
-  // still makes sense even if the original message has since scrolled out
-  // of the capped history window.
-  replyToId: z.string().max(32).optional(),
 });
-
-// A standalone (non-cage) game's spectator chat is scoped to that one
-// gameId and expires 10 minutes after the game ends. A cage match leg reuses
-// this same spectator-chat UI, but the log itself is scoped to the whole
-// match (cageMatchId), not the individual leg, so it survives one leg
-// ending and the next starting, and only expires 10 minutes after the whole
-// match is over. This is the one place that decision gets made, both the
-// join-time history load and the send handler below go through it.
-function chatScopeFor(game: { _id: unknown; cageMatchId?: unknown }): { scope: ChatScope; id: string } {
-  if (game.cageMatchId) return { scope: 'cage', id: (game.cageMatchId as any).toString() };
-  return { scope: 'game', id: (game._id as any).toString() };
-}
-
-// Same id-scoping rule as chatScopeFor above (whole match for a cage leg,
-// otherwise just this game), but a DIFFERENT ChatScope so the two
-// participants' own chat never mixes with the spectator log — see the
-// ChatScope doc comment in chat.service.ts.
-function playerChatScopeFor(game: { _id: unknown; cageMatchId?: unknown }): { scope: ChatScope; id: string } {
-  if (game.cageMatchId) return { scope: 'cage_players', id: (game.cageMatchId as any).toString() };
-  return { scope: 'game_players', id: (game._id as any).toString() };
-}
 
 function emitError(socket: Socket, message: string) {
   socket.emit('game:error', { message });
-}
-
-// Swaps a populated white/black sub-doc's raw rating/ratedGamesPlayed for
-// the computed, client-safe category. Populate queries in this file select
-// those two fields purely so this can compute from them, neither should
-// ever reach a client payload.
-function withRatingCategory<T extends { rating?: number; ratedGamesPlayed?: number } | null>(
-  player: T,
-) {
-  if (!player) return player;
-  const { rating, ratedGamesPlayed, ...rest } = player as any;
-  return { ...rest, ratingCategory: getRatingCategory(rating ?? 1500, ratedGamesPlayed ?? 0) };
 }
 
 function safeHandler<T>(socket: Socket, fn: (payload: T) => Promise<void>) {
@@ -162,14 +80,13 @@ async function endGameAndBroadcast(
 ) {
   clearGameTimer(gameId);
   clearFirstMoveTimer(gameId);
-  clearAllPendingDisconnects(gameId);
+  clearPendingDisconnect(gameId);
   const finalState = await endGame(gameId, result, endReason);
 
-  // Wager settlement and rating are both quick and only happen once per
-  // finished game (not on the hot move-broadcast path), so it's worth
-  // awaiting them to include directly in the game:over payload rather than
-  // making clients re-fetch their wallet balance / profile to see the
-  // payout and any rank change land.
+  // Wager settlement is quick and only happens once per finished game (not on
+  // the hot move-broadcast path), so it's worth awaiting it to include
+  // directly in the game:over payload rather than making clients re-fetch
+  // their wallet balance to see the payout land.
   const wagerSettlement = await settleWager(
     gameId,
     finalState.whiteId,
@@ -180,29 +97,18 @@ async function endGameAndBroadcast(
     console.error('settleWager failed:', err);
     return null;
   });
-  const ratingUpdate = await applyRatingForGame(
-    gameId,
-    finalState.whiteId,
-    finalState.blackId,
-    result,
-  ).catch((err) => {
-    console.error('applyRatingForGame failed:', err);
-    return null;
-  });
 
   io.to(gameRoom(gameId)).emit('game:over', {
     gameId,
     result,
     reason: endReason,
     wagerSettlement,
-    ratingUpdate,
     whiteRemainingMs: finalState.whiteRemainingMs,
     blackRemainingMs: finalState.blackRemainingMs,
   });
-  finalizeGame(gameId, finalState.fen, 'finished', result, endReason, {
-    whiteRemainingMs: finalState.whiteRemainingMs,
-    blackRemainingMs: finalState.blackRemainingMs,
-  }).catch((err) => console.error('finalizeGame failed:', err));
+  finalizeGame(gameId, finalState.fen, 'finished', result, endReason).catch((err) =>
+    console.error('finalizeGame failed:', err),
+  );
   deleteLiveState(gameId).catch((err) => console.error('deleteLiveState failed:', err));
 
   await advanceCageMatchIfLeg(gameId, result, endReason);
@@ -221,10 +127,10 @@ async function advanceCageMatchIfLeg(
 ) {
   const gameDoc = await Game.findById(gameId).select('cageMatchId legIndex').lean();
   if (!gameDoc?.cageMatchId || gameDoc.legIndex === undefined) return;
-  await advanceCageMatchLeg(gameDoc.cageMatchId.toString(), gameDoc.legIndex, result, endReason, gameId);
+  await advanceCageMatchLeg(gameDoc.cageMatchId.toString(), gameDoc.legIndex, result, endReason);
 }
 
-// Mirror of advanceCageMatchIfLeg, but for tournament pairings, a game tagged
+// Mirror of advanceCageMatchIfLeg, but for tournament pairings — a game tagged
 // with tournamentId/roundIndex/pairingIndex advances that pairing's round the
 // same way a cage leg advances its match.
 async function advanceTournamentIfPairingLeg(
@@ -251,10 +157,10 @@ export function registerClockTimeoutHandler(io: Server) {
 
 // A first-move timeout means different things depending on what the game
 // actually is. A plain 1-on-1 game has no series riding on it, so it just
-// gets aborted and any wager refunded, same outcome as the manual Abort
+// gets aborted and any wager refunded — same outcome as the manual Abort
 // button. A cage match leg or tournament pairing is part of something bigger
 // that shouldn't stall out for everyone else, so the side that never showed
-// up simply loses that one game, endGameAndBroadcast already knows how to
+// up simply loses that one game — endGameAndBroadcast already knows how to
 // advance a cage match / tournament pairing off the back of an ordinary
 // result, so this reuses that path rather than duplicating it.
 export function registerFirstMoveTimeoutHandler(io: Server) {
@@ -272,11 +178,8 @@ export function registerFirstMoveTimeoutHandler(io: Server) {
     if (!state) return;
 
     clearGameTimer(gameId);
-    clearAllPendingDisconnects(gameId);
-    await finalizeGame(gameId, state.fen, 'aborted', null, 'first_move_timeout', {
-      whiteRemainingMs: state.whiteRemainingMs,
-      blackRemainingMs: state.blackRemainingMs,
-    });
+    clearPendingDisconnect(gameId);
+    await finalizeGame(gameId, state.fen, 'aborted', null, 'first_move_timeout');
     await refundWagerBothSides(gameId, state.whiteId, state.blackId, state.wagerTokens).catch((err) =>
       console.error('refundWagerBothSides failed during first-move timeout:', err),
     );
@@ -292,7 +195,7 @@ export function registerFirstMoveTimeoutHandler(io: Server) {
 // (page refreshes and flaky wifi happen). Instead: wait a short debounce period
 // to rule out a quick refresh, then start a longer grace period during which the
 // disconnected player can still come back. Only after the grace period expires
-// can the opponent actively claim a win or draw, nothing resolves automatically.
+// can the opponent actively claim a win or draw — nothing resolves automatically.
 const DISCONNECT_DEBOUNCE_MS = 3000;
 const DISCONNECT_GRACE_MS = 60_000;
 
@@ -300,44 +203,21 @@ interface PendingDisconnect {
   disconnectedUserId: string;
   expiresAt: number;
 }
-// Keyed by `${gameId}:${userId}`, NOT just gameId — a single game has two
-// players, and either one can independently disconnect/reconnect (most
-// visibly: reload both tabs of a self-play test close together). A
-// gameId-only key meant the second player's disconnect record silently
-// overwrote the first's, so the first player's own reconnect could never
-// find a matching entry to clear — leaving a permanently-stuck "opponent
-// disconnected" banner for a player who was actually back and playing.
 const pendingDisconnects = new Map<string, PendingDisconnect>();
 
-function pendingKey(gameId: string, userId: string): string {
-  return `${gameId}:${userId}`;
-}
-
-/** Clears one specific player's pending-disconnect record — e.g. on that
- *  player's own reconnect. Does not touch the other player's, if any. */
-function clearPendingDisconnect(gameId: string, userId: string) {
-  pendingDisconnects.delete(pendingKey(gameId, userId));
-}
-
-/** Clears both players' pending-disconnect records at once — for
- *  whole-game-ends cleanup (resign/abort/timeout/etc), where either or
- *  neither side might have an entry and it doesn't matter which. */
-function clearAllPendingDisconnects(gameId: string) {
-  const prefix = `${gameId}:`;
-  for (const key of pendingDisconnects.keys()) {
-    if (key.startsWith(prefix)) pendingDisconnects.delete(key);
-  }
+function clearPendingDisconnect(gameId: string) {
+  pendingDisconnects.delete(gameId);
 }
 
 // --- Rematches ---------------------------------------------------------------
-// Keyed by the *original* game's id. A rematch offer expires if not answered, 
+// Keyed by the *original* game's id. A rematch offer expires if not answered —
 // there's no point letting a stale offer linger once one side has moved on.
 const REMATCH_OFFER_TTL_MS = 30_000;
 const pendingRematches = new Map<string, { fromUserId: string; expiresAt: number }>();
 
 // --- Move rate limiting -------------------------------------------------------
 // Cheap defense against a scripted client flooding moves. The threshold is
-// deliberately low, even the fastest legitimate bullet/premove play rarely
+// deliberately low — even the fastest legitimate bullet/premove play rarely
 // produces two distinct move submissions under ~60ms apart, since each one
 // requires a real network round trip.
 const MIN_MS_BETWEEN_MOVES = 60;
@@ -351,18 +231,7 @@ function isMoveRateLimited(socketId: string): boolean {
 }
 
 async function userStillInRoom(io: Server, gameId: string, userId: string): Promise<boolean> {
-  let sockets;
-  try {
-    sockets = await io.in(gameRoom(gameId)).fetchSockets();
-  } catch (err) {
-    // Feeds the disconnect-grace/claim-available flow below, so an unknown
-    // answer defaults to "still there" rather than "gone": misreading a
-    // transient Redis hiccup as an opponent vanishing would wrongly start
-    // the disconnect clock or open up a claim on an opponent who's actually
-    // still playing.
-    console.error(`fetchSockets(${gameRoom(gameId)}) failed, assuming user is still present:`, err);
-    return true;
-  }
+  const sockets = await io.in(gameRoom(gameId)).fetchSockets();
   return sockets.some((s) => (s.data as AuthedSocketData).userId === userId);
 }
 
@@ -371,8 +240,8 @@ async function handlePotentialDisconnect(io: Server, gameId: string, userId: str
   if (!state || state.status !== 'active') return;
   const isPlayer = state.whiteId === userId || state.blackId === userId;
   if (!isPlayer) return; // spectators leaving is a non-event
-  // Idle-phase abandonment already has its own escape hatch. Abort for a
-  // normal game, Pause for a cage match leg, so the claim-after-disconnect
+  // Idle-phase abandonment already has its own escape hatch — Abort for a
+  // normal game, Pause for a cage match leg — so the claim-after-disconnect
   // flow only kicks in once the game is actually underway.
   if (state.moveCount < 2) return;
 
@@ -386,7 +255,7 @@ async function handlePotentialDisconnect(io: Server, gameId: string, userId: str
       if (freshState.moveCount < 2) return;
 
       const expiresAt = Date.now() + DISCONNECT_GRACE_MS;
-      pendingDisconnects.set(pendingKey(gameId, userId), { disconnectedUserId: userId, expiresAt });
+      pendingDisconnects.set(gameId, { disconnectedUserId: userId, expiresAt });
       io.to(gameRoom(gameId)).emit('game:opponent_disconnected', {
         userId,
         graceMs: DISCONNECT_GRACE_MS,
@@ -394,8 +263,8 @@ async function handlePotentialDisconnect(io: Server, gameId: string, userId: str
 
       setTimeout(async () => {
         // Only fire if nothing has changed this in the meantime (reconnect, resign, etc.)
-        const pending = pendingDisconnects.get(pendingKey(gameId, userId));
-        if (!pending) return;
+        const pending = pendingDisconnects.get(gameId);
+        if (!pending || pending.disconnectedUserId !== userId) return;
         const stillGone = !(await userStillInRoom(io, gameId, userId));
         if (!stillGone) return;
         io.to(gameRoom(gameId)).emit('game:claim_available', { userId });
@@ -416,10 +285,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       if (!parsed.success) return emitError(socket, 'Invalid join payload');
       const { gameId } = parsed.data;
 
-      const game = await Game.findById(gameId)
-        .populate('white', 'username avatarGradient rating ratedGamesPlayed')
-        .populate('black', 'username avatarGradient rating ratedGamesPlayed')
-        .lean();
+      const game = await Game.findById(gameId).populate('white', 'username avatarGradient').populate('black', 'username avatarGradient').lean();
       if (!game) return emitError(socket, 'Game not found');
 
       // `white`/`black` may or may not be populated depending on the query
@@ -438,65 +304,37 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       await socket.join(gameRoom(gameId));
       if (role === 'spectator') {
         // Kept separate from the main game room so spectator chat traffic
-        // never reaches the players, they don't get a chat UI at all, and
+        // never reaches the players — they don't get a chat UI at all, and
         // this means they never even receive the events for one.
         await socket.join(spectatorRoom(gameId));
-        broadcastSpectatorCount(io, gameId).catch((err) => console.error('broadcastSpectatorCount failed:', err));
-      } else {
-        // The two participants' own room, so their chat traffic never
-        // reaches spectators either — see player_chat:send.
-        await socket.join(playerRoom(gameId));
       }
 
-      // Reconnecting clears any pending "opponent disconnected" state for
-      // THIS player specifically (see pendingKey's own comment for why it's
-      // not just gameId) — the other player's own pending entry, if they
-      // also happen to be mid-reconnect right now, is untouched.
-      if (pendingDisconnects.has(pendingKey(gameId, userId))) {
-        clearPendingDisconnect(gameId, userId);
+      // Reconnecting clears any pending "opponent disconnected" state for this game.
+      const pending = pendingDisconnects.get(gameId);
+      if (pending && pending.disconnectedUserId === userId) {
+        clearPendingDisconnect(gameId);
         io.to(gameRoom(gameId)).emit('game:opponent_reconnected', { userId });
       }
 
       const liveState = await getLiveState(gameId);
 
-      // Snapshot of who's actually connected right now, combined with the
+      // Snapshot of who's actually connected right now — combined with the
       // opponent_connected/disconnected/reconnected events for live updates,
       // this is what drives the connection dot next to each player's name.
-      const roomSockets = await safeFetchSockets(io, gameRoom(gameId));
+      const roomSockets = await io.in(gameRoom(gameId)).fetchSockets();
       const connectedUserIds = new Set(roomSockets.map((s) => (s.data as AuthedSocketData).userId));
       const whiteConnected = connectedUserIds.has(idOf(game.white)!);
       const blackConnected = game.black ? connectedUserIds.has(idOf(game.black)!) : false;
 
       // Cheap self-healing measure: (re)scheduling on every join/reconnect
       // means the timer recovers on its own the moment anyone next touches
-      // the game, rather than only being set at creation and after moves, 
+      // the game, rather than only being set at creation and after moves —
       // which left a window where a lost timer (process restart, etc.) would
       // sit silently until someone tried to move.
       if (liveState?.status === 'active') {
         scheduleGameTimer(gameId).catch((err) => console.error('scheduleGameTimer on join failed:', err));
         scheduleFirstMoveTimer(gameId).catch((err) => console.error('scheduleFirstMoveTimer on join failed:', err));
       }
-
-      // So a freshly-joining client (player or spectator) has the current
-      // spectator count immediately, rather than waiting for the next
-      // broadcastSpectatorCount triggered by someone else joining/leaving.
-      const spectatorSockets = await safeFetchSockets(io, spectatorRoom(gameId));
-      const spectatorCount = new Set(spectatorSockets.map((s) => (s.data as AuthedSocketData).userId)).size;
-
-      // Spectator chat is now persisted (see chat.service.ts), so a
-      // freshly-joining spectator (or one who just refreshed) gets the
-      // existing conversation instead of an empty panel. Players never see
-      // the spectator chat UI, so there's no point loading spectator
-      // history for them — they get their own separate player_chat
-      // history instead (see playerChatScopeFor).
-      const chatHistory =
-        role === 'spectator'
-          ? await getChatHistory(chatScopeFor(game).scope, chatScopeFor(game).id)
-          : [];
-      const playerChatHistory =
-        role !== 'spectator'
-          ? await getChatHistory(playerChatScopeFor(game).scope, playerChatScopeFor(game).id)
-          : [];
 
       socket.emit('game:sync', {
         gameId,
@@ -508,11 +346,10 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         status: liveState?.status ?? game.status,
         result: liveState?.result ?? game.result,
         endReason: liveState?.endReason ?? game.endReason,
-        white: withRatingCategory(game.white as any),
-        black: withRatingCategory(game.black as any),
+        white: game.white,
+        black: game.black,
         whiteConnected,
         blackConnected,
-        spectatorCount,
         moves: game.moves,
         timeControl: game.timeControl,
         wagerTokens: game.wagerTokens,
@@ -530,8 +367,6 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         blackRemainingMs:
           liveState?.blackRemainingMs ?? (game.timeControl.baseSeconds ? game.timeControl.baseSeconds * 1000 : null),
         turnStartedAtMs: liveState?.turnStartedAtMs ?? Date.now(),
-        spectatorChatHistory: chatHistory,
-        playerChatHistory,
       });
 
       if (role !== 'spectator') {
@@ -540,26 +375,6 @@ export function registerGameHandlers(io: Server, socket: Socket) {
 
       if (game.tournamentId) {
         await socket.join(`tournament:${game.tournamentId.toString()}`);
-      }
-    }),
-  );
-
-  // The counterpart to game:join above. Room membership doesn't clear
-  // itself on navigation (only on disconnect), so without this a spectator
-  // who moves on to a different page would stay in this game's
-  // spectatorRoom indefinitely, and things like the rematch-redirect below
-  // would keep firing for them long after they've left.
-  socket.on(
-    'game:leave',
-    safeHandler(socket, async (raw: unknown) => {
-      const parsed = leaveSchema.safeParse(raw);
-      if (!parsed.success) return;
-      const { gameId } = parsed.data;
-      const wasSpectator = socket.rooms.has(spectatorRoom(gameId));
-      await socket.leave(gameRoom(gameId));
-      await socket.leave(spectatorRoom(gameId));
-      if (wasSpectator) {
-        broadcastSpectatorCount(io, gameId).catch((err) => console.error('broadcastSpectatorCount failed:', err));
       }
     }),
   );
@@ -574,10 +389,9 @@ export function registerGameHandlers(io: Server, socket: Socket) {
 
       try {
         const lagCompensationMs = getLagCompensationMs(socket.id);
-        const moveTimestampMs = Date.now();
         const result = await applyMove(gameId, userId, { from, to, promotion }, lagCompensationMs);
 
-        // Broadcast first. Mongo persistence is for history/reconnect sync, it
+        // Broadcast first — Mongo persistence is for history/reconnect sync, it
         // doesn't need to gate how fast the opponent sees the move land.
         io.to(gameRoom(gameId)).emit('game:move', {
           gameId,
@@ -590,11 +404,6 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           whiteRemainingMs: result.whiteRemainingMs,
           blackRemainingMs: result.blackRemainingMs,
           turnStartedAtMs: Date.now(),
-          // Same timestamp persisted via appendMove below (not two separate
-          // Date.now() calls), this is what lets a client reconstruct a
-          // per-move clock/think-time reading without a full refetch, same
-          // as it already can for a finished game's persisted moves.
-          timestampMs: moveTimestampMs,
         });
 
         appendMove(gameId, {
@@ -604,7 +413,6 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           promotion: result.promotion,
           fenAfter: result.fenAfter,
           moveNumber: result.moveNumber,
-          timestampMs: moveTimestampMs,
         }).catch((err) => console.error('appendMove failed:', err));
 
         if (result.isGameOver) {
@@ -613,7 +421,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           scheduleGameTimer(gameId).catch((err) => console.error('scheduleGameTimer failed:', err));
           // A move landing re-arms the window for whoever's first move is
           // still pending (or clears it for good once both sides have
-          // moved), cheap no-op via scheduleFirstMoveTimer's own guards.
+          // moved) — cheap no-op via scheduleFirstMoveTimer's own guards.
           scheduleFirstMoveTimer(gameId).catch((err) => console.error('scheduleFirstMoveTimer failed:', err));
         }
       } catch (err) {
@@ -706,34 +514,19 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       if (!parsed.success) return emitError(socket, 'Invalid payload');
       const { gameId, claim } = parsed.data;
 
-      const state = await getLiveState(gameId);
-      if (!state) return emitError(socket, 'Game is not active');
-      if (state.whiteId !== userId && state.blackId !== userId) {
-        return emitError(socket, 'You are not a player in this game');
-      }
-      const opponentId = state.whiteId === userId ? state.blackId : state.whiteId;
-      if (!opponentId) return emitError(socket, 'There is no disconnect to claim right now');
-
-      const pending = pendingDisconnects.get(pendingKey(gameId, opponentId));
+      const pending = pendingDisconnects.get(gameId);
       if (!pending) return emitError(socket, 'There is no disconnect to claim right now');
       if (Date.now() < pending.expiresAt) {
         return emitError(socket, 'The grace period has not finished yet');
       }
 
-      // Re-check live presence right now, rather than trusting the pending
-      // record on its own: it's only ever a snapshot from whenever the
-      // grace window opened, and could in principle be stale by the time
-      // someone actually clicks "claim" (a slow reconnect landing in the
-      // gap, a missed/delayed opponent_reconnected broadcast, or simply a
-      // future change to this bookkeeping). A win/draw claim ends the game
-      // outright, so it gets this one extra check rather than trusting
-      // cached state for something with that much weight.
-      const stillGone = !(await userStillInRoom(io, gameId, opponentId));
-      if (!stillGone) {
-        clearPendingDisconnect(gameId, opponentId);
-        io.to(gameRoom(gameId)).emit('game:opponent_reconnected', { userId: opponentId });
-        return emitError(socket, 'Your opponent is back — nothing to claim');
-      }
+      const state = await getLiveState(gameId);
+      if (!state) return emitError(socket, 'Game is not active');
+
+      const isOpponent =
+        (state.whiteId === userId && state.blackId === pending.disconnectedUserId) ||
+        (state.blackId === userId && state.whiteId === pending.disconnectedUserId);
+      if (!isOpponent) return emitError(socket, 'You are not eligible to claim this game');
 
       const result = claim === 'draw' ? 'draw' : state.whiteId === userId ? 'white' : 'black';
       await endGameAndBroadcast(io, gameId, result, 'abandoned');
@@ -794,25 +587,17 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         return;
       }
 
-      // Swap colors for the rematch, standard etiquette, and it means the same
-      // player isn't stuck playing white (or black) twice in a row. This must
-      // NOT depend on which of the two players happened to accept the offer
-      // (isWhite/isBlack above are only for the "were you even in this game"
-      // check) — it's a flat swap of the previous game's colors, full stop.
-      // Conditioning it on isWhite used to mean the swap only actually
-      // happened when the accepter was white; when the accepter was black
-      // (e.g. after the first rematch already flipped them to black) it
-      // silently produced the SAME colors as before, so rematches only ever
-      // alternated once and then got stuck.
-      const newWhite = game.black!.toString();
-      const newBlack = game.white.toString();
+      // Swap colors for the rematch — standard etiquette, and it means the same
+      // player isn't stuck playing white (or black) twice in a row.
+      const newWhite = isWhite ? game.black!.toString() : game.white.toString();
+      const newBlack = isWhite ? game.white.toString() : game.black!.toString();
 
       try {
         await assertUnderActiveGameLimit(pending.fromUserId);
       } catch {
         emitError(socket, 'Your opponent already has too many active games to start another right now.');
         io.to(`user:${pending.fromUserId}`).emit('game:error', {
-          message: activeGameLimitMessage("starting a rematch"),
+          message: `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before starting a rematch.`,
         });
         return;
       }
@@ -821,7 +606,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       } catch {
         emitError(
           socket,
-          activeGameLimitMessage("accepting a rematch"),
+          `You can only have ${MAX_ACTIVE_GAMES_PER_USER} active games at once. Finish or cancel one before accepting a rematch.`,
         );
         io.to(`user:${pending.fromUserId}`).emit('game:error', {
           message: 'Your opponent already has too many active games to accept the rematch right now.',
@@ -843,7 +628,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           game.wagerTokens,
         );
       } catch (err) {
-        // Same wager as the original game, if either side can no longer
+        // Same wager as the original game — if either side can no longer
         // cover it, no tokens move and both players just hear why.
         const message = err instanceof Error ? err.message : 'Could not start the rematch';
         emitError(socket, message);
@@ -854,21 +639,14 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       const payload = { gameId: newGame.id, joinCode: newGame.joinCode, wagerTokens: newGame.wagerTokens };
       io.to(`user:${game.white.toString()}`).emit('game:rematch_accepted', payload);
       io.to(`user:${game.black!.toString()}`).emit('game:rematch_accepted', payload);
-      // Anyone still sitting on the just-finished game's page as a
-      // spectator gets swept along to the rematch too, rather than being
-      // left behind watching a game that's already over.
-      io.to(spectatorRoom(gameId)).emit('game:rematch_started', {
-        gameId: newGame.id,
-        joinCode: newGame.joinCode,
-      });
     }),
   );
 
-  // Lets either player back out cleanly before the game has really started, 
+  // Lets either player back out cleanly before the game has really started —
   // deliberately separate from resign: no winner is recorded, and it never
   // shows up in either player's W/L/D stats or game history (those only count
   // status: 'finished' games). Cage match legs and tournament pairings don't
-  // get this, a cage leg has "pause" as its idle-phase escape hatch instead,
+  // get this — a cage leg has "pause" as its idle-phase escape hatch instead,
   // and a tournament pairing has neither, since walking away from a bracket
   // game shouldn't be this cheap.
   socket.on(
@@ -889,16 +667,13 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         return emitError(socket, 'You are not a player in this game');
       }
       if (state.moveCount >= 2) {
-        return emitError(socket, 'This game can no longer be aborted. Both sides have moved');
+        return emitError(socket, 'This game can no longer be aborted — both sides have moved');
       }
 
       clearGameTimer(gameId);
       clearFirstMoveTimer(gameId);
-      clearAllPendingDisconnects(gameId);
-      await finalizeGame(gameId, state.fen, 'aborted', null, 'aborted_no_moves', {
-        whiteRemainingMs: state.whiteRemainingMs,
-        blackRemainingMs: state.blackRemainingMs,
-      });
+      clearPendingDisconnect(gameId);
+      await finalizeGame(gameId, state.fen, 'aborted', null, 'aborted_no_moves');
       await refundWagerBothSides(gameId, state.whiteId, state.blackId, state.wagerTokens).catch((err) =>
         console.error('refundWagerBothSides failed:', err),
       );
@@ -908,124 +683,26 @@ export function registerGameHandlers(io: Server, socket: Socket) {
     }),
   );
 
-  // Spectators only (players don't get this chat UI, see player_chat:send
-  // below for their own separate one). Persisted in Redis (see
-  // chat.service.ts): scoped to this gameId normally, or to the parent
-  // cage match if this game is a cage match leg, so the conversation
-  // survives a leg ending and the next one starting. Broadcast is still
-  // just to this leg's current game room, real-time delivery doesn't need
-  // to fan out to past legs' viewers, they've already moved on to the new
-  // leg's game page (and will pull the full persisted history, past legs
-  // included, the moment they join it).
+  // Deliberately spectator-only, and never persisted anywhere (no Mongo, no
+  // Redis) — purely a live relay through Socket.IO. Refresh the page and the
+  // history is gone, by design.
   socket.on(
     'spectator_chat:send',
     safeHandler(socket, async (raw: unknown) => {
       const parsed = chatSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid chat payload');
-      const { gameId, message, replyToId } = parsed.data;
+      const { gameId, message } = parsed.data;
 
       if (!socket.rooms.has(spectatorRoom(gameId))) {
         return emitError(socket, 'Only spectators can use this chat');
       }
 
-      try {
-        await assertNotRestricted(userId);
-      } catch (err) {
-        return emitError(socket, err instanceof Error ? err.message : 'Chat is currently restricted for your account');
-      }
-
-      if (await isChatRateLimited(userId)) {
-        return emitError(socket, "You're sending messages too fast, slow down a little");
-      }
-      if (await isRepeatMessage(userId, message)) {
-        return emitError(socket, "You already sent that, try saying something new");
-      }
-
-      const game = await Game.findById(gameId).select('cageMatchId').lean();
-      if (!game) return emitError(socket, 'Game not found');
-      const { scope, id } = chatScopeFor(game as any);
-
-      let replyTo: { id: string; username: string; message: string } | null = null;
-      if (replyToId) {
-        // Snapshot the replied-to message's text/author at reply time
-        // rather than storing just its id, so the reply preview renders
-        // correctly even once the original scrolls out of the capped
-        // history window. A miss here (already trimmed, or a bogus id)
-        // just means the reply is sent without a preview, not an error.
-        const history = await getChatHistory(scope, id);
-        const original = history.find((m) => m.id === replyToId);
-        if (original) {
-          replyTo = { id: original.id, username: original.username, message: original.message };
-        }
-      }
-
       const { username } = socket.data as AuthedSocketData;
-      const user = await User.findById(userId).select('avatarGradient').lean();
-
-      const saved = await addChatMessage(scope, id, {
+      io.to(spectatorRoom(gameId)).emit('spectator_chat:message', {
         username,
-        avatarGradient: user?.avatarGradient ?? null,
         message,
-        replyTo,
+        at: Date.now(),
       });
-
-      io.to(spectatorRoom(gameId)).emit('spectator_chat:message', saved);
-    }),
-  );
-
-  // The two participants' own chat, reusing the same schema/rate-limit/
-  // reply-snapshot logic as spectator_chat:send above (and the same
-  // ChatDrawer UI client-side), but scoped and broadcast separately (see
-  // playerChatScopeFor / playerRoom) so it never mixes with spectator
-  // chatter in either direction.
-  socket.on(
-    'player_chat:send',
-    safeHandler(socket, async (raw: unknown) => {
-      const parsed = chatSchema.safeParse(raw);
-      if (!parsed.success) return emitError(socket, 'Invalid chat payload');
-      const { gameId, message, replyToId } = parsed.data;
-
-      if (!socket.rooms.has(playerRoom(gameId))) {
-        return emitError(socket, 'Only the players in this game can use this chat');
-      }
-
-      try {
-        await assertNotRestricted(userId);
-      } catch (err) {
-        return emitError(socket, err instanceof Error ? err.message : 'Chat is currently restricted for your account');
-      }
-
-      if (await isChatRateLimited(userId)) {
-        return emitError(socket, "You're sending messages too fast, slow down a little");
-      }
-      if (await isRepeatMessage(userId, message)) {
-        return emitError(socket, "You already sent that, try saying something new");
-      }
-
-      const game = await Game.findById(gameId).select('cageMatchId').lean();
-      if (!game) return emitError(socket, 'Game not found');
-      const { scope, id } = playerChatScopeFor(game as any);
-
-      let replyTo: { id: string; username: string; message: string } | null = null;
-      if (replyToId) {
-        const history = await getChatHistory(scope, id);
-        const original = history.find((m) => m.id === replyToId);
-        if (original) {
-          replyTo = { id: original.id, username: original.username, message: original.message };
-        }
-      }
-
-      const { username } = socket.data as AuthedSocketData;
-      const user = await User.findById(userId).select('avatarGradient').lean();
-
-      const saved = await addChatMessage(scope, id, {
-        username,
-        avatarGradient: user?.avatarGradient ?? null,
-        message,
-        replyTo,
-      });
-
-      io.to(playerRoom(gameId)).emit('player_chat:message', saved);
     }),
   );
 
@@ -1036,18 +713,6 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       const gameId = room.slice('game:'.length);
       handlePotentialDisconnect(io, gameId, userId).catch((err) =>
         console.error('handlePotentialDisconnect failed:', err),
-      );
-    }
-    // Same spectator-count refresh as game:leave above, for the case where
-    // someone just closes the tab/loses connection instead of navigating
-    // away normally. excludeSocketId matters here specifically because
-    // 'disconnecting' fires just before Socket.IO removes this socket from
-    // its rooms, so a same-tick fetchSockets() would still count it.
-    const spectatorRooms = Array.from(socket.rooms).filter((r) => r.endsWith(':spectators'));
-    for (const room of spectatorRooms) {
-      const gameId = room.slice('game:'.length, -':spectators'.length);
-      broadcastSpectatorCount(io, gameId, socket.id).catch((err) =>
-        console.error('broadcastSpectatorCount failed:', err),
       );
     }
   });

@@ -3,12 +3,8 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useNotify } from "../contexts/NotificationContext.js";
 import { useAuth } from "../contexts/AuthContext.js";
-import { useMyActiveGame } from "../contexts/MyActiveGameContext.js";
-import { useOnOwnGamePageRef } from "../hooks/useOnOwnGamePageRef.js";
 import { getCageMatchByCode, type CageMatch } from "../api/cageMatches.js";
 import { CageMatchOverModal } from "./CageMatchOverModal.js";
-import { RCoin } from "./ui/RCoin.js";
-import { TimeControlIcon } from "./ui/TimeControlIcon.js";
 
 /**
  * Cross-page real-time notifications: incoming friend challenges and rematch
@@ -21,11 +17,10 @@ export function GlobalListeners() {
   const location = useLocation();
   const { notify } = useNotify();
   const { user } = useAuth();
-  const { setActiveGame } = useMyActiveGame();
   const [cageMatchOver, setCageMatchOver] = useState<CageMatch | null>(null);
 
   // Read inside the socket handler below instead of putting location.pathname
-  // in that effect's dependency array, this way a page navigation doesn't
+  // in that effect's dependency array — this way a page navigation doesn't
   // tear down and re-subscribe the whole pile of socket listeners, it just
   // keeps this ref current for whenever a tournament:pairing_ready event
   // actually arrives.
@@ -33,17 +28,6 @@ export function GlobalListeners() {
   useEffect(() => {
     pathRef.current = location.pathname;
   }, [location.pathname]);
-
-  // Whether the person is, right now, actually sitting on their own live
-  // game's page, i.e. mid-game rather than just "has one going somewhere
-  // in the background". Used to decide whether an incoming challenge
-  // interrupts them with a toast (annoying, possibly a misclick, while
-  // they're trying to concentrate on the position in front of them) or
-  // just quietly lands in the notification bell instead (see
-  // onChallengeReceived below and NotificationCenterContext, which reads
-  // this same ref so the two can never disagree and show the challenge
-  // both ways at once).
-  const onOwnGamePageRef = useOnOwnGamePageRef();
 
   useEffect(() => {
     if (!socket) return;
@@ -55,36 +39,14 @@ export function GlobalListeners() {
       wagerTokens?: number;
     }) {
       if (!socket) return;
-      // Mid-game, this challenge lands in the notification bell instead
-      // (see NotificationCenterContext, which independently checks the
-      // same ref), not both, so no toast here in that case.
-      if (onOwnGamePageRef.current) return;
 
       const tc =
         payload.timeControl.baseMinutes === null
           ? "Unlimited"
           : `${payload.timeControl.baseMinutes}+${payload.timeControl.incrementSeconds}`;
-      const wagerNote = payload.wagerTokens ? (
-        <>
-          ,{" "}
-          <span className="inline-flex items-center gap-0.5">
-            {payload.wagerTokens}{" "}
-            <RCoin className="translate-y-0.75" size={14} />
-          </span>
-        </>
-      ) : null;
+      const wagerNote = payload.wagerTokens ? `, ${payload.wagerTokens} R wager` : "";
       notify(
-        <span>
-          {payload.from.username} challenged you to a game (
-          <span className="inline-flex items-center gap-0.5">
-            <TimeControlIcon
-              baseMinutes={payload.timeControl.baseMinutes}
-              size={12}
-            />
-            {tc}
-          </span>
-          {wagerNote}).
-        </span>,
+        `${payload.from.username} challenged you to a game (${tc}${wagerNote}).`,
         [
           {
             label: "Accept",
@@ -112,7 +74,6 @@ export function GlobalListeners() {
     }
 
     function onChallengeAccepted(payload: { joinCode: string }) {
-      setActiveGame(payload.joinCode);
       navigate(`/game/${payload.joinCode}`);
     }
 
@@ -156,16 +117,6 @@ export function GlobalListeners() {
     }
 
     function onRematchAccepted(payload: { joinCode: string }) {
-      setActiveGame(payload.joinCode);
-      navigate(`/game/${payload.joinCode}`);
-    }
-
-    function onRematchStarted(payload: { joinCode: string }) {
-      // Only players get game:rematch_accepted above (it's targeted at
-      // their user room), this one's broadcast to the finished game's
-      // spectatorRoom, so it only ever reaches sockets still actually
-      // sitting on that game's page, see game:leave in gameSocket.ts for
-      // the room-membership half of that guarantee.
       navigate(`/game/${payload.joinCode}`);
     }
 
@@ -176,47 +127,28 @@ export function GlobalListeners() {
     function onCageReceived(payload: {
       inviteId: string;
       from: { id: string; username: string };
-      legs: {
-        baseMinutes: number | null;
-        incrementSeconds: number;
-        variant: string;
-      }[];
+      legs: { baseMinutes: number | null; incrementSeconds: number; variant: string }[];
       wagerMode: string;
       wagerTokens?: number;
     }) {
       if (!socket) return;
       const wagerNote =
-        payload.wagerMode !== "none" && payload.wagerTokens ? (
-          <>
-            ,{" "}
-            <span className="inline-flex items-center gap-0.5">
-              {payload.wagerTokens}{" "}
-              <RCoin className="translate-y-0.75" size={14} />
-            </span>
-          </>
-        ) : null;
+        payload.wagerMode !== "none" && payload.wagerTokens
+          ? `, ${payload.wagerTokens} R wager`
+          : "";
       notify(
-        <span>
-          {payload.from.username} challenged you to a {payload.legs.length}
-          -game cage match{wagerNote}.
-        </span>,
+        `${payload.from.username} challenged you to a ${payload.legs.length}-game cage match${wagerNote}.`,
         [
           {
             label: "Accept",
             onClick: () =>
-              socket.emit("cage:respond", {
-                inviteId: payload.inviteId,
-                accept: true,
-              }),
+              socket.emit("cage:respond", { inviteId: payload.inviteId, accept: true }),
           },
           {
             label: "Decline",
             variant: "secondary",
             onClick: () =>
-              socket.emit("cage:respond", {
-                inviteId: payload.inviteId,
-                accept: false,
-              }),
+              socket.emit("cage:respond", { inviteId: payload.inviteId, accept: false }),
           },
         ],
         60_000,
@@ -225,7 +157,6 @@ export function GlobalListeners() {
     }
 
     function onCageAccepted(payload: { firstLeg: { joinCode: string } }) {
-      setActiveGame(payload.firstLeg.joinCode);
       navigate(`/game/${payload.firstLeg.joinCode}`);
     }
 
@@ -244,24 +175,11 @@ export function GlobalListeners() {
     function onCageNextLeg(payload: { nextLeg?: { joinCode: string } }) {
       if (!payload.nextLeg) return;
       const joinCode = payload.nextLeg.joinCode;
-      setActiveGame(joinCode);
       notify(
         "Your cage match's next game is starting.",
-        [
-          {
-            label: "Play it now",
-            onClick: () => navigate(`/game/${joinCode}`),
-          },
-        ],
+        [{ label: "Play it now", onClick: () => navigate(`/game/${joinCode}`) }],
         20_000,
       );
-    }
-
-    function onCageNextLegSpectator(payload: { joinCode: string }) {
-      // Broadcast to the finished leg's spectatorRoom only, so, like
-      // game:rematch_started, this only ever reaches sockets still
-      // actually watching that leg (see game:leave in gameSocket.ts).
-      navigate(`/game/${payload.joinCode}`);
     }
 
     function onCageMatchOver(payload: { matchCode: string }) {
@@ -269,7 +187,7 @@ export function GlobalListeners() {
         .then(({ match }) => setCageMatchOver(match))
         .catch(() => {
           /* If the fetch fails, the match page itself is still reachable
-             directly, no popup is better than a broken one. */
+             directly — no popup is better than a broken one. */
         });
     }
 
@@ -280,20 +198,12 @@ export function GlobalListeners() {
         [
           {
             label: "Allow pause",
-            onClick: () =>
-              socket.emit("cage:pause_respond", {
-                matchId: payload.matchId,
-                accept: true,
-              }),
+            onClick: () => socket.emit("cage:pause_respond", { matchId: payload.matchId, accept: true }),
           },
           {
             label: "Decline",
             variant: "secondary",
-            onClick: () =>
-              socket.emit("cage:pause_respond", {
-                matchId: payload.matchId,
-                accept: false,
-              }),
+            onClick: () => socket.emit("cage:pause_respond", { matchId: payload.matchId, accept: false }),
           },
         ],
         60_000,
@@ -304,30 +214,19 @@ export function GlobalListeners() {
       notify("Your pause request was declined.", [], 4000);
     }
 
-    function onResumeRequested(payload: {
-      matchId: string;
-      matchCode: string;
-    }) {
+    function onResumeRequested(payload: { matchId: string; matchCode: string }) {
       if (!socket) return;
       notify(
         "Your opponent wants to resume the paused game.",
         [
           {
             label: "Resume",
-            onClick: () =>
-              socket.emit("cage:resume_respond", {
-                matchId: payload.matchId,
-                accept: true,
-              }),
+            onClick: () => socket.emit("cage:resume_respond", { matchId: payload.matchId, accept: true }),
           },
           {
             label: "Not yet",
             variant: "secondary",
-            onClick: () =>
-              socket.emit("cage:resume_respond", {
-                matchId: payload.matchId,
-                accept: false,
-              }),
+            onClick: () => socket.emit("cage:resume_respond", { matchId: payload.matchId, accept: false }),
           },
         ],
         60_000,
@@ -339,7 +238,7 @@ export function GlobalListeners() {
     }
 
     // Fires for BOTH players the instant their tournament pairing's game is
-    // created, whether that's the opening round or one that had to wait out
+    // created — whether that's the opening round or one that had to wait out
     // an inter-round break (see scheduleRoundStart in tournament.service.ts).
     // Someone actively sitting on that tournament's page gets swept straight
     // into the game, since they're clearly there waiting for it; anyone else
@@ -350,36 +249,15 @@ export function GlobalListeners() {
       code: string;
       joinCode: string;
     }) {
-      setActiveGame(payload.joinCode);
-      const onThisTournamentPage =
-        pathRef.current === `/tournaments/${payload.code}`;
+      const onThisTournamentPage = pathRef.current === `/tournaments/${payload.code}`;
       if (onThisTournamentPage) {
         navigate(`/game/${payload.joinCode}`);
         return;
       }
       notify(
         "Your tournament game has started.",
-        [
-          {
-            label: "Play it now",
-            onClick: () => navigate(`/game/${payload.joinCode}`),
-          },
-        ],
+        [{ label: "Play it now", onClick: () => navigate(`/game/${payload.joinCode}`) }],
         20_000,
-      );
-    }
-
-    // ChessR's own persisted notifications (welcome message, anti-cheat/
-    // report freeze alerts, ...) — see models/Notification.ts server-side.
-    // NotificationCenterContext (the bell) independently listens for this
-    // same event and adds the persistent item there, this is purely an
-    // ephemeral "heads up" toast layered on top, the same way a challenge
-    // can show as both a toast and a bell item.
-    function onNotificationNew(payload: { title: string }) {
-      notify(
-        payload.title,
-        [{ label: "View", onClick: () => navigate("/notifications") }],
-        8000,
       );
     }
 
@@ -390,7 +268,6 @@ export function GlobalListeners() {
     socket.on("challenge:error", onChallengeError);
     socket.on("game:rematch_offered", onRematchOffered);
     socket.on("game:rematch_accepted", onRematchAccepted);
-    socket.on("game:rematch_started", onRematchStarted);
     socket.on("game:rematch_declined", onRematchDeclined);
     socket.on("cage:received", onCageReceived);
     socket.on("cage:accepted", onCageAccepted);
@@ -398,14 +275,12 @@ export function GlobalListeners() {
     socket.on("cage:cancelled", onCageCancelled);
     socket.on("cage:error", onCageError);
     socket.on("cage:next_leg", onCageNextLeg);
-    socket.on("cage:next_leg_spectator", onCageNextLegSpectator);
     socket.on("cage:match_over", onCageMatchOver);
     socket.on("cage:pause_requested", onPauseRequested);
     socket.on("cage:pause_declined", onPauseDeclined);
     socket.on("cage:resume_requested", onResumeRequested);
     socket.on("cage:resume_declined", onResumeDeclined);
     socket.on("tournament:pairing_ready", onTournamentPairingReady);
-    socket.on("notification:new", onNotificationNew);
 
     return () => {
       socket.off("challenge:received", onChallengeReceived);
@@ -415,7 +290,6 @@ export function GlobalListeners() {
       socket.off("challenge:error", onChallengeError);
       socket.off("game:rematch_offered", onRematchOffered);
       socket.off("game:rematch_accepted", onRematchAccepted);
-      socket.off("game:rematch_started", onRematchStarted);
       socket.off("game:rematch_declined", onRematchDeclined);
       socket.off("cage:received", onCageReceived);
       socket.off("cage:accepted", onCageAccepted);
@@ -423,16 +297,14 @@ export function GlobalListeners() {
       socket.off("cage:cancelled", onCageCancelled);
       socket.off("cage:error", onCageError);
       socket.off("cage:next_leg", onCageNextLeg);
-      socket.off("cage:next_leg_spectator", onCageNextLegSpectator);
       socket.off("cage:match_over", onCageMatchOver);
       socket.off("cage:pause_requested", onPauseRequested);
       socket.off("cage:pause_declined", onPauseDeclined);
       socket.off("cage:resume_requested", onResumeRequested);
       socket.off("cage:resume_declined", onResumeDeclined);
       socket.off("tournament:pairing_ready", onTournamentPairingReady);
-      socket.off("notification:new", onNotificationNew);
     };
-  }, [socket, navigate, notify, setActiveGame]);
+  }, [socket, navigate, notify]);
 
   if (cageMatchOver) {
     return (

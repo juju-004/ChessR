@@ -6,10 +6,10 @@ export interface AvatarProps {
   src?: string | null;
   username: string;
   size?: "xs" | "sm" | "md" | "lg";
-  /** Small colored dot in the corner, typically online/offline presence. */
+  /** Small colored dot in the corner — typically online/offline presence. */
   status?: "online" | "offline" | null;
   /** Preset id from avatarGradients.ts. Omit (or "brand") for the default
-   *  look, falls back to the existing .gradient-brand class so old data
+   *  look — falls back to the existing .gradient-brand class so old data
    *  without this field renders exactly as it always did. */
   gradient?: string | null;
   className?: string;
@@ -26,14 +26,7 @@ function initialsOf(username: string): string {
   return username.slice(0, 2).toUpperCase();
 }
 
-export function Avatar({
-  src,
-  username,
-  size = "md",
-  status = null,
-  gradient,
-  className,
-}: AvatarProps) {
+export function Avatar({ src, username, size = "md", status = null, gradient, className }: AvatarProps) {
   const [imgFailed, setImgFailed] = useState(false);
   const customStyle = avatarGradientStyle(gradient);
 
@@ -63,7 +56,7 @@ export function Avatar({
           className={cn(
             "absolute right-0 bottom-0 rounded-full ring-2 ring-base-100",
             size === "lg" ? "h-3.5 w-3.5" : "h-2.5 w-2.5",
-            status === "online" ? "bg-green-500" : "bg-neutral-500",
+            status === "online" ? "bg-green-500" : "bg-base-content/30",
           )}
         />
       )}

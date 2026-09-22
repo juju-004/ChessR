@@ -1,9 +1,6 @@
-import { memo, type ReactNode } from "react";
+import { memo } from "react";
 import { Trophy, Frown, Handshake, Ban } from "lucide-react";
 import { Card, Button } from "./ui/index.js";
-import { RCoin } from "./ui/RCoin.js";
-import { RatingBadge } from "./RatingBadge.js";
-import type { RatingSideUpdate } from "./game/types.js";
 
 interface GameOverModalProps {
   result: string | null;
@@ -12,27 +9,20 @@ interface GameOverModalProps {
   isPlayer: boolean;
   canRematch: boolean;
   rematchState: 'idle' | 'offered';
-  wagerSettlement?: {
-    wagerTokens: number;
-    potTokens: number;
-    winnerId: string | null;
-    payoutTokens: number;
-    rakeTokens: number;
-  } | null;
+  wagerSettlement?: { wagerTokens: number; potTokens: number; winnerId: string | null } | null;
   myUserId?: string;
-  ratingUpdate?: RatingSideUpdate | null;
   onRematch: () => void;
   onClose: () => void;
 }
 
-export function titleFor(result: string | null, myColor: 'white' | 'black' | undefined, isPlayer: boolean): string {
+function titleFor(result: string | null, myColor: 'white' | 'black' | undefined, isPlayer: boolean): string {
   if (result === null) return 'Game Aborted';
   if (result === 'draw') return 'Draw';
   if (isPlayer && myColor) return result === myColor ? 'You Won!' : 'You Lost';
   return result === 'white' ? 'White Wins' : 'Black Wins';
 }
 
-export function reasonText(reason: string): string {
+function reasonText(reason: string): string {
   return reason.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
 }
 
@@ -45,7 +35,6 @@ export const GameOverModal = memo(function GameOverModal({
   rematchState,
   wagerSettlement,
   myUserId,
-  ratingUpdate,
   onRematch,
   onClose,
 }: GameOverModalProps) {
@@ -54,39 +43,16 @@ export const GameOverModal = memo(function GameOverModal({
   const isLoss = isPlayer && myColor && result !== null && result !== 'draw' && result !== myColor;
   const Icon = result === null ? Ban : isWin ? Trophy : isLoss ? Frown : Handshake;
 
-  const wagerText: ReactNode = (() => {
+  const wagerText = (() => {
     if (!isPlayer || !wagerSettlement || wagerSettlement.wagerTokens <= 0) return null;
     if (wagerSettlement.winnerId === null) {
-      return (
-        <>
-          Draw, your {wagerSettlement.wagerTokens}{" "}
-          <RCoin size={14} className="inline align-[-2px]" /> stake was
-          refunded.
-        </>
-      );
+      return `Draw — your ${wagerSettlement.wagerTokens} R Coin stake was refunded.`;
     }
     if (wagerSettlement.winnerId === myUserId) {
-      return (
-        <>
-          You won {wagerSettlement.payoutTokens}{" "}
-          <RCoin size={14} className="inline align-[-2px]" />!
-        </>
-      );
+      return `You won ${wagerSettlement.potTokens} R Coins!`;
     }
-    return (
-      <>
-        You lost your {wagerSettlement.wagerTokens}{" "}
-        <RCoin size={14} className="inline align-[-2px]" /> stake.
-      </>
-    );
+    return `You lost your ${wagerSettlement.wagerTokens} R Coin stake.`;
   })();
-
-  // Only worth a line when the tier actually changed, a same-tier result
-  // (the overwhelmingly common case) has nothing new to say. Unranked →
-  // a real tier for the first time counts as a change too, not just a
-  // tier-to-tier move.
-  const rankChanged =
-    !!ratingUpdate && ratingUpdate.newCategory !== ratingUpdate.previousCategory;
 
   return (
     <div
@@ -139,42 +105,6 @@ export const GameOverModal = memo(function GameOverModal({
           >
             {wagerText}
           </p>
-        )}
-
-        {ratingUpdate && (
-          <p
-            className={`mb-2 text-sm font-semibold ${
-              ratingUpdate.delta > 0
-                ? 'text-green-400'
-                : ratingUpdate.delta < 0
-                  ? 'text-red-400'
-                  : 'text-base-content/60'
-            }`}
-          >
-            {ratingUpdate.delta > 0
-              ? `+${ratingUpdate.delta} rating`
-              : ratingUpdate.delta < 0
-                ? `${ratingUpdate.delta} rating`
-                : 'No rating change'}
-          </p>
-        )}
-
-        {ratingUpdate && (
-          <div className="mb-5 flex items-center justify-center gap-2 rounded-xl bg-base-200/70 px-3 py-2.5 text-sm">
-            <span className="font-medium text-base-content/70">
-              {rankChanged
-                ? ratingUpdate.previousCategory === null
-                  ? "You've been ranked"
-                  : "Rank updated"
-                : "Rank"}
-            </span>
-            <RatingBadge
-              category={ratingUpdate.newCategory}
-              gamesUntilRanked={ratingUpdate.ratedGamesUntilRanked}
-              showProgress
-              pointsToNextTier={ratingUpdate.pointsToNextTier}
-            />
-          </div>
         )}
 
         <div className="flex flex-col gap-2">

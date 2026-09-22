@@ -3,21 +3,24 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   LayoutDashboard,
+  Search,
   Users,
   Swords,
   Trophy,
   Settings,
   type LucideIcon,
+  TableOfContents,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext.js";
 import { cn } from "../lib/cn.js";
-import { springSnappy } from "../lib/motion.js";
+import { pressable, springSnappy } from "../lib/motion.js";
+import { Dropdown, type DropdownItem } from "./ui/Dropdown.js";
 
 interface NavItem {
   to: string;
   label: string;
   icon: LucideIcon;
-  /** Passed straight through to NavLink's `end` prop, required for the
+  /** Passed straight through to NavLink's `end` prop — required for the
    *  Dashboard item since it now lives at "/", which (without `end`) would
    *  otherwise match and light up for every other route too. */
   end?: boolean;
@@ -25,16 +28,18 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/players", label: "Players", icon: Users },
+  { to: "/find", label: "Find", icon: Search },
+  { to: "/friends", label: "Friends", icon: Users },
   { to: "/cage", label: "Cage", icon: Swords },
   { to: "/tournaments", label: "Tournaments", icon: Trophy },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
 /**
- * The desktop-only vertical elevated rail (md and up). The mobile
- * equivalent. MobileDock, exported below, is a fixed bottom tab bar
- * rendered separately in App.tsx, not here.
+ * The desktop-only vertical glass rail (md and up). The mobile equivalent
+ * — MobileNavTrigger, exported below — is rendered separately in
+ * Navbar.tsx beside the logo, not here, since it needs to live in the top
+ * nav row rather than float over the page.
  */
 export const Sidebar = memo(function Sidebar() {
   const { isAuthed } = useAuth();
@@ -42,7 +47,7 @@ export const Sidebar = memo(function Sidebar() {
   if (!isAuthed) return null;
 
   // The board is the one place screen width is actually precious, so only
-  // the game page gets the icon-only collapse-on-hover treatment, every
+  // the game page gets the icon-only collapse-on-hover treatment — every
   // other page keeps the rail fully expanded (labels always visible, no
   // hover behavior at all).
   const collapsible = pathname.startsWith("/game/");
@@ -51,7 +56,7 @@ export const Sidebar = memo(function Sidebar() {
     <nav
       aria-label="Primary"
       className={cn(
-        "group elevated z-40 sticky top-20 hidden h-fit shrink-0 flex-col gap-1 self-start overflow-hidden rounded-2xl p-3 md:flex",
+        "group glass z-40 sticky top-20 hidden h-fit shrink-0 flex-col gap-1 self-start overflow-hidden rounded-2xl p-3 md:flex",
         collapsible
           ? "w-16 transition-[width] duration-200 ease-out hover:w-56 hover:shadow-xl"
           : "w-56",
@@ -71,46 +76,45 @@ export const Sidebar = memo(function Sidebar() {
 });
 
 /**
- * The mobile bottom dock, site navigation, phone only. Renders as a
- * full-width tab bar fixed to the bottom of the screen (see `.dock` in
- * index.css). Deliberately hides itself on `/game/:code`: the game page's
- * own action bar (GameActionBarMobile in components/game/GameActionBar.tsx)
- * occupies that same visual slot there instead, sharing the same `.dock`
- * classes so it reads as one dock whose contents change with context
- * rather than two fixed-bottom elements fighting for the same space.
+ * The nav items rendered as a Dropdown, for use beside the logo in
+ * Navbar.tsx on mobile (md:hidden is baked into the trigger button itself,
+ * so this can be dropped straight into the navbar without an extra
+ * wrapper). Opens downward (side="bottom") since it now lives at the top
+ * of the screen rather than the old fixed bottom-left FAB it replaced.
  */
-export function MobileDock() {
-  const { isAuthed } = useAuth();
+export function MobileNavTrigger() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  if (!isAuthed) return null;
-  if (pathname.startsWith("/game/")) return null;
+
+  const items: DropdownItem[] = NAV_ITEMS.map((item) => {
+    const isActive = item.end
+      ? pathname === item.to
+      : pathname.startsWith(item.to);
+    return {
+      label: item.label,
+      icon: item.icon,
+      onClick: () => navigate(item.to),
+      className: isActive
+        ? "text-primary bg-base-200 font-semibold"
+        : undefined,
+    };
+  });
 
   return (
-    <nav aria-label="Primary" className="docker flex md:hidden">
-      {NAV_ITEMS.map((item) => {
-        const isActive = item.end
-          ? pathname === item.to
-          : pathname.startsWith(item.to);
-        const Icon = item.icon;
-        return (
-          <button
-            key={item.to}
-            type="button"
-            onClick={() => navigate(item.to)}
-            aria-label={item.label}
-            aria-current={isActive ? "page" : undefined}
-            className={cn(
-              "docker-item docker-item-grow",
-              isActive && "docker-item-active",
-            )}
-          >
-            <Icon className="h-5 w-5" strokeWidth={isActive ? 2.5 : 2} />
-            <span>{item.label}</span>
-          </button>
-        );
-      })}
-    </nav>
+    <Dropdown
+      trigger={
+        <motion.button
+          {...pressable}
+          aria-label="Open navigation menu"
+          className="glass flex h-9 w-9 items-center justify-center rounded-full text-base-content transition-colors hover:bg-base-content/5 md:hidden"
+        >
+          <TableOfContents className="h-4 w-4" strokeWidth={3} />
+        </motion.button>
+      }
+      items={items}
+      align="start"
+      side="bottom"
+    />
   );
 }
 

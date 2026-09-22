@@ -28,7 +28,12 @@ export function WalletNav({ active }: { active: string }) {
           </p>
         </div>
       </div>
-      <Tabs items={WALLET_TABS} value={active} onChange={(v) => navigate(v)} />
+      <Tabs
+        items={WALLET_TABS}
+        value={active}
+        onChange={(v) => navigate(v)}
+        layoutId="wallet-tabs"
+      />
     </div>
   );
 }

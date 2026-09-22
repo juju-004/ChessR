@@ -24,15 +24,15 @@ export function clearGameTimer(gameId: string): void {
 /** (Re)schedules the flag-fall check for whoever's turn it currently is. Call this
  *  after game start and after every successful move. Safe to call redundantly.
  *  No-ops entirely during the idle phase (before both sides have made their
- *  first move) since the real clock isn't running yet, see
+ *  first move) since the real clock isn't running yet — see
  *  gameState.service.ts's computeTimeoutWinner/finalizeMove. */
 // A last-second move sent right as the clock reads 0:00 still has to travel
-// over the network before the server can apply it, this is the grace
+// over the network before the server can apply it — this is the grace
 // window between "the clock's raw duration has elapsed" and "actually check
 // & declare the timeout", so that move isn't unfairly pre-empted by the
 // flag-fall timer. It only needs to cover one leg of network transit plus
 // Node's own setTimeout scheduling jitter, not a full round trip, so it can
-// stay small, a large buffer here just reads as a delay before the loser
+// stay small — a large buffer here just reads as a delay before the loser
 // gets declared.
 const FLAG_FALL_GRACE_MS = 250;
 
@@ -73,16 +73,16 @@ export async function scheduleGameTimer(gameId: string): Promise<void> {
 
 // --- First-move timer -----------------------------------------------------
 //
-// Separate from (and much shorter than) the real chess clock, this exists
+// Separate from (and much shorter than) the real chess clock — this exists
 // to catch a player not making their first move at all, so a game can't sit
 // stuck forever waiting on someone who's walked away before the "real" clock
-// even starts ticking (see gameState.service.ts, time is only actually
+// even starts ticking (see gameState.service.ts — time is only actually
 // deducted once moveCount >= 2). Covers BOTH sides' first move: armed for
 // White the moment the game starts, then re-armed for Black the moment
 // White's first move lands. Cleared for good the instant Black's first move
 // lands. What happens once it fires (abort a plain game vs. lose the game
 // for a cage leg/tournament pairing) is decided by the handler registered
-// via setFirstMoveTimeoutHandler, not here, this module only tracks time.
+// via setFirstMoveTimeoutHandler, not here — this module only tracks time.
 export type FirstMoveTimeoutHandler = (
   gameId: string,
   expiredSide: 'white' | 'black',
@@ -104,7 +104,7 @@ export function clearFirstMoveTimer(gameId: string): void {
   }
 }
 
-/** How long a player gets to make their first move, a flat window rather
+/** How long a player gets to make their first move — a flat window rather
  *  than scaled to time control (simpler to reason about, and generous even
  *  for bullet). Exported so the client can mirror the exact same window for
  *  its countdown badge without the server needing to push the deadline down
@@ -116,7 +116,7 @@ export function computeFirstMoveGraceMs(isSeriesGame: boolean): number {
 }
 
 /** (Re)arms the first-move timer for whoever's first move is currently
- *  pending. Call this after game start and after every successful move, 
+ *  pending. Call this after game start and after every successful move —
  *  it's a cheap no-op once both sides have played their first move (or if
  *  the game isn't active/is paused). Safe to call redundantly. */
 export async function scheduleFirstMoveTimer(gameId: string): Promise<void> {
@@ -130,26 +130,12 @@ export async function scheduleFirstMoveTimer(gameId: string): Promise<void> {
   const gameDoc = await Game.findById(gameId).select('cageMatchId tournamentId').lean();
   const isSeriesGame = !!(gameDoc?.cageMatchId || gameDoc?.tournamentId);
   const graceMs = computeFirstMoveGraceMs(isSeriesGame);
-  // Captured now, checked again in fire() below: if a move actually lands
-  // (or the game is paused/rescheduled) before this timer goes off, that
-  // move's own finalizeMove call resets turnStartedAtMs — so a mismatch
-  // here means "something happened since I was scheduled", independent of
-  // (and a stronger check than) moveCount alone.
-  const expectedTurnStartedAtMs = state.turnStartedAtMs;
   const remaining = graceMs - (Date.now() - state.turnStartedAtMs);
 
   const fire = async () => {
     firstMoveTimers.delete(gameId);
     const fresh = await getLiveState(gameId);
-    if (
-      !fresh ||
-      fresh.status !== 'active' ||
-      fresh.paused ||
-      fresh.moveCount >= 2 ||
-      fresh.turnStartedAtMs !== expectedTurnStartedAtMs
-    ) {
-      return;
-    }
+    if (!fresh || fresh.status !== 'active' || fresh.paused || fresh.moveCount >= 2) return;
     const expiredSide = getSideToMove(fresh.fen);
     if (firstMoveTimeoutHandler) await firstMoveTimeoutHandler(gameId, expiredSide);
   };
@@ -159,16 +145,9 @@ export async function scheduleFirstMoveTimer(gameId: string): Promise<void> {
     return;
   }
 
-  // Same reasoning as scheduleGameTimer's FLAG_FALL_GRACE_MS just above: a
-  // move sent right as this reads 0 still has to travel over the network
-  // and go through applyMove's own two Redis round trips (read, then
-  // write) before moveCount actually reflects it — firing at the exact
-  // nominal deadline with zero buffer meant a move landing right at the
-  // wire could lose that race and get wrongly aborted out from under a
-  // player who, from their own screen, had actually made it in time.
   const timer = setTimeout(() => {
     fire().catch((err) => console.error('first-move timeout handling failed:', err));
-  }, remaining + FLAG_FALL_GRACE_MS);
+  }, remaining);
   timer.unref?.();
   firstMoveTimers.set(gameId, timer);
 }

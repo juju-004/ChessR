@@ -16,12 +16,12 @@ export function ThemeToggle({ className }: { className?: string }) {
       whileTap={{ scale: 0.9 }}
       transition={springSnappy}
       className={cn(
-        "elevated relative md:flex h-9 w-9 items-center justify-center hidden rounded-full text-base-content/80 hover:text-base-content",
+        "glass relative md:flex h-9 w-9 items-center justify-center hidden rounded-full text-base-content/80 hover:text-base-content",
         className,
       )}
     >
       {/* Crossfade + tiny scale between icons, rather than swapping the DOM
-       *  node outright, opacity/scale only, per @/lib/motion.ts. */}
+       *  node outright — opacity/scale only, per @/lib/motion.ts. */}
       <AnimatePresence mode="wait" initial={false}>
         <motion.span
           key={isDark ? "moon" : "sun"}
