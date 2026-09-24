@@ -170,7 +170,7 @@ export function Dashboard() {
           <CardContent className="flex gap-2">
             <Input
               type="text"
-              placeholder="e.g. 7K3M9P"
+              placeholder="e.g. 7K3Md9P"
               maxLength={10}
               value={joinCodeInput}
               onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
