@@ -1559,6 +1559,59 @@ async function fireArenaEnd(tournamentId: string): Promise<void> {
   if (!hasActivePairing(tournament)) await finishTournament(tournament);
 }
 
+/** Belt-and-suspenders safety net, run alongside reconcileActiveTournaments
+ *  in index.ts's periodic sweep. Targets the exact desync
+ *  advanceTournamentIfPairing's locking fix (see its own doc comment) was
+ *  written to stop: a pairing left "active" in the tournament document
+ *  even though its underlying Game already finished, because the result
+ *  never made it back — previously a swallowed VersionError from
+ *  concurrent saves, potentially something else entirely in the future.
+ *  An arena tournament in that state can never see hasActivePairing() go
+ *  false on its own, so without this it sits "active" forever, with the
+ *  client stuck showing "Finishing up…" — this is what actually resolved
+ *  the incident that prompted the locking fix in production, by finding
+ *  the desynced pairing and replaying its game's real result through the
+ *  normal (now-locked) advanceTournamentIfPairing path, same as if the
+ *  game had reported in cleanly the first time. Scoped to arena
+ *  specifically: it's the only format where "stuck past its own end time"
+ *  is a self-contained, checkable condition (arenaEndsAt); a swiss/
+ *  knockout pairing stuck "active" past a round's normal pace is a
+ *  different, per-format shape of the same underlying class of bug and
+ *  isn't covered by this sweep. */
+export async function resolveDesyncedArenaPairings(): Promise<{ resolved: number }> {
+  const stuck = await Tournament.find({
+    status: "active",
+    format: "arena",
+    arenaEndsAt: { $lte: new Date() },
+  }).select("rounds");
+
+  let resolved = 0;
+  for (const doc of stuck) {
+    for (const round of doc.rounds) {
+      for (const [pairingIndex, pairing] of round.pairings.entries()) {
+        if (pairing.status !== "active" || !pairing.gameId) continue;
+        const game = await Game.findById(pairing.gameId).select("status result endReason").lean();
+        // Game genuinely still being played (or somehow missing) — leave
+        // it, this isn't the desync case, just an arena tournament
+        // correctly still waiting on its last live game.
+        if (!game || game.status !== "finished") continue;
+        await advanceTournamentIfPairing(
+          doc.id,
+          round.index,
+          pairingIndex,
+          game.result ?? "draw",
+          game.endReason ?? "unknown",
+        );
+        resolved++;
+      }
+    }
+  }
+  if (resolved > 0) {
+    console.warn(`resolveDesyncedArenaPairings: repaired ${resolved} desynced arena pairing(s)`);
+  }
+  return { resolved };
+}
+
 /** Smart pairing, arena half: every player currently eligible for a new
  *  pairing, joined, not paused (see the ITournamentPlayer.paused doc
  *  comment), not already sitting in a still-active pairing themselves, AND
@@ -1721,6 +1774,16 @@ function matchArenaPairsSmart(
   return pairs;
 }
 
+// Shared by every function that read-modify-saves a Tournament document's
+// rounds/pairings (tryArenaPairings, advanceTournamentIfPairing), so they
+// all serialize against EACH OTHER, not just against repeats of
+// themselves. Was two separate lock keys until the incident described on
+// advanceTournamentIfPairing, where that let a pairing-finish and a
+// pairing-creation race each other undetected.
+function tournamentMutationLockKey(tournamentId: string): string {
+  return `tournament:mutate:${tournamentId}`;
+}
+
 /** The heart of the arena format: pairs up every currently-available player
  *  it can, two at a time, each pairing becoming its own new one-pairing
  *  round (see the section comment above for why). Called right when the
@@ -1749,9 +1812,17 @@ function matchArenaPairsSmart(
  *  fresh re-fetch closes that: only one call is ever mutating a given
  *  tournament's rounds at a time, and it's always working off whatever the
  *  previous call just committed, not a stale snapshot from before this
- *  function was even entered. */
+ *  function was even entered.
+ *
+ *  Uses tournamentMutationLockKey (shared with advanceTournamentIfPairing)
+ *  rather than a pairing-only lock key, since new-pairing creation here and
+ *  pairing-completion there both read-modify-save the exact same
+ *  tournament.rounds array — two different lock keys would each
+ *  successfully serialize against themselves while still racing each
+ *  other. See advanceTournamentIfPairing's doc comment for the incident
+ *  that happens when they do. */
 async function tryArenaPairings(tournamentId: string): Promise<void> {
-  const result = await withLock(`tournament:arena-pairing:${tournamentId}`, async () => {
+  const result = await withLock(tournamentMutationLockKey(tournamentId), async () => {
     const tournament = await Tournament.findById(tournamentId);
     if (!tournament) return;
     if (tournament.status !== "active" || tournament.format !== "arena") return;
@@ -2337,8 +2408,49 @@ function broadcastUpdate(
  *  advanceCageMatchLeg does for cage matches. Shared by the live socket path
  *  and the boot/periodic reconciliation sweep. Safe to call more than once
  *  for the same pairing (a no-op past the first call), same idempotency
- *  guard shape as the cage match equivalent. */
+ *  guard shape as the cage match equivalent.
+ *
+ *  Runs under tournamentMutationLockKey (see tryArenaPairings) for the same
+ *  reason: this does a plain load → mutate → tournament.save(), same as
+ *  every other unprotected mutation of this document used to. A busy arena
+ *  tournament near its end can easily have several of its many concurrent
+ *  bullet/blitz games finish within the same tick, each calling this for a
+ *  *different* pairing on the *same* tournament document — without a lock,
+ *  Mongoose's optimistic-concurrency save() throws a VersionError for
+ *  whichever one saves second, which the try/catch below only logs and
+ *  swallows. That pairing's "finished" update is then gone entirely: its
+ *  status is stuck at "active" forever, with nothing else left to ever
+ *  retry it, which for an arena tournament means it can never see
+ *  hasActivePairing() go false and finish itself — exactly the "stuck on
+ *  Finishing up…" incident this fix was written after. Retries a couple of
+ *  times on any null result rather than distinguishing "lock timed out"
+ *  from "the locked call itself legitimately found nothing to do" —
+ *  the latter is idempotent (re-checks pairing.status === "active" every
+ *  time), so retrying it costs a couple of harmless extra lock round
+ *  trips, while NOT retrying the former is exactly the failure mode this
+ *  exists to close. */
 export async function advanceTournamentIfPairing(
+  tournamentId: string,
+  roundIndex: number,
+  pairingIndex: number,
+  gameResult: "white" | "black" | "draw",
+  endReason: string,
+): Promise<ITournament | null> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const result = await withLock(
+      tournamentMutationLockKey(tournamentId),
+      () => advanceTournamentIfPairingLocked(tournamentId, roundIndex, pairingIndex, gameResult, endReason),
+      { maxWaitMs: 4000 },
+    );
+    if (result !== null) return result;
+  }
+  console.error(
+    `advanceTournamentIfPairing: gave up recording tournament ${tournamentId} round ${roundIndex} pairing ${pairingIndex} after repeated lock contention`,
+  );
+  return null;
+}
+
+async function advanceTournamentIfPairingLocked(
   tournamentId: string,
   roundIndex: number,
   pairingIndex: number,

@@ -643,16 +643,21 @@ function pairingsForPlayer(
 }
 
 /** Client-side mirror of the server's arenaAvailablePlayers pairing pool
- *  (see tournament.service.ts), minus the "actually watching the page"
- *  presence check, that part's a server-only concept, everyone looking at
- *  this page already satisfies it just by being here. Used for the
- *  "Pairing pool" section below instead of a per-round tab list, which
- *  didn't make much sense for arena: each "round" there is really just one
- *  ad hoc 1-on-1 match rather than a shared round everyone plays at once,
- *  so a giant scrolling tab list of them was mostly noise. Showing who's
- *  actually free to be paired right now is the more useful view of "what's
- *  happening" for this format. */
-function arenaPairingPool(tournament: Tournament): TournamentPlayer[] {
+ *  (see tournament.service.ts), including the "actually watching the
+ *  page" presence check — watchingUserIds comes from the server's
+ *  'tournament:watchers' broadcast (presence.service.ts's
+ *  getWatchingUserIds), so this only shows players whose own client
+ *  currently has this tournament's detail page open, same gate the real
+ *  pairing logic uses. Used for the "Pairing pool" section below instead
+ *  of a per-round tab list, which didn't make much sense for arena: each
+ *  "round" there is really just one ad hoc 1-on-1 match rather than a
+ *  shared round everyone plays at once, so a giant scrolling tab list of
+ *  them was mostly noise. Showing who's actually free to be paired right
+ *  now is the more useful view of "what's happening" for this format. */
+function arenaPairingPool(
+  tournament: Tournament,
+  watchingUserIds: Set<string>,
+): TournamentPlayer[] {
   const busy = new Set<string>();
   for (const round of tournament.rounds) {
     for (const pairing of round.pairings) {
@@ -662,7 +667,9 @@ function arenaPairingPool(tournament: Tournament): TournamentPlayer[] {
     }
   }
   return tournament.players
-    .filter((p) => !p.paused && !busy.has(p.user))
+    .filter(
+      (p) => !p.paused && !busy.has(p.user) && watchingUserIds.has(p.user),
+    )
     .sort((a, b) => b.points - a.points || b.tiebreak - a.tiebreak);
 }
 
@@ -819,7 +826,7 @@ function PlayerTournamentDetails({
                   const myPoints = isP1
                     ? pairing.pointsAwarded.p1
                     : pairing.pointsAwarded.p2;
-                  resultText = `${myPoints} pt${myPoints === 1 ? "" : "s"}`;
+                  resultText = `${myPoints}`;
                   resultColor =
                     pairing.result === "draw"
                       ? "text-base-content/70"
@@ -1010,6 +1017,14 @@ export function TournamentDetail() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatSheetOpen, setChatSheetOpen] = useState(false);
   const [chatHasUnread, setChatHasUnread] = useState(false);
+  // Who's actually got this tournament's page open right now (server-pushed
+  // via 'tournament:watchers', see presence.service.ts's getWatchingUserIds).
+  // Drives the arena "Pairing pool" section below — a player only shows up
+  // there once their own client is watching, not just because they're a
+  // non-busy, non-paused tournament entrant.
+  const [watchingUserIds, setWatchingUserIds] = useState<Set<string>>(
+    new Set(),
+  );
   const chatSheetOpenRef = useRef(chatSheetOpen);
   useEffect(() => {
     chatSheetOpenRef.current = chatSheetOpen;
@@ -1051,6 +1066,10 @@ export function TournamentDetail() {
     function onError(payload: { message: string }) {
       setStatus({ message: payload.message, isError: true });
     }
+    function onWatchers(payload: { tournamentId: string; userIds: string[] }) {
+      if (payload.tournamentId !== tournamentId) return;
+      setWatchingUserIds(new Set(payload.userIds));
+    }
     function onChatHistory(payload: {
       tournamentId: string;
       history: ChatMessage[];
@@ -1071,6 +1090,7 @@ export function TournamentDetail() {
     socket.on("tournament:cancelled", onUpdate);
     socket.on("tournament:finished", onUpdate);
     socket.on("tournament:error", onError);
+    socket.on("tournament:watchers", onWatchers);
     socket.on("tournament:chat_history", onChatHistory);
     socket.on("tournament:chat_message", onChatMessage);
     // Covers the common case where the socket is already connected by the
@@ -1084,6 +1104,7 @@ export function TournamentDetail() {
       socket.off("tournament:cancelled", onUpdate);
       socket.off("tournament:finished", onUpdate);
       socket.off("tournament:error", onError);
+      socket.off("tournament:watchers", onWatchers);
       socket.off("tournament:chat_history", onChatHistory);
       socket.off("tournament:chat_message", onChatMessage);
       // The other half of tournament:watch, without this, leaving the
@@ -1135,7 +1156,9 @@ export function TournamentDetail() {
   const isPointsFormat = tournament.format !== "normal";
   const standings = isPointsFormat ? rankTournamentPlayers(tournament) : [];
   const pairingPool =
-    tournament.format === "arena" ? arenaPairingPool(tournament) : [];
+    tournament.format === "arena"
+      ? arenaPairingPool(tournament, watchingUserIds)
+      : [];
   // 10 rows per page rather than the full field, arena/swiss standings can
   // run into the dozens of players, and rendering all of them as one table
   // was the thing making the page unwieldy to scan on a real field.
@@ -1290,9 +1313,14 @@ export function TournamentDetail() {
               </span>
             </div>
             <div className="mb-4 flex flex-wrap gap-1.5">
-              <Badge variant="neutral">
-                Max {tournament.maxPlayers} players
-              </Badge>
+              {/* Arena has no meaningful "full" state (see the matching
+               *  comment in Tournaments.tsx) — hidden here too so the
+               *  detail page doesn't contradict the list page. */}
+              {tournament.format !== "arena" && (
+                <Badge variant="neutral">
+                  Max {tournament.maxPlayers} players
+                </Badge>
+              )}
               {tournament.format === "swiss" && (
                 <Badge variant="neutral">{tournament.swissRounds} rounds</Badge>
               )}
@@ -1607,12 +1635,12 @@ export function TournamentDetail() {
               </div>
             </CardHeader>
             <div className="overflow-hidden rounded-xl border border-base-300">
-              <table className="w-full text-sm">
+              <table className="w-full table-fixed text-sm">
                 <thead>
                   <tr className="bg-base-300/50 text-left text-[11px] font-semibold uppercase tracking-wide text-base-content/50">
                     <th className="w-10 px-3 py-2">#</th>
                     <th className="px-3 py-2">Player</th>
-                    <th className="px-3 py-2 text-right">Pts</th>
+                    <th className="w-14 px-3 py-2 text-right">Pts</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1637,24 +1665,27 @@ export function TournamentDetail() {
                         </td>
                         <td
                           className={cn(
-                            "px-3 py-2",
+                            "max-w-0 px-3 py-2",
                             isMe && "font-semibold text-(--secondary)",
                           )}
                         >
                           <ResponsiveOverlay
                             align="start"
                             trigger={
-                              <button className="flex items-center gap-1.5 text-left hover:scale-95 duration-150">
+                              <button className="flex w-full min-w-0 items-center gap-1.5 text-left hover:scale-95 duration-150">
                                 <Avatar
                                   username={p.username}
                                   gradient={p.avatarGradient}
                                   size="xs"
                                 />
-                                {p.username}
+                                <span className="min-w-0 truncate">
+                                  {p.username}
+                                </span>
                                 {p.paused && (
-                                  <Badge variant="neutral" className="py-0!">
-                                    paused
-                                  </Badge>
+                                  <Pause
+                                    className="h-3.5 w-3.5 shrink-0 text-base-content/50"
+                                    aria-label="Paused"
+                                  />
                                 )}
                               </button>
                             }
@@ -1684,17 +1715,7 @@ export function TournamentDetail() {
 
         {tournament.format === "arena" && tournament.status === "active" && (
           <Card variant="solid">
-            <CardHeader>
-              <CardTitle>Pairing pool</CardTitle>
-            </CardHeader>
             {pairingPool.length > 0 ? (
-              // Just names, wrapped and centered, rather than one full-width
-              // avatar+points row per person — this list is often the
-              // biggest chunk of players in an active arena (everyone not
-              // mid-game right now), and a stacked row-per-person layout
-              // was by far the tallest/widest thing on the page on mobile.
-              // Avatar and live points are still one tap away in the
-              // standings table's player popover.
               <p className="text-center text-sm leading-relaxed text-base-content/80">
                 {pairingPool.map((p, i) => (
                   <span key={p.user}>

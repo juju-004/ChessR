@@ -6,7 +6,8 @@ import { createApp } from './app.js';
 import { initSocketServer } from './sockets/index.js';
 import { getIo } from './sockets/io.js';
 import { reconcileActiveGames, sweepAbortedGames } from './services/game.service.js';
-import { reconcileActiveTournaments, sweepCancelledTournaments } from './services/tournament.service.js';
+import { reconcileActiveTournaments, sweepCancelledTournaments, resolveDesyncedArenaPairings } from './services/tournament.service.js';
+import { reconcilePresence } from './services/presence.service.js';
 import { FriendRequest } from './models/FriendRequest.js';
 import { Game } from './models/Game.js';
 
@@ -71,6 +72,26 @@ async function main() {
     })
     .catch((err) => console.error('reconcileActiveTournaments failed on boot:', err));
 
+  // Self-heal for "some users show online when they're not" (see
+  // reconcilePresence's own doc comment — traced to a Redis outage/quota
+  // limit leaving stale presence entries stuck forever). Also fixes
+  // whichever users are already stuck this way as of this deploy.
+  reconcilePresence(getIo())
+    .then(({ prunedSockets }) => {
+      if (prunedSockets) console.log(`🔧 Pruned ${prunedSockets} stale presence socket(s) on boot.`);
+    })
+    .catch((err) => console.error('reconcilePresence failed on boot:', err));
+
+  // Self-heal for the "stuck on Finishing up…" arena incident (see
+  // resolveDesyncedArenaPairings' own doc comment): catches an arena
+  // tournament left "active" forever because a pairing's game finished but
+  // never made it back into the tournament document.
+  resolveDesyncedArenaPairings()
+    .then(({ resolved }) => {
+      if (resolved) console.log(`🔧 Repaired ${resolved} desynced arena pairing(s) on boot.`);
+    })
+    .catch((err) => console.error('resolveDesyncedArenaPairings failed on boot:', err));
+
   // Cancelled tournaments carry no lasting value (no games were ever
   // played), so they're deleted a short while after cancellation rather
   // than accumulating forever, see sweepCancelledTournaments' own comment
@@ -98,6 +119,8 @@ async function main() {
   const reconcileInterval = setInterval(() => {
     reconcileActiveGames().catch((err) => console.error('periodic reconcileActiveGames failed:', err));
     reconcileActiveTournaments().catch((err) => console.error('periodic reconcileActiveTournaments failed:', err));
+    resolveDesyncedArenaPairings().catch((err) => console.error('periodic resolveDesyncedArenaPairings failed:', err));
+    reconcilePresence(getIo()).catch((err) => console.error('periodic reconcilePresence failed:', err));
     sweepCancelledTournaments().catch((err) => console.error('periodic sweepCancelledTournaments failed:', err));
     sweepAbortedGames().catch((err) => console.error('periodic sweepAbortedGames failed:', err));
   }, 60 * 1000);

@@ -92,6 +92,18 @@ export function computeCageStandings(match: CageMatch) {
   return { p1Score, p2Score, p1Wins, p2Wins, draws, categoriesWonP1, categoriesWonP2 };
 }
 
+// Client-side-only bucketing so a not-yet-started leg can wear the same
+// bullet/blitz/rapid/classical badge a finished one uses (see
+// CATEGORY_LABEL), purely cosmetic, the server assigns the real category
+// once a leg actually starts (see CageLeg.category above), mirroring
+// classifyCategory in cageMatch.service.ts.
+export function legCategory(leg: CageLegPlan): LegCategory {
+  if (leg.baseMinutes === null || leg.baseMinutes >= 30) return 'classical';
+  if (leg.baseMinutes >= 10) return 'rapid';
+  if (leg.baseMinutes >= 3) return 'blitz';
+  return 'bullet';
+}
+
 export function formatLegTimeControl(leg: CageLegPlan): string {
   const base = leg.baseMinutes === null ? 'Unlimited' : `${leg.baseMinutes}+${leg.incrementSeconds}`;
   return leg.variant === 'chess960' ? `${base} · 960` : base;

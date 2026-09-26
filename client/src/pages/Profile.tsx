@@ -9,6 +9,7 @@ import {
   Pencil,
   Scale,
   Flag,
+  MoreHorizontal,
 } from "lucide-react";
 import {
   getProfile,
@@ -37,6 +38,7 @@ import {
   Input,
   ResponsiveOverlay,
   RCoin,
+  Dropdown,
 } from "../components/ui/index.js";
 import { EditProfileModal } from "../components/EditProfileModal.js";
 import { ReportUserModal } from "../components/ReportUserModal.js";
@@ -110,11 +112,22 @@ export function Profile() {
       if (payload.by !== profile!.id) return;
       setProfile((prev) => (prev ? { ...prev, isFriend: false } : prev));
     }
+    // Keeps the online dot live while this friend's profile is open, same
+    // way the friends list does (Players.tsx). Only ever fires for actual
+    // friends — friend:presence is only broadcast to a user's friends
+    // server-side (see notifyFriends in presenceSocket.ts) — so a
+    // stranger's dot stays a snapshot from whenever the page loaded.
+    function onPresence(payload: { userId: string; online: boolean }) {
+      if (payload.userId !== profile!.id) return;
+      setProfile((prev) => (prev ? { ...prev, online: payload.online } : prev));
+    }
     socket.on("friend:request_resolved", onRequestResolved);
     socket.on("friend:removed", onFriendRemoved);
+    socket.on("friend:presence", onPresence);
     return () => {
       socket.off("friend:request_resolved", onRequestResolved);
       socket.off("friend:removed", onFriendRemoved);
+      socket.off("friend:presence", onPresence);
     };
   }, [socket, profile?.id]);
 
@@ -208,7 +221,11 @@ export function Profile() {
     // once that game's done) — this is only a heads-up so it isn't a
     // surprise later that the challenge sat unanswered for a while.
     if (profile.activeGameCode) {
-      notify(`${profile.username} is currently in a game — sending anyway.`, [], 3000);
+      notify(
+        `${profile.username} is currently in a game — sending anyway.`,
+        [],
+        3000,
+      );
     }
     const tc = TIME_CONTROLS[tcIndex];
     const wagerTokens = Math.min(
@@ -242,6 +259,7 @@ export function Profile() {
                 username={profile.username}
                 size="lg"
                 gradient={profile.avatarGradient}
+                status={profile.online ? "online" : "offline"}
                 className="shrink-0"
               />
               <div className="min-w-0 flex-1">
@@ -279,11 +297,48 @@ export function Profile() {
             )}
 
             {!profile.isSelf && (
-              <div className="flex flex-row flex-wrap items-center gap-2">
+              // Standard mobile profile-actions row: one prominent
+              // relationship action (Add friend / Unfriend / pending state)
+              // takes the lead, everything else collapses to same-size
+              // icon-only buttons alongside it — Watch and Challenge when
+              // relevant, and a "more" overflow menu for the one
+              // infrequent/meta action (Report), rather than every action
+              // competing for attention as its own labeled button.
+              <div className="flex items-center gap-2">
+                {profile.isFriend ? (
+                  <Button
+                    variant="glass"
+                    className=""
+                    onClick={handleUnfriend}
+                    aria-label={`Unfriend ${profile.username}`}
+                  >
+                    <UserMinus className="h-4 w-4" /> Unfriend
+                  </Button>
+                ) : friendRequestSent ? (
+                  <Badge
+                    variant="success"
+                    className="h-10 flex-1 justify-center py-2! text-sm!"
+                  >
+                    <Check className="h-3.5 w-3.5" /> Request sent
+                  </Badge>
+                ) : (
+                  <Button
+                    className="flex-1"
+                    onClick={handleAddFriend}
+                    aria-label={`Add ${profile.username} as a friend`}
+                  >
+                    <UserPlus className="h-4 w-4" /> Add friend
+                  </Button>
+                )}
+
                 {profile.activeGameCode && (
                   <Link to={`/game/${profile.activeGameCode}`}>
-                    <Button variant="secondary" size="sm">
-                      <Eye className="h-4 w-4" /> Watch
+                    <Button
+                      variant="glass"
+                      size="icon"
+                      aria-label={`Watch ${profile.username}'s game`}
+                    >
+                      <Eye className="h-4 w-4" />
                     </Button>
                   </Link>
                 )}
@@ -301,8 +356,12 @@ export function Profile() {
                     onOpenChange={setChallengeOpen}
                     icon={<Swords />}
                     trigger={
-                      <Button variant="secondary" size="sm">
-                        <Swords className="h-4 w-4" /> Challenge
+                      <Button
+                        variant="glass"
+                        size="icon"
+                        aria-label={`Challenge ${profile.username}`}
+                      >
+                        <Swords className="h-4 w-4" />
                       </Button>
                     }
                   >
@@ -369,32 +428,27 @@ export function Profile() {
                     </div>
                   </ResponsiveOverlay>
                 )}
-                {profile.isFriend ? (
-                  <Button
-                    variant="glass"
-                    size="sm"
-                    onClick={handleUnfriend}
-                    aria-label={`Unfriend ${profile.username}`}
-                  >
-                    <UserMinus className="h-4 w-4" /> Unfriend
-                  </Button>
-                ) : friendRequestSent ? (
-                  <Badge variant="success" className="py-2">
-                    <Check className="h-3 w-3" /> Request sent
-                  </Badge>
-                ) : (
-                  <Button size="sm" onClick={handleAddFriend}>
-                    <UserPlus className="h-4 w-4" /> Add friend
-                  </Button>
-                )}
-                <Button
-                  variant="glass"
-                  size="sm"
-                  onClick={() => setReportOpen(true)}
-                  aria-label={`Report ${profile.username}`}
-                >
-                  <Flag className="h-3 w-3" /> Report
-                </Button>
+
+                <Dropdown
+                  align="end"
+                  trigger={
+                    <Button
+                      variant="glass"
+                      size="icon"
+                      aria-label="More options"
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  }
+                  items={[
+                    {
+                      label: `Report ${profile.username}`,
+                      icon: Flag,
+                      onClick: () => setReportOpen(true),
+                      danger: true,
+                    },
+                  ]}
+                />
               </div>
             )}
           </div>

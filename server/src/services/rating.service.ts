@@ -12,11 +12,12 @@ import { User } from "../models/User.js";
 export const RATING_START = 1500;
 
 // Below this many rated games, a player's tier reads as "Unranked" no
-// matter what their hidden rating actually is, not enough data yet for the
-// number to mean anything, and showing a tier this early is exactly what
-// let a player who's only beaten a couple of weaker opponents rocket to a
-// misleadingly high badge.
-export const PROVISIONAL_GAMES_THRESHOLD = 15;
+// matter what their hidden rating actually is. Set to 1 (David: "ranked
+// after the first game instead of having to play many games") — a brand
+// new player is still on the K=40 bucket (see getKFactor) so their rating
+// still swings hard for a while, this just controls when a tier badge
+// first appears, not how fast the underlying number settles.
+export const PROVISIONAL_GAMES_THRESHOLD = 1;
 
 /**
  * K-factor by games played so far (before this game), this is the

@@ -75,6 +75,11 @@ const CreateCageMatch = lazy(() =>
     default: m.CreateCageMatch,
   })),
 );
+const CageMatchInvite = lazy(() =>
+  import("./pages/CageMatchInvite.js").then((m) => ({
+    default: m.CageMatchInvite,
+  })),
+);
 const Tournaments = lazy(() =>
   import("./pages/Tournaments.js").then((m) => ({ default: m.Tournaments })),
 );
@@ -312,6 +317,14 @@ function AppBody() {
                 element={
                   <ProtectedRoute>
                     <CreateCageMatch />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/cage/invite/:linkId"
+                element={
+                  <ProtectedRoute>
+                    <CageMatchInvite />
                   </ProtectedRoute>
                 }
               />

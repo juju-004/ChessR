@@ -4,6 +4,7 @@ import { Game } from '../models/Game.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { getActiveGameCodeForUser } from '../services/game.service.js';
+import { isUserOnline } from '../services/presence.service.js';
 import { getRatingCategory, gamesUntilRanked, pointsToNextTier } from '../services/rating.service.js';
 import type { AuthedRequest } from '../middleware/auth.js';
 
@@ -142,6 +143,11 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
   // Only worth checking once we know it isn't the viewer's own profile, 
   // there's no "watch yourself" button to show either way.
   const activeGameCode = isSelf ? null : await getActiveGameCodeForUser(user._id.toString(), req.user?.id);
+  // Same online/offline dot the friends list shows (Players.tsx), just
+  // computed here too since this is a different fetch (this page's own
+  // profile lookup, not the friends list), see isUserOnline for what
+  // "online" actually means (has at least one live socket connected).
+  const online = isSelf ? true : await isUserOnline(user._id.toString());
 
   // Head-to-head record against whoever's looking at this profile, only
   // makes sense when someone's logged in and it's not their own profile.
@@ -192,6 +198,7 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
     isFriend,
     isSelf,
     activeGameCode,
+    online,
     h2h,
   });
 });

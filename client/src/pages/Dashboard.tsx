@@ -550,8 +550,15 @@ export function Dashboard() {
                       {t.name}
                     </p>
                     <p className="text-xs text-base-content/50">
-                      {formatTournamentTimeControl(t)} · {t.players.length}/
-                      {t.maxPlayers} players
+                      {formatTournamentTimeControl(t)}
+                      {/* Arena has no meaningful "full" state, see the
+                       *  matching comment in Tournaments.tsx. */}
+                      {t.format !== "arena" && (
+                        <>
+                          {" "}
+                          · {t.players.length}/{t.maxPlayers} players
+                        </>
+                      )}
                     </p>
                   </div>
                   <ArrowRight className="h-4 w-4 shrink-0 text-base-content/40" />

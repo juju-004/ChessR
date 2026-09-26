@@ -23,6 +23,13 @@ export interface UserProfile {
   isFriend: boolean;
   isSelf: boolean;
   activeGameCode: string | null;
+  /** Same online/offline presence the friends list (Players.tsx) shows via
+   *  Avatar's status prop — a snapshot as of when this profile was
+   *  fetched, kept live afterward only for friends (see Profile.tsx's
+   *  friend:presence listener; that event is only ever broadcast to
+   *  friends, so a stranger's dot won't update again until the page is
+   *  reloaded). Always true for isSelf. */
+  online: boolean;
   /** Viewer's record against this profile's owner, null if not logged in,
    *  viewing your own profile, or the two of you have never played. */
   h2h: { wins: number; losses: number; draws: number } | null;

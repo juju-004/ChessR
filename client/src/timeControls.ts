@@ -50,7 +50,7 @@ export function animationDurationForTimeControl(
   // Game.tsx, which treats a 0 duration as disabling animation outright
   // rather than asking chessground to animate over 0ms).
   if (baseMinutes < 3) return 0; // bullet, instant
-  if (baseMinutes < 5) return 80; // blitz, still snappy but not zero
+  if (baseMinutes < 5) return 50; // blitz, still snappy but not zero
   if (baseMinutes < 10) return 120; // blitz, still snappy but not zero
   if (baseMinutes < 30) return 150; // rapid
   return 220; // classical, normal, slower

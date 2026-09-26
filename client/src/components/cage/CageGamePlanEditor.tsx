@@ -2,10 +2,10 @@ import { useState } from "react";
 import { ArrowDown, ArrowUp, ListPlus, X } from "lucide-react";
 import {
   formatLegTimeControl,
+  legCategory,
   CATEGORY_LABEL,
   type CageLegPlan,
   type CageVariant,
-  type LegCategory,
 } from "../../api/cageMatches.js";
 import { HelpTip } from "../HelpTip.js";
 import { Select, Input, Button, Badge, CategoryIcon } from "../ui/index.js";
@@ -19,17 +19,6 @@ import { TIME_CONTROLS } from "../../timeControls.js";
 const QUICK_ADD_PRESETS = TIME_CONTROLS.filter(
   (tc) => tc.baseMinutes === null || tc.baseMinutes >= 1,
 );
-
-// Client-side-only bucketing so each row in the plan can wear the same
-// bullet/blitz/rapid/classical badge the finished match uses (see
-// CATEGORY_LABEL), purely cosmetic, the server assigns the real category
-// once a leg actually starts (see api/cageMatches.ts's CageLeg.category).
-function legCategory(leg: CageLegPlan): LegCategory {
-  if (leg.baseMinutes === null || leg.baseMinutes >= 30) return "classical";
-  if (leg.baseMinutes >= 10) return "rapid";
-  if (leg.baseMinutes >= 3) return "blitz";
-  return "bullet";
-}
 
 interface CageGamePlanEditorProps {
   legs: CageLegPlan[];

@@ -13,7 +13,7 @@ import {
 } from '../services/tournament.service.js';
 import { User } from '../models/User.js';
 import { Tournament } from '../models/Tournament.js';
-import { watchTournament, unwatchTournament } from '../services/presence.service.js';
+import { watchTournament, unwatchTournament, getWatchingUserIds } from '../services/presence.service.js';
 import { addChatMessage, getChatHistory, isChatRateLimited, isRepeatMessage } from '../services/chat.service.js';
 import { assertNotRestricted } from '../services/suspension.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
@@ -128,6 +128,16 @@ function safeHandler<T>(socket: Socket, fn: (payload: T) => Promise<void>): (pay
 
 export const tournamentRoom = (id: string) => `tournament:${id}`;
 
+/** Pushes the current "who's actually got this page open" list to
+ *  everyone in the room, so every client's Pairing pool section (arena
+ *  format) stays in sync without polling. Called after anything that
+ *  changes who's watching: tournament:watch, tournament:unwatch, and
+ *  socket disconnect (see presenceSocket.ts). */
+export async function broadcastWatchers(io: Server, tournamentId: string): Promise<void> {
+  const userIds = await getWatchingUserIds(tournamentId);
+  io.to(tournamentRoom(tournamentId)).emit('tournament:watchers', { tournamentId, userIds });
+}
+
 export function registerTournamentHandlers(io: Server, socket: Socket) {
   const { userId } = socket.data as AuthedSocketData;
 
@@ -183,6 +193,7 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
       if (!parsed.success) return emitError(socket, 'Invalid payload');
       await socket.join(tournamentRoom(parsed.data.tournamentId));
       await watchTournament(parsed.data.tournamentId, socket.id);
+      await broadcastWatchers(io, parsed.data.tournamentId);
       // Immediate re-check rather than waiting for some unrelated pairing
       // event elsewhere to happen to pick this player up now that they're
       // actually looking at the page, see retryArenaPairingsForUser.
@@ -211,6 +222,7 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
       if (!parsed.success) return emitError(socket, 'Invalid payload');
       await socket.leave(tournamentRoom(parsed.data.tournamentId));
       await unwatchTournament(socket.id);
+      await broadcastWatchers(io, parsed.data.tournamentId);
     }),
   );
 

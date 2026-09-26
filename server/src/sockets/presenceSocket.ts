@@ -2,6 +2,7 @@ import type { Server, Socket } from 'socket.io';
 import { User } from '../models/User.js';
 import { registerSocket, unregisterSocket, unwatchTournament } from '../services/presence.service.js';
 import { retryArenaPairingsForUser } from '../services/tournament.service.js';
+import { broadcastWatchers } from './tournamentSocket.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
 export function registerPresenceHandlers(io: Server, socket: Socket) {
@@ -31,7 +32,10 @@ export function registerPresenceHandlers(io: Server, socket: Socket) {
       // normal tournament:unwatch, clean up here instead so this socket
       // doesn't linger as a phantom "watcher" of whatever tournament page
       // it last had open (see unwatchTournament's own doc comment).
-      await unwatchTournament(socket.id);
+      const unwatchedTournamentId = await unwatchTournament(socket.id);
+      if (unwatchedTournamentId) {
+        await broadcastWatchers(io, unwatchedTournamentId);
+      }
       if (wasLast) {
         await notifyFriends(io, userId, 'friend:presence', { userId, online: false });
       }

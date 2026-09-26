@@ -71,8 +71,18 @@ function TournamentRow({ t }: { t: Tournament }) {
             size={12}
             className="inline-block align-[-2px]"
           />{" "}
-          {formatTimeControl(t)} · {t.players.length}
-          /{t.maxPlayers} players
+          {formatTimeControl(t)}
+          {/* Arena is an ongoing drop-in/drop-out format with no
+           *  meaningful "full" state (see maxPlayers's own doc comment
+           *  server-side), so the X/Y count doesn't mean the same thing
+           *  it does for the other formats — hidden here per David's
+           *  request. */}
+          {t.format !== "arena" && (
+            <>
+              {" "}
+              · {t.players.length}/{t.maxPlayers} players
+            </>
+          )}
           {t.regFeeTokens > 0 && (
             <>
               {" "}
