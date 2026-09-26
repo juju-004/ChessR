@@ -19,12 +19,13 @@ export interface PageProps {
   /** Right-aligned header content, a primary action button, a badge, etc. */
   actions?: ReactNode;
   className?: string;
-  /** Skips the default `mx-auto max-w-5xl px-* py-*` outer container, 
+  /** Skips the default `mx-auto max-w-5xl px-* py-*` outer container,
    *  for a page rendered inside a parent that already provides that
    *  chrome (e.g. a layout route wrapping several sibling pages), so
    *  the two don't stack and double the width constraint/padding. The
    *  header + fade-in mount animation still apply. */
   bare?: boolean;
+  playersPage?: boolean;
 }
 
 /**
@@ -45,6 +46,7 @@ export function Page({
   actions,
   className,
   bare = false,
+  playersPage,
 }: PageProps) {
   const navigate = useNavigate();
 
@@ -68,7 +70,12 @@ export function Page({
       )}
     >
       {hasHeader && (
-        <header className="mb-6 flex items-start justify-between gap-4">
+        <header
+          className={cn(
+            "mb-6 flex items-start justify-between gap-4",
+            playersPage ? "hidden sm:flex" : "flex",
+          )}
+        >
           <div className="flex min-w-0 items-center gap-3">
             {back && (
               <motion.button

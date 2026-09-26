@@ -1593,8 +1593,17 @@ export async function resolveDesyncedArenaPairings(): Promise<{ resolved: number
         const game = await Game.findById(pairing.gameId).select("status result endReason").lean();
         // Game genuinely still being played (or somehow missing) — leave
         // it, this isn't the desync case, just an arena tournament
-        // correctly still waiting on its last live game.
-        if (!game || game.status !== "finished") continue;
+        // correctly still waiting on its last live game. "aborted" is the
+        // other terminal state (see reconcileActiveGames' own no-live-state
+        // branch, which finalizes an abandoned game as status "aborted"
+        // with endReason "abandoned" and calls advanceTournamentIfPairing
+        // itself right there) — a game that's "aborted" is exactly as over
+        // as one that's "finished", and originally missing that here is
+        // its own instance of this same desync: if THAT direct call had
+        // failed (the pre-lock-fix VersionError, or any future one-off
+        // hiccup), this sweep silently skipped it forever because it only
+        // checked for "finished".
+        if (!game || (game.status !== "finished" && game.status !== "aborted")) continue;
         await advanceTournamentIfPairing(
           doc.id,
           round.index,
