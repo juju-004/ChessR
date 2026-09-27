@@ -1547,8 +1547,16 @@ export function Game() {
     // are paced by rounds, not a clock, so they have nothing to show here.
     // A live-ticking countdown against the real deadline, not a static
     // "N min" readout of the configured duration (see
-    // ArenaCountdownBadge's own doc comment for why that changed).
-    if (gameMeta?.tournamentId?.format === "arena" && gameMeta.tournamentId.arenaEndsAt)
+    // ArenaCountdownBadge's own doc comment for why that changed). Gated
+    // on status === "active" too (mirrors TournamentDetail.tsx's own
+    // ArenaCountdown) — arenaEndsAt stays a fixed past timestamp forever
+    // once the arena finishes, so without this the badge would keep
+    // reading "Ending…" indefinitely on a finished tournament's games.
+    if (
+      gameMeta?.tournamentId?.format === "arena" &&
+      gameMeta.tournamentId.status === "active" &&
+      gameMeta.tournamentId.arenaEndsAt
+    )
       list.push(
         <ArenaCountdownBadge
           key="tourney-duration"

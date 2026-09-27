@@ -197,7 +197,7 @@ export function Withdraw() {
           Won a naira tournament prize?
         </span>
         <Link
-          to="/account-details"
+          to="/wallet/account-details"
           className="font-medium text-(--secondary) hover:underline"
         >
           Manage payout account details

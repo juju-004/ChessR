@@ -1147,11 +1147,15 @@ function buildKnockoutRound0(playerIds: any[]): ITournamentRound {
 
 /** Simplified swiss pairing: sort by score (random tiebreak among equals),
  *  then greedily pair each player with the nearest player below them in the
- *  order who they haven't already faced. Not FIDE-caliber (no proper
- *  Buchholz-optimal search, no float-avoidance guarantees) but keeps games
- *  fair and rematch-free for reasonably sized fields, and never stalls, 
- *  if literally everyone remaining has already played everyone else, it
- *  falls back to allowing a rematch rather than leaving someone unpaired. */
+ *  order, preferring one they haven't already faced AND one that doesn't
+ *  force a 3rd consecutive same color for either player. Not FIDE-caliber
+ *  (no proper Buchholz-optimal search, no float-avoidance guarantees) but
+ *  keeps games fair, rematch-free, and color-balanced for reasonably sized
+ *  fields, and never stalls — swiss always pairs everyone still on the
+ *  sheet for the round, so if rematch-avoidance and color-safety can't
+ *  both be satisfied for someone, a rematch is allowed before a color
+ *  violation is, and if even that's exhausted, it falls back to whatever's
+ *  left rather than leaving someone unpaired. */
 /** Smart pairing, swiss half: builds the pairing set for a round using only
  *  players who currently have this tournament's detail page open, so
  *  nobody gets paired against someone who isn't actually looking at it to
@@ -1216,7 +1220,18 @@ function computeColorState(tournament: ITournament): Map<string, ColorState> {
  *  other orientation avoids it, (2) otherwise give white to whoever has
  *  the more negative white-minus-black differential so far (balances
  *  each player's overall color split), (3) otherwise alternate off
- *  whoever's last color was white. Returns [whiteId, blackId]. */
+ *  whoever's last color was white. Returns [whiteId, blackId].
+ *
+ *  This only orders colors for a pair that's already been decided —
+ *  it cannot rescue a pairing where BOTH orientations force a 3rd
+ *  consecutive same color for someone (penalty1 === penalty2 > 0). That
+ *  case is only supposed to reach here as an absolute last resort: the
+ *  pair-selection step (matchArenaPairsSmart for arena, the partner
+ *  search in buildSwissRound for swiss) is responsible for treating the
+ *  same-color cap as a hard constraint and choosing a different partner
+ *  whenever one is available. If it still happens, it means no valid
+ *  partner existed at all, so it's logged rather than silently
+ *  swallowed. */
 function assignColors(
   aId: string,
   bId: string,
@@ -1227,6 +1242,11 @@ function assignColors(
 
   const [penalty1, penalty2] = colorPenalties(aId, bId, colorState);
   if (penalty1 !== penalty2) return penalty1 < penalty2 ? [aId, bId] : [bId, aId];
+  if (penalty1 > 0 && penalty2 > 0) {
+    console.warn(
+      `assignColors: forced a 3rd consecutive same color between ${aId} and ${bId} — no color-safe partner was available for this pairing.`,
+    );
+  }
 
   const aDiff = a.white - a.black;
   const bDiff = b.white - b.black;
@@ -1297,11 +1317,32 @@ async function buildSwissRound(
   const pairs: [ITournamentPlayer, ITournamentPlayer][] = [];
   while (remaining.length > 0) {
     const a = remaining.shift()!;
-    let idx = remaining.findIndex(
-      (b) => !priorOpponents.get(a.user.toString())?.has(b.user.toString()),
-    );
-    if (idx === -1) idx = 0;
-    const b = remaining.splice(idx, 1)[0];
+    const aId = a.user.toString();
+    const opponents = priorOpponents.get(aId);
+
+    // Score every remaining candidate on the two things worth avoiding —
+    // a rematch, and a pairing where neither color orientation avoids a
+    // 3rd consecutive same color for someone — and take whichever avoids
+    // the most of them. Rematch-avoidance keeps its existing priority
+    // (score weighted higher) since swiss, unlike arena, must pair
+    // everyone every round rather than leaving a player unpaired, so a
+    // rematch is the lesser evil when the two can't both be satisfied.
+    // Ties keep the original nearest-by-score order (lowest index wins).
+    let bestIdx = 0;
+    let bestScore = Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const bId = remaining[i].user.toString();
+      const rematch = opponents?.has(bId) ?? false;
+      const [p1, p2] = colorPenalties(aId, bId, colorState);
+      const colorClash = p1 > 0 && p2 > 0;
+      const score = (rematch ? 2 : 0) + (colorClash ? 1 : 0);
+      if (score < bestScore) {
+        bestScore = score;
+        bestIdx = i;
+        if (score === 0) break; // can't beat a fresh, color-safe opponent
+      }
+    }
+    const b = remaining.splice(bestIdx, 1)[0];
     pairs.push([a, b]);
   }
 
@@ -1718,20 +1759,20 @@ function isImmediateArenaRematch(
  *  ITournamentPlayer.arenaAvailableSince), and for each player in turn
  *  picks the *closest available opponent by current standings position*
  *  (3rd reaches for 8th before 16th, but only if 8th actually clears the
- *  color-balance check below, otherwise the next-closest, e.g. 16th),
- *  preferring an opponent who wouldn't hand either player a 3rd
- *  consecutive same color, but accepting one who would rather than
- *  leaving a player unpaired over color alone.
+ *  color-balance check below, otherwise the next-closest, e.g. 16th).
  *
- *  An immediate rematch (pairing someone with whoever they *just* played)
- *  is never allowed, under any circumstance, not even as a last resort.
- *  If the only player(s) left for someone are people they just played
- *  (e.g. exactly the two of them left in the pool), that player simply
- *  stays unpaired for this pass rather than replaying the same match back
- *  to back — tryArenaPairings picks them up again the moment a third
- *  player becomes available, or, if the arena only ever has those two
- *  players in it, they just don't get a next game, which is the correct
- *  tradeoff for a hard "no back-to-back rematch" rule.
+ *  Two hard rules, neither ever relaxed, not even as a last resort:
+ *  (1) no immediate rematch (pairing someone with whoever they *just*
+ *  played), and (2) no 3rd consecutive same color for either player
+ *  (colorPenalties both >0 for every remaining candidate). If the only
+ *  player(s) left for someone would violate either rule — e.g. exactly
+ *  the two of them left in the pool, or every remaining opponent would
+ *  hand one of them a 3rd black or white in a row — that player simply
+ *  stays unpaired for this pass rather than forcing the violation.
+ *  tryArenaPairings picks them up again the moment a compatible opponent
+ *  becomes available; if the arena's pool genuinely never produces one,
+ *  they just don't get a next game, which is the correct tradeoff for a
+ *  hard constraint.
  *
  *  Deterministic, one pass, no shuffling: tenure order and rank proximity
  *  are both deliberate, not something to randomize away. */
@@ -1771,11 +1812,18 @@ function matchArenaPairsSmart(
     // waits for the next pairing pass instead.
     if (candidates.length === 0) continue;
 
-    const noColorClash = candidates.find((b) => {
+    // Hard rule: never pair two players where BOTH color orientations
+    // would hand one of them a 3rd consecutive same color. `.find()` over
+    // the already rank-sorted `candidates` still picks the closest-by-rank
+    // option among the color-safe ones. If nobody in `candidates` is
+    // color-safe, `a` waits for the next pass exactly like the rematch
+    // case, rather than being forced into a 3rd consecutive black or
+    // white.
+    const chosen = candidates.find((b) => {
       const [p1, p2] = colorPenalties(aId, b.user.toString(), colorState);
       return !(p1 > 0 && p2 > 0);
     });
-    const chosen = noColorClash ?? candidates[0];
+    if (!chosen) continue;
 
     remaining.delete(chosen.user.toString());
     pairs.push([a, chosen]);

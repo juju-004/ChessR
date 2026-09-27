@@ -14,9 +14,8 @@ function formatTimeControl(tc: {
   return `${Math.round(tc.baseSeconds / 60)}+${tc.incrementSeconds}`;
 }
 
-// Shared by describeGame (the text description) and getGameOgImage (the
-// board PNG), both need the same names/time-control/status pieces, this is
-// the one place that assembles them from a raw game doc.
+// Assembles the names/time-control/status pieces used by describeGame's
+// text description, from a raw game doc.
 function gameCardInfo(game: Awaited<ReturnType<typeof getGameByCode>>) {
   const tc = formatTimeControl(game.timeControl);
   // game.moves is a ply log (one entry per half-move), fine for the
@@ -32,9 +31,9 @@ function gameCardInfo(game: Awaited<ReturnType<typeof getGameByCode>>) {
   // created game read as "<creator> vs Black · about to start" — as if
   // a real second player named "Black" existed and the game was seconds
   // from starting, when actually it's just sitting open waiting for
-  // literally anyone to join. blackName stays null in that case so the
-  // board PNG (see boardImage.service.ts) renders a "waiting for an
-  // opponent" line instead of a fake second name.
+  // literally anyone to join. blackName stays null in that case so
+  // describeGame reads as "looking for an opponent" instead of naming a
+  // fake second player.
   const isWaiting = game.status === "waiting" && !game.black;
   const blackName = isWaiting ? null : ((game.black as any)?.username ?? "Black");
   const isLive = !isWaiting && game.status !== "finished" && game.status !== "aborted";

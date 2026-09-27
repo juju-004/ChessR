@@ -33,12 +33,16 @@ export interface GameMeta {
     code: string;
     name: string;
     format: "normal" | "swiss" | "round_robin" | "arena";
+    status: "pending" | "active" | "finished" | "cancelled";
     arenaMinutes: number | null;
     // Set once the arena tournament actually starts (see the server's
     // ITournament doc comment) — always non-null in practice by the time
     // a game page exists for one, since a game only gets created once
     // pairing is live. Drives the live countdown badge in Game.tsx;
     // arenaMinutes above is just the fallback while it's still null.
+    // Once the arena finishes this is a fixed timestamp in the past
+    // forever, so the badge also needs `status` to know to stop showing
+    // rather than reading it as still counting down.
     arenaEndsAt: string | null;
   } | null;
 }
@@ -100,12 +104,31 @@ export function isLiveStatus(status: GameMeta["status"]) {
 /** Picks the same check/capture/plain-move sound for a SAN string
  *  regardless of where the move came from, a live game:move event or
  *  just walking the move list during replay. Shared so the two call
- *  sites can't quietly drift apart. */
+ *  sites can't quietly drift apart.
+ *
+ *  A mating move ("#") is deliberately NOT treated as a check here even
+ *  though "+"/"#" share the same "king in check" SAN marker — checkmate
+ *  ends the game outright, and that moment already gets its own
+ *  dedicated game-over sound (see Game.tsx's onOver handler /
+ *  playGameOverSound) moments later on the live path. Playing the check
+ *  sound too would announce "check!" immediately before "game over" for
+ *  what's really a single event. So a mating move instead falls through
+ *  to its capture/plain-move sound (still audible when just browsing a
+ *  finished game's move list, where there's no separate game-over event
+ *  to hand off to), leaving the check sound exclusively for a check that
+ *  doesn't end the game. */
 export function playSoundForMove(san: string | undefined) {
   if (!san) return;
-  if (san.includes("+") || san.includes("#")) playCheckSound();
-  else if (san.includes("x")) playCaptureSound();
-  else playMoveSound();
+  if (san.includes("#")) {
+    if (san.includes("x")) playCaptureSound();
+    else playMoveSound();
+  } else if (san.includes("+")) {
+    playCheckSound();
+  } else if (san.includes("x")) {
+    playCaptureSound();
+  } else {
+    playMoveSound();
+  }
 }
 
 export function describeResult(result: string | null): string {

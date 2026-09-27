@@ -5,13 +5,6 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(4000),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   CLIENT_ORIGIN: z.string().default('http://localhost:5173'),
-  // This server's OWN public origin, e.g. https://your-app.up.railway.app in
-  // production. Only used to build absolute URLs for assets a link-preview
-  // crawler needs to fetch directly (og:image, see og.controller.ts), since
-  // those tags require a full URL, not a relative path. Defaults to
-  // localhost:PORT for local dev; MUST be set to the real deployed URL in
-  // production or shared-link previews will point at an unreachable address.
-  API_ORIGIN: z.string().optional(),
 
   MONGO_URI: z.string().min(1, 'MONGO_URI is required'),
   REDIS_URL: z.string().min(1, 'REDIS_URL is required'),

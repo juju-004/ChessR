@@ -378,9 +378,13 @@ export async function getGameByCode(code: string) {
     // (code), the in-game badge label (name), and — for formats that have
     // one — the live countdown badge (format + arenaEndsAt; arenaMinutes
     // kept too since it's the fallback shown before arenaEndsAt gets set
-    // at actual arena start, see Game.tsx's badges list). Deliberately
+    // at actual arena start, see Game.tsx's badges list). status is needed
+    // so that badge can stop showing once the arena itself has finished —
+    // arenaEndsAt is a fixed past timestamp forever after that, so without
+    // status the badge has no way to distinguish "still wrapping up" from
+    // "long over" and gets stuck reading "Ending…" indefinitely. Deliberately
     // not the whole Tournament doc for every single game fetch.
-    .populate("tournamentId", "code name format arenaMinutes arenaEndsAt")
+    .populate("tournamentId", "code name format status arenaMinutes arenaEndsAt")
     .lean();
   if (!game) throw ApiError.notFound("No game found with that code");
   return game;
