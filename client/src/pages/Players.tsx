@@ -314,7 +314,7 @@ export function Players() {
                   gradient={r.from.avatarGradient}
                 />
                 <span className="truncate">{r.from.username}</span>
-                <RatingBadge rating={r.from.rating} />
+                {/* <RatingBadge rating={r.from.rating} /> */}
               </span>
               <span
                 className="flex flex-wrap gap-2"
