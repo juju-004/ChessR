@@ -14,6 +14,7 @@ import { Game } from "../models/Game.js";
 import { ApiError } from "../utils/ApiError.js";
 import { withLock } from "../utils/distributedLock.js";
 import { assertNotRestricted } from "./suspension.service.js";
+import { getRatingCategory } from "./rating.service.js";
 import {
   createDirectGame,
   countActiveGamesForUser,
@@ -461,6 +462,8 @@ export async function createTournament(
   creatorId: string,
   creatorUsername: string,
   creatorAvatarGradient: string | null,
+  creatorRating: number,
+  creatorRatedGamesPlayed: number,
   input: CreateTournamentInput,
 ): Promise<ITournament> {
   const bounds = FORMAT_BOUNDS[input.format];
@@ -596,6 +599,8 @@ export async function createTournament(
             user: creatorId,
             username: creatorUsername,
             avatarGradient: creatorAvatarGradient,
+            rating: creatorRating,
+            ratingCategory: getRatingCategory(creatorRating, creatorRatedGamesPlayed),
             points: 0,
             tiebreak: 0,
             gamesPlayed: 0,
@@ -683,6 +688,8 @@ export async function joinTournament(
   userId: string,
   username: string,
   avatarGradient: string | null,
+  rating: number,
+  ratedGamesPlayed: number,
   password?: string,
 ): Promise<ITournament> {
   const tournament = await Tournament.findById(tournamentId);
@@ -739,6 +746,8 @@ export async function joinTournament(
           user: userId,
           username,
           avatarGradient,
+          rating,
+          ratingCategory: getRatingCategory(rating, ratedGamesPlayed),
           points: 0,
           tiebreak: 0,
           gamesPlayed: 0,

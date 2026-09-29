@@ -89,6 +89,7 @@ function setRefreshCookie(res: Response, token: string) {
 
 function ratingFields(user: { rating: number; ratedGamesPlayed: number }) {
   return {
+    rating: user.rating,
     ratingCategory: getRatingCategory(user.rating, user.ratedGamesPlayed),
     ratedGamesUntilRanked: gamesUntilRanked(user.ratedGamesPlayed),
   };

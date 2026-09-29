@@ -22,7 +22,7 @@ export interface ActiveFriendGame {
 export interface OpenGame {
   _id: string;
   joinCode: string;
-  white: { _id: string; username: string };
+  white: { _id: string; username: string; avatarGradient?: string | null; rating?: number };
   timeControl: { baseSeconds: number | null; incrementSeconds: number };
   wagerTokens: number;
   variant: GameVariant;

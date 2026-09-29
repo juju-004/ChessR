@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { env } from '../config/env.js';
 import { RATING_TIERS } from '../services/rating.service.js';
+import { QUICK_PAIRING_SEGMENTS } from '../services/quickPairing.service.js';
 
 const router = Router();
 
@@ -16,7 +17,11 @@ const router = Router();
 // moment RATING_TIERS changes here. The hidden rating itself is never
 // exposed, only where the public tier boundaries sit.
 router.get('/', (_req, res) => {
-  res.json({ rakePercent: env.RAKE_PERCENT, ratingTiers: RATING_TIERS });
+  res.json({
+    rakePercent: env.RAKE_PERCENT,
+    ratingTiers: RATING_TIERS,
+    quickPairingSegments: QUICK_PAIRING_SEGMENTS,
+  });
 });
 
 export default router;

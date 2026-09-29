@@ -66,16 +66,18 @@ export const updateMyProfile = asyncHandler(async (req: AuthedRequest, res) => {
 });
 
 // Self-only, deliberately not folded into getProfile (which any signed-in
-// visitor can call for any :username): the gap to someone's next tier is
-// only meaningful for your own progress, and repeatedly reading it for
-// someone else would let a determined visitor slowly triangulate their
-// hidden rating. The badge's help-tip popover fetches this on demand
-// rather than it riding along with every profile load.
+// visitor can call for any :username): points-to-next-tier is only
+// meaningful as your own progress toward your own next rank. The rating
+// number itself is public now (see getProfile), but this endpoint stays
+// self-only as a matter of what it's for, not what it protects. The
+// badge's help-tip popover fetches this on demand rather than it riding
+// along with every profile load.
 export const getMyRatingProgress = asyncHandler(async (req: AuthedRequest, res) => {
   const user = await User.findById(req.user!.id).select('rating ratedGamesPlayed').lean();
   if (!user) throw ApiError.notFound('User not found');
 
   res.json({
+    rating: user.rating,
     ratingCategory: getRatingCategory(user.rating, user.ratedGamesPlayed),
     ratedGamesUntilRanked: gamesUntilRanked(user.ratedGamesPlayed),
     pointsToNextTier: pointsToNextTier(user.rating, user.ratedGamesPlayed),
@@ -103,6 +105,7 @@ export const searchUsers = asyncHandler(async (req: AuthedRequest, res) => {
       username: u.username,
       avatarUrl: u.avatarUrl,
       avatarGradient: u.avatarGradient,
+      rating: u.rating,
       ratingCategory: getRatingCategory(u.rating, u.ratedGamesPlayed),
     })),
   });
@@ -192,6 +195,7 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
     avatarGradient: user.avatarGradient,
     bio: user.bio,
     memberSince: user.createdAt,
+    rating: user.rating,
     ratingCategory: getRatingCategory(user.rating, user.ratedGamesPlayed),
     ratedGamesUntilRanked: gamesUntilRanked(user.ratedGamesPlayed),
     stats: { wins, losses, draws, gamesPlayed: wins + losses + draws },

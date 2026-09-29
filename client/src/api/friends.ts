@@ -5,6 +5,7 @@ export interface Friend {
   username: string;
   avatarUrl?: string | null;
   avatarGradient?: string | null;
+  rating: number;
   ratingCategory: string | null;
   online: boolean;
   activeGameCode: string | null;
@@ -16,6 +17,7 @@ export interface IncomingRequest {
     _id: string;
     username: string;
     avatarGradient?: string | null;
+    rating: number;
     ratingCategory: string | null;
   };
 }

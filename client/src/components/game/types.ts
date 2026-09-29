@@ -9,8 +9,8 @@ export interface GameMeta {
   joinCode: string;
   variant: "standard" | "chess960";
   initialFen: string;
-  white: { _id: string; username: string; avatarGradient?: any; ratingCategory?: string | null } | null;
-  black: { _id: string; username: string; avatarGradient?: any; ratingCategory?: string | null } | null;
+  white: { _id: string; username: string; avatarGradient?: any; rating?: number | null; ratingCategory?: string | null } | null;
+  black: { _id: string; username: string; avatarGradient?: any; rating?: number | null; ratingCategory?: string | null } | null;
   status: "waiting" | "active" | "finished" | "aborted";
   timeControl: { baseSeconds: number | null; incrementSeconds: number };
   wagerTokens?: number;
@@ -67,8 +67,10 @@ export interface RatingSideUpdate {
   previousCategory: string | null;
   newCategory: string | null;
   ratedGamesPlayed: number;
-  /** Hidden-rating points gained/lost this game, positive or negative. */
+  /** Rating points gained/lost this game, positive or negative. */
   delta: number;
+  /** The player's actual rating after this game. */
+  newRating: number;
   /** Points left to the next tier after this game, null if unranked or
    *  already at the top tier. */
   pointsToNextTier: { points: number; nextTierName: string } | null;

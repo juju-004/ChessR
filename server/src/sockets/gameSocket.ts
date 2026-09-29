@@ -133,16 +133,22 @@ function emitError(socket: Socket, message: string) {
   socket.emit('game:error', { message });
 }
 
-// Swaps a populated white/black sub-doc's raw rating/ratedGamesPlayed for
-// the computed, client-safe category. Populate queries in this file select
-// those two fields purely so this can compute from them, neither should
-// ever reach a client payload.
+// Adds the computed tier category alongside a populated white/black
+// sub-doc's rating fields. The rating itself is no longer hidden from
+// clients, so `rating` is left in the payload rather than stripped —
+// populate queries in this file select `rating`/`ratedGamesPlayed` for
+// both purposes now: computing the tier here, and the client showing the
+// raw number directly.
 function withRatingCategory<T extends { rating?: number; ratedGamesPlayed?: number } | null>(
   player: T,
 ) {
   if (!player) return player;
   const { rating, ratedGamesPlayed, ...rest } = player as any;
-  return { ...rest, ratingCategory: getRatingCategory(rating ?? 1500, ratedGamesPlayed ?? 0) };
+  return {
+    ...rest,
+    rating: rating ?? 1500,
+    ratingCategory: getRatingCategory(rating ?? 1500, ratedGamesPlayed ?? 0),
+  };
 }
 
 function safeHandler<T>(socket: Socket, fn: (payload: T) => Promise<void>) {

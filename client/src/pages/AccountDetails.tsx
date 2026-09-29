@@ -8,7 +8,14 @@ import {
   type Bank,
 } from "../api/wallet.js";
 import { ApiRequestError } from "../api/http.js";
-import { Page, Card, Button, Input, Select, Spinner } from "@/components/ui/index.js";
+import {
+  Page,
+  Card,
+  Button,
+  Input,
+  Select,
+  Spinner,
+} from "@/components/ui/index.js";
 
 /**
  * Where naira tournament prizes get sent. Same bank-lookup shape as
@@ -101,7 +108,9 @@ export function AccountDetails() {
       setSuccessMessage("Account details saved.");
     } catch (err) {
       setError(
-        err instanceof ApiRequestError ? err.message : "Could not save account details",
+        err instanceof ApiRequestError
+          ? err.message
+          : "Could not save account details",
       );
     } finally {
       setSubmitting(false);
@@ -112,7 +121,7 @@ export function AccountDetails() {
     <Page
       title="Payout account details"
       description="Where we send your naira tournament winnings, disbursed manually by our team."
-      back="/withdraw"
+      back="/wallet/withdraw"
       bare
     >
       {loading ? (
@@ -141,12 +150,16 @@ export function AccountDetails() {
             inputMode="numeric"
             maxLength={10}
             value={accountNumber}
-            onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ""))}
+            onChange={(e) =>
+              setAccountNumber(e.target.value.replace(/\D/g, ""))
+            }
             leadingIcon={<Landmark className="h-4 w-4 mb-1.5" />}
             trailingIcon={resolving ? <Spinner size="sm" /> : undefined}
             error={resolveError || undefined}
             hint={
-              !resolveError && accountName ? undefined : "10-digit account number"
+              !resolveError && accountName
+                ? undefined
+                : "10-digit account number"
             }
             className="mb-1"
           />

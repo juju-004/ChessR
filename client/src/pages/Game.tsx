@@ -500,14 +500,14 @@ export function Game() {
       profileHref: gameMeta?.white
         ? `/profile/${gameMeta.white.username}`
         : null,
-      ratingCategory: gameMeta?.white?.ratingCategory ?? null,
+      rating: gameMeta?.white?.rating ?? null,
       zenMode: settings.zenMode,
       ...whiteMaterial,
     }),
     [
       gameMeta?.white?.username,
       gameMeta?.white?.avatarGradient,
-      gameMeta?.white?.ratingCategory,
+      gameMeta?.white?.rating,
       isActiveGame,
       sideToMove,
       whiteConnected,
@@ -541,14 +541,14 @@ export function Game() {
       profileHref: gameMeta?.black
         ? `/profile/${gameMeta.black.username}`
         : null,
-      ratingCategory: gameMeta?.black?.ratingCategory ?? null,
+      rating: gameMeta?.black?.rating ?? null,
       zenMode: settings.zenMode,
       ...blackMaterial,
     }),
     [
       gameMeta?.black?.username,
       gameMeta?.black?.avatarGradient,
-      gameMeta?.black?.ratingCategory,
+      gameMeta?.black?.rating,
       isActiveGame,
       sideToMove,
       blackConnected,

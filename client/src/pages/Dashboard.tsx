@@ -12,6 +12,8 @@ import {
   History,
   Eye,
   EyeOff,
+  Zap,
+  Coins,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -243,7 +245,7 @@ export function Dashboard() {
           </div>
         </Card>
 
-        {/* Quick links, the three other big areas of the app, one tap
+        {/* Quick links, the other big areas of the app, one tap
          *  away, with an icon so this reads at a glance instead of as a
          *  wall of text links. */}
         <div className="grid grid-cols-2 gap-3 sm:flex">
@@ -260,11 +262,16 @@ export function Dashboard() {
             accent="bg-rose-500/15 text-rose-400"
           />
           <QuickLink
-            to="/tournaments"
-            icon={Trophy}
-            label="Tournaments"
+            to="/lobby"
+            icon={Coins}
+            label="Lobby"
             accent="bg-amber-500/15 text-amber-400"
-            className="col-span-2 sm:col-span-1"
+          />
+          <QuickLink
+            to="/play"
+            icon={Zap}
+            label="Quick pairing"
+            accent="bg-emerald-500/15 text-emerald-400"
           />
         </div>
 

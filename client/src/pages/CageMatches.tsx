@@ -249,7 +249,7 @@ export function CageMatches() {
 
         <Card variant="solid">
           <CardHeader>
-            <CardTitle>Active cage matches</CardTitle>
+            <CardTitle>Active</CardTitle>
             <RefreshButton
               onRefresh={handleManualRefresh}
               refreshing={refreshing}
@@ -266,7 +266,7 @@ export function CageMatches() {
         </Card>
 
         <PaginatedMatchCard
-          title="Match history"
+          title="Finished"
           matches={finishedMatches}
           myId={myId}
           emptyMessage="No finished cage matches yet."

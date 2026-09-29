@@ -115,16 +115,23 @@ export const getMyActiveGames = asyncHandler(
   },
 );
 
-// Swaps a populated white/black user sub-doc's raw rating fields for the
-// computed, client-safe category before anything reaches res.json, 
-// getGameByCode selects `rating`/`ratedGamesPlayed` on the populate purely
-// so this can compute from them; neither should ever leave the server.
+// Adds the computed tier category alongside a populated white/black user
+// sub-doc's rating fields before anything reaches res.json. The rating
+// itself is no longer hidden from clients, so unlike the old version of
+// this helper, `rating` is now left in the output rather than stripped —
+// getGameByCode selects `rating`/`ratedGamesPlayed` on the populate for
+// both purposes now: computing the tier here, and the client showing the
+// raw number directly.
 function withRatingCategory<T extends { rating?: number; ratedGamesPlayed?: number } | null>(
   player: T,
 ) {
   if (!player) return player;
   const { rating, ratedGamesPlayed, ...rest } = player as any;
-  return { ...rest, ratingCategory: getRatingCategory(rating ?? 1500, ratedGamesPlayed ?? 0) };
+  return {
+    ...rest,
+    rating: rating ?? 1500,
+    ratingCategory: getRatingCategory(rating ?? 1500, ratedGamesPlayed ?? 0),
+  };
 }
 
 export const getGameByCodeHandler = asyncHandler(async (req, res) => {

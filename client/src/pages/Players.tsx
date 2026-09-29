@@ -262,15 +262,7 @@ export function Players() {
                       gradient={u.avatarGradient}
                     />
                     <span className="truncate">{u.username}</span>
-                    <RatingBadge
-                      className="md:hidden"
-                      compact
-                      category={u.ratingCategory}
-                    />
-                    <RatingBadge
-                      className="hidden! md:flex!"
-                      category={u.ratingCategory}
-                    />
+                    <RatingBadge rating={u.rating} />
                   </span>
                   <span
                     className="flex flex-wrap gap-2"
@@ -322,15 +314,7 @@ export function Players() {
                   gradient={r.from.avatarGradient}
                 />
                 <span className="truncate">{r.from.username}</span>
-                <RatingBadge
-                  className="md:hidden"
-                  compact
-                  category={r.from.ratingCategory}
-                />
-                <RatingBadge
-                  className="hidden! md:flex!"
-                  category={r.from.ratingCategory}
-                />
+                <RatingBadge rating={r.from.rating} />
               </span>
               <span
                 className="flex flex-wrap gap-2"
@@ -404,15 +388,7 @@ export function Players() {
                       status={f.online ? "online" : "offline"}
                     />
                     <span className="truncate">{f.username}</span>
-                    <RatingBadge
-                      className="md:hidden"
-                      compact
-                      category={f.ratingCategory}
-                    />
-                    <RatingBadge
-                      className="hidden! md:flex!"
-                      category={f.ratingCategory}
-                    />
+                    <RatingBadge rating={f.rating} />
                   </span>
                   <span
                     className="flex flex-wrap items-center gap-2"

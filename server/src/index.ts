@@ -8,6 +8,8 @@ import { getIo } from './sockets/io.js';
 import { reconcileActiveGames, sweepAbortedGames } from './services/game.service.js';
 import { reconcileActiveTournaments, sweepCancelledTournaments, resolveDesyncedArenaPairings } from './services/tournament.service.js';
 import { reconcilePresence } from './services/presence.service.js';
+import { runAllQuickPairingPasses } from './services/quickPairing.service.js';
+import { broadcastLobbyCounts } from './sockets/quickPairingSocket.js';
 import { FriendRequest } from './models/FriendRequest.js';
 import { Game } from './models/Game.js';
 
@@ -125,6 +127,16 @@ async function main() {
     sweepAbortedGames().catch((err) => console.error('periodic sweepAbortedGames failed:', err));
   }, 60 * 1000);
   reconcileInterval.unref();
+
+  // Quick pairing needs a much tighter cadence than the 60s sweeps above:
+  // it's what widens a waiting player's rating window over time, and what
+  // pairs anyone a fresh join didn't already match instantly.
+  const quickPairingInterval = setInterval(() => {
+    runAllQuickPairingPasses()
+      .then(() => broadcastLobbyCounts(getIo()))
+      .catch((err) => console.error('periodic quick pairing pass failed:', err));
+  }, 2000);
+  quickPairingInterval.unref();
 
   httpServer.listen(env.PORT, () => {
     console.log(`🚀 Server listening on port ${env.PORT} [${env.NODE_ENV}]`);

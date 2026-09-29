@@ -43,10 +43,12 @@ export interface RatingSideUpdate {
   previousCategory: string | null;
   newCategory: string | null;
   ratedGamesPlayed: number;
-  /** How many hidden-rating points this game moved this player, positive
-   *  or negative (never shown as the raw rating itself, just the delta,
-   *  same "hidden number, visible change" principle as the tier badge). */
+  /** How many rating points this game moved this player, positive or
+   *  negative. */
   delta: number;
+  /** The player's actual rating after this game. No longer hidden — shown
+   *  alongside delta so the game-over modal can read e.g. "1523 (+8)". */
+  newRating: number;
   /** Points left to the next tier after this game, see pointsToNextTier. */
   pointsToNextTier: NextTierProgress | null;
   /** Mirrors gamesUntilRanked(ratedGamesPlayed), for the "Unranked, N more
@@ -69,9 +71,9 @@ export interface RatingUpdateResult {
  * and draws count, or if this game already had its rating applied by a
  * previous call.
  *
- * Returns each side's tier category before and after the game (not the raw
- * rating), so a caller can show a "you just ranked up to X" moment without
- * ever exposing the hidden number itself. Both players' deltas are
+ * Returns each side's tier category before and after the game, plus the
+ * actual new rating, so a caller can show both a "you just ranked up to X"
+ * moment and the raw number/delta. Both players' deltas are
  * computed from a single fresh read of both ratings, then applied via
  * $inc. If the same player has two games finish within moments of each
  * other (they can have up to MAX_ACTIVE_GAMES_PER_USER active at once),
@@ -139,6 +141,7 @@ export async function applyRatingForGame(
       ratedGamesPlayed:
         updatedWhite?.ratedGamesPlayed ?? white.ratedGamesPlayed + 1,
       delta: whiteDelta,
+      newRating: updatedWhite?.rating ?? white.rating + whiteDelta,
       pointsToNextTier: updatedWhite
         ? pointsToNextTier(updatedWhite.rating, updatedWhite.ratedGamesPlayed)
         : null,
@@ -154,6 +157,7 @@ export async function applyRatingForGame(
       ratedGamesPlayed:
         updatedBlack?.ratedGamesPlayed ?? black.ratedGamesPlayed + 1,
       delta: blackDelta,
+      newRating: updatedBlack?.rating ?? black.rating + blackDelta,
       pointsToNextTier: updatedBlack
         ? pointsToNextTier(updatedBlack.rating, updatedBlack.ratedGamesPlayed)
         : null,
@@ -215,10 +219,7 @@ export interface NextTierProgress {
 
 /** How far this player is from the next tier up, or null when there's
  *  nothing meaningful to show: still provisional (no tier yet at all), or
- *  already at the top tier with nowhere further to climb. Reveals only
- *  the gap and the destination tier's name, same "hidden number, visible
- *  movement" principle as RatingSideUpdate.delta, never the raw rating
- *  itself. */
+ *  already at the top tier with nowhere further to climb. */
 export function pointsToNextTier(
   rating: number,
   ratedGamesPlayed: number,

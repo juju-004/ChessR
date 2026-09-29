@@ -69,6 +69,7 @@ export const sendFriendRequest = asyncHandler(async (req: AuthedRequest, res) =>
       id: fromUserId,
       username: fromUser!.username,
       avatarGradient: fromUser!.avatarGradient ?? null,
+      rating: fromUser!.rating,
       ratingCategory: getRatingCategory(fromUser!.rating, fromUser!.ratedGamesPlayed),
     },
   });
@@ -116,6 +117,7 @@ export const listFriends = asyncHandler(async (req: AuthedRequest, res) => {
       username: f.username,
       avatarUrl: f.avatarUrl,
       avatarGradient: f.avatarGradient ?? null,
+      rating: f.rating,
       ratingCategory: getRatingCategory(f.rating, f.ratedGamesPlayed),
       online: (await getUserSocketIds(f._id.toString())).length > 0,
       activeGameCode: await getActiveGameCodeForUser(f._id.toString(), req.user!.id),
@@ -127,9 +129,20 @@ export const listFriends = asyncHandler(async (req: AuthedRequest, res) => {
 
 export const listIncomingRequests = asyncHandler(async (req: AuthedRequest, res) => {
   const requests = await FriendRequest.find({ to: req.user!.id, status: 'pending' })
-    .populate('from', 'username avatarUrl avatarGradient')
+    .populate('from', 'username avatarUrl avatarGradient rating ratedGamesPlayed')
     .lean();
-  res.json({ requests });
+  res.json({
+    requests: requests.map((r) => {
+      const from = r.from as any;
+      return {
+        ...r,
+        from: {
+          ...from,
+          ratingCategory: getRatingCategory(from.rating, from.ratedGamesPlayed),
+        },
+      };
+    }),
+  });
 });
 
 export const removeFriend = asyncHandler(async (req: AuthedRequest, res) => {

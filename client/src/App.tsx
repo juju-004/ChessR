@@ -93,6 +93,14 @@ const TournamentDetail = lazy(() =>
     default: m.TournamentDetail,
   })),
 );
+const Lobby = lazy(() =>
+  import("./pages/Lobby.js").then((m) => ({ default: m.Lobby })),
+);
+const QuickPairing = lazy(() =>
+  import("./pages/QuickPairing.js").then((m) => ({
+    default: m.QuickPairing,
+  })),
+);
 const NotFound = lazy(() =>
   import("./pages/NotFound.js").then((m) => ({ default: m.NotFound })),
 );
@@ -285,6 +293,22 @@ function AppBody() {
                 element={
                   <ProtectedRoute>
                     <Profile />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/play"
+                element={
+                  <ProtectedRoute>
+                    <QuickPairing />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/lobby"
+                element={
+                  <ProtectedRoute>
+                    <Lobby />
                   </ProtectedRoute>
                 }
               />

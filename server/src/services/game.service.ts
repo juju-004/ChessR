@@ -75,6 +75,21 @@ export async function assertUnderActiveGameLimit(userId: string): Promise<void> 
   }
 }
 
+/** Socket.IO room everyone with the lobby page open sits in, see
+ *  lobbySocket.ts. */
+export const LOBBY_ROOM = "lobby:open";
+
+/** Tells everyone watching the lobby the list of open games changed (one was
+ *  created, cancelled or accepted), they refetch. Payload-free on purpose:
+ *  the HTTP list is the single source of truth. */
+function broadcastLobbyChanged(): void {
+  try {
+    getIo().to(LOBBY_ROOM).emit("lobby:changed");
+  } catch {
+    // Socket.IO not initialized (script/test context), safe to ignore.
+  }
+}
+
 const generateCode = customAlphabet("ABCDEFGHJKMNPQRSTUVWXYZ23456789", 6);
 
 async function uniqueJoinCode(): Promise<string> {
@@ -143,6 +158,7 @@ export async function createOpenGame(
     }
   }
 
+  if (!isPrivate) broadcastLobbyChanged();
   return game;
 }
 
@@ -164,6 +180,7 @@ export async function cancelOpenGame(gameId: string, hostUserId: string): Promis
   if (game.wagerTokens > 0) {
     await creditWagerReturn(hostUserId, game.id, game.wagerTokens, "wager_refund");
   }
+  broadcastLobbyChanged();
 }
 
 /** Joins an open game and starts it immediately. Also notifies anyone already
@@ -190,10 +207,36 @@ export async function joinOpenGame(
     await debitWagerStake(joiningUserId, game.id, game.wagerTokens);
   }
 
-  game.black = joiningUserId as any;
-  game.status = "active";
-  game.startedAt = new Date();
-  await game.save();
+  // Claim the seat atomically. In a public lobby several people can hit
+  // "Accept" on the same listing at once; the status filter here means
+  // exactly one of them wins, and everyone else gets their stake straight
+  // back instead of being charged for a game they never sat down in.
+  const claimed = await Game.findOneAndUpdate(
+    { _id: game.id, status: "waiting", black: null },
+    {
+      $set: {
+        black: joiningUserId,
+        status: "active",
+        startedAt: new Date(),
+      },
+    },
+    { new: true },
+  );
+  if (!claimed) {
+    if (game.wagerTokens > 0) {
+      await creditWagerReturn(
+        joiningUserId,
+        game.id,
+        game.wagerTokens,
+        "wager_refund",
+      );
+    }
+    throw ApiError.conflict("Someone else just took that game");
+  }
+  // From here on `game` is the claimed, up-to-date document.
+  game.black = claimed.black;
+  game.status = claimed.status;
+  game.startedAt = claimed.startedAt;
 
   const liveTc = toLiveTimeControl({
     baseMinutes:
@@ -219,6 +262,7 @@ export async function joinOpenGame(
   } catch {
     // Socket.IO not initialized (e.g. in a script/test context), safe to ignore.
   }
+  broadcastLobbyChanged();
 
   return game;
 }
@@ -366,7 +410,7 @@ export async function listOpenGames(excludeUserId?: string) {
   })
     .sort({ createdAt: -1 })
     .limit(50)
-    .populate("white", "username avatarGradient")
+    .populate("white", "username avatarGradient rating")
     .lean();
 }
 

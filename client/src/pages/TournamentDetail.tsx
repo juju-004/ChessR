@@ -44,6 +44,7 @@ import {
 import { Pagination } from "../components/Pagination.js";
 import { HelpTip } from "../components/HelpTip.js";
 import { PageError } from "../components/PageError.js";
+import { RatingBadge } from "../components/RatingBadge.js";
 import { TIME_CONTROLS as TIME_PRESETS } from "../timeControls.js";
 import {
   MAX_WAGER_TOKENS,
@@ -749,9 +750,16 @@ function PlayerTournamentDetails({
             <p className="truncate text-base font-semibold text-base-content">
               {player.username}
             </p>
-            {player.user === tournament.createdBy && (
-              <p className="text-xs font-medium text-amber-400">★ Organizer</p>
-            )}
+            <div className="mt-0.5 flex items-center gap-2">
+              <RatingBadge
+                rating={player.rating}
+              />
+              {player.user === tournament.createdBy && (
+                <p className="text-xs font-medium text-amber-400">
+                  ★ Organizer
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1480,6 +1488,10 @@ export function TournamentDetail() {
                           <span className="text-amber-400">★</span>
                         )}
                         <span className="max-w-32 truncate">{p.username}</span>
+                        <RatingBadge
+                          className="shrink-0"
+                          rating={p.rating}
+                        />
                       </Badge>
                     );
                   })}
@@ -1681,6 +1693,10 @@ export function TournamentDetail() {
                                 <span className="min-w-0 truncate">
                                   {p.username}
                                 </span>
+                                <RatingBadge
+                                  className="shrink-0"
+                                  rating={p.rating}
+                                />
                                 {p.paused && (
                                   <Pause
                                     className="h-3.5 w-3.5 shrink-0 text-base-content/50"

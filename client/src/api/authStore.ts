@@ -3,9 +3,10 @@ export interface CurrentUser {
   username: string;
   email: string;
   avatarGradient?: string | null;
+  /** The actual numeric rating, no longer hidden. */
+  rating?: number;
   /** null = "Unranked" (fewer than ratedGamesUntilRanked more rated games
-   *  played). See rating.service.ts on the server, this is a tier name,
-   *  never the hidden underlying number. */
+   *  played). See rating.service.ts on the server. */
   ratingCategory?: string | null;
   ratedGamesUntilRanked?: number;
   /** Whether `email` has been confirmed yet, see the "verify your email"

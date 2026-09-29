@@ -86,21 +86,21 @@ function TournamentRow({ t }: { t: Tournament }) {
           {t.regFeeTokens > 0 && (
             <>
               {" "}
-              · {t.regFeeTokens} <RCoin size={11} className="inline align-[-1px]" /> to join
+              · {t.regFeeTokens}{" "}
+              <RCoin size={11} className="inline align-[-1px]" /> to join
             </>
           )}
-          {t.prizePoolCurrency === "naira" ? (
-            nairaPrizeTotal > 0 && (
-              <> · ₦{nairaPrizeTotal.toLocaleString()} prize pool</>
-            )
-          ) : (
-            t.prizePoolTokens > 0 && (
-              <>
-                {" "}
-                · {t.prizePoolTokens} <RCoin size={11} className="inline align-[-1px]" /> prize pool
-              </>
-            )
-          )}
+          {t.prizePoolCurrency === "naira"
+            ? nairaPrizeTotal > 0 && (
+                <> · ₦{nairaPrizeTotal.toLocaleString()} prize pool</>
+              )
+            : t.prizePoolTokens > 0 && (
+                <>
+                  {" "}
+                  · {t.prizePoolTokens}{" "}
+                  <RCoin size={11} className="inline align-[-1px]" /> prize pool
+                </>
+              )}
         </div>
       </div>
     </Link>
@@ -243,7 +243,7 @@ export function Tournaments() {
     >
       <div className="mx-auto space-y-4">
         <PaginatedTournamentCard
-          title="Open tournaments"
+          title="Open"
           tournaments={openPending}
           emptyMessage="No public tournaments waiting for players right now."
           onRefresh={handleManualRefresh}
@@ -253,7 +253,7 @@ export function Tournaments() {
         {mineActive.length > 0 && (
           <Card variant="solid">
             <CardHeader>
-              <CardTitle>Active tourneys</CardTitle>
+              <CardTitle>Active</CardTitle>
               <RefreshButton
                 onRefresh={handleManualRefresh}
                 refreshing={refreshing}
@@ -285,7 +285,7 @@ export function Tournaments() {
         )}
 
         <PaginatedTournamentCard
-          title="Finished tourneys"
+          title="Finished"
           tournaments={mineFinished}
           emptyMessage="Nothing finished yet."
         />

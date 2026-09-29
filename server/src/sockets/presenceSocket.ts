@@ -3,6 +3,8 @@ import { User } from '../models/User.js';
 import { registerSocket, unregisterSocket, unwatchTournament } from '../services/presence.service.js';
 import { retryArenaPairingsForUser } from '../services/tournament.service.js';
 import { broadcastWatchers } from './tournamentSocket.js';
+import { broadcastLobbyCounts } from './quickPairingSocket.js';
+import { leaveQuickPairingQueue } from '../services/quickPairing.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
 export function registerPresenceHandlers(io: Server, socket: Socket) {
@@ -37,6 +39,10 @@ export function registerPresenceHandlers(io: Server, socket: Socket) {
         await broadcastWatchers(io, unwatchedTournamentId);
       }
       if (wasLast) {
+        // Nobody's left to be matched: drop them from any quick-pairing lobby
+        // so they can't be paired into a game they'll never see.
+        const left = await leaveQuickPairingQueue(userId);
+        if (left) await broadcastLobbyCounts(io);
         await notifyFriends(io, userId, 'friend:presence', { userId, online: false });
       }
     })().catch((err) => console.error('presence teardown failed:', err));

@@ -64,11 +64,9 @@ export interface PanelData {
    *  "Black" placeholder shown before anyone's joined), when present, the
    *  panel's avatar/name link through to that player's profile. */
   profileHref?: string | null;
-  /** Only meaningful once profileHref is set (a real player, not the
-   *  placeholder seat), the compact RatingBadge renders off of
-   *  `profileHref` being present, not this being non-null, since null
-   *  itself is a real state to show ("Unranked"). */
-  ratingCategory?: string | null;
+  /** The player's numeric rating. Only shown once profileHref is set
+   *  (a real player, not the placeholder seat). */
+  rating?: number | null;
   /** Strips identity (avatar, username, profile link, rating badge) and
    *  material difference down to a neutral placeholder, everything else
    *  (clock, berserk, first-move countdown) still renders as normal, see
@@ -322,7 +320,7 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
   firstMoveGraceMs,
   berserked,
   profileHref,
-  ratingCategory,
+  rating,
   zenMode,
 }: PanelData) {
   return (
@@ -368,7 +366,7 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
             className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-base-content hover:text-(--primary)"
           >
             <span className="min-w-0 truncate">{username}</span>
-            <RatingBadge category={ratingCategory ?? null} compact />
+            <RatingBadge rating={rating ?? null} />
           </Link>
         ) : (
           <p className="truncate text-sm font-semibold text-base-content">

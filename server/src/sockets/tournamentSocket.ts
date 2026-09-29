@@ -147,10 +147,17 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
       const parsed = createSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid tournament settings');
 
-      const me = await User.findById(userId).select('username avatarGradient').lean();
+      const me = await User.findById(userId).select('username avatarGradient rating ratedGamesPlayed').lean();
       if (!me) return emitError(socket, 'Could not find your account');
 
-      const tournament = await createTournament(userId, me.username, me.avatarGradient ?? null, parsed.data as CreateTournamentInput);
+      const tournament = await createTournament(
+        userId,
+        me.username,
+        me.avatarGradient ?? null,
+        me.rating,
+        me.ratedGamesPlayed,
+        parsed.data as CreateTournamentInput,
+      );
       await socket.join(tournamentRoom(tournament.id));
       socket.emit('tournament:created', { tournamentId: tournament.id, code: tournament.code });
     }),
@@ -172,10 +179,18 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
     safeHandler(socket, async (raw: unknown) => {
       const parsed = joinSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid payload');
-      const me = await User.findById(userId).select('username avatarGradient').lean();
+      const me = await User.findById(userId).select('username avatarGradient rating ratedGamesPlayed').lean();
       if (!me) return emitError(socket, 'Could not find your account');
 
-      const tournament = await joinTournament(parsed.data.tournamentId, userId, me.username, me.avatarGradient ?? null, parsed.data.password);
+      const tournament = await joinTournament(
+        parsed.data.tournamentId,
+        userId,
+        me.username,
+        me.avatarGradient ?? null,
+        me.rating,
+        me.ratedGamesPlayed,
+        parsed.data.password,
+      );
       await socket.join(tournamentRoom(tournament.id));
       io.to(tournamentRoom(tournament.id)).emit('tournament:update', { tournamentId: tournament.id, code: tournament.code });
     }),

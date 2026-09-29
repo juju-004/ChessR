@@ -5,6 +5,7 @@ export interface UserSearchResult {
   username: string;
   avatarUrl?: string | null;
   avatarGradient?: string | null;
+  rating: number;
   ratingCategory: string | null;
 }
 
@@ -17,6 +18,7 @@ export interface UserProfile {
   memberSince: string;
   /** null = "Unranked", the player hasn't hit ratedGamesUntilRanked more
    *  rated games yet. See rating.service.ts on the server. */
+  rating: number;
   ratingCategory: string | null;
   ratedGamesUntilRanked: number;
   stats: { wins: number; losses: number; draws: number; gamesPlayed: number };
@@ -78,6 +80,7 @@ export function updateMyProfile(body: { avatarGradient?: string; bio?: string; u
 }
 
 export interface MyRatingProgress {
+  rating: number;
   ratingCategory: string | null;
   ratedGamesUntilRanked: number;
   /** Points left to the next tier, null if unranked or already top tier. */

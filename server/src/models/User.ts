@@ -77,11 +77,11 @@ export interface IUser extends Document {
    *  its own user object to show a countdown on Dashboard. */
   suspendedUntil?: Date;
   tokenVersion: number;
-  /** Hidden internal skill rating. Elo-like, starts at 1500, shared across
-   *  every time control and variant (deliberately NOT split per-TC/variant
-   *  like lichess/chess.com). Never sent to the client as a raw number, 
-   *  see rating.service.ts's getRatingCategory for the tier name that
-   *  actually gets shown. */
+  /** Internal skill rating. Elo-like, starts at 1500, shared across every
+   *  time control and variant (deliberately NOT split per-TC/variant like
+   *  lichess/chess.com). No longer hidden — sent to the client as a raw
+   *  number alongside the tier name from rating.service.ts's
+   *  getRatingCategory, which is still computed for the badge/icon. */
   rating: number;
   /** Count of decisive/drawn games that have fed into `rating`. Doubles as
    *  the provisional-period gate (see PROVISIONAL_GAMES_THRESHOLD in
