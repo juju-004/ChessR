@@ -428,7 +428,7 @@ export async function getGameByCode(code: string) {
     // status the badge has no way to distinguish "still wrapping up" from
     // "long over" and gets stuck reading "Ending…" indefinitely. Deliberately
     // not the whole Tournament doc for every single game fetch.
-    .populate("tournamentId", "code name format status arenaMinutes arenaEndsAt")
+    .populate("tournamentId", "code name format status arenaMinutes arenaEndsAt berserkAllowed")
     .lean();
   if (!game) throw ApiError.notFound("No game found with that code");
   return game;

@@ -194,7 +194,7 @@ export function Withdraw() {
       <TestModeBanner className="mb-4" />
       <div className="mb-4 flex items-center justify-between rounded-xl border border-base-300 bg-base-100/60 px-3.5 py-2.5 text-sm">
         <span className="text-base-content/70">
-          Won a naira tournament prize?
+          Won a Chessr tournament prize?
         </span>
         <Link
           to="/wallet/account-details"

@@ -224,11 +224,8 @@ export function Tournaments() {
   return (
     <Page
       title="Tournaments"
-      description={
-        <span className="hidden sm:inline">
-          Run a knockout bracket, a swiss or arena event, or a round-robin.
-        </span>
-      }
+      responsiveDescription
+      description="Run a knockout bracket, a swiss or arena event, or a round-robin."
       actions={
         <Button
           variant="secondary"

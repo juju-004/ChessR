@@ -64,9 +64,9 @@ export interface ITournamentPlayer {
   ratingCategory: string | null;
   joinedAt: Date;
   // Points accumulate for swiss/robin/round_robin (1 / 0.5 / 0, +0.5 bonus for
-  // a berserked win). A bye is worth 0 points (see tournament.service.ts's
-  // applyPairingScore), it still counts as having played the round for
-  // pairing purposes (hadBye), just not as a win. For 'normal' points are
+  // a berserked win). A bye is worth 1 point (see tournament.service.ts's
+  // applyPairingScore) and counts as having had a bye for pairing purposes
+  // (hadBye), but not as a game played. For 'normal' points are
   // unused, elimination position is what matters, tracked via
   // `eliminatedRound`.
   points: number;

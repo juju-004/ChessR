@@ -26,6 +26,7 @@ export interface PageProps {
    *  header + fade-in mount animation still apply. */
   bare?: boolean;
   playersPage?: boolean;
+  responsiveDescription?: boolean;
 }
 
 /**
@@ -43,6 +44,7 @@ export function Page({
   title,
   description,
   back,
+  responsiveDescription,
   actions,
   className,
   bare = false,
@@ -98,7 +100,12 @@ export function Page({
                   </h1>
                 )}
                 {description && (
-                  <p className="mt-1 text-sm text-base-content/60">
+                  <p
+                    className={cn(
+                      "mt-1 text-sm text-base-content/60",
+                      responsiveDescription ? "hidden lg:flex" : "flex",
+                    )}
+                  >
                     {description}
                   </p>
                 )}

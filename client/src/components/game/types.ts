@@ -35,6 +35,10 @@ export interface GameMeta {
     format: "normal" | "swiss" | "round_robin" | "arena";
     status: "pending" | "active" | "finished" | "cancelled";
     arenaMinutes: number | null;
+    /** Whether berserk is offered in this tournament at all. Only ever
+     *  true for arena (see the server's berserkInTournamentGame), used to
+     *  keep the Berserk button from flashing up in other formats. */
+    berserkAllowed?: boolean;
     // Set once the arena tournament actually starts (see the server's
     // ITournament doc comment) — always non-null in practice by the time
     // a game page exists for one, since a game only gets created once

@@ -201,6 +201,26 @@ export async function reconcileActiveTournaments(): Promise<{
     }
   }
 
+  // Re-arm retries for rounds with pairings held back because a player was
+  // in another game (in-memory timers, lost on restart).
+  const withHeldBack = await Tournament.find({
+    status: "active",
+    format: { $ne: "arena" },
+    rounds: {
+      $elemMatch: {
+        status: "active",
+        pairings: { $elemMatch: { status: "pending", player2: { $ne: null } } },
+      },
+    },
+  }).select("rounds.status rounds.pairings.status rounds.pairings.player2");
+  for (const doc of withHeldBack) {
+    doc.rounds.forEach((r, idx) => {
+      if (r.status === "active" && r.pairings.some((p) => p.status === "pending" && p.player2)) {
+        scheduleDeferredPairingRetry(doc.id, idx);
+      }
+    });
+  }
+
   return { activated, rearmed, autoStarted, autoStartRearmed };
 }
 
@@ -1165,20 +1185,6 @@ function buildKnockoutRound0(playerIds: any[]): ITournamentRound {
  *  both be satisfied for someone, a rematch is allowed before a color
  *  violation is, and if even that's exhausted, it falls back to whatever's
  *  left rather than leaving someone unpaired. */
-/** Smart pairing, swiss half: builds the pairing set for a round using only
- *  players who currently have this tournament's detail page open, so
- *  nobody gets paired against someone who isn't actually looking at it to
- *  play, a player who's online elsewhere in the app (or not online at
- *  all) simply sits this round out (no bye consumed, no points lost) and
- *  is reconsidered fresh the next time a round is built, whenever they're
- *  back on the page.
- *
- *  The one deliberate escape hatch: if fewer than 2 players are watching
- *  right now, filtering by that would leave nothing to pair at all, 
- *  rather than stall the whole event indefinitely waiting for people to
- *  show up, this falls back to pairing everyone regardless of presence for
- *  that one round. Presence-based skipping is a fairness nicety, not
- *  something worth deadlocking a tournament over. */
 // ---------------------------------------------------------------------
 // Color balancing, shared by swiss and arena (round-robin doesn't need
 // this: circleMethodSchedule already produces a fixed, provably-balanced
@@ -1279,17 +1285,66 @@ function orderByColor<T extends { user: Types.ObjectId }>(
   return whiteId === a.user.toString() ? [a, b] : [b, a];
 }
 
+/** Depth-first search for a perfect matching of `players` (already in
+ *  standing order) in which every pair satisfies `allowed`. Each player is
+ *  tried against the nearest-by-score partners first, so a successful
+ *  search still gives score-adjacent pairings. `budget` caps the number of
+ *  candidate pairs examined so a hopeless constraint set (e.g. late rounds
+ *  in a small field where everyone has already met) fails fast instead of
+ *  exploding; returns null in that case and the caller relaxes a rule. */
+function findPerfectMatching(
+  players: ITournamentPlayer[],
+  allowed: (a: ITournamentPlayer, b: ITournamentPlayer) => boolean,
+  budget: number,
+): [ITournamentPlayer, ITournamentPlayer][] | null {
+  const n = players.length;
+  const used: boolean[] = new Array(n).fill(false);
+  const pairs: [ITournamentPlayer, ITournamentPlayer][] = [];
+  let steps = 0;
+
+  function dfs(): boolean {
+    const i = used.indexOf(false);
+    if (i === -1) return true;
+    used[i] = true;
+    for (let j = i + 1; j < n; j++) {
+      if (used[j]) continue;
+      if (++steps > budget) {
+        used[i] = false;
+        return false;
+      }
+      if (!allowed(players[i], players[j])) continue;
+      used[j] = true;
+      pairs.push([players[i], players[j]]);
+      if (dfs()) return true;
+      pairs.pop();
+      used[j] = false;
+    }
+    used[i] = false;
+    return false;
+  }
+
+  return dfs() ? pairs : null;
+}
+
+const SWISS_SEARCH_BUDGET = 40_000;
+const SWISS_MAX_BYE_CANDIDATES = 8;
+
+/** Builds one swiss round. EVERY player on the sheet is paired, every round,
+ *  regardless of whether they're online or have the tournament page open.
+ *  With an even field nobody sits out; with an odd field exactly one player
+ *  gets the bye (worth a point, see applyPairingScore), chosen from the
+ *  lowest-ranked players who haven't had one yet. A player who's offline
+ *  simply forfeits on the clock like in any other game, that's for their
+ *  opponent's benefit, not a reason to leave the opponent without a game.
+ *
+ *  Rules: no rematch, no forced 3rd consecutive same color, nearest by
+ *  score. If no full pairing satisfies both, rematches are allowed before
+ *  the color rule is ever broken (color is the one that matters most).
+ *  It never leaves anyone unpaired. */
 async function buildSwissRound(
   tournament: ITournament,
   roundIndex: number,
 ): Promise<ITournamentRound> {
-  const candidates = tournament.players;
-  const watchingFlags = await Promise.all(
-    candidates.map((p) => isUserWatchingTournament(p.user.toString(), tournament.id)),
-  );
-  const watchingOnly = candidates.filter((_, i) => watchingFlags[i]);
-  const active = watchingOnly.length >= 2 ? watchingOnly : candidates;
-
   const priorOpponents = new Map<string, Set<string>>();
   for (const round of tournament.rounds) {
     for (const pairing of round.pairings) {
@@ -1304,63 +1359,82 @@ async function buildSwissRound(
   }
   const colorState = computeColorState(tournament);
 
-  const sorted = [...active].sort(
+  const isRematch = (a: ITournamentPlayer, b: ITournamentPlayer) =>
+    priorOpponents.get(a.user.toString())?.has(b.user.toString()) ?? false;
+  const isColorClash = (a: ITournamentPlayer, b: ITournamentPlayer) => {
+    const [p1, p2] = colorPenalties(a.user.toString(), b.user.toString(), colorState);
+    return p1 > 0 && p2 > 0;
+  };
+
+  // Standing order, random among equals.
+  const sorted = [...tournament.players].sort(
     (a, b) => b.points - a.points || Math.random() - 0.5,
   );
 
-  let byePlayer: ITournamentPlayer | null = null;
+  // Bye candidates, best choice first: lowest-ranked player who hasn't had
+  // a bye, then (only if everyone has) lowest-ranked overall. `null` means
+  // no bye needed (even field).
+  let byeCandidates: (ITournamentPlayer | null)[] = [null];
   if (sorted.length % 2 === 1) {
-    let byeTaken = false;
-    for (let i = sorted.length - 1; i >= 0; i--) {
-      if (!sorted[i].hadBye) {
-        byePlayer = sorted[i];
-        sorted.splice(i, 1);
-        byeTaken = true;
-        break;
-      }
-    }
-    if (!byeTaken) byePlayer = sorted.pop()!;
+    const lowestFirst = [...sorted].reverse();
+    byeCandidates = [
+      ...lowestFirst.filter((p) => !p.hadBye),
+      ...lowestFirst.filter((p) => p.hadBye),
+    ].slice(0, SWISS_MAX_BYE_CANDIDATES);
   }
 
-  const remaining = [...sorted];
-  const pairs: [ITournamentPlayer, ITournamentPlayer][] = [];
-  while (remaining.length > 0) {
-    const a = remaining.shift()!;
-    const aId = a.user.toString();
-    const opponents = priorOpponents.get(aId);
+  let bye: ITournamentPlayer | null = null;
+  let pairs: [ITournamentPlayer, ITournamentPlayer][] | null = null;
 
-    // Score every remaining candidate on the two things worth avoiding —
-    // a rematch, and a pairing where neither color orientation avoids a
-    // 3rd consecutive same color for someone — and take whichever avoids
-    // the most of them. Rematch-avoidance keeps its existing priority
-    // (score weighted higher) since swiss, unlike arena, must pair
-    // everyone every round rather than leaving a player unpaired, so a
-    // rematch is the lesser evil when the two can't both be satisfied.
-    // Ties keep the original nearest-by-score order (lowest index wins).
-    let bestIdx = 0;
-    let bestScore = Infinity;
-    for (let i = 0; i < remaining.length; i++) {
-      const bId = remaining[i].user.toString();
-      const rematch = opponents?.has(bId) ?? false;
-      const [p1, p2] = colorPenalties(aId, bId, colorState);
-      const colorClash = p1 > 0 && p2 > 0;
-      const score = (rematch ? 2 : 0) + (colorClash ? 1 : 0);
-      if (score < bestScore) {
-        bestScore = score;
-        bestIdx = i;
-        if (score === 0) break; // can't beat a fresh, color-safe opponent
+  // Strictest first. Color comes before rematches in the fallback order:
+  // a rematch is a fairness nicety, a 3rd same color in a row is not.
+  const rules = [
+    (a: ITournamentPlayer, b: ITournamentPlayer) => !isRematch(a, b) && !isColorClash(a, b),
+    (a: ITournamentPlayer, b: ITournamentPlayer) => !isColorClash(a, b),
+    (a: ITournamentPlayer, b: ITournamentPlayer) => !isRematch(a, b),
+  ];
+  // Rules outermost: never settle for a looser rule just to get a nicer bye.
+  search: for (const allowed of rules) {
+    for (const candidate of byeCandidates) {
+      const field = candidate ? sorted.filter((p) => p !== candidate) : sorted;
+      const found = findPerfectMatching(field, allowed, SWISS_SEARCH_BUDGET);
+      if (found) {
+        pairs = found;
+        bye = candidate;
+        break search;
       }
     }
-    const b = remaining.splice(bestIdx, 1)[0];
-    pairs.push([a, b]);
+  }
+
+  if (!pairs) {
+    // Rematches are unavoidable (small field, many rounds). Greedy fill
+    // that avoids as many rematches / color clashes as it can, but always
+    // completes so nobody is left without a game.
+    bye = byeCandidates[0];
+    const remaining = bye ? sorted.filter((p) => p !== bye) : [...sorted];
+    pairs = [];
+    while (remaining.length > 0) {
+      const a = remaining.shift()!;
+      let bestIdx = 0;
+      let bestScore = Infinity;
+      for (let i = 0; i < remaining.length; i++) {
+        const score =
+          (isColorClash(a, remaining[i]) ? 2 : 0) + (isRematch(a, remaining[i]) ? 1 : 0);
+        if (score < bestScore) {
+          bestScore = score;
+          bestIdx = i;
+          if (score === 0) break;
+        }
+      }
+      pairs.push([a, remaining.splice(bestIdx, 1)[0]]);
+    }
   }
 
   const pairings: ITournamentPairing[] = pairs.map(([a, b], i) => {
     const [white, black] = orderByColor(a, b, colorState);
     return emptyPairing(i, white.user, black.user);
   });
-  if (byePlayer)
-    pairings.push(emptyPairing(pairings.length, byePlayer.user, null));
+  if (bye) pairings.push(emptyPairing(pairings.length, bye.user, null));
 
   return { index: roundIndex, status: "pending", pairings };
 }
@@ -1432,6 +1506,104 @@ async function activateTournament(tournament: ITournament): Promise<void> {
   await activateRound(tournament, 0);
 }
 
+// --- Players already in another game ----------------------------------------
+//
+// The app allows one active game per user, enforced when a user STARTS a
+// challenge/cage match/quick pairing/etc. Tournament rounds create their
+// games on the server without the player doing anything, so they used to
+// bypass that rule: someone who finished their game early and started a
+// casual one while the rest of the round played out got a second game
+// dropped on them when the next round began. Now a pairing whose player is
+// busy elsewhere is held back, not created, until they're free.
+
+const BUSY_RETRY_MS = 10_000;
+// After this long into a round, a pairing still held back because exactly
+// ONE side is stuck in another game is forfeited by that side, so a player
+// can't stall a whole round by never finishing their other game. If both
+// sides are busy nobody is at fault, so those keep waiting.
+const BUSY_PLAYER_GRACE_MS = 3 * 60_000;
+
+/** Which of `userIds` currently have a waiting/active game that isn't part
+ *  of `exceptTournamentId`. */
+async function findUsersInOtherGames(
+  userIds: string[],
+  exceptTournamentId: string,
+): Promise<Set<string>> {
+  const busy = new Set<string>();
+  if (userIds.length === 0) return busy;
+  const games = await Game.find({
+    status: { $in: ["waiting", "active"] },
+    tournamentId: { $ne: exceptTournamentId },
+    $or: [{ white: { $in: userIds } }, { black: { $in: userIds } }],
+  })
+    .select("white black")
+    .lean();
+  const wanted = new Set(userIds);
+  for (const g of games) {
+    const w = g.white?.toString();
+    const b = g.black?.toString();
+    if (w && wanted.has(w)) busy.add(w);
+    if (b && wanted.has(b)) busy.add(b);
+  }
+  return busy;
+}
+
+const pendingDeferredTimers = new Map<string, NodeJS.Timeout>();
+
+function scheduleDeferredPairingRetry(tournamentId: string, roundIndex: number): void {
+  const key = `${tournamentId}:${roundIndex}`;
+  if (pendingDeferredTimers.has(key)) return;
+  const timer = setTimeout(() => {
+    pendingDeferredTimers.delete(key);
+    retryDeferredPairings(tournamentId, roundIndex).catch((err) =>
+      console.error("deferred pairing retry failed:", err),
+    );
+  }, BUSY_RETRY_MS);
+  timer.unref?.();
+  pendingDeferredTimers.set(key, timer);
+}
+
+/** Re-checks a round's held-back pairings: forfeits the ones past the grace
+ *  period (exactly one side busy), then lets activateRound create games for
+ *  everything that's now free and re-arm this retry for whatever's left. */
+async function retryDeferredPairings(tournamentId: string, roundIndex: number): Promise<void> {
+  const result = await withLock(
+    tournamentMutationLockKey(tournamentId),
+    async () => {
+      const tournament = await Tournament.findById(tournamentId);
+      if (!tournament || tournament.status !== "active" || tournament.format === "arena") return;
+      const round = tournament.rounds[roundIndex];
+      if (!round || round.status !== "active") return;
+      const waiting = round.pairings.filter((p) => p.status === "pending" && p.player2);
+      if (waiting.length === 0) return;
+
+      const overdue =
+        !!round.startedAt && Date.now() - round.startedAt.getTime() >= BUSY_PLAYER_GRACE_MS;
+      if (overdue) {
+        const ids = waiting.flatMap((p) => [p.player1.toString(), p.player2!.toString()]);
+        const busy = await findUsersInOtherGames(ids, tournament.id);
+        let forfeited = false;
+        for (const pairing of waiting) {
+          const p1Busy = busy.has(pairing.player1.toString());
+          const p2Busy = busy.has(pairing.player2!.toString());
+          if (p1Busy === p2Busy) continue;
+          const winner = p1Busy ? "p2" : "p1";
+          pairing.status = "finished";
+          pairing.result = winner;
+          pairing.endReason = "forfeit_other_game";
+          applyPairingScore(tournament, pairing, winner, { p1: false, p2: false }, roundIndex);
+          forfeited = true;
+        }
+        if (forfeited) await tournament.save();
+      }
+      await activateRound(tournament, roundIndex);
+    },
+    { ttlMs: 20_000, maxWaitMs: 5000 },
+  );
+  // Couldn't get the lock: some other mutation is in flight, try again shortly.
+  if (result === null) scheduleDeferredPairingRetry(tournamentId, roundIndex);
+}
+
 /** Turns a round's pending pairings into reality: creates the actual Game for
  *  every real pairing, colors come from pairing.player1/player2 directly
  *  for round_robin/swiss/arena (deliberately pre-ordered upstream to keep
@@ -1448,8 +1620,12 @@ async function activateRound(
   roundIndex: number,
 ): Promise<void> {
   const round = tournament.rounds[roundIndex];
-  round.status = "active";
-  round.startedAt = new Date();
+  // Also re-entered for a round that's already active, to start pairings
+  // that were held back (see retryDeferredPairings), so don't restamp it.
+  if (round.status !== "active") {
+    round.status = "active";
+    round.startedAt = new Date();
+  }
 
   const timeControl: TimeControlInput = {
     baseMinutes: tournament.baseMinutes,
@@ -1461,7 +1637,22 @@ async function activateRound(
   // races the DB write that made their game real.
   const readyPlayers: { userId: string; joinCode: string }[] = [];
 
+  // Anyone in a real pairing who's mid-game elsewhere. Arena is exempt:
+  // it only ever pairs players who are free (arenaAvailablePlayers).
+  const busy =
+    tournament.format === "arena"
+      ? new Set<string>()
+      : await findUsersInOtherGames(
+          round.pairings
+            .filter((p) => p.status === "pending" && p.player2)
+            .flatMap((p) => [p.player1.toString(), p.player2!.toString()]),
+          tournament.id,
+        );
+  const newlyHeldBack = new Set<string>();
+  let anyHeldBack = false;
+
   for (const pairing of round.pairings) {
+    if (pairing.status !== "pending") continue;
     if (pairing.player2 === null) {
       pairing.status = "finished";
       pairing.result = "p1";
@@ -1475,6 +1666,15 @@ async function activateRound(
         { p1: false, p2: false },
         roundIndex,
       );
+      continue;
+    }
+
+    const p1Id = pairing.player1.toString();
+    const p2Id = pairing.player2.toString();
+    if (busy.has(p1Id) || busy.has(p2Id)) {
+      anyHeldBack = true;
+      if (busy.has(p1Id)) newlyHeldBack.add(p1Id);
+      if (busy.has(p2Id)) newlyHeldBack.add(p2Id);
       continue;
     }
 
@@ -1512,6 +1712,20 @@ async function activateRound(
   await tournament.save();
   broadcastUpdate(tournament);
   notifyPairingReady(tournament, readyPlayers);
+
+  if (anyHeldBack) {
+    scheduleDeferredPairingRetry(tournament.id, roundIndex);
+    for (const userId of newlyHeldBack) {
+      createNotification({
+        recipientId: userId,
+        type: "admin_message",
+        title: "Your tournament game is waiting",
+        body: "You're in another game, so your tournament game hasn't started. Finish it soon or you'll forfeit this round.",
+        link: `/tournaments/${tournament.code}`,
+      }).catch((err) => console.error("held-back notification failed:", err));
+    }
+  }
+
   await maybeCompleteRound(tournament, roundIndex);
 }
 
@@ -1703,7 +1917,13 @@ async function arenaAvailablePlayers(
   const watchingFlags = await Promise.all(
     candidates.map((p) => isUserWatchingTournament(p.user.toString(), tournament.id)),
   );
-  return candidates.filter((_, i) => watchingFlags[i]);
+  const inOtherGames = await findUsersInOtherGames(
+    candidates.map((p) => p.user.toString()),
+    tournament.id,
+  );
+  return candidates.filter(
+    (p, i) => watchingFlags[i] && !inOtherGames.has(p.user.toString()),
+  );
 }
 
 /** Given two candidate colorings (a=white/b=black vs b=white/a=black),
@@ -2082,11 +2302,17 @@ function applyPairingScore(
   }
 
   if (!p2) {
-    // Bye, counts as having played the round (for pairing/hadBye purposes)
-    // but awards no points, unlike a real win. A bye isn't a game anyone
-    // actually won. Also breaks either side's win streak, same as a draw
-    // or loss below — a bye isn't a win either.
-    if (p1) p1.currentWinStreak = 0;
+    // Bye: a full point, same as a win, but no game was played so it does
+    // not count towards gamesPlayed and has no opponent for tiebreak
+    // purposes. hadBye (set by activateRound) is what keeps the same
+    // player from being handed another one while others still haven't had
+    // theirs. Breaks the arena win streak field too, though arena never
+    // produces byes in practice.
+    if (p1) {
+      p1.points += 1;
+      p1.currentWinStreak = 0;
+    }
+    pairing.pointsAwarded = { p1: 1, p2: 0 };
     return;
   }
 

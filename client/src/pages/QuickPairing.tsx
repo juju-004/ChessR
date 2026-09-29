@@ -125,6 +125,7 @@ export function QuickPairing() {
   return (
     <Page
       title="Quick pairing"
+      responsiveDescription
       description="Pick a lobby and get paired with someone close to your rating."
       back="/"
     >
@@ -143,8 +144,7 @@ export function QuickPairing() {
                 </p>
                 <p className="mt-1 text-sm text-base-content/60">
                   Looking for a {searching.label}
-                  {searching.variant === "chess960" ? " Chess960" : ""}{" "}
-                  opponent
+                  {searching.variant === "chess960" ? " Chess960" : ""} opponent
                   {typeof user?.rating === "number" && (
                     <>
                       {" "}

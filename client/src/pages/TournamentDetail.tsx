@@ -1348,7 +1348,7 @@ export function TournamentDetail() {
                   <RCoin size={11} className="inline align-[-1px]" /> to join
                 </Badge>
               )}
-              {tournament.berserkAllowed && tournament.format !== "normal" && (
+              {tournament.berserkAllowed && tournament.format === "arena" && (
                 <Badge variant="neutral">Berserk allowed ⚔</Badge>
               )}
               {tournament.hasPassword && (

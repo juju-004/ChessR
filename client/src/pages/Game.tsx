@@ -1768,6 +1768,8 @@ export function Game() {
     isPlayer &&
     status === "active" &&
     !!gameMeta?.tournamentId &&
+    gameMeta.tournamentId.format === "arena" &&
+    !!gameMeta.tournamentId.berserkAllowed &&
     !!myColor &&
     !(myColor === "white" ? whiteBerserk : blackBerserk) &&
     (myColor === "white" ? moves.length === 0 : moves.length <= 1);

@@ -120,7 +120,8 @@ export function AccountDetails() {
   return (
     <Page
       title="Payout account details"
-      description="Where we send your naira tournament winnings, disbursed manually by our team."
+      responsiveDescription
+      description="Where we send your tournament winnings, disbursed manually by our team."
       back="/wallet/withdraw"
       bare
     >

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus, Swords, Play } from "lucide-react";
+import { Plus, Play, Gamepad2 } from "lucide-react";
 import {
   cancelGame,
   createGame,
@@ -70,9 +70,10 @@ export function Lobby() {
   const [createOpen, setCreateOpen] = useState(false);
 
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [rowError, setRowError] = useState<{ id: string; message: string } | null>(
-    null,
-  );
+  const [rowError, setRowError] = useState<{
+    id: string;
+    message: string;
+  } | null>(null);
 
   // Lets the fetch below notice "my table just got taken" (waiting -> active)
   // and drop the host straight into the game instead of leaving them
@@ -275,8 +276,8 @@ export function Lobby() {
       </Button>
       {wagerTokens > 0 && !wagerBelowFloor && !wagerTooHigh && (
         <p className="text-center text-xs text-base-content/50">
-          Your {wagerTokens} R is held while the game is listed and refunded
-          if you cancel.
+          Your {wagerTokens} R is held while the game is listed and refunded if
+          you cancel.
         </p>
       )}
       {createError && <p className="text-sm text-red-400">{createError}</p>}
@@ -287,6 +288,7 @@ export function Lobby() {
     <Page
       title="Lobby"
       description="Accept a listed game, or put up your own."
+      responsiveDescription
       back="/"
       actions={
         <ResponsiveOverlay
@@ -300,7 +302,12 @@ export function Lobby() {
             if (o) setCreateError("");
           }}
           trigger={
-            <Button disabled={hasGame} title={hasGame ? "Finish or cancel your current game first" : undefined}>
+            <Button
+              disabled={hasGame}
+              title={
+                hasGame ? "Finish or cancel your current game first" : undefined
+              }
+            >
               <Plus className="h-4 w-4" /> List new game
             </Button>
           }
@@ -334,7 +341,7 @@ export function Lobby() {
         <Card variant="solid">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Swords className="h-4 w-4 text-rose-400" /> Open games
+              <Gamepad2 className="h-4 w-4 text-blue-600" /> Open games
               {games && games.length > 0 && (
                 <Badge variant="neutral">{games.length}</Badge>
               )}
@@ -351,15 +358,14 @@ export function Lobby() {
             )}
             {games && sorted.length === 0 && (
               <div className="flex flex-col items-center gap-2 py-10 text-center">
-                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-rose-500/15 text-rose-400">
-                  <Swords className="h-6 w-6" />
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-600/15 text-blue-600">
+                  <Gamepad2 className="h-6 w-6" />
                 </span>
                 <p className="text-sm font-semibold text-base-content">
                   No open games right now
                 </p>
                 <p className="max-w-xs text-xs text-base-content/50">
-                  Be the first, hit “List new game” and someone will pick it
-                  up.
+                  Be the first, hit “List new game” and someone will pick it up.
                 </p>
               </div>
             )}

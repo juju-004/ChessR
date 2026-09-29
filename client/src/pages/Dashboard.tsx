@@ -3,7 +3,6 @@ import { useNavigate, Link } from "react-router-dom";
 import {
   Swords,
   Trophy,
-  Users,
   Plus,
   Hash,
   Wallet,
@@ -13,8 +12,8 @@ import {
   Eye,
   EyeOff,
   Zap,
-  Coins,
   type LucideIcon,
+  Gamepad2,
 } from "lucide-react";
 import {
   createGame,
@@ -250,22 +249,10 @@ export function Dashboard() {
          *  wall of text links. */}
         <div className="grid grid-cols-2 gap-3 sm:flex">
           <QuickLink
-            to="/players"
-            icon={Users}
-            label="Players"
-            accent="bg-blue-500/15 text-blue-400"
-          />
-          <QuickLink
-            to="/cage"
-            icon={Swords}
-            label="Cage matches"
-            accent="bg-rose-500/15 text-rose-400"
-          />
-          <QuickLink
             to="/lobby"
-            icon={Coins}
+            icon={Gamepad2}
             label="Lobby"
-            accent="bg-amber-500/15 text-amber-400"
+            accent="bg-blue-600/15 text-blue-500"
           />
           <QuickLink
             to="/play"

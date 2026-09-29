@@ -221,11 +221,8 @@ export function CageMatches() {
   return (
     <Page
       title="Cage matches"
-      description={
-        <span className="hidden sm:inline">
-          Challenge a friend to an ordered series of games.
-        </span>
-      }
+      responsiveDescription
+      description="Challenge a friend to an ordered series of games."
       actions={
         <Button
           variant="primary"
