@@ -150,6 +150,13 @@ export interface MoveResult {
   moveNumber: number;
   whiteRemainingMs: number | null;
   blackRemainingMs: number | null;
+  /** The exact turnStartedAtMs persisted in the live state for the NEW
+   *  side to move. The socket layer must broadcast THIS value rather than
+   *  calling Date.now() again after the Redis write, otherwise clients
+   *  count down from a later instant than the server's own flag check
+   *  does, handing the side to move a free Redis-latency's worth of time
+   *  on every single move. */
+  turnStartedAtMs: number;
 }
 
 /** Shared tail-end for both the normal-move and castling paths: clock
@@ -252,6 +259,7 @@ async function finalizeMove(
     moveNumber: newState.moveCount,
     whiteRemainingMs,
     blackRemainingMs,
+    turnStartedAtMs: newState.turnStartedAtMs,
   };
 }
 

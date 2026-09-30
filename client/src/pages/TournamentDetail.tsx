@@ -21,7 +21,7 @@ import {
   ordinalSuffix,
   tokensLabel,
   FORMAT_LABEL,
-  FORMAT_MAX_PLAYERS,
+  MAX_TOURNAMENT_PLAYERS,
   type Tournament,
   type TournamentPairing,
   type TournamentPlayer,
@@ -136,7 +136,6 @@ function EditTournamentForm({
     });
     return closest;
   });
-  const [maxPlayers, setMaxPlayers] = useState(tournament.maxPlayers);
   const [swissRounds, setSwissRounds] = useState(tournament.swissRounds ?? 5);
   const [robinRounds, setRobinRounds] = useState(tournament.robinRounds ?? 1);
   const [arenaMinutes, setArenaMinutes] = useState(
@@ -163,7 +162,6 @@ function EditTournamentForm({
 
   function handleFormatChange(f: TournamentFormat) {
     setFormat(f);
-    if (f === "swiss" || f === "arena") setMaxPlayers(FORMAT_MAX_PLAYERS[f]);
   }
 
   function save() {
@@ -184,9 +182,9 @@ function EditTournamentForm({
       return setError("Pick a start time a bit further in the future.");
     }
     for (const tier of prizeTiers) {
-      if (tier.toRank > maxPlayers) {
+      if (tier.toRank > MAX_TOURNAMENT_PLAYERS) {
         return setError(
-          `Prize schedule can't cover a rank beyond your ${maxPlayers}-player cap.`,
+          `Prize schedule can't cover a rank beyond ${MAX_TOURNAMENT_PLAYERS}th place.`,
         );
       }
     }
@@ -199,7 +197,6 @@ function EditTournamentForm({
       variant,
       baseMinutes: preset.baseMinutes,
       incrementSeconds: preset.incrementSeconds,
-      maxPlayers,
       berserkAllowed: format === "arena" && berserkAllowed,
       chatEnabled,
       isPublic,
@@ -292,16 +289,6 @@ function EditTournamentForm({
         {/* Players & schedule */}
         <section className="space-y-3 border-t border-base-300 pt-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {format !== "swiss" && format !== "arena" && (
-              <Input
-                label="Max players"
-                type="number"
-                min={2}
-                max={FORMAT_MAX_PLAYERS[format]}
-                value={maxPlayers}
-                onChange={(e) => setMaxPlayers(Number(e.target.value))}
-              />
-            )}
             {format === "swiss" && (
               <Input
                 label="Rounds"
@@ -384,7 +371,6 @@ function EditTournamentForm({
             <PrizePoolEditor
               value={prizeTiers}
               onChange={setPrizeTiers}
-              maxPlayers={maxPlayers}
               currency={tournament.prizePoolCurrency}
             />
           </div>
@@ -932,14 +918,29 @@ function PairingRow({
   const p2Name = usernameOf(tournament, pairing.player2);
   const involvesMe = pairing.player1 === myId || pairing.player2 === myId;
 
+  // On phones the "<name> won" label was eating most of the row and forcing
+  // both player names to truncate to a couple of letters, so below the md
+  // breakpoint the result is shown as a compact score from player 1's side
+  // (1-0 / 0-1 / ½-½). From md up the full wording is kept.
   let outcome = "·";
+  let outcomeShort = "·";
   if (pairing.status === "finished") {
-    if (pairing.player2 === null) outcome = "Bye";
-    else if (pairing.result === "draw") outcome = "Draw";
-    else if (pairing.result === "p1") outcome = `${p1Name} won`;
-    else outcome = `${p2Name} won`;
+    if (pairing.player2 === null) {
+      outcome = "Bye";
+      outcomeShort = "Bye";
+    } else if (pairing.result === "draw") {
+      outcome = "Draw";
+      outcomeShort = "½-½";
+    } else if (pairing.result === "p1") {
+      outcome = `${p1Name} won`;
+      outcomeShort = "1-0";
+    } else {
+      outcome = `${p2Name} won`;
+      outcomeShort = "0-1";
+    }
   } else if (pairing.status === "active") {
     outcome = "In progress";
+    outcomeShort = "Live";
   }
 
   // Any real (non-bye) pairing that's had a game created for it is
@@ -985,7 +986,10 @@ function PairingRow({
             {involvesMe ? "Play" : "Watch"}
           </Badge>
         ) : (
-          <span className="text-base-content/50">{outcome}</span>
+          <span className="text-base-content/50">
+            <span className="md:hidden">{outcomeShort}</span>
+            <span className="hidden md:inline">{outcome}</span>
+          </span>
         )}
       </span>
     </>
@@ -1321,14 +1325,6 @@ export function TournamentDetail() {
               </span>
             </div>
             <div className="mb-4 flex flex-wrap gap-1.5">
-              {/* Arena has no meaningful "full" state (see the matching
-               *  comment in Tournaments.tsx) — hidden here too so the
-               *  detail page doesn't contradict the list page. */}
-              {tournament.format !== "arena" && (
-                <Badge variant="neutral">
-                  Max {tournament.maxPlayers} players
-                </Badge>
-              )}
               {tournament.format === "swiss" && (
                 <Badge variant="neutral">{tournament.swissRounds} rounds</Badge>
               )}

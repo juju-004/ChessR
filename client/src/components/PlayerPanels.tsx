@@ -72,6 +72,14 @@ export interface PanelData {
    *  (clock, berserk, first-move countdown) still renders as normal, see
    *  GameDetailsCard for zen mode's other effects (move list, badges). */
   zenMode?: boolean;
+  /** Set only on the OPPONENT's panel while they're disconnected (and the
+   *  game is past its idle phase). Replaces the old floating banner: the
+   *  countdown / claim buttons render in the same slot under the username
+   *  as the "Move in Xs" badge and the material badge. */
+  disconnect?: {
+    expiresAt: number;
+    onClaim: (claim: "win" | "draw") => void;
+  } | null;
 }
 
 /** Builds the display props one side's panel needs out of the raw material
@@ -200,6 +208,79 @@ function FirstMoveBadge({
   );
 }
 
+/**
+ * Opponent-disconnected countdown, rendered in the panel's badge slot (same
+ * place as FirstMoveBadge). Counts down the seconds until the game can be
+ * claimed, then swaps to compact Win / Draw claim buttons. Owns its own
+ * 500ms tick so re-renders never reach past this badge (same reasoning as
+ * ClockBadge / FirstMoveBadge).
+ */
+function DisconnectBadge({
+  expiresAt,
+  onClaim,
+  size = "md",
+}: {
+  expiresAt: number;
+  onClaim: (claim: "win" | "draw") => void;
+  size?: "md" | "sm";
+}) {
+  const [, forceTick] = useState(0);
+
+  useEffect(() => {
+    if (expiresAt - Date.now() <= 0) return; // already claimable
+    const interval = window.setInterval(() => {
+      forceTick((n) => n + 1);
+      if (expiresAt - Date.now() <= 0) window.clearInterval(interval);
+    }, 500);
+    return () => window.clearInterval(interval);
+  }, [expiresAt]);
+
+  const remainingMs = Math.max(0, expiresAt - Date.now());
+  const claimable = remainingMs <= 0;
+
+  if (!claimable) {
+    return (
+      <div
+        className={cn(
+          "flex min-w-0 items-center gap-1 font-semibold text-red-400",
+          size === "sm" ? "justify-center text-[10px]" : "text-xs",
+        )}
+        title="Opponent disconnected. You can claim the game if they don't return."
+      >
+        <span className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-red-400" />
+        <span className="truncate">Left · claim in {Math.ceil(remainingMs / 1000)}s</span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "flex min-w-0 items-center gap-1",
+        size === "sm" && "flex-wrap justify-center",
+      )}
+    >
+      <span className="shrink-0 text-xs font-semibold text-red-400">Claim:</span>
+      <button
+        type="button"
+        onClick={() => onClaim("win")}
+        title="Claim victory"
+        className="h-[18px] shrink-0 rounded-md bg-red-500 px-1.5 text-[11px] font-semibold leading-none text-white transition-colors hover:bg-red-400"
+      >
+        Win
+      </button>
+      <button
+        type="button"
+        onClick={() => onClaim("draw")}
+        title="Claim draw"
+        className="h-[18px] shrink-0 rounded-md bg-base-300 px-1.5 text-[11px] font-semibold leading-none text-base-content/80 transition-colors hover:bg-base-300/70"
+      >
+        Draw
+      </button>
+    </div>
+  );
+}
+
 /** Small badge icon shown right next to the clock once a side has
  *  berserked, a halved clock is a big deal, so it stays close to the thing
  *  it actually affects rather than living up with the game-level badges. */
@@ -322,6 +403,7 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
   profileHref,
   rating,
   zenMode,
+  disconnect,
 }: PanelData) {
   return (
     <div className="flex h-[54px] items-center gap-3 rounded-xl bg-base-200/70 px-3 py-2 text-base-content">
@@ -373,7 +455,12 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
             {username}
           </p>
         )}
-        {firstMoveGraceMs !== null ? (
+        {disconnect ? (
+          <DisconnectBadge
+            expiresAt={disconnect.expiresAt}
+            onClaim={disconnect.onClaim}
+          />
+        ) : firstMoveGraceMs !== null ? (
           <FirstMoveBadge
             turnStartedAtMs={turnStartedAtMs}
             graceMs={firstMoveGraceMs}
@@ -422,6 +509,7 @@ export const PlayerPanelFlank = memo(function PlayerPanelFlank({
   firstMoveGraceMs,
   berserked,
   profileHref,
+  disconnect,
   className,
 }: PanelData & { className?: string }) {
   return (
@@ -475,7 +563,13 @@ export const PlayerPanelFlank = memo(function PlayerPanelFlank({
       {/* Fixed height for the same reason as PlayerPanelRow's equivalent
        *  slot, see its comment. */}
       <div className="min-h-3.5 w-full">
-        {firstMoveGraceMs !== null ? (
+        {disconnect ? (
+          <DisconnectBadge
+            expiresAt={disconnect.expiresAt}
+            onClaim={disconnect.onClaim}
+            size="sm"
+          />
+        ) : firstMoveGraceMs !== null ? (
           <FirstMoveBadge
             turnStartedAtMs={turnStartedAtMs}
             graceMs={firstMoveGraceMs}

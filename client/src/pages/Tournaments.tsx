@@ -21,6 +21,7 @@ import {
   Button,
   Badge,
   RCoin,
+  Spinner,
   TimeControlIcon,
 } from "../components/ui/index.js";
 
@@ -72,17 +73,10 @@ function TournamentRow({ t }: { t: Tournament }) {
             className="inline-block align-[-2px]"
           />{" "}
           {formatTimeControl(t)}
-          {/* Arena is an ongoing drop-in/drop-out format with no
-           *  meaningful "full" state (see maxPlayers's own doc comment
-           *  server-side), so the X/Y count doesn't mean the same thing
-           *  it does for the other formats — hidden here per David's
-           *  request. */}
-          {t.format !== "arena" && (
-            <>
-              {" "}
-              · {t.players.length}/{t.maxPlayers} players
-            </>
-          )}
+          {/* No max-players figure anymore (fixed server-side cap), just
+           *  how many have joined. */}
+          {" "}
+          · {t.players.length} {t.players.length === 1 ? "player" : "players"}
           {t.regFeeTokens > 0 && (
             <>
               {" "}
@@ -117,10 +111,15 @@ function PaginatedTournamentCard({
   emptyMessage,
   onRefresh,
   refreshing,
+  loading = false,
 }: {
   title: string;
   tournaments: Tournament[];
   emptyMessage: string;
+  /** True until the list's first fetch resolves. Shows a spinner instead of
+   *  the empty message / rows, otherwise the card briefly claims "Nothing
+   *  finished yet" (the state's initial []) before the real list lands. */
+  loading?: boolean;
   /** Omit to render the card without a refresh button (e.g. Finished
    *  tourneys, which doesn't need one). */
   onRefresh?: () => void;
@@ -146,17 +145,25 @@ function PaginatedTournamentCard({
         )}
       </CardHeader>
       <CardContent className="space-y-2">
-        {tournaments.length === 0 && (
-          <p className="text-sm text-base-content/50">{emptyMessage}</p>
+        {loading ? (
+          <div className="flex justify-center py-6">
+            <Spinner className="text-base-content/40" />
+          </div>
+        ) : (
+          <>
+            {tournaments.length === 0 && (
+              <p className="text-sm text-base-content/50">{emptyMessage}</p>
+            )}
+            {pageItems.map((t) => (
+              <TournamentRow key={t._id} t={t} />
+            ))}
+            <Pagination
+              page={safePage}
+              pageCount={pageCount}
+              onPageChange={setPage}
+            />
+          </>
         )}
-        {pageItems.map((t) => (
-          <TournamentRow key={t._id} t={t} />
-        ))}
-        <Pagination
-          page={safePage}
-          pageCount={pageCount}
-          onPageChange={setPage}
-        />
       </CardContent>
     </Card>
   );
@@ -169,13 +176,25 @@ export function Tournaments() {
   const [open, setOpen] = useState<Tournament[]>([]);
   const [mine, setMine] = useState<Tournament[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  // True only until each list's FIRST fetch settles (success or failure),
+  // background refreshes from socket events never flip these back, so an
+  // already-loaded list doesn't flash a spinner every time it updates.
+  const [openLoading, setOpenLoading] = useState(true);
+  const [mineLoading, setMineLoading] = useState(true);
 
   const refresh = useCallback(() => {
     const tasks: Promise<unknown>[] = [
-      listOpenTournaments().then((res) => setOpen(res.tournaments)),
+      listOpenTournaments()
+        .then((res) => setOpen(res.tournaments))
+        .finally(() => setOpenLoading(false)),
     ];
     if (user)
-      tasks.push(listMyTournaments().then((res) => setMine(res.tournaments)));
+      tasks.push(
+        listMyTournaments()
+          .then((res) => setMine(res.tournaments))
+          .finally(() => setMineLoading(false)),
+      );
+    else setMineLoading(false);
     return Promise.all(tasks);
   }, [user]);
 
@@ -245,6 +264,7 @@ export function Tournaments() {
           emptyMessage="No public tournaments waiting for players right now."
           onRefresh={handleManualRefresh}
           refreshing={refreshing}
+          loading={openLoading}
         />
 
         {mineActive.length > 0 && (
@@ -285,6 +305,7 @@ export function Tournaments() {
           title="Finished"
           tournaments={mineFinished}
           emptyMessage="Nothing finished yet."
+          loading={mineLoading}
         />
       </div>
     </Page>

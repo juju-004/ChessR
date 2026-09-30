@@ -4,7 +4,7 @@ import { Trophy } from "lucide-react";
 import {
   FORMAT_LABEL,
   FORMAT_DESCRIPTION,
-  FORMAT_MAX_PLAYERS,
+  MAX_TOURNAMENT_PLAYERS,
   robinRoundsLabel,
   type TournamentFormat,
   type TournamentPrizeTier,
@@ -36,13 +36,6 @@ import {
   MAX_EVENT_NAME_LENGTH,
 } from "../lib/limits.js";
 
-const FORMAT_DEFAULT_MAX: Record<TournamentFormat, number> = {
-  normal: 16,
-  swiss: 12,
-  round_robin: 6,
-  arena: 20,
-};
-
 // Default datetime-local value: 5 minutes from now, formatted the way the
 // input wants it (local time, no seconds/timezone), gives the creator a
 // sane starting point they can push later rather than a blank/past field.
@@ -72,7 +65,6 @@ export function CreateTournament() {
   const [presetIdx, setPresetIdx] = useState(3);
 
   // --- Players & schedule ---
-  const [maxPlayers, setMaxPlayers] = useState(FORMAT_MAX_PLAYERS.swiss);
   const [swissRounds, setSwissRounds] = useState(5);
   const [robinRounds, setRobinRounds] = useState(1);
   const [arenaMinutes, setArenaMinutes] = useState(60);
@@ -113,11 +105,6 @@ export function CreateTournament() {
 
   function handleFormatChange(f: TournamentFormat) {
     setFormat(f);
-    setMaxPlayers(
-      f === "swiss" || f === "arena"
-        ? FORMAT_MAX_PLAYERS[f]
-        : FORMAT_DEFAULT_MAX[f],
-    );
   }
 
   function handlePrizeCurrencyChange(currency: "tokens" | "naira") {
@@ -160,9 +147,9 @@ export function CreateTournament() {
       });
     }
     for (const tier of prizeTiers) {
-      if (tier.toRank > maxPlayers) {
+      if (tier.toRank > MAX_TOURNAMENT_PLAYERS) {
         return setStatus({
-          message: `Prize schedule can't cover a rank beyond your ${maxPlayers}-player cap.`,
+          message: `Prize schedule can't cover a rank beyond ${MAX_TOURNAMENT_PLAYERS}th place.`,
           isError: true,
         });
       }
@@ -178,7 +165,6 @@ export function CreateTournament() {
       variant,
       baseMinutes: preset.baseMinutes,
       incrementSeconds: preset.incrementSeconds,
-      maxPlayers,
       berserkAllowed: format === "arena" && berserkAllowed,
       chatEnabled,
       isPublic,
@@ -275,16 +261,6 @@ export function CreateTournament() {
             {/* Players & schedule */}
             <section className="space-y-3 border-t border-base-300 pt-4">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {format !== "swiss" && format !== "arena" && (
-                  <Input
-                    label="Max players"
-                    type="number"
-                    min={2}
-                    max={FORMAT_MAX_PLAYERS[format]}
-                    value={maxPlayers}
-                    onChange={(e) => setMaxPlayers(Number(e.target.value))}
-                  />
-                )}
                 {format === "swiss" && (
                   <Input
                     label="Rounds"
@@ -373,7 +349,6 @@ export function CreateTournament() {
                 key={prizePoolCurrency}
                 value={prizeTiers}
                 onChange={setPrizeTiers}
-                maxPlayers={maxPlayers}
                 currency={prizePoolCurrency}
               />
               <Switch

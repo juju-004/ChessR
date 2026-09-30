@@ -285,25 +285,26 @@ async function fireAutoStart(tournamentId: string): Promise<void> {
 // resembles either format, so both require 4; round-robin and arena are
 // still meaningful with as few as 3. fireAutoStart enforces this at the
 // scheduled start time (cancelling and refunding rather than starting
-// short-handed), and createTournament enforces maxPlayers can't be set
-// below it either. Max side: knockout tolerates any field size (byes soak
-// up the gap to the next power of two), swiss wants enough players to make
-// several rounds meaningful, round-robin is capped fairly low since game
-// count grows quadratically (and again with each extra robinRounds lap),
-// and arena tolerates a much larger field since players aren't all locked
-// into synchronized rounds together, a big arena just means more
-// simultaneous games, not more rounds.
+// short-handed). The roster cap is the same for every format, see
+// MAX_TOURNAMENT_PLAYERS below.
 // vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 // TEMP (David, testing something): every format's min dropped to 3 so
 // small manual test tournaments can actually start. Revert by changing
 // normal/swiss back to 4 below (round_robin/arena were already 3).
 // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+// Roster cap for EVERY format. Organizers no longer pick a max-player count
+// (the field was removed from the client), so this one constant is the whole
+// story: createTournament / updateTournament stamp it onto the document,
+// and joinTournament enforces it directly (not the stored per-document
+// maxPlayers), so tournaments created before this change get the same cap.
+export const MAX_TOURNAMENT_PLAYERS = 200;
+
 const FORMAT_BOUNDS: Record<TournamentFormat, { min: number; max: number }> = {
-  normal: { min: 3, max: 64 },
-  swiss: { min: 3, max: 64 },
-  robin: { min: 3, max: 20 },
-  round_robin: { min: 3, max: 14 },
-  arena: { min: 3, max: 100 },
+  normal: { min: 3, max: MAX_TOURNAMENT_PLAYERS },
+  swiss: { min: 3, max: MAX_TOURNAMENT_PLAYERS },
+  robin: { min: 3, max: MAX_TOURNAMENT_PLAYERS },
+  round_robin: { min: 3, max: MAX_TOURNAMENT_PLAYERS },
+  arena: { min: 3, max: MAX_TOURNAMENT_PLAYERS },
 };
 
 async function uniqueCode(): Promise<string> {
@@ -371,7 +372,9 @@ export interface CreateTournamentInput {
   variant: "standard" | "chess960";
   baseMinutes: number | null;
   incrementSeconds: number;
-  maxPlayers: number;
+  // Ignored: the roster cap is always MAX_TOURNAMENT_PLAYERS now. Kept
+  // optional only so an old client still sending it doesn't break.
+  maxPlayers?: number;
   berserkAllowed: boolean;
   chatEnabled?: boolean;
   // Show up in the public "Open tournaments" browse list? Defaults to false
@@ -501,11 +504,6 @@ export async function createTournament(
     throw ApiError.badRequest(
       "Give your tournament a name (at least 3 characters)",
     );
-  if (input.maxPlayers < bounds.min || input.maxPlayers > bounds.max) {
-    throw ApiError.badRequest(
-      `A ${input.format} tournament supports between ${bounds.min} and ${bounds.max} players`,
-    );
-  }
   if (
     input.baseMinutes !== null &&
     (input.baseMinutes < 1 || input.baseMinutes > 180)
@@ -568,7 +566,7 @@ export async function createTournament(
   }
   const { tiers: prizeSchedule, total: prizePoolTokens } = validatePrizeSchedule(
     input.prizeSchedule ?? [],
-    input.maxPlayers,
+    MAX_TOURNAMENT_PLAYERS,
   );
   const prizePoolCurrency = input.prizePoolCurrency ?? "tokens";
   // Naira pools are display/payout-schedule only — never a real R Coin
@@ -607,7 +605,7 @@ export async function createTournament(
     incrementSeconds: input.incrementSeconds,
     status: "pending",
     minPlayers: bounds.min,
-    maxPlayers: input.maxPlayers,
+    maxPlayers: MAX_TOURNAMENT_PLAYERS,
     // organizerOnly: the creator runs the event but never occupies a
     // player slot themselves, so they're left out of the roster entirely
     //, see the debit block below for the matching skip of their own
@@ -722,7 +720,7 @@ export async function joinTournament(
     );
   if (findPlayer(tournament, userId))
     throw ApiError.badRequest("You've already joined this tournament");
-  if (tournament.players.length >= tournament.maxPlayers)
+  if (tournament.players.length >= MAX_TOURNAMENT_PLAYERS)
     throw ApiError.conflict("This tournament is full");
   if (tournament.passwordHash) {
     const matches = !!password && (await bcrypt.compare(password, tournament.passwordHash));
@@ -758,7 +756,7 @@ export async function joinTournament(
     {
       _id: tournamentId,
       "players.user": { $ne: userId },
-      $expr: { $lt: [{ $size: "$players" }, "$maxPlayers"] },
+      $expr: { $lt: [{ $size: "$players" }, MAX_TOURNAMENT_PLAYERS] },
     },
     {
       $push: {
@@ -933,6 +931,7 @@ export interface UpdateTournamentInput {
   variant?: "standard" | "chess960";
   baseMinutes?: number | null;
   incrementSeconds?: number;
+  // Ignored, see CreateTournamentInput.maxPlayers.
   maxPlayers?: number;
   berserkAllowed?: boolean;
   chatEnabled?: boolean;
@@ -983,12 +982,7 @@ export async function updateTournament(
   if (name.length < 3)
     throw ApiError.badRequest("Give your tournament a name (at least 3 characters)");
 
-  const maxPlayers = input.maxPlayers ?? tournament.maxPlayers;
-  if (maxPlayers < bounds.min || maxPlayers > bounds.max) {
-    throw ApiError.badRequest(
-      `A ${format} tournament supports between ${bounds.min} and ${bounds.max} players`,
-    );
-  }
+  const maxPlayers = MAX_TOURNAMENT_PLAYERS;
 
   const baseMinutes = input.baseMinutes !== undefined ? input.baseMinutes : tournament.baseMinutes;
   if (baseMinutes !== null && (baseMinutes < 1 || baseMinutes > 180)) {

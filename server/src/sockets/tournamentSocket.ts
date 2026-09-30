@@ -44,7 +44,9 @@ const createSchema = z.object({
   variant: z.enum(['standard', 'chess960']).default('standard'),
   baseMinutes: z.number().min(1).max(180).nullable(),
   incrementSeconds: z.number().min(0).max(60).default(0),
-  maxPlayers: z.number().int().min(2).max(100),
+  // Deprecated and ignored (roster cap is fixed server-side), accepted so a
+  // stale cached client that still sends it doesn't fail validation.
+  maxPlayers: z.number().optional(),
   berserkAllowed: z.boolean().default(true),
   chatEnabled: z.boolean().default(false),
   isPublic: z.boolean().default(false),
@@ -89,7 +91,7 @@ const editSchema = idSchema.extend({
   variant: z.enum(['standard', 'chess960']).optional(),
   baseMinutes: z.number().min(1).max(180).nullable().optional(),
   incrementSeconds: z.number().min(0).max(60).optional(),
-  maxPlayers: z.number().int().min(2).max(100).optional(),
+  maxPlayers: z.number().optional(), // deprecated, ignored
   berserkAllowed: z.boolean().optional(),
   chatEnabled: z.boolean().optional(),
   isPublic: z.boolean().optional(),

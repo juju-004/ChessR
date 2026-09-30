@@ -37,6 +37,14 @@ const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 // player's behalf), so only plain games get this treatment.
 const IDLE_PHASE_ABANDON_MS = 5 * 60 * 1000;
 
+// An open game ("waiting", nobody has taken the second seat) that's been
+// sitting this long is auto-aborted by sweepStaleWaitingGames below, the
+// host's stake (if any) is refunded and it drops off the lobby. Applies to
+// private (share-a-code) tables too. Before this existed, nothing ever
+// closed a waiting game unless the host cancelled it by hand, so abandoned
+// tables piled up in the lobby indefinitely.
+export const WAITING_GAME_TTL_MS = 10 * 60 * 1000;
+
 // Safety limit, a user can't be tied up in more than this many games at
 // once. Counts anything they're a player in that's still 'waiting' (their
 // own open table) or 'active' (in progress), including cage-match legs and
@@ -704,6 +712,53 @@ export async function reconcileActiveGames(): Promise<{
   }
 
   return { resumed, timedOut, aborted, idleCancelled };
+}
+
+/**
+ * Auto-aborts open games nobody joined within WAITING_GAME_TTL_MS. Runs on
+ * the same 60s sweep as reconcileActiveGames (see index.ts).
+ *
+ * Each game is claimed with an atomic findOneAndUpdate filtered on
+ * status: 'waiting' + black: null, so if someone joins (or the host cancels)
+ * at the same instant, exactly one side wins and the refund below can never
+ * fire for a game that actually started. Only standalone open games are
+ * touched: cage-match legs and tournament pairings are created already
+ * 'active' via createDirectGame and never sit in 'waiting'.
+ */
+export async function sweepStaleWaitingGames(): Promise<{ aborted: number }> {
+  const cutoff = new Date(Date.now() - WAITING_GAME_TTL_MS);
+  const stale = await Game.find({
+    status: "waiting",
+    black: null,
+    createdAt: { $lte: cutoff },
+  })
+    .select("_id white wagerTokens isPrivate")
+    .lean();
+
+  let aborted = 0;
+  let publicChanged = false;
+  for (const g of stale) {
+    const gameId = g._id.toString();
+    const claimed = await Game.findOneAndUpdate(
+      { _id: g._id, status: "waiting", black: null },
+      { $set: { status: "aborted", endReason: "cancelled", endedAt: new Date() } },
+      { new: true },
+    );
+    if (!claimed) continue; // joined or cancelled in the meantime
+
+    if (g.wagerTokens > 0) {
+      await creditWagerReturn(g.white.toString(), gameId, g.wagerTokens, "wager_refund").catch(
+        (err) => console.error("creditWagerReturn failed for stale waiting game:", err),
+      );
+    }
+    // Host may still be sitting on the game page; same payload the idle
+    // abort sends so their board flips to "aborted" instead of hanging.
+    getIo().to(`game:${gameId}`).emit("game:over", { gameId, result: null, reason: "idle_timeout" });
+    if (!g.isPrivate) publicChanged = true;
+    aborted++;
+  }
+  if (publicChanged) broadcastLobbyChanged();
+  return { aborted };
 }
 
 // An aborted game (nobody played it out — cancelled while waiting, or

@@ -83,7 +83,6 @@ export interface Tournament {
   // tournament". Null otherwise.
   cancelReason: string | null;
   minPlayers: number;
-  maxPlayers: number;
   players: TournamentPlayer[];
   berserkAllowed: boolean;
   chatEnabled: boolean;
@@ -226,15 +225,10 @@ export const FORMAT_DESCRIPTION: Record<TournamentFormat, string> = {
   arena: "Play as many games as you can before time runs out.",
 };
 
-// Upper bound on maxPlayers for each format, matching the server's
-// FORMAT_BOUNDS, used to keep the create/edit form's input hint honest
-// rather than always showing a flat 64 regardless of format.
-export const FORMAT_MAX_PLAYERS: Record<TournamentFormat, number> = {
-  normal: 64,
-  swiss: 64,
-  round_robin: 14,
-  arena: 100,
-};
+// Server-side roster cap, the same for every format (organizers no longer
+// choose one). Only used client-side to sanity-check prize tiers; the server
+// is the one that actually enforces it.
+export const MAX_TOURNAMENT_PLAYERS = 200;
 
 /** How many games a round-robin field actually plays, for display next to
  *  the format picker/summary. */

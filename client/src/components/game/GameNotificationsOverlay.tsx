@@ -1,6 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Pause, Play } from "lucide-react";
-import { DisconnectBanner } from "../DisconnectBanner.js";
 import { Card, Button } from "../ui/index.js";
 import { springSnappy } from "../../lib/motion.js";
 
@@ -12,13 +11,11 @@ interface GameNotificationsOverlayProps {
   isCageMatch: boolean;
   resumeRequestSent: boolean;
   onResumeRequest: () => void;
-  disconnectExpiresAt: number | null;
-  isIdlePhase: boolean;
-  onClaim: (claim: "win" | "draw") => void;
 }
 
 /** Notification overlay stack, leg-paused notice, move errors, the
- *  paused-leg resume card, and the opponent-disconnect banner. All
+ *  and the paused-leg resume card. (The opponent-disconnect countdown now
+ *  lives in the opponent's player panel, see PlayerPanels.tsx.) All
  *  absolute + centered over the page instead of sitting inline above the
  *  board, so any one of them popping in or out mid-game never shifts the
  *  board or panels beneath it. Stacked in one flex column (rather than
@@ -35,9 +32,6 @@ export function GameNotificationsOverlay({
   isCageMatch,
   resumeRequestSent,
   onResumeRequest,
-  disconnectExpiresAt,
-  isIdlePhase,
-  onClaim,
 }: GameNotificationsOverlayProps) {
   return (
     <div className="pointer-events-none absolute inset-x-0 top-2 z-30 mx-auto flex w-[min(92vw,26rem)] flex-col items-stretch gap-2">
@@ -96,10 +90,6 @@ export function GameNotificationsOverlay({
               </Button>
             </Card>
           </motion.div>
-        )}
-
-        {disconnectExpiresAt !== null && !isIdlePhase && (
-          <DisconnectBanner expiresAt={disconnectExpiresAt} onClaim={onClaim} />
         )}
       </AnimatePresence>
     </div>

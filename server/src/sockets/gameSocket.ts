@@ -171,11 +171,20 @@ async function endGameAndBroadcast(
   clearAllPendingDisconnects(gameId);
   const finalState = await endGame(gameId, result, endReason);
 
-  // Wager settlement and rating are both quick and only happen once per
-  // finished game (not on the hot move-broadcast path), so it's worth
-  // awaiting them to include directly in the game:over payload rather than
-  // making clients re-fetch their wallet balance / profile to see the
-  // payout and any rank change land.
+  // game:over goes out IMMEDIATELY, carrying only what's already known
+  // (result, reason, final clocks). It used to wait for wager settlement
+  // and the rating update (several Mongo/Redis round trips) before
+  // emitting anything, which is why the result modal and sound arrived a
+  // noticeable beat after a flag fell. The payout / rating change follow
+  // right behind in 'game:settled' below and the client merges them in.
+  io.to(gameRoom(gameId)).emit('game:over', {
+    gameId,
+    result,
+    reason: endReason,
+    whiteRemainingMs: finalState.whiteRemainingMs,
+    blackRemainingMs: finalState.blackRemainingMs,
+  });
+
   const wagerSettlement = await settleWager(
     gameId,
     finalState.whiteId,
@@ -196,14 +205,10 @@ async function endGameAndBroadcast(
     return null;
   });
 
-  io.to(gameRoom(gameId)).emit('game:over', {
+  io.to(gameRoom(gameId)).emit('game:settled', {
     gameId,
-    result,
-    reason: endReason,
     wagerSettlement,
     ratingUpdate,
-    whiteRemainingMs: finalState.whiteRemainingMs,
-    blackRemainingMs: finalState.blackRemainingMs,
   });
   finalizeGame(gameId, finalState.fen, 'finished', result, endReason, {
     whiteRemainingMs: finalState.whiteRemainingMs,
@@ -595,7 +600,9 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           moveNumber: result.moveNumber,
           whiteRemainingMs: result.whiteRemainingMs,
           blackRemainingMs: result.blackRemainingMs,
-          turnStartedAtMs: Date.now(),
+          // The value the server's own clock math uses (see MoveResult),
+          // NOT a fresh Date.now() taken after the Redis write.
+          turnStartedAtMs: result.turnStartedAtMs,
           // Same timestamp persisted via appendMove below (not two separate
           // Date.now() calls), this is what lets a client reconstruct a
           // per-move clock/think-time reading without a full refetch, same

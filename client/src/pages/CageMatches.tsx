@@ -18,6 +18,7 @@ import {
   CardContent,
   Button,
   Badge,
+  Spinner,
 } from "../components/ui/index.js";
 import { formatRelativeTime } from "@/lib/utils.js";
 import { cn } from "@/lib/cn.js";
@@ -103,11 +104,16 @@ function PaginatedMatchCard({
   matches,
   myId,
   emptyMessage,
+  loading = false,
 }: {
   title: string;
   matches: CageMatch[];
   myId: string | undefined;
   emptyMessage: string;
+  /** True until the first fetch settles, shows a spinner instead of the
+   *  empty message so "No finished cage matches yet" doesn't flash before
+   *  the real list arrives. */
+  loading?: boolean;
 }) {
   const [page, setPage] = useState(0);
   const pageCount = Math.max(1, Math.ceil(matches.length / PAGE_SIZE));
@@ -125,17 +131,25 @@ function PaginatedMatchCard({
         <CardTitle>{title}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
-        {matches.length === 0 && (
-          <p className="text-sm text-base-content/50">{emptyMessage}</p>
+        {loading ? (
+          <div className="flex justify-center py-6">
+            <Spinner className="text-base-content/40" />
+          </div>
+        ) : (
+          <>
+            {matches.length === 0 && (
+              <p className="text-sm text-base-content/50">{emptyMessage}</p>
+            )}
+            {pageItems.map((m) => (
+              <CageMatchRow key={m._id} m={m} myId={myId} />
+            ))}
+            <Pagination
+              page={safePage}
+              pageCount={pageCount}
+              onPageChange={setPage}
+            />
+          </>
         )}
-        {pageItems.map((m) => (
-          <CageMatchRow key={m._id} m={m} myId={myId} />
-        ))}
-        <Pagination
-          page={safePage}
-          pageCount={pageCount}
-          onPageChange={setPage}
-        />
       </CardContent>
     </Card>
   );
@@ -148,6 +162,7 @@ export function CageMatches() {
   const navigate = useNavigate();
   const location = useLocation();
   const [matches, setMatches] = useState<CageMatch[]>([]);
+  const [matchesLoading, setMatchesLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [status, setStatus] = useState<{
     message: string;
@@ -164,7 +179,9 @@ export function CageMatches() {
   const finishedMatches = matches.filter((m) => m.status !== "active");
 
   const refreshMatches = useCallback(() => {
-    return listMyCageMatches().then((res) => setMatches(res.matches));
+    return listMyCageMatches()
+      .then((res) => setMatches(res.matches))
+      .finally(() => setMatchesLoading(false));
   }, []);
 
   const handleManualRefresh = useCallback(() => {
@@ -253,12 +270,20 @@ export function CageMatches() {
             />
           </CardHeader>
           <CardContent className="space-y-2">
-            {activeMatches.length === 0 && (
-              <p className="text-sm text-base-content/50">None right now.</p>
+            {matchesLoading ? (
+              <div className="flex justify-center py-6">
+                <Spinner className="text-base-content/40" />
+              </div>
+            ) : (
+              <>
+                {activeMatches.length === 0 && (
+                  <p className="text-sm text-base-content/50">None right now.</p>
+                )}
+                {activeMatches.map((m) => (
+                  <CageMatchRow key={m._id} m={m} myId={myId} />
+                ))}
+              </>
             )}
-            {activeMatches.map((m) => (
-              <CageMatchRow key={m._id} m={m} myId={myId} />
-            ))}
           </CardContent>
         </Card>
 
@@ -267,6 +292,7 @@ export function CageMatches() {
           matches={finishedMatches}
           myId={myId}
           emptyMessage="No finished cage matches yet."
+          loading={matchesLoading}
         />
       </div>
     </Page>

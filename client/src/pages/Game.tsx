@@ -190,10 +190,10 @@ export function Game() {
     orig: string;
     dest: string;
   } | null>(null);
-  // Just the expiry timestamp. DisconnectBanner (a separate component)
-  // derives the countdown text/claimable state itself and owns its own
-  // 500ms tick, so this state only ever changes on actual socket events,
-  // never on a timer. See DisconnectBanner.tsx for why that matters.
+  // Just the expiry timestamp. The opponent's player panel (DisconnectBadge
+  // in PlayerPanels.tsx) derives the countdown text/claimable state itself
+  // and owns its own 500ms tick, so this state only ever changes on actual
+  // socket events, never on a timer.
   const [disconnectExpiresAt, setDisconnectExpiresAt] = useState<number | null>(
     null,
   );
@@ -568,8 +568,32 @@ export function Game() {
   // The panel matching my seat renders closest to me, bottom on desktop,
   // right-hand flank on mobile; the opponent's is the mirror of that.
   const myPanelData = myColor === "black" ? blackPanelData : whitePanelData;
-  const opponentPanelData =
+  const opponentPanelBase =
     myColor === "black" ? whitePanelData : blackPanelData;
+  // Stable claim callback so the memoized panel data below doesn't get a
+  // new reference (and re-render the panel) on every Game render.
+  const gameMetaId = gameMeta?._id;
+  const claimDisconnect = useCallback(
+    (claim: "win" | "draw") => {
+      if (!socket || !gameMetaId) return;
+      socket.emit("game:claim_disconnect", { gameId: gameMetaId, claim });
+    },
+    [socket, gameMetaId],
+  );
+  // The opponent's disconnect countdown / claim buttons live in THEIR
+  // panel (under the username, where "Move in Xs" shows) rather than in a
+  // floating banner over the board. Hidden during the idle phase (first
+  // two plies), where the first-move timer already covers a no-show.
+  const showDisconnect = disconnectExpiresAt !== null && moves.length >= 2;
+  const opponentPanelData = useMemo(
+    () => ({
+      ...opponentPanelBase,
+      disconnect: showDisconnect
+        ? { expiresAt: disconnectExpiresAt as number, onClaim: claimDisconnect }
+        : null,
+    }),
+    [opponentPanelBase, showDisconnect, disconnectExpiresAt, claimDisconnect],
+  );
 
   // Fires the low-time sound once the moment MY clock first drops under
   // the threshold, then rearms if it climbs back above it (e.g. an
@@ -930,6 +954,28 @@ export function Game() {
       }
     }
 
+    // The server now emits game:over the instant the result is known and
+    // follows with this once the wager payout / rating update have been
+    // computed (see endGameAndBroadcast). Merge them into the existing
+    // gameOver state so the modal fills in without having delayed itself.
+    function onSettled(payload: {
+      wagerSettlement?: WagerSettlement | null;
+      ratingUpdate?: RatingUpdate | null;
+    }) {
+      setGameOver((prev) =>
+        prev
+          ? {
+              ...prev,
+              wagerSettlement: payload.wagerSettlement ?? prev.wagerSettlement,
+              ratingUpdate: payload.ratingUpdate ?? prev.ratingUpdate,
+            }
+          : prev,
+      );
+      if (payload.wagerSettlement && payload.wagerSettlement.wagerTokens > 0) {
+        refreshBalance().catch(() => {});
+      }
+    }
+
     function onError(payload: { message: string }) {
       setMoveError(payload.message);
       // Only revert if a move is actually the thing awaiting confirmation
@@ -992,7 +1038,7 @@ export function Game() {
 
     function onClaimAvailable() {
       if (roleRef.current === "spectator") return;
-      // Already-past timestamp. DisconnectBanner treats that as
+      // Already-past timestamp. DisconnectBadge treats that as
       // immediately claimable, same as when the countdown reaches zero.
       setDisconnectExpiresAt(Date.now());
     }
@@ -1088,6 +1134,7 @@ export function Game() {
     socket.on("game:sync", onSync);
     socket.on("game:move", onMove);
     socket.on("game:over", onOver);
+    socket.on("game:settled", onSettled);
     socket.on("game:error", onError);
     socket.on("game:opponent_connected", onOpponentConnected);
     socket.on("game:spectator_count", onSpectatorCount);
@@ -1117,6 +1164,7 @@ export function Game() {
       socket.off("game:sync", onSync);
       socket.off("game:move", onMove);
       socket.off("game:over", onOver);
+      socket.off("game:settled", onSettled);
       socket.off("game:error", onError);
       socket.off("game:opponent_connected", onOpponentConnected);
       socket.off("game:spectator_count", onSpectatorCount);
@@ -1340,11 +1388,6 @@ export function Game() {
   function handleOfferDraw() {
     if (!socket || !gameMeta) return;
     socket.emit("game:offer_draw", { gameId: gameMeta._id });
-  }
-
-  function handleClaim(claim: "win" | "draw") {
-    if (!socket || !gameMeta) return;
-    socket.emit("game:claim_disconnect", { gameId: gameMeta._id, claim });
   }
 
   function handleRematch() {
@@ -1934,9 +1977,6 @@ export function Game() {
         isCageMatch={!!gameMeta?.cageMatchId}
         resumeRequestSent={resumeRequestSent}
         onResumeRequest={handleResumeRequest}
-        disconnectExpiresAt={disconnectExpiresAt}
-        isIdlePhase={isIdlePhase}
-        onClaim={handleClaim}
       />
 
       {/* Main layout, a plain top-to-bottom stack on phone (details, board,

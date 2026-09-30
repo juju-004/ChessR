@@ -34,7 +34,7 @@ export function clearGameTimer(gameId: string): void {
 // Node's own setTimeout scheduling jitter, not a full round trip, so it can
 // stay small, a large buffer here just reads as a delay before the loser
 // gets declared.
-const FLAG_FALL_GRACE_MS = 250;
+const FLAG_FALL_GRACE_MS = 120;
 
 export async function scheduleGameTimer(gameId: string): Promise<void> {
   clearGameTimer(gameId);
@@ -57,8 +57,15 @@ export async function scheduleGameTimer(gameId: string): Promise<void> {
   }
 
   const sideToMove = getSideToMove(state.fen);
-  const remaining =
-    (sideToMove === 'white' ? state.whiteRemainingMs : state.blackRemainingMs) ?? 0;
+  // Time left as of NOW, not as of turnStartedAtMs: this runs a few Redis
+  // round trips after the move was applied, and the old code started a
+  // full `remaining` countdown from here, so the flag fired late by that
+  // whole gap on top of the grace window.
+  const remaining = Math.max(
+    0,
+    ((sideToMove === 'white' ? state.whiteRemainingMs : state.blackRemainingMs) ?? 0) -
+      (Date.now() - state.turnStartedAtMs),
+  );
 
   const timer = setTimeout(async () => {
     timers.delete(gameId);

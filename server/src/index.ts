@@ -5,7 +5,7 @@ import { disconnectRedis } from './config/redis.js';
 import { createApp } from './app.js';
 import { initSocketServer } from './sockets/index.js';
 import { getIo } from './sockets/io.js';
-import { reconcileActiveGames, sweepAbortedGames } from './services/game.service.js';
+import { reconcileActiveGames, sweepAbortedGames, sweepStaleWaitingGames } from './services/game.service.js';
 import { reconcileActiveTournaments, sweepCancelledTournaments, resolveDesyncedArenaPairings } from './services/tournament.service.js';
 import { reconcilePresence } from './services/presence.service.js';
 import { runAllQuickPairingPasses } from './services/quickPairing.service.js';
@@ -104,6 +104,14 @@ async function main() {
     })
     .catch((err) => console.error('sweepCancelledTournaments failed on boot:', err));
 
+  // Open games nobody joined get auto-aborted + refunded (see
+  // sweepStaleWaitingGames / WAITING_GAME_TTL_MS in game.service.ts).
+  sweepStaleWaitingGames()
+    .then(({ aborted }) => {
+      if (aborted) console.log(`🧹 Auto-aborted ${aborted} unjoined game(s) on boot.`);
+    })
+    .catch((err) => console.error('sweepStaleWaitingGames failed on boot:', err));
+
   // Same idea, for standalone aborted games (see sweepAbortedGames' own
   // comment for what's excluded and why).
   sweepAbortedGames()
@@ -125,6 +133,7 @@ async function main() {
     reconcilePresence(getIo()).catch((err) => console.error('periodic reconcilePresence failed:', err));
     sweepCancelledTournaments().catch((err) => console.error('periodic sweepCancelledTournaments failed:', err));
     sweepAbortedGames().catch((err) => console.error('periodic sweepAbortedGames failed:', err));
+    sweepStaleWaitingGames().catch((err) => console.error('periodic sweepStaleWaitingGames failed:', err));
   }, 60 * 1000);
   reconcileInterval.unref();
 

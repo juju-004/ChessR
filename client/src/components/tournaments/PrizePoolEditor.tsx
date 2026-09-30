@@ -5,6 +5,7 @@ import {
   prizeTiersToText,
   tokensLabel,
   ordinalSuffix,
+  MAX_TOURNAMENT_PLAYERS,
   type TournamentPrizeTier,
 } from "../../api/tournaments.js";
 import { HelpTip } from "../HelpTip.js";
@@ -14,9 +15,6 @@ import { Textarea } from "../ui/index.js";
 interface PrizePoolEditorProps {
   value: TournamentPrizeTier[];
   onChange: (tiers: TournamentPrizeTier[]) => void;
-  /** Used only to flag a tier that reaches past the field cap, a hint,
-   *  not a hard block; the real validation still happens on submit. */
-  maxPlayers: number;
   /** 'tokens' (default) shows the RCoin icon everywhere an amount is
    *  displayed; 'naira' shows a plain ₦ prefix instead. Purely cosmetic —
    *  the underlying tier numbers and parsing are identical either way,
@@ -48,7 +46,6 @@ function AmountUnit({
 export function PrizePoolEditor({
   value,
   onChange,
-  maxPlayers,
   currency = "tokens",
 }: PrizePoolEditorProps) {
   const [text, setText] = useState(() => prizeTiersToText(value));
@@ -65,7 +62,7 @@ export function PrizePoolEditor({
     (sum, t) => sum + t.tokens * (t.toRank - t.fromRank + 1),
     0,
   );
-  const overflowTier = value.find((t) => t.toRank > maxPlayers);
+  const overflowTier = value.find((t) => t.toRank > MAX_TOURNAMENT_PLAYERS);
 
   return (
     <div className="space-y-2">
@@ -117,8 +114,9 @@ export function PrizePoolEditor({
       {overflowTier && (
         <p className="text-xs text-amber-500">
           {overflowTier.toRank}
-          {ordinalSuffix(overflowTier.toRank)} place is past your {maxPlayers}
-          -player cap. Raise the cap or trim the schedule before saving.
+          {ordinalSuffix(overflowTier.toRank)} place is past the{" "}
+          {MAX_TOURNAMENT_PLAYERS}-player limit. Trim the schedule before
+          saving.
         </p>
       )}
 

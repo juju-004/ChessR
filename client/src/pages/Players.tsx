@@ -378,20 +378,28 @@ export function Players() {
                 <div
                   key={f.id}
                   onClick={() => navigate(`/profile/${f.username}`)}
-                  className="-mx-2  flex cursor-pointer flex-wrap items-center justify-between gap-2 rounded-lg border-b border-base-300 px-2 py-2 transition-colors last:border-none hover:bg-base-100/60!"
+                  className="-mx-2 flex cursor-pointer items-center justify-between gap-2 rounded-lg border-b border-base-300 px-2 py-2 transition-colors last:border-none hover:bg-base-100/60!"
                 >
-                  <span className="flex min-w-0 items-center gap-2.5 text-sm text-base-content">
+                  {/* No flex-wrap on this row: a long username used to push
+                   *  the Challenge button onto its own line. Instead the
+                   *  name block flexes/shrinks (min-w-0 flex-1) and the name
+                   *  itself truncates, while the action buttons stay
+                   *  shrink-0 on the same line. */}
+                  <span className="flex min-w-0 flex-1 items-center gap-2.5 text-sm text-base-content">
                     <Avatar
                       username={f.username}
                       size="sm"
                       gradient={f.avatarGradient}
                       status={f.online ? "online" : "offline"}
+                      className="shrink-0"
                     />
-                    <span className="truncate">{f.username}</span>
-                    <RatingBadge rating={f.rating} />
+                    <span className="min-w-0 truncate">{f.username}</span>
+                    <span className="shrink-0">
+                      <RatingBadge rating={f.rating} />
+                    </span>
                   </span>
                   <span
-                    className="flex flex-wrap items-center gap-2"
+                    className="flex shrink-0 items-center gap-2"
                     onClick={(e) => e.stopPropagation()}
                   >
                     {f.activeGameCode ? (

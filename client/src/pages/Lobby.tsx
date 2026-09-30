@@ -376,27 +376,35 @@ export function Lobby() {
               return (
                 <div key={g._id}>
                   <div
-                    className={`flex items-center justify-between gap-3 rounded-2xl border px-3.5 py-3 transition-colors ${
+                    className={`flex flex-col gap-2.5 rounded-2xl border px-3.5 py-3 transition-colors sm:flex-row sm:items-center sm:justify-between sm:gap-3 ${
                       mine
                         ? "border-(--primary)/40 bg-(--primary)/5"
                         : "border-base-300 bg-base-100/60 hover:border-base-content/20"
                     }`}
                   >
+                    {/* Below sm the card stacks into two rows (who + time
+                     *  control on top, wager + action buttons underneath)
+                     *  so the player name gets the whole card width instead
+                     *  of what's left beside the buttons, that side-by-side
+                     *  layout was truncating names to a few letters on
+                     *  phones. From sm up it's the original single row. */}
                     <div className="flex min-w-0 items-center gap-3">
                       <Avatar
                         username={g.white.username}
                         gradient={g.white.avatarGradient}
                         size="md"
                       />
-                      <div className="min-w-0 text-sm text-base-content">
-                        <div className="flex items-center gap-1.5">
+                      <div className="min-w-0 flex-1 text-sm text-base-content">
+                        <div className="flex min-w-0 items-center gap-1.5">
                           <Link
                             to={`/profile/${g.white.username}`}
-                            className="truncate font-semibold hover:underline"
+                            className="min-w-0 truncate font-semibold hover:underline"
                           >
                             {mine ? "You" : g.white.username}
                           </Link>
-                          <RatingBadge rating={g.white.rating} />
+                          <span className="shrink-0">
+                            <RatingBadge rating={g.white.rating} />
+                          </span>
                         </div>
                         <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-base-content/50">
                           <span className="inline-flex items-center gap-1">
@@ -411,7 +419,7 @@ export function Lobby() {
                       </div>
                     </div>
 
-                    <div className="flex shrink-0 items-center gap-3">
+                    <div className="flex shrink-0 items-center justify-between gap-3 border-t border-base-300/60 pt-2.5 sm:justify-end sm:border-t-0 sm:pt-0">
                       {g.wagerTokens > 0 ? (
                         <span className="inline-flex items-center gap-1 text-sm font-bold text-amber-400 tabular-nums">
                           {g.wagerTokens} <RCoin size={14} />
