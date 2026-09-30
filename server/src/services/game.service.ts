@@ -424,8 +424,8 @@ export async function listOpenGames(excludeUserId?: string) {
 
 export async function getGameByCode(code: string) {
   const game = await Game.findOne({ joinCode: code.toUpperCase() })
-    .populate("white", "username avatarGradient rating ratedGamesPlayed")
-    .populate("black", "username avatarGradient rating ratedGamesPlayed")
+    .populate("white", "username avatarGradient rating")
+    .populate("black", "username avatarGradient rating")
     // Just enough of the tournament for the "Back to tournament" link
     // (code), the in-game badge label (name), and — for formats that have
     // one — the live countdown badge (format + arenaEndsAt; arenaMinutes

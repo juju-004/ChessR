@@ -22,7 +22,7 @@ import {
 } from '../services/game.service.js';
 import { advanceCageMatchLeg } from '../services/cageMatch.service.js';
 import { advanceTournamentIfPairing, berserkInTournamentGame } from '../services/tournament.service.js';
-import { applyRatingForGame, getRatingCategory } from '../services/rating.service.js';
+import { applyRatingForGame } from '../services/rating.service.js';
 import { getLagCompensationMs } from '../services/latency.service.js';
 import { addChatMessage, getChatHistory, isChatRateLimited, isRepeatMessage, type ChatScope } from '../services/chat.service.js';
 import { assertNotRestricted } from '../services/suspension.service.js';
@@ -131,24 +131,6 @@ function playerChatScopeFor(game: { _id: unknown; cageMatchId?: unknown }): { sc
 
 function emitError(socket: Socket, message: string) {
   socket.emit('game:error', { message });
-}
-
-// Adds the computed tier category alongside a populated white/black
-// sub-doc's rating fields. The rating itself is no longer hidden from
-// clients, so `rating` is left in the payload rather than stripped —
-// populate queries in this file select `rating`/`ratedGamesPlayed` for
-// both purposes now: computing the tier here, and the client showing the
-// raw number directly.
-function withRatingCategory<T extends { rating?: number; ratedGamesPlayed?: number } | null>(
-  player: T,
-) {
-  if (!player) return player;
-  const { rating, ratedGamesPlayed, ...rest } = player as any;
-  return {
-    ...rest,
-    rating: rating ?? 1500,
-    ratingCategory: getRatingCategory(rating ?? 1500, ratedGamesPlayed ?? 0),
-  };
 }
 
 function safeHandler<T>(socket: Socket, fn: (payload: T) => Promise<void>) {
@@ -428,8 +410,8 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       const { gameId } = parsed.data;
 
       const game = await Game.findById(gameId)
-        .populate('white', 'username avatarGradient rating ratedGamesPlayed')
-        .populate('black', 'username avatarGradient rating ratedGamesPlayed')
+        .populate('white', 'username avatarGradient rating')
+        .populate('black', 'username avatarGradient rating')
         .lean();
       if (!game) return emitError(socket, 'Game not found');
 
@@ -519,8 +501,8 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         status: liveState?.status ?? game.status,
         result: liveState?.result ?? game.result,
         endReason: liveState?.endReason ?? game.endReason,
-        white: withRatingCategory(game.white as any),
-        black: withRatingCategory(game.black as any),
+        white: game.white,
+        black: game.black,
         whiteConnected,
         blackConnected,
         spectatorCount,

@@ -9,8 +9,8 @@ export interface GameMeta {
   joinCode: string;
   variant: "standard" | "chess960";
   initialFen: string;
-  white: { _id: string; username: string; avatarGradient?: any; rating?: number | null; ratingCategory?: string | null } | null;
-  black: { _id: string; username: string; avatarGradient?: any; rating?: number | null; ratingCategory?: string | null } | null;
+  white: { _id: string; username: string; avatarGradient?: any; rating?: number | null } | null;
+  black: { _id: string; username: string; avatarGradient?: any; rating?: number | null } | null;
   status: "waiting" | "active" | "finished" | "aborted";
   timeControl: { baseSeconds: number | null; incrementSeconds: number };
   wagerTokens?: number;
@@ -68,20 +68,11 @@ export interface MoveLogEntry {
 export type Role = "white" | "black" | "spectator";
 
 export interface RatingSideUpdate {
-  previousCategory: string | null;
-  newCategory: string | null;
   ratedGamesPlayed: number;
   /** Rating points gained/lost this game, positive or negative. */
   delta: number;
   /** The player's actual rating after this game. */
   newRating: number;
-  /** Points left to the next tier after this game, null if unranked or
-   *  already at the top tier. */
-  pointsToNextTier: { points: number; nextTierName: string } | null;
-  /** Mirrors gamesUntilRanked(ratedGamesPlayed) on the server, for the
-   *  "Unranked, N more games to go" message when newCategory is still
-   *  null after this game. */
-  ratedGamesUntilRanked: number;
 }
 
 export interface RatingUpdate {

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, XCircle } from "lucide-react";
-import { TestModeBanner } from "../components/TestModeBanner.js";
 import {
   getWalletConfig,
   initPurchase,
@@ -139,8 +138,6 @@ export function BuyTokens() {
       back="/"
       bare
     >
-      <TestModeBanner className="mb-4" />
-
       {error && (
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-3.5 py-2.5 text-sm text-red-400">
           <XCircle className="mt-0.5 h-4 w-4 shrink-0" />

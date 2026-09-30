@@ -6,7 +6,6 @@ import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { getUserSocketIds } from '../services/presence.service.js';
 import { getActiveGameCodeForUser } from '../services/game.service.js';
-import { getRatingCategory } from '../services/rating.service.js';
 import { getIo } from '../sockets/io.js';
 import type { AuthedRequest } from '../middleware/auth.js';
 
@@ -31,7 +30,7 @@ export const sendFriendRequest = asyncHandler(async (req: AuthedRequest, res) =>
 
   const [toUser, fromUser] = await Promise.all([
     User.findById(toUserId).select('username friends'),
-    User.findById(fromUserId).select('username friends avatarGradient rating ratedGamesPlayed'),
+    User.findById(fromUserId).select('username friends avatarGradient rating'),
   ]);
   if (!toUser) throw ApiError.notFound('User not found');
 
@@ -70,7 +69,6 @@ export const sendFriendRequest = asyncHandler(async (req: AuthedRequest, res) =>
       username: fromUser!.username,
       avatarGradient: fromUser!.avatarGradient ?? null,
       rating: fromUser!.rating,
-      ratingCategory: getRatingCategory(fromUser!.rating, fromUser!.ratedGamesPlayed),
     },
   });
 
@@ -107,7 +105,7 @@ export const respondToFriendRequest = asyncHandler(async (req: AuthedRequest, re
 
 export const listFriends = asyncHandler(async (req: AuthedRequest, res) => {
   const user = await User.findById(req.user!.id)
-    .populate('friends', 'username avatarUrl avatarGradient rating ratedGamesPlayed')
+    .populate('friends', 'username avatarUrl avatarGradient rating')
     .lean();
   if (!user) throw ApiError.notFound('User not found');
 
@@ -118,7 +116,6 @@ export const listFriends = asyncHandler(async (req: AuthedRequest, res) => {
       avatarUrl: f.avatarUrl,
       avatarGradient: f.avatarGradient ?? null,
       rating: f.rating,
-      ratingCategory: getRatingCategory(f.rating, f.ratedGamesPlayed),
       online: (await getUserSocketIds(f._id.toString())).length > 0,
       activeGameCode: await getActiveGameCodeForUser(f._id.toString(), req.user!.id),
     })),
@@ -129,20 +126,9 @@ export const listFriends = asyncHandler(async (req: AuthedRequest, res) => {
 
 export const listIncomingRequests = asyncHandler(async (req: AuthedRequest, res) => {
   const requests = await FriendRequest.find({ to: req.user!.id, status: 'pending' })
-    .populate('from', 'username avatarUrl avatarGradient rating ratedGamesPlayed')
+    .populate('from', 'username avatarUrl avatarGradient rating')
     .lean();
-  res.json({
-    requests: requests.map((r) => {
-      const from = r.from as any;
-      return {
-        ...r,
-        from: {
-          ...from,
-          ratingCategory: getRatingCategory(from.rating, from.ratedGamesPlayed),
-        },
-      };
-    }),
-  });
+  res.json({ requests });
 });
 
 export const removeFriend = asyncHandler(async (req: AuthedRequest, res) => {

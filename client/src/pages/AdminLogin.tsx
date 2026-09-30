@@ -29,11 +29,11 @@ export function AdminLogin() {
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-base-300 px-4">
+    <div className="flex min-h-dvh items-center justify-center bg-base-300 px-3 py-6 sm:px-4">
       <div className="w-full max-w-sm">
         <div className="mb-4 flex flex-col items-center gap-2 text-base-content">
           <ShieldCheck className="h-8 w-8 text-(--primary)" />
-          <h1 className="text-lg font-semibold">Chessr review console</h1>
+          <h1 className="text-center text-lg font-semibold">Chessr review console</h1>
           <p className="text-center text-xs text-base-content/50">
             Internal tool for reviewing reported games. Not a player account.
           </p>
@@ -50,7 +50,7 @@ export function AdminLogin() {
                 autoComplete="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full rounded-lg border border-base-300 bg-base-200/60 px-3 py-2 text-sm text-base-content outline-none focus:border-(--primary)"
+                className="w-full rounded-lg border border-base-300 bg-base-200/60 px-3 py-2 text-base text-base-content outline-none focus:border-(--primary) sm:text-sm"
               />
             </div>
             <div>
@@ -63,7 +63,7 @@ export function AdminLogin() {
                 autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-lg border border-base-300 bg-base-200/60 px-3 py-2 text-sm text-base-content outline-none focus:border-(--primary)"
+                className="w-full rounded-lg border border-base-300 bg-base-200/60 px-3 py-2 text-base text-base-content outline-none focus:border-(--primary) sm:text-sm"
               />
             </div>
             {error && <p className="text-sm text-red-500">{error}</p>}

@@ -10,7 +10,6 @@ import {
 } from "../api/wallet.js";
 import { ApiRequestError } from "../api/http.js";
 import { useTokenBalance } from "../hooks/useTokenBalance.js";
-import { TestModeBanner } from "../components/TestModeBanner.js";
 import {
   Page,
   Card,
@@ -191,7 +190,6 @@ export function Withdraw() {
       back="/"
       bare
     >
-      <TestModeBanner className="mb-4" />
       <div className="mb-4 flex items-center justify-between rounded-xl border border-base-300 bg-base-100/60 px-3.5 py-2.5 text-sm">
         <span className="text-base-content/70">
           Won a Chessr tournament prize?

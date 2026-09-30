@@ -1,38 +1,43 @@
 import { Game } from "../models/Game.js";
 import { User } from "../models/User.js";
 
-// --- Hidden rating -----------------------------------------------------------
+// --- Rating ------------------------------------------------------------------
 // Deliberately NOT the lichess/chess.com model of a separate rating per time
 // control + variant. Every decisive/drawn game, bullet, blitz, rapid,
 // classical, standard, Chess960, a standalone game, a cage-match leg, a
-// tournament pairing, feeds into ONE number per player. The player never
-// sees this number directly; only the tier name it maps to (see
-// getRatingCategory below) is ever shown.
+// tournament pairing, feeds into ONE number per player, shown as-is.
 
 export const RATING_START = 1500;
 
-// Below this many rated games, a player's tier reads as "Unranked" no
-// matter what their hidden rating actually is. Set to 1 (David: "ranked
-// after the first game instead of having to play many games") — a brand
-// new player is still on the K=40 bucket (see getKFactor) so their rating
-// still swings hard for a while, this just controls when a tier badge
-// first appears, not how fast the underlying number settles.
-export const PROVISIONAL_GAMES_THRESHOLD = 1;
+// How hard a brand-new player's first result moves their rating. With the
+// schedule in getKFactor below, game 1 has K = 550, so beating an equally
+// rated opponent is worth 550 * 0.5 = +275 (and losing one is -275), the
+// same "placement" feel as a new lichess account. Each further game
+// shrinks that bonus geometrically: roughly +208, +160, +123, +97, +77 ...
+// for equal-strength wins, settling into the normal schedule by ~20 games.
+const PROVISIONAL_BONUS_K = 510;
+const PROVISIONAL_DECAY = 0.74;
 
 /**
- * K-factor by games played so far (before this game), this is the
- * "large swings at first, settling down later" behavior. Not a true
- * Glicko-2 rating-deviation model (no separate uncertainty value tracked
- * per player), just a bucketed K-factor schedule that approximates the same
- * shape: a brand-new player's rating can swing up to 40 points off a single
- * result, a well-established one (80+ rated games) moves by at most 10.
+ * K-factor by games played so far (before this game). Two parts added
+ * together:
+ *   - an established-player base that steps down with experience
+ *     (40 -> 32 -> 24 -> 16 -> 10), and
+ *   - a provisional bonus that starts large and decays geometrically, so
+ *     the first game swings hugely, the next few swing a lot less, and by
+ *     around 20 games it has effectively vanished.
+ * Not a true Glicko-2 model (no per-player uncertainty value is stored),
+ * just a schedule that reproduces the same "big early swings that keep
+ * shrinking" shape without any extra fields on the user.
  */
-function getKFactor(ratedGamesPlayed: number): number {
-  if (ratedGamesPlayed < 10) return 40;
-  if (ratedGamesPlayed < 20) return 32;
-  if (ratedGamesPlayed < 40) return 24;
-  if (ratedGamesPlayed < 80) return 16;
-  return 10;
+export function getKFactor(ratedGamesPlayed: number): number {
+  let base: number;
+  if (ratedGamesPlayed < 10) base = 40;
+  else if (ratedGamesPlayed < 20) base = 32;
+  else if (ratedGamesPlayed < 40) base = 24;
+  else if (ratedGamesPlayed < 80) base = 16;
+  else base = 10;
+  return Math.round(base + PROVISIONAL_BONUS_K * PROVISIONAL_DECAY ** ratedGamesPlayed);
 }
 
 function expectedScore(myRating: number, opponentRating: number): number {
@@ -40,20 +45,13 @@ function expectedScore(myRating: number, opponentRating: number): number {
 }
 
 export interface RatingSideUpdate {
-  previousCategory: string | null;
-  newCategory: string | null;
   ratedGamesPlayed: number;
   /** How many rating points this game moved this player, positive or
    *  negative. */
   delta: number;
-  /** The player's actual rating after this game. No longer hidden — shown
-   *  alongside delta so the game-over modal can read e.g. "1523 (+8)". */
+  /** The player's actual rating after this game, shown alongside delta so
+   *  the game-over modal can read e.g. "1523 (+8)". */
   newRating: number;
-  /** Points left to the next tier after this game, see pointsToNextTier. */
-  pointsToNextTier: NextTierProgress | null;
-  /** Mirrors gamesUntilRanked(ratedGamesPlayed), for the "Unranked, N more
-   *  games to go" message when newCategory is still null after this game. */
-  ratedGamesUntilRanked: number;
 }
 
 export interface RatingUpdateResult {
@@ -71,16 +69,15 @@ export interface RatingUpdateResult {
  * and draws count, or if this game already had its rating applied by a
  * previous call.
  *
- * Returns each side's tier category before and after the game, plus the
- * actual new rating, so a caller can show both a "you just ranked up to X"
- * moment and the raw number/delta. Both players' deltas are
+ * Returns each side's new rating and delta so a caller can show the raw
+ * number and change. Both players' deltas are
  * computed from a single fresh read of both ratings, then applied via
  * $inc. If the same player has two games finish within moments of each
  * other (they can have up to MAX_ACTIVE_GAMES_PER_USER active at once),
  * both deltas end up computed against a very slightly stale
  * opponent-comparison base rather than a serialized one-at-a-time update,
  * a minor, self-correcting approximation, not worth the added complexity
- * of a lock/transaction for a hidden number that's already only an
+ * of a lock/transaction for a number that's already only an
  * approximation of skill.
  */
 export async function applyRatingForGame(
@@ -134,101 +131,16 @@ export async function applyRatingForGame(
 
   return {
     white: {
-      previousCategory: getRatingCategory(white.rating, white.ratedGamesPlayed),
-      newCategory: updatedWhite
-        ? getRatingCategory(updatedWhite.rating, updatedWhite.ratedGamesPlayed)
-        : null,
       ratedGamesPlayed:
         updatedWhite?.ratedGamesPlayed ?? white.ratedGamesPlayed + 1,
       delta: whiteDelta,
       newRating: updatedWhite?.rating ?? white.rating + whiteDelta,
-      pointsToNextTier: updatedWhite
-        ? pointsToNextTier(updatedWhite.rating, updatedWhite.ratedGamesPlayed)
-        : null,
-      ratedGamesUntilRanked: gamesUntilRanked(
-        updatedWhite?.ratedGamesPlayed ?? white.ratedGamesPlayed + 1,
-      ),
     },
     black: {
-      previousCategory: getRatingCategory(black.rating, black.ratedGamesPlayed),
-      newCategory: updatedBlack
-        ? getRatingCategory(updatedBlack.rating, updatedBlack.ratedGamesPlayed)
-        : null,
       ratedGamesPlayed:
         updatedBlack?.ratedGamesPlayed ?? black.ratedGamesPlayed + 1,
       delta: blackDelta,
       newRating: updatedBlack?.rating ?? black.rating + blackDelta,
-      pointsToNextTier: updatedBlack
-        ? pointsToNextTier(updatedBlack.rating, updatedBlack.ratedGamesPlayed)
-        : null,
-      ratedGamesUntilRanked: gamesUntilRanked(
-        updatedBlack?.ratedGamesPlayed ?? black.ratedGamesPlayed + 1,
-      ),
     },
-  };
-}
-
-// --- Public-facing tier ladder ------------------------------------------------
-// Ordered low to high; `min` is inclusive and the top tier has no ceiling.
-// Purely cosmetic, tweak freely, it's read fresh from the hidden rating
-// every time rather than stored, so there's nothing to migrate.
-export interface RatingTier {
-  name: string;
-  min: number;
-}
-
-export const RATING_TIERS: RatingTier[] = [
-  { name: "Novice", min: 0 },
-  { name: "Beginner", min: 1000 },
-  { name: "Apprentice", min: 1300 },
-  { name: "Intermediate", min: 1600 },
-  { name: "Advanced", min: 1800 },
-  { name: "Expert", min: 2100 },
-  { name: "Master", min: 2300 },
-  { name: "Elite", min: 2600 },
-  { name: "Super Elite", min: 2900 },
-];
-
-/** The tier name to actually show for a player, or null for "Unranked"
- *  (fewer than PROVISIONAL_GAMES_THRESHOLD rated games so far). */
-export function getRatingCategory(
-  rating: number,
-  ratedGamesPlayed: number,
-): string | null {
-  if (ratedGamesPlayed < PROVISIONAL_GAMES_THRESHOLD) return null;
-  let current = RATING_TIERS[0].name;
-  for (const tier of RATING_TIERS) {
-    if (rating >= tier.min) current = tier.name;
-    else break;
-  }
-  return current;
-}
-
-/** How many more rated games until a tier first appears, 0 once already
- *  past the threshold. Client-friendly framing for the "Unranked" state
- *  ("4 games until your rank is calculated") instead of just a boolean. */
-export function gamesUntilRanked(ratedGamesPlayed: number): number {
-  return Math.max(0, PROVISIONAL_GAMES_THRESHOLD - ratedGamesPlayed);
-}
-
-export interface NextTierProgress {
-  /** Points still needed to reach `nextTierName`. */
-  points: number;
-  nextTierName: string;
-}
-
-/** How far this player is from the next tier up, or null when there's
- *  nothing meaningful to show: still provisional (no tier yet at all), or
- *  already at the top tier with nowhere further to climb. */
-export function pointsToNextTier(
-  rating: number,
-  ratedGamesPlayed: number,
-): NextTierProgress | null {
-  if (ratedGamesPlayed < PROVISIONAL_GAMES_THRESHOLD) return null;
-  const nextTier = RATING_TIERS.find((tier) => tier.min > rating);
-  if (!nextTier) return null; // already at the top tier
-  return {
-    points: Math.max(0, nextTier.min - rating),
-    nextTierName: nextTier.name,
   };
 }

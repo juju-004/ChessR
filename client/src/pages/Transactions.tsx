@@ -13,7 +13,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { getTransactions, type Transaction } from "../api/wallet.js";
-import { TestModeBanner } from "../components/TestModeBanner.js";
 import {
   Page,
   Card,
@@ -100,7 +99,6 @@ export function Transactions() {
       back="/"
       bare
     >
-      <TestModeBanner className="mb-4" />
       {loading && (
         <div className="flex justify-center py-16">
           <Spinner />

@@ -1,10 +1,5 @@
 import { apiFetch } from './http.js';
 
-export interface RatingTier {
-  name: string;
-  min: number;
-}
-
 export interface QuickPairingSegment {
   id: string;
   /** e.g. "1+0" */
@@ -18,7 +13,6 @@ export interface QuickPairingSegment {
 
 export interface PlatformConfig {
   rakePercent: number;
-  ratingTiers: RatingTier[];
   quickPairingSegments: QuickPairingSegment[];
 }
 

@@ -15,7 +15,6 @@ export interface TournamentPlayer {
   username: string;
   avatarGradient: string | null;
   rating: number;
-  ratingCategory: string | null;
   joinedAt: string;
   points: number;
   tiebreak: number;

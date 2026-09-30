@@ -149,7 +149,7 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
       const parsed = createSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid tournament settings');
 
-      const me = await User.findById(userId).select('username avatarGradient rating ratedGamesPlayed').lean();
+      const me = await User.findById(userId).select('username avatarGradient rating').lean();
       if (!me) return emitError(socket, 'Could not find your account');
 
       const tournament = await createTournament(
@@ -157,7 +157,6 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
         me.username,
         me.avatarGradient ?? null,
         me.rating,
-        me.ratedGamesPlayed,
         parsed.data as CreateTournamentInput,
       );
       await socket.join(tournamentRoom(tournament.id));
@@ -181,7 +180,7 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
     safeHandler(socket, async (raw: unknown) => {
       const parsed = joinSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid payload');
-      const me = await User.findById(userId).select('username avatarGradient rating ratedGamesPlayed').lean();
+      const me = await User.findById(userId).select('username avatarGradient rating').lean();
       if (!me) return emitError(socket, 'Could not find your account');
 
       const tournament = await joinTournament(
@@ -190,7 +189,6 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
         me.username,
         me.avatarGradient ?? null,
         me.rating,
-        me.ratedGamesPlayed,
         parsed.data.password,
       );
       await socket.join(tournamentRoom(tournament.id));

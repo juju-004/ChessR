@@ -62,7 +62,9 @@ function TournamentRow({ t }: { t: Tournament }) {
     >
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-medium text-base-content">{t.name}</span>
+          <span className="min-w-0 font-medium break-words text-base-content">
+            {t.name}
+          </span>
           <Badge variant={STATUS_VARIANT[t.status]}>{t.status}</Badge>
         </div>
         <div className="mt-0.5 text-xs text-base-content/50">

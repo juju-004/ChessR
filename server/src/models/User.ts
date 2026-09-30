@@ -77,16 +77,12 @@ export interface IUser extends Document {
    *  its own user object to show a countdown on Dashboard. */
   suspendedUntil?: Date;
   tokenVersion: number;
-  /** Internal skill rating. Elo-like, starts at 1500, shared across every
-   *  time control and variant (deliberately NOT split per-TC/variant like
-   *  lichess/chess.com). No longer hidden — sent to the client as a raw
-   *  number alongside the tier name from rating.service.ts's
-   *  getRatingCategory, which is still computed for the badge/icon. */
+  /** Skill rating. Elo-like, starts at 1500, shared across every time
+   *  control and variant (deliberately NOT split per-TC/variant like
+   *  lichess/chess.com). Shown to clients as a plain number. */
   rating: number;
-  /** Count of decisive/drawn games that have fed into `rating`. Doubles as
-   *  the provisional-period gate (see PROVISIONAL_GAMES_THRESHOLD in
-   *  rating.service.ts), below that count, ratingCategory reads as
-   *  "Unranked" no matter what the hidden number says. */
+  /** Count of decisive/drawn games that have fed into `rating`. Drives the
+   *  K-factor in rating.service.ts: the fewer games, the bigger the swing. */
   ratedGamesPlayed: number;
   /** Bank payout details for manual (WhatsApp-disbursed) naira tournament
    *  prizes, see AccountDetails.tsx / wallet.controller.ts. Deliberately

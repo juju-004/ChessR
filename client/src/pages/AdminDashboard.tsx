@@ -176,18 +176,26 @@ export function AdminDashboard() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-6">
-      <div className="mb-5 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-base-content">
-          <ShieldCheck className="h-5 w-5 text-(--primary)" />
-          <h1 className="text-lg font-semibold">Report review</h1>
+    <div className="mx-auto w-full max-w-4xl min-w-0 px-3 py-5 sm:px-4 sm:py-6">
+      <div className="mb-4 flex items-center justify-between gap-2 sm:mb-5">
+        <div className="flex min-w-0 items-center gap-2 text-base-content">
+          <ShieldCheck className="h-5 w-5 shrink-0 text-(--primary)" />
+          <h1 className="truncate text-lg font-semibold">Report review</h1>
         </div>
-        <Button variant="glass" size="sm" onClick={handleLogout}>
+        <Button
+          variant="glass"
+          size="sm"
+          onClick={handleLogout}
+          className="shrink-0"
+        >
           <LogOut className="h-4 w-4" /> Sign out
         </Button>
       </div>
 
-      <div className="mb-4">
+      {/* Four tabs don't fit a 320px screen, so the strip scrolls sideways
+       *  inside its own container (scrollbar hidden) instead of pushing
+       *  the whole page wider than the viewport. */}
+      <div className="mb-4 max-w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <Tabs
           value={tab}
           onChange={(v) => setTab(v as "reports" | "gameCheck" | "revenue" | "naira")}
@@ -243,13 +251,13 @@ export function AdminDashboard() {
             {reports.map((r) => (
               <Link key={r.id} to={`/admin/reports/${r.id}`}>
                 <Card variant="solid" interactive className="text-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-base-content">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="font-semibold break-all text-base-content">
                         {r.reportedUser?.username ?? "Unknown user"}
                       </span>
                       <span className="text-base-content/40">reported by</span>
-                      <span className="text-base-content/70">
+                      <span className="break-all text-base-content/70">
                         {r.reporter?.username ?? "Unknown"}
                       </span>
                       {r.reporter?.reportingBlocked && (
@@ -266,15 +274,15 @@ export function AdminDashboard() {
                     </div>
                     <Badge
                       variant={statusVariant[r.status]}
-                      className="capitalize"
+                      className="shrink-0 capitalize"
                     >
                       {r.status}
                     </Badge>
                   </div>
-                  <p className="mt-1.5 line-clamp-2 text-base-content/60">
+                  <p className="mt-1.5 line-clamp-2 break-words text-base-content/60">
                     {r.description}
                   </p>
-                  <p className="mt-1.5 text-xs text-base-content/40">
+                  <p className="mt-1.5 text-xs break-words text-base-content/40">
                     {r.reason.replace(/_/g, " ")}
                     {r.gameCode ? ` · game ${r.gameCode}` : ""} ·{" "}
                     {new Date(r.createdAt).toLocaleString()}
@@ -326,10 +334,10 @@ export function AdminDashboard() {
           <div className="space-y-2">
             {flags.map((f) => (
               <Card key={f.id} variant="solid" className="text-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <ShieldQuestion className="h-4 w-4 text-base-content/40" />
-                    <span className="font-semibold text-base-content">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    <ShieldQuestion className="h-4 w-4 shrink-0 text-base-content/40" />
+                    <span className="font-semibold break-all text-base-content">
                       {f.flaggedUser?.username ?? "Unknown user"}
                     </span>
                     <span className="text-base-content/40">
@@ -339,12 +347,12 @@ export function AdminDashboard() {
                       Score {f.score}
                     </Badge>
                   </div>
-                  <Badge variant={flagStatusVariant[f.status]} className="capitalize">
+                  <Badge variant={flagStatusVariant[f.status]} className="shrink-0 capitalize">
                     {f.status.replace(/_/g, " ")}
                   </Badge>
                 </div>
 
-                <ul className="mt-1.5 space-y-0.5 text-base-content/60">
+                <ul className="mt-1.5 space-y-0.5 break-words text-base-content/60">
                   {f.signals.map((sig, i) => (
                     <li key={i}>
                       <span className="text-base-content/40">{sig.type.replace(/_/g, " ")}:</span>{" "}
@@ -358,10 +366,11 @@ export function AdminDashboard() {
                 </p>
 
                 {f.status === "pending_review" && (
-                  <div className="mt-2.5 flex gap-2">
+                  <div className="mt-2.5 flex flex-col gap-2 sm:flex-row">
                     <Button
                       size="sm"
                       variant="glass"
+                      className="w-full sm:w-auto"
                       disabled={flagActionId === f.id}
                       onClick={() => handleFlagReview(f, "cleared")}
                     >
@@ -372,7 +381,7 @@ export function AdminDashboard() {
                       variant="glass"
                       disabled={flagActionId === f.id}
                       onClick={() => handleFlagReview(f, "actioned")}
-                      className="border-red-900/50 text-red-300"
+                      className="w-full border-red-900/50 text-red-300 sm:w-auto"
                     >
                       Confirm cheating
                     </Button>
@@ -384,7 +393,7 @@ export function AdminDashboard() {
         </>
       ) : tab === "naira" ? (
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
             <p className="text-xs text-base-content/50">
               Finished naira tournaments with prizes still to disburse.
               Account details are read live, so refresh any time to pick up
@@ -395,6 +404,7 @@ export function AdminDashboard() {
               size="sm"
               onClick={loadNairaTournaments}
               disabled={nairaLoading}
+              className="w-full shrink-0 sm:w-auto"
             >
               Refresh
             </Button>
@@ -424,10 +434,10 @@ export function AdminDashboard() {
           <div className="space-y-3">
             {nairaTournaments.map((t) => (
               <Card key={t.id} variant="solid" className="text-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Trophy className="h-4 w-4 text-base-content/40" />
-                    <span className="font-semibold text-base-content">
+                <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    <Trophy className="h-4 w-4 shrink-0 text-base-content/40" />
+                    <span className="font-semibold break-words text-base-content">
                       {t.name}
                     </span>
                     <span className="text-base-content/40">· {t.code}</span>
@@ -444,23 +454,25 @@ export function AdminDashboard() {
                       className="rounded-lg bg-base-100/60 px-3 py-2"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-medium text-base-content">
+                        <span className="min-w-0 font-medium break-all text-base-content">
                           #{w.rank} {w.username}
                         </span>
-                        <Badge variant="success">
+                        <Badge variant="success" className="shrink-0">
                           ₦{w.naira.toLocaleString()}
                         </Badge>
                       </div>
                       {w.payoutAccount ? (
                         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-base-content/60">
-                          <span className="flex items-center gap-1">
-                            <Landmark className="h-3 w-3" />
-                            {w.payoutAccount.bankName} ·{" "}
-                            {w.payoutAccount.accountNumber} ·{" "}
-                            {w.payoutAccount.accountName}
+                          <span className="flex min-w-0 items-start gap-1 break-words">
+                            <Landmark className="mt-0.5 h-3 w-3 shrink-0" />
+                            <span className="min-w-0">
+                              {w.payoutAccount.bankName} ·{" "}
+                              {w.payoutAccount.accountNumber} ·{" "}
+                              {w.payoutAccount.accountName}
+                            </span>
                           </span>
-                          <span className="flex items-center gap-1">
-                            <Phone className="h-3 w-3" /> {w.payoutAccount.phone}
+                          <span className="flex min-w-0 items-center gap-1 break-all">
+                            <Phone className="h-3 w-3 shrink-0" /> {w.payoutAccount.phone}
                           </span>
                         </div>
                       ) : (
@@ -476,7 +488,7 @@ export function AdminDashboard() {
           </div>
 
           {nairaTotalPages > 1 && (
-            <div className="flex items-center justify-center gap-3 pt-2">
+            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 pt-2">
               <Button
                 variant="glass"
                 size="sm"
@@ -530,11 +542,11 @@ export function AdminDashboard() {
                   <p className="text-sm text-(--primary)">
                     Admin wallet balance
                   </p>
-                  <p className="text-2xl font-bold text-base-content">
+                  <p className="text-xl font-bold break-all text-base-content sm:text-2xl">
                     <RCoinAmount
                       value={revenue.balanceTokens}
                       size={22}
-                      className="text-2xl font-bold"
+                      className="text-xl font-bold sm:text-2xl"
                     />
                   </p>
                 </div>
@@ -596,11 +608,11 @@ export function AdminDashboard() {
                             <RCoinAmount value={e.grossPotTokens} size={12} />
                           </span>
                         </div>
-                        <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
+                        <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 sm:justify-end">
                           <span className="font-semibold text-base-content">
                             <RCoinAmount value={e.tokens} size={14} />
                           </span>
-                          <span className="text-xs text-base-content/40">
+                          <span className="text-right text-xs text-base-content/40">
                             {new Date(e.createdAt).toLocaleString()}
                           </span>
                         </div>
@@ -611,7 +623,7 @@ export function AdminDashboard() {
               )}
 
               {revenue.totalPages > 1 && (
-                <div className="flex items-center justify-center gap-3 pt-2">
+                <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 pt-2">
                   <Button
                     variant="glass"
                     size="sm"

@@ -28,7 +28,6 @@ interface FriendRequestItem {
     id: string;
     username: string;
     avatarGradient?: string | null;
-    ratingCategory: string | null;
   };
   seen: boolean;
 }
@@ -124,7 +123,6 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
                 id: r.from._id,
                 username: r.from.username,
                 avatarGradient: r.from.avatarGradient,
-                ratingCategory: r.from.ratingCategory,
               },
               seen: true,
             }),
@@ -173,7 +171,6 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
         id: string;
         username: string;
         avatarGradient?: string | null;
-        ratingCategory: string | null;
       };
     }) {
       setItems((prev) => [
@@ -184,7 +181,6 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
             id: payload.from.id,
             username: payload.from.username,
             avatarGradient: payload.from.avatarGradient,
-            ratingCategory: payload.from.ratingCategory,
           },
           seen: false,
         },

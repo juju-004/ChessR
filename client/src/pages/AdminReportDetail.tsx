@@ -79,7 +79,7 @@ export function AdminReportDetail() {
   const game = report.game;
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-6">
+    <div className="mx-auto w-full max-w-4xl min-w-0 px-3 py-5 sm:px-4 sm:py-6">
       <button
         onClick={() => navigate("/admin")}
         className="mb-4 flex items-center gap-1.5 text-sm text-base-content/60 hover:text-base-content"
@@ -88,33 +88,35 @@ export function AdminReportDetail() {
       </button>
 
       <Card variant="solid" className="mb-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-lg font-semibold text-base-content">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <h1 className="min-w-0 text-lg font-semibold break-words text-base-content">
             Report against{" "}
             <Link
               to={`/profile/${report.reportedUser?.username}`}
               target="_blank"
-              className="text-(--primary) hover:underline"
+              className="break-all text-(--primary) hover:underline"
             >
               {report.reportedUser?.username ?? "Unknown user"}
             </Link>
           </h1>
           {report.reportedUser?.withdrawalBlocked && (
-            <Badge variant="error" className="gap-1">
+            <Badge variant="error" className="shrink-0 gap-1">
               <AlertTriangle className="h-3 w-3" /> Withdrawals blocked
             </Badge>
           )}
         </div>
-        <p className="mt-1 text-xs text-base-content/40">
+        <p className="mt-1 text-xs break-words text-base-content/40">
           Filed by {report.reporter?.username ?? "unknown"} ·{" "}
           {new Date(report.createdAt).toLocaleString()} · reason:{" "}
           {report.reason.replace(/_/g, " ")}
         </p>
-        <p className="mt-3 text-sm text-base-content/80">{report.description}</p>
+        <p className="mt-3 text-sm break-words whitespace-pre-wrap text-base-content/80">
+          {report.description}
+        </p>
 
         {report.reporter && (
-          <div className="mt-3 flex items-center justify-between gap-2 border-t border-base-300/60 pt-3">
-            <p className="text-xs text-base-content/50">
+          <div className="mt-3 flex flex-col gap-2 border-t border-base-300/60 pt-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+            <p className="min-w-0 text-xs break-words text-base-content/50">
               {report.reporter.reportingBlocked
                 ? `${report.reporter.username} is currently blocked from filing new reports.`
                 : `Bogus or bad-faith report? You can restrict ${report.reporter.username} from filing more.`}
@@ -124,6 +126,7 @@ export function AdminReportDetail() {
               size="sm"
               onClick={handleToggleReportAccess}
               disabled={togglingReportAccess}
+              className="w-full shrink-0 sm:w-auto"
             >
               {report.reporter.reportingBlocked ? (
                 <>
@@ -148,7 +151,7 @@ export function AdminReportDetail() {
       {game && (
         <Card variant="solid" className="mb-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-base font-semibold text-base-content">
+            <h2 className="min-w-0 text-base font-semibold break-all text-base-content">
               Game {game.joinCode}
             </h2>
             <Link to={`/game/${game.joinCode}`} target="_blank">
@@ -157,7 +160,7 @@ export function AdminReportDetail() {
               </Button>
             </Link>
           </div>
-          <p className="text-sm text-base-content/70">
+          <p className="text-sm break-words text-base-content/70">
             {game.white?.username ?? "?"} vs {game.black?.username ?? "?"} ·{" "}
             {game.moves.length} moves ·{" "}
             {game.result ? `${game.result} (${game.endReason?.replace(/_/g, " ")})` : game.status}
@@ -172,12 +175,12 @@ export function AdminReportDetail() {
                     key={s.side}
                     className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm"
                   >
-                    <p className="flex items-center gap-1.5 font-semibold text-amber-500">
-                      <ShieldAlert className="h-4 w-4" />
+                    <p className="flex items-start gap-1.5 font-semibold break-words text-amber-500">
+                      <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
                       {s.side === "white" ? game.white?.username : game.black?.username}, worth
                       a look (score {s.score}/100)
                     </p>
-                    <ul className="mt-1.5 list-disc pl-5 text-base-content/70">
+                    <ul className="mt-1.5 list-disc pl-5 break-words text-base-content/70">
                       {s.signals.map((sig, i) => (
                         <li key={i}>{sig.detail}</li>
                       ))}
@@ -240,20 +243,25 @@ export function AdminReportDetail() {
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
           placeholder="Notes for the record (optional)"
-          className="w-full resize-none rounded-lg border border-base-300 bg-base-200/60 px-3 py-2 text-sm text-base-content outline-none focus:border-(--primary)"
+          className="w-full resize-none rounded-lg border border-base-300 bg-base-200/60 px-3 py-2 text-base text-base-content outline-none focus:border-(--primary) sm:text-sm"
         />
         {report.reportedUser?.withdrawalBlocked && (
-          <label className="mt-3 flex items-center gap-2 text-sm text-base-content/70">
+          <label className="mt-3 flex items-start gap-2 text-sm break-words text-base-content/70">
             <input
               type="checkbox"
+              className="mt-0.5 shrink-0"
               checked={clearBlock}
               onChange={(e) => setClearBlock(e.target.checked)}
             />
             Clear withdrawal block for {report.reportedUser.username}
           </label>
         )}
-        <div className="mt-4 flex justify-end">
-          <Button onClick={handleSave} disabled={saving}>
+        <div className="mt-4 flex sm:justify-end">
+          <Button
+            onClick={handleSave}
+            disabled={saving}
+            className="w-full sm:w-auto"
+          >
             {saving ? "Saving…" : "Save review"}
           </Button>
         </div>

@@ -6,7 +6,6 @@ export interface UserSearchResult {
   avatarUrl?: string | null;
   avatarGradient?: string | null;
   rating: number;
-  ratingCategory: string | null;
 }
 
 export interface UserProfile {
@@ -16,11 +15,7 @@ export interface UserProfile {
   avatarGradient?: string | null;
   bio?: string | null;
   memberSince: string;
-  /** null = "Unranked", the player hasn't hit ratedGamesUntilRanked more
-   *  rated games yet. See rating.service.ts on the server. */
   rating: number;
-  ratingCategory: string | null;
-  ratedGamesUntilRanked: number;
   stats: { wins: number; losses: number; draws: number; gamesPlayed: number };
   isFriend: boolean;
   isSelf: boolean;
@@ -77,19 +72,4 @@ export function updateMyProfile(body: { avatarGradient?: string; bio?: string; u
     '/users/me',
     { method: 'PATCH', body: JSON.stringify(body) },
   );
-}
-
-export interface MyRatingProgress {
-  rating: number;
-  ratingCategory: string | null;
-  ratedGamesUntilRanked: number;
-  /** Points left to the next tier, null if unranked or already top tier. */
-  pointsToNextTier: { points: number; nextTierName: string } | null;
-}
-
-/** Self-only, fetched on demand (e.g. when the rank badge's popover
- *  opens) rather than bundled into every profile load, see
- *  getMyRatingProgress on the server. */
-export function getMyRatingProgress() {
-  return apiFetch<MyRatingProgress>('/users/me/rating-progress');
 }

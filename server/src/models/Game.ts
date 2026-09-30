@@ -57,7 +57,7 @@ export interface IGame extends Document {
   // reconciliation sweep racing the live socket flow after a restart).
   wagerSettled: boolean;
   /** Flips to true exactly once, the moment this game's result has been
-   *  folded into both players' hidden rating (see rating.service.ts's
+   *  folded into both players' rating (see rating.service.ts's
    *  applyRatingForGame), same double-application guard pattern as
    *  wagerSettled, for the same reason (more than one code path can reach
    *  a decisive finish for the same game: the live game-over flow and

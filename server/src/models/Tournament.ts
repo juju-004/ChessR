@@ -57,11 +57,9 @@ export interface ITournamentPlayer {
   // same tradeoff username already makes with a username change.
   avatarGradient: string | null;
   // Same join-time snapshot tradeoff as avatarGradient/username above: a
-  // player's rating (and its tier) as of when they joined, not updated
-  // retroactively if it moves mid-tournament. No longer hidden anywhere
-  // else in the app, so it isn't hidden here either.
+  // player's rating as of when they joined, not updated retroactively if it
+  // moves mid-tournament.
   rating: number;
-  ratingCategory: string | null;
   joinedAt: Date;
   // Points accumulate for swiss/robin/round_robin (1 / 0.5 / 0, +0.5 bonus for
   // a berserked win). A bye is worth 1 point (see tournament.service.ts's
@@ -346,7 +344,6 @@ const playerSchema = new Schema<ITournamentPlayer>(
     username: { type: String, required: true },
     avatarGradient: { type: String, default: null },
     rating: { type: Number, default: 1500 },
-    ratingCategory: { type: String, default: null },
     joinedAt: { type: Date, default: () => new Date() },
     points: { type: Number, default: 0 },
     tiebreak: { type: Number, default: 0 },

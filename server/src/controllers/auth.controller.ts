@@ -11,10 +11,6 @@ import {
 } from "../services/token.service.js";
 import { env, isProd } from "../config/env.js";
 import {
-  getRatingCategory,
-  gamesUntilRanked,
-} from "../services/rating.service.js";
-import {
   issueEmailVerification,
   consumeEmailVerificationToken,
 } from "../services/verification.service.js";
@@ -87,12 +83,8 @@ function setRefreshCookie(res: Response, token: string) {
   });
 }
 
-function ratingFields(user: { rating: number; ratedGamesPlayed: number }) {
-  return {
-    rating: user.rating,
-    ratingCategory: getRatingCategory(user.rating, user.ratedGamesPlayed),
-    ratedGamesUntilRanked: gamesUntilRanked(user.ratedGamesPlayed),
-  };
+function ratingFields(user: { rating: number }) {
+  return { rating: user.rating };
 }
 
 function userFields(user: IUser) {

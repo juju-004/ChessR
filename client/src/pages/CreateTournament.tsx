@@ -13,7 +13,6 @@ import { useSocket } from "../contexts/SocketContext.js";
 import { useRakePercent } from "../hooks/useRakePercent.js";
 import { HelpTip } from "../components/HelpTip.js";
 import { PrizePoolEditor } from "../components/tournaments/PrizePoolEditor.js";
-import { TestModeBanner } from "../components/TestModeBanner.js";
 import {
   Page,
   Card,
@@ -185,7 +184,6 @@ export function CreateTournament() {
   return (
     <Page title="Create a tournament" back="/tournaments">
       <div className="mx-auto space-y-4">
-        <TestModeBanner />
         <Card variant="solid">
           <CardContent className="space-y-5">
             {/* Basics */}

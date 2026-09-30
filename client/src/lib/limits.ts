@@ -27,5 +27,6 @@ export const MAX_USERNAME_LENGTH = 18;
 /** Profile bio, see EditProfileModal.tsx / user.controller.ts. */
 export const MAX_BIO_LENGTH = 160;
 
-/** Tournament / cage match name fields. */
-export const MAX_EVENT_NAME_LENGTH = 20;
+/** Tournament name fields. Matches the server's cap (60) in
+ *  tournamentSocket.ts's zod schemas and the Tournament model's maxlength. */
+export const MAX_EVENT_NAME_LENGTH = 60;
