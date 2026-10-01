@@ -462,11 +462,18 @@ function BreakCountdown({ nextRoundStartsAt }: { nextRoundStartsAt: string }) {
       variant="solid"
       className="border-(--secondary)/30 bg-(--secondary)/10"
     >
-      <p className="flex items-center justify-center gap-1.5 text-center text-base font-extrabold text-base-content">
+      <p className="flex items-center justify-center gap-1.5 text-center text-sm font-medium text-base-content">
         <Clock className="h-4 w-4 text-(--secondary)" />
-        {remainingMs > 0
-          ? `Next round starts in ${Math.ceil(remainingMs / 1000)}s`
-          : "Starting the next round…"}
+        {remainingMs > 0 ? (
+          <>
+            Next round starts in{" "}
+            <span className="font-extrabold tabular-nums">
+              {Math.ceil(remainingMs / 1000)}s
+            </span>
+          </>
+        ) : (
+          "Starting the next round…"
+        )}
       </p>
     </Card>
   );
@@ -500,7 +507,7 @@ function StartCountdown({ scheduledStartAt }: { scheduledStartAt: string }) {
   const remainingMs = new Date(scheduledStartAt).getTime() - Date.now();
 
   return (
-    <p className="flex items-center gap-1.5 text-sm font-bold text-base-content/70">
+    <p className="flex items-center gap-1.5 text-xs text-base-content/50">
       <Clock className="h-3.5 w-3.5" />
       {remainingMs > 0 ? (
         <>
@@ -536,12 +543,12 @@ function ArenaCountdown({ arenaEndsAt }: { arenaEndsAt: string }) {
       variant="solid"
       className="border-(--secondary)/30 bg-(--secondary)/10"
     >
-      <p className="flex items-center justify-center gap-1.5 text-center text-base font-extrabold text-base-content">
+      <p className="flex items-center justify-center gap-1.5 text-center text-sm font-medium text-base-content">
         <Clock className="h-4 w-4 text-(--secondary)" />
         {remainingMs > 0 ? (
           <>
             Arena ends in{" "}
-            <span className="font-mono text-lg font-extrabold text-base-content">
+            <span className="font-mono font-extrabold text-base-content">
               {formatHms(remainingMs)}
             </span>
           </>
