@@ -47,7 +47,7 @@ export interface ITransaction extends Document {
 
 const transactionSchema = new Schema<ITransaction>(
   {
-    user: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     type: {
       type: String,
       enum: [
@@ -64,13 +64,13 @@ const transactionSchema = new Schema<ITransaction>(
       ],
       required: true,
     },
-    status: { type: String, enum: ['pending', 'success', 'failed'], default: 'pending', index: true },
+    status: { type: String, enum: ['pending', 'success', 'failed'], default: 'pending' },
     tokens: { type: Number, required: true },
     amountKobo: { type: Number, required: true, default: 0 },
     reference: { type: String, required: true, unique: true, index: true },
     planId: { type: String },
-    game: { type: Schema.Types.ObjectId, ref: 'Game', index: true },
-    tournament: { type: Schema.Types.ObjectId, ref: 'Tournament', index: true },
+    game: { type: Schema.Types.ObjectId, ref: 'Game' },
+    tournament: { type: Schema.Types.ObjectId, ref: 'Tournament' },
     paystackRecipientCode: { type: String },
     paystackTransferCode: { type: String },
     bankAccountNumber: { type: String },
@@ -82,5 +82,9 @@ const transactionSchema = new Schema<ITransaction>(
 );
 
 transactionSchema.index({ user: 1, createdAt: -1 });
+// Looked up on every Paystack transfer webhook (handleTransferOutcome) and
+// previously unindexed, i.e. a full collection scan per webhook. Sparse
+// because only withdrawals have one.
+transactionSchema.index({ paystackTransferCode: 1 }, { sparse: true });
 
 export const Transaction = mongoose.model<ITransaction>('Transaction', transactionSchema);

@@ -23,7 +23,7 @@
 const HEARTBEAT_INTERVAL_MS = 2000;
 const EMA_ALPHA = 0.4; // weight given to each new sample
 const DEFAULT_LATENCY_MS = 100; // reasonable round-trip assumption before the first pong lands
-export const LAG_COMPENSATION_CAP_MS = 1000;
+export const LAG_COMPENSATION_CAP_MS = 700;
 
 const latencyBySocket = new Map<string, number>();
 const heartbeatTimers = new Map<string, ReturnType<typeof setInterval>>();

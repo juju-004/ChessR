@@ -95,6 +95,7 @@ export function Transactions() {
   return (
     <Page
       title="Transactions"
+      responsiveDescription
       description="Every purchase, withdrawal, and wager on your account."
       back="/"
       bare

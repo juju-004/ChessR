@@ -284,13 +284,20 @@ export async function recordRake(
   grossPotTokens: number,
 ): Promise<void> {
   if (rakeTokens <= 0) return;
-  await PlatformRevenue.create({
-    source,
-    sourceId,
-    tokens: rakeTokens,
-    grossPotTokens,
-    ratePercent: env.RAKE_PERCENT,
-  });
+  try {
+    await PlatformRevenue.create({
+      source,
+      sourceId,
+      tokens: rakeTokens,
+      grossPotTokens,
+      ratePercent: env.RAKE_PERCENT,
+    });
+  } catch (err) {
+    // (source, sourceId) is unique: a duplicate means this rake was already
+    // recorded, which is exactly what we want to stay a no-op.
+    if ((err as { code?: number }).code === 11000) return;
+    throw err;
+  }
 }
 
 // --- Wager escrow ---------------------------------------------------------------

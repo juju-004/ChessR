@@ -130,7 +130,7 @@ const userSchema = new Schema<IUser>(
     // unique: true alone already creates the index.
     googleId: { type: String, unique: true, sparse: true },
     emailVerified: { type: Boolean, default: false },
-    emailVerificationTokenHash: { type: String, select: false },
+    emailVerificationTokenHash: { type: String, select: false, index: { sparse: true } },
     emailVerificationExpires: { type: Date, select: false },
     tokenBalance: { type: Number, default: 0, min: 0 },
     friends: [{ type: Schema.Types.ObjectId, ref: 'User' }],

@@ -26,8 +26,8 @@ export interface IPlatformRevenue extends Document {
 
 const platformRevenueSchema = new Schema<IPlatformRevenue>(
   {
-    source: { type: String, enum: ['game', 'cage_match', 'tournament'], required: true, index: true },
-    sourceId: { type: Schema.Types.ObjectId, required: true, index: true },
+    source: { type: String, enum: ['game', 'cage_match', 'tournament'], required: true },
+    sourceId: { type: Schema.Types.ObjectId, required: true },
     tokens: { type: Number, required: true, min: 0 },
     grossPotTokens: { type: Number, required: true, min: 0 },
     ratePercent: { type: Number, required: true, min: 0 },
@@ -36,5 +36,8 @@ const platformRevenueSchema = new Schema<IPlatformRevenue>(
 );
 
 platformRevenueSchema.index({ createdAt: -1 });
+// One revenue row per game / cage match / tournament. Callers already guard
+// against settling twice, this makes the database refuse a double-count too.
+platformRevenueSchema.index({ source: 1, sourceId: 1 }, { unique: true });
 
 export const PlatformRevenue = mongoose.model<IPlatformRevenue>('PlatformRevenue', platformRevenueSchema);

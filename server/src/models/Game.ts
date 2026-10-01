@@ -124,13 +124,14 @@ const gameSchema = new Schema<IGame>(
       required: true,
       default: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     },
-    white: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    black: { type: Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+    // No `index: true` on white/black/status: the compound indexes below all
+    // start with them, so single-field copies only cost extra write work.
+    white: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    black: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     status: {
       type: String,
       enum: ['waiting', 'active', 'finished', 'aborted'],
       default: 'waiting',
-      index: true,
     },
     result: { type: String, enum: ['white', 'black', 'draw', null], default: null },
     endReason: { type: String, default: null },
@@ -149,9 +150,12 @@ const gameSchema = new Schema<IGame>(
     wagerTokens: { type: Number, default: 0, min: 0 },
     wagerSettled: { type: Boolean, default: false },
     ratingApplied: { type: Boolean, default: false },
-    cageMatchId: { type: Schema.Types.ObjectId, ref: 'CageMatch', index: true },
+    // cageMatchId / tournamentId used to be indexed, but nothing queries by them
+    // (only $ne / $exists:false, which can't use an index), and an index on a
+    // field most games don't have still costs an entry per game.
+    cageMatchId: { type: Schema.Types.ObjectId, ref: 'CageMatch' },
     legIndex: { type: Number },
-    tournamentId: { type: Schema.Types.ObjectId, ref: 'Tournament', index: true },
+    tournamentId: { type: Schema.Types.ObjectId, ref: 'Tournament' },
     roundIndex: { type: Number },
     pairingIndex: { type: Number },
     berserk: {
@@ -186,5 +190,10 @@ gameSchema.index({ status: 1, createdAt: -1 });
 // matching anything and falling back to a full scan.
 gameSchema.index({ white: 1, status: 1, endedAt: -1 });
 gameSchema.index({ black: 1, status: 1, endedAt: -1 });
+// Profile win/loss/draw counts filter on (player, status, result). With
+// `result` in the index they're answered from the index alone instead of
+// loading every finished game document (which carries the whole move list).
+gameSchema.index({ white: 1, status: 1, result: 1 });
+gameSchema.index({ black: 1, status: 1, result: 1 });
 
 export const Game = mongoose.model<IGame>('Game', gameSchema);

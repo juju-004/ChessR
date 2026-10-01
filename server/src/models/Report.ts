@@ -34,8 +34,8 @@ export interface IReport extends Document {
 
 const reportSchema = new Schema<IReport>(
   {
-    reporter: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    reportedUser: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    reporter: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    reportedUser: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     reason: {
       type: String,
       enum: ['cheating', 'harassment', 'sandbagging', 'payment_dispute', 'other'],
@@ -47,7 +47,6 @@ const reportSchema = new Schema<IReport>(
       type: String,
       enum: ['pending', 'reviewing', 'actioned', 'dismissed'],
       default: 'pending',
-      index: true,
     },
     reviewedBy: { type: String },
     reviewedAt: { type: Date },
@@ -55,5 +54,12 @@ const reportSchema = new Schema<IReport>(
   },
   { timestamps: true },
 );
+
+// Admin list (status + newest first), report cooldown / daily-limit checks
+// (reporter + newest first), and the distinct-reporters freeze check
+// (reportedUser + status).
+reportSchema.index({ status: 1, createdAt: -1 });
+reportSchema.index({ reporter: 1, createdAt: -1 });
+reportSchema.index({ reportedUser: 1, status: 1 });
 
 export const Report = mongoose.model<IReport>('Report', reportSchema);

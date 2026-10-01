@@ -179,6 +179,7 @@ export function Withdraw() {
   return (
     <Page
       title="Withdraw"
+      responsiveDescription
       description={
         <span className="inline-flex flex-wrap items-center gap-1">
           <span>Cash</span> out <RCoin size={13} /> Coins <span>to</span>

@@ -66,7 +66,10 @@ export const updateMyProfile = asyncHandler(async (req: AuthedRequest, res) => {
 
 export const searchUsers = asyncHandler(async (req: AuthedRequest, res) => {
   const { q } = searchSchema.parse(req.query);
-  const regex = new RegExp('^' + q.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+  // usernameLower is already lowercase and q is lowercased above, so no 'i'
+  // flag: a case-insensitive regex can't use tight index bounds for the
+  // prefix match, a case-sensitive one can.
+  const regex = new RegExp('^' + q.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 
   const users = await User.find({
     usernameLower: regex,

@@ -396,7 +396,7 @@ const tournamentSchema = new Schema<ITournament>(
     players: { type: [playerSchema], default: [] },
     berserkAllowed: { type: Boolean, default: true },
     chatEnabled: { type: Boolean, default: false },
-    isPublic: { type: Boolean, default: false, index: true },
+    isPublic: { type: Boolean, default: false },
     prizePoolCurrency: { type: String, enum: ["tokens", "naira"], default: "tokens" },
     prizeSchedule: { type: [prizeTierSchema], default: [] },
     prizePoolTokens: { type: Number, default: 0 },
@@ -439,6 +439,14 @@ const tournamentSchema = new Schema<ITournament>(
 );
 
 tournamentSchema.index({ status: 1, createdAt: -1 });
+// Public tournaments list: isPublic + status, newest first.
+tournamentSchema.index({ isPublic: 1, status: 1, createdAt: -1 });
+// "My tournaments" ($or on players.user) and arena re-pairing on reconnect
+// both match on a player's id inside the players array. This used to be a
+// full collection scan on every load of the Tournaments page.
+tournamentSchema.index({ 'players.user': 1 });
+// Admin naira-payouts list.
+tournamentSchema.index({ prizePoolCurrency: 1, endedAt: -1 });
 
 export const Tournament = mongoose.model<ITournament>(
   "Tournament",

@@ -31,9 +31,9 @@ const signalSchema = new Schema<SuspicionSignal>(
 
 const gameFlagSchema = new Schema<IGameFlag>(
   {
-    game: { type: Schema.Types.ObjectId, ref: 'Game', required: true, index: true },
+    game: { type: Schema.Types.ObjectId, ref: 'Game', required: true },
     gameCode: { type: String, required: true, uppercase: true },
-    flaggedUser: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    flaggedUser: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     side: { type: String, enum: ['white', 'black'], required: true },
     score: { type: Number, required: true },
     signals: { type: [signalSchema], default: [] },
@@ -41,7 +41,6 @@ const gameFlagSchema = new Schema<IGameFlag>(
       type: String,
       enum: ['pending_review', 'cleared', 'actioned'],
       default: 'pending_review',
-      index: true,
     },
     reviewedBy: { type: String },
     reviewedAt: { type: Date },
@@ -55,5 +54,7 @@ const gameFlagSchema = new Schema<IGameFlag>(
 // game (e.g. a retried job), this stops that from ever producing
 // duplicate queue entries for the same suspicion.
 gameFlagSchema.index({ game: 1, flaggedUser: 1 }, { unique: true });
+gameFlagSchema.index({ status: 1, createdAt: -1 });
+gameFlagSchema.index({ flaggedUser: 1, status: 1 });
 
 export const GameFlag = mongoose.model<IGameFlag>('GameFlag', gameFlagSchema);

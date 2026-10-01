@@ -34,7 +34,7 @@ export interface INotification extends Document {
 
 const notificationSchema = new Schema<INotification>(
   {
-    recipient: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    recipient: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     type: {
       type: String,
       enum: ['welcome', 'anticheat_freeze', 'report_freeze', 'admin_message', 'tournament_naira_prize'],
@@ -43,7 +43,7 @@ const notificationSchema = new Schema<INotification>(
     title: { type: String, required: true, trim: true, maxlength: 120 },
     body: { type: String, required: true, trim: true, maxlength: 2000 },
     link: { type: String, trim: true, maxlength: 200 },
-    read: { type: Boolean, default: false, index: true },
+    read: { type: Boolean, default: false },
   },
   { timestamps: true },
 );
@@ -52,5 +52,8 @@ const notificationSchema = new Schema<INotification>(
 // recency, this compound index covers both shapes directly instead of
 // falling back to a collection scan or a separate index per query.
 notificationSchema.index({ recipient: 1, createdAt: -1 });
+// The navbar's unread badge (count) and mark-all-read both filter on
+// (recipient, read: false).
+notificationSchema.index({ recipient: 1, read: 1 });
 
 export const Notification = mongoose.model<INotification>('Notification', notificationSchema);

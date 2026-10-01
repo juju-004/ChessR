@@ -114,15 +114,14 @@ const legSchema = new Schema<ICageLeg>(
 const cageMatchSchema = new Schema<ICageMatch>(
   {
     matchCode: { type: String, required: true, unique: true, index: true },
-    player1: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    player2: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    player1: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    player2: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     legs: { type: [legSchema], default: [] },
     currentLegIndex: { type: Number, default: 0 },
     status: {
       type: String,
       enum: ['active', 'finished', 'cancelled'],
       default: 'active',
-      index: true,
     },
     winnerMode: {
       type: String,
@@ -151,7 +150,9 @@ const cageMatchSchema = new Schema<ICageMatch>(
 );
 
 cageMatchSchema.index({ status: 1, createdAt: -1 });
-cageMatchSchema.index({ player1: 1, status: 1 });
-cageMatchSchema.index({ player2: 1, status: 1 });
+// "My cage matches" is (player, newest first); the old (player, status)
+// compounds couldn't serve that sort.
+cageMatchSchema.index({ player1: 1, createdAt: -1 });
+cageMatchSchema.index({ player2: 1, createdAt: -1 });
 
 export const CageMatch = mongoose.model<ICageMatch>('CageMatch', cageMatchSchema);
