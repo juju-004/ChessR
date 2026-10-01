@@ -161,7 +161,7 @@ function MaterialBadge({
 /**
  * Countdown for a still-pending first move, in the same slot MaterialBadge
  * would otherwise occupy (see the `firstMoveGraceMs` doc comment above for
- * why that's safe). Deliberately stays invisible for the first 5 seconds, 
+ * why that's safe). Deliberately stays invisible for the first 5 seconds,
  * nobody needs to be told to hurry up the instant the board loads, then
  * counts down the seconds left before this side's first move costs them the
  * game (or the game gets aborted, for a plain non-series game).
@@ -248,7 +248,9 @@ function DisconnectBadge({
         title="Opponent disconnected. You can claim the game if they don't return."
       >
         <span className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-red-400" />
-        <span className="truncate">Left · claim in {Math.ceil(remainingMs / 1000)}s</span>
+        <span className="truncate">
+          Left · claim in {Math.ceil(remainingMs / 1000)}s
+        </span>
       </div>
     );
   }
@@ -260,12 +262,14 @@ function DisconnectBadge({
         size === "sm" && "flex-wrap justify-center",
       )}
     >
-      <span className="shrink-0 text-xs font-semibold text-red-400">Claim:</span>
+      <span className="shrink-0 text-xs font-semibold text-red-400">
+        Claim:
+      </span>
       <button
         type="button"
         onClick={() => onClaim("win")}
         title="Claim victory"
-        className="h-[18px] shrink-0 rounded-md bg-red-500 px-1.5 text-[11px] font-semibold leading-none text-white transition-colors hover:bg-red-400"
+        className="h-4.5 shrink-0 rounded-md bg-red-500 px-1.5 text-[11px] font-semibold leading-none text-white transition-colors hover:bg-red-400"
       >
         Win
       </button>
@@ -273,7 +277,7 @@ function DisconnectBadge({
         type="button"
         onClick={() => onClaim("draw")}
         title="Claim draw"
-        className="h-[18px] shrink-0 rounded-md bg-base-300 px-1.5 text-[11px] font-semibold leading-none text-base-content/80 transition-colors hover:bg-base-300/70"
+        className="h-4.5 shrink-0 rounded-md bg-base-300 px-1.5 text-[11px] font-semibold leading-none text-base-content/80 transition-colors hover:bg-base-300/70"
       >
         Draw
       </button>
@@ -406,7 +410,7 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
   disconnect,
 }: PanelData) {
   return (
-    <div className="flex h-[54px] items-center gap-3 rounded-xl bg-base-200/70 px-3 py-2 text-base-content">
+    <div className="flex h-13.5 items-center gap-3 rounded-xl bg-base-200/70 px-3 py-2 text-base-content">
       {zenMode ? (
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-base-300/70 text-base-content/40">
           <UserRound className="h-4 w-4" />
@@ -433,7 +437,7 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
        *  `items-center` on the row centers it normally. The row itself is
        *  a fixed height (above), not this column, so when a badge *does*
        *  render, the now-taller two-line column re-centers (shifting the
-       *  username up to make room) without changing the row's own size, 
+       *  username up to make room) without changing the row's own size,
        *  which matters because on phone this row is a flex sibling of the
        *  board itself (see .game-area-toppanel/-bottompanel in Game.tsx),
        *  so a resizing row would resize the board mid-game. */}

@@ -45,6 +45,7 @@ import { Pagination } from "../components/Pagination.js";
 import { HelpTip } from "../components/HelpTip.js";
 import { PageError } from "../components/PageError.js";
 import { RatingBadge } from "../components/RatingBadge.js";
+import { NairaWinnerBanner } from "../components/tournaments/NairaWinnerBanner.js";
 import { TIME_CONTROLS as TIME_PRESETS } from "../timeControls.js";
 import {
   MAX_WAGER_TOKENS,
@@ -1316,6 +1317,8 @@ export function TournamentDetail() {
             {status.message}
           </p>
         )}
+
+        <NairaWinnerBanner tournament={tournament} myId={myId} />
 
         {editing ? (
           <EditTournamentForm

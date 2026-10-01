@@ -2672,7 +2672,7 @@ async function distributePrize(tournament: ITournament): Promise<void> {
             type: "tournament_naira_prize",
             title: `You won ₦${w.naira.toLocaleString()} in ${tournament.name}`,
             body: "Fill in your payout account details so we can send your prize by bank transfer.",
-            link: "/account-details",
+            link: "/wallet/account-details",
           }).catch((err) => console.error("naira winner notification failed:", err));
         }
       }

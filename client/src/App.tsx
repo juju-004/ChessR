@@ -270,6 +270,14 @@ function AppBody() {
               <Route path="/terms" element={<Terms />} />
               {/* Old bookmarks/links to /dashboard keep working, / is the dashboard now. */}
               <Route path="/dashboard" element={<Navigate to="/" replace />} />
+              {/* Naira-prize notifications sent before the link was fixed
+               *  point at the old top-level path, which never existed (the
+               *  page lives under /wallet). Keeps those already-stored
+               *  notifications working instead of landing on the 404. */}
+              <Route
+                path="/account-details"
+                element={<Navigate to="/wallet/account-details" replace />}
+              />
               <Route
                 path="/players"
                 element={

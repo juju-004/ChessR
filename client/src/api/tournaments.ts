@@ -94,6 +94,9 @@ export interface Tournament {
   // real cash is disbursed manually, see AccountDetails.tsx / the admin
   // "Naira tournaments" tab.
   prizePoolCurrency: "tokens" | "naira";
+  // Naira-prize tournaments only, filled in once the tournament finishes:
+  // one entry per rank that actually wins a prize. Absent/empty otherwise.
+  nairaWinners?: { user: string; rank: number; naira: number }[];
   regFeeTokens: number;
   regFeePoolTokens: number;
   regFeeSettled: boolean;
