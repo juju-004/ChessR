@@ -1024,10 +1024,6 @@ export function TournamentDetail() {
   const confirmDialog = useConfirm();
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [error, setError] = useState("");
-  const [status, setStatus] = useState<{
-    message: string;
-    isError: boolean;
-  } | null>(null);
   const [joinPassword, setJoinPassword] = useState("");
   const [editing, setEditing] = useState(false);
   const [manualRoundIndex, setManualRoundIndex] = useState<number | null>(null);
@@ -1086,9 +1082,6 @@ export function TournamentDetail() {
     function onUpdate(payload: { code: string }) {
       if (payload.code === code) refresh();
     }
-    function onError(payload: { message: string }) {
-      setStatus({ message: payload.message, isError: true });
-    }
     function onWatchers(payload: { tournamentId: string; userIds: string[] }) {
       if (payload.tournamentId !== tournamentId) return;
       setWatchingUserIds(new Set(payload.userIds));
@@ -1112,7 +1105,6 @@ export function TournamentDetail() {
     socket.on("tournament:started", onUpdate);
     socket.on("tournament:cancelled", onUpdate);
     socket.on("tournament:finished", onUpdate);
-    socket.on("tournament:error", onError);
     socket.on("tournament:watchers", onWatchers);
     socket.on("tournament:chat_history", onChatHistory);
     socket.on("tournament:chat_message", onChatMessage);
@@ -1126,7 +1118,6 @@ export function TournamentDetail() {
       socket.off("tournament:started", onUpdate);
       socket.off("tournament:cancelled", onUpdate);
       socket.off("tournament:finished", onUpdate);
-      socket.off("tournament:error", onError);
       socket.off("tournament:watchers", onWatchers);
       socket.off("tournament:chat_history", onChatHistory);
       socket.off("tournament:chat_message", onChatMessage);
@@ -1317,14 +1308,6 @@ export function TournamentDetail() {
       }
     >
       <div className="mx-auto space-y-4">
-        {status && (
-          <p
-            className={`text-sm ${status.isError ? "text-red-400" : "text-green-400"}`}
-          >
-            {status.message}
-          </p>
-        )}
-
         <NairaWinnerBanner tournament={tournament} myId={myId} />
 
         {editing ? (

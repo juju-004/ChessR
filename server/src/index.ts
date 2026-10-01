@@ -8,7 +8,10 @@ import { getIo } from './sockets/io.js';
 import { reconcileActiveGames, sweepAbortedGames, sweepStaleWaitingGames } from './services/game.service.js';
 import { reconcileActiveTournaments, sweepCancelledTournaments, resolveDesyncedArenaPairings } from './services/tournament.service.js';
 import { reconcilePresence } from './services/presence.service.js';
-import { runAllQuickPairingPasses } from './services/quickPairing.service.js';
+import {
+  runAllQuickPairingPasses,
+  activateAllQuickPairingSegments,
+} from './services/quickPairing.service.js';
 import { broadcastLobbyCounts } from './sockets/quickPairingSocket.js';
 import { FriendRequest } from './models/FriendRequest.js';
 import { Game } from './models/Game.js';
@@ -126,11 +129,19 @@ async function main() {
   // getting caught. A 60s cadence bounds that worst case to ~1 extra minute
   // instead, while still being cheap (Game.find({status:'active'}) over a
   // realistic table size, once a minute).
+  let reconcileTick = 0;
   const reconcileInterval = setInterval(() => {
+    reconcileTick++;
     reconcileActiveGames().catch((err) => console.error('periodic reconcileActiveGames failed:', err));
     reconcileActiveTournaments().catch((err) => console.error('periodic reconcileActiveTournaments failed:', err));
     resolveDesyncedArenaPairings().catch((err) => console.error('periodic resolveDesyncedArenaPairings failed:', err));
-    reconcilePresence(getIo()).catch((err) => console.error('periodic reconcilePresence failed:', err));
+    // Presence reconcile is the costliest sweep for Redis (a cluster-wide
+    // fetchSockets round trip plus two full SCANs, even with zero users),
+    // and it only repairs rare stuck-presence leftovers, so every 60th
+    // tick (hourly) is plenty and cuts its Redis use by ~98%.
+    if (reconcileTick % 60 === 0) {
+      reconcilePresence(getIo()).catch((err) => console.error('periodic reconcilePresence failed:', err));
+    }
     sweepCancelledTournaments().catch((err) => console.error('periodic sweepCancelledTournaments failed:', err));
     sweepAbortedGames().catch((err) => console.error('periodic sweepAbortedGames failed:', err));
     sweepStaleWaitingGames().catch((err) => console.error('periodic sweepStaleWaitingGames failed:', err));
@@ -140,9 +151,14 @@ async function main() {
   // Quick pairing needs a much tighter cadence than the 60s sweeps above:
   // it's what widens a waiting player's rating window over time, and what
   // pairs anyone a fresh join didn't already match instantly.
+  // Does nothing (and costs no Redis commands) while no lobby has anyone
+  // waiting, see activeSegments in quickPairing.service.ts. Counts only
+  // change when a queue does, so they're only re-broadcast after a pass
+  // that actually ran.
+  activateAllQuickPairingSegments();
   const quickPairingInterval = setInterval(() => {
     runAllQuickPairingPasses()
-      .then(() => broadcastLobbyCounts(getIo()))
+      .then((ran) => (ran ? broadcastLobbyCounts(getIo()) : undefined))
       .catch((err) => console.error('periodic quick pairing pass failed:', err));
   }, 2000);
   quickPairingInterval.unref();

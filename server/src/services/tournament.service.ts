@@ -2866,6 +2866,25 @@ async function advanceTournamentIfPairingLocked(
     pairing.berserk = berserk;
 
     applyPairingScore(tournament, pairing, resultP, berserk, roundIndex, moveCount);
+
+    // Someone who didn't even make their first move is almost certainly
+    // away from the keyboard. Auto-pause them (same flag the Pause button
+    // sets) so they aren't paired into another game they'll also forfeit,
+    // which would leave each following opponent sitting through a dead
+    // first-move clock. They stay in the standings and rejoin the pairing
+    // pool by pressing Resume (swiss: from the next round that's built,
+    // arena: immediately). Only formats that have a pause concept; the
+    // loser is whoever didn't win the pairing, and a draw can't happen on
+    // this reason.
+    if (
+      endReason === "first_move_timeout" &&
+      (tournament.format === "swiss" || tournament.format === "arena") &&
+      (resultP === "p1" || resultP === "p2")
+    ) {
+      const loserId = resultP === "p1" ? pairing.player2 : pairing.player1;
+      const loser = loserId ? findPlayer(tournament, loserId) : undefined;
+      if (loser) loser.paused = true;
+    }
     // The rating shown next to a player's name in the tournament is a copy
     // taken at join time, so without this it never moved after a game.
     // The game's rating change has already been applied by the time we get

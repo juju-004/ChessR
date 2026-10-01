@@ -129,8 +129,29 @@ export async function joinQuickPairingQueue(
     redis.hset(queuedAtKey(segmentId), userId, String(now)),
     redis.set(userSegmentKey(userId), segmentId, "EX", USER_SEGMENT_TTL_SECONDS),
   ]);
+  activeSegments.set(segmentId, Date.now());
 
   return segment;
+}
+
+/** Segments that might have someone waiting, mapped to when they were last
+ *  marked active. The 2-second background pass used to hit Redis for all 4
+ *  lobbies on every tick even with nobody queued (roughly 17 commands per
+ *  tick, ~700k a day on an idle server), which alone blows through a
+ *  500k/month Redis plan. Now the interval only touches segments in here:
+ *  a join adds its segment, and a pass that finds the queue empty removes
+ *  it, so an idle server makes zero quick-pairing Redis calls.
+ *  Per-process on purpose: a player queued via another instance is that
+ *  instance's to keep matching, and every pass reads the shared Redis
+ *  queue, so matching across instances still works. */
+const activeSegments = new Map<string, number>();
+
+/** Marks every segment active once. Called at boot so a queue that outlived
+ *  a restart still gets swept: the first pass finds each empty one and
+ *  drops it again. */
+export function activateAllQuickPairingSegments(): void {
+  const now = Date.now();
+  for (const s of QUICK_PAIRING_SEGMENTS) activeSegments.set(s.id, now);
 }
 
 /** Live "how many people are waiting" count per lobby, for the segment
@@ -153,8 +174,17 @@ export async function getQuickPairingLobbyCounts(): Promise<Record<string, numbe
  *  next pass or a fresh joiner. */
 export async function runQuickPairingPass(segmentId: string): Promise<void> {
   await withLock(lockKey(segmentId), async () => {
+    const passStart = Date.now();
     const raw = await redis.zrange(queueKey(segmentId), 0, -1, "WITHSCORES");
-    if (raw.length === 0) return;
+    if (raw.length === 0) {
+      // Nobody waiting: stop polling this lobby until the next join. The
+      // timestamp check keeps a join that landed while this pass was
+      // running (marked active after passStart) from being un-marked.
+      if ((activeSegments.get(segmentId) ?? 0) <= passStart) {
+        activeSegments.delete(segmentId);
+      }
+      return;
+    }
 
     const queuedAt = await redis.hgetall(queuedAtKey(segmentId));
     const now = Date.now();
@@ -311,12 +341,15 @@ async function checkEligible(userId: string): Promise<boolean> {
  *  lobby still eventually gets wider-window matched even with nobody new
  *  joining, and also called immediately after a join for the common-case
  *  instant match. */
-export async function runAllQuickPairingPasses(): Promise<void> {
+export async function runAllQuickPairingPasses(): Promise<boolean> {
+  const ids = [...activeSegments.keys()];
+  if (ids.length === 0) return false;
   await Promise.all(
-    QUICK_PAIRING_SEGMENTS.map((s) =>
-      runQuickPairingPass(s.id).catch((err) =>
-        console.error(`quick pairing pass failed for ${s.id}:`, err),
+    ids.map((id) =>
+      runQuickPairingPass(id).catch((err) =>
+        console.error(`quick pairing pass failed for ${id}:`, err),
       ),
     ),
   );
+  return true;
 }
