@@ -2157,6 +2157,7 @@ export function Game() {
               : null
           }
           myUserId={user?.id}
+          tournamentCode={gameMeta?.tournamentId?.code}
           onRematch={handleRematch}
           onClose={() => setGameOverModalDismissed(true)}
         />

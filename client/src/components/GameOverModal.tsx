@@ -1,4 +1,5 @@
 import { memo, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { Trophy, Frown, Handshake, Ban } from "lucide-react";
 import { Card, Button, Badge } from "./ui/index.js";
 import { RCoin } from "./ui/RCoin.js";
@@ -20,6 +21,9 @@ interface GameOverModalProps {
   } | null;
   myUserId?: string;
   ratingUpdate?: RatingSideUpdate | null;
+  /** Set for a tournament game: adds a "Back to tournament" button above
+   *  Close that links to that tournament's page. */
+  tournamentCode?: string;
   onRematch: () => void;
   onClose: () => void;
 }
@@ -49,6 +53,7 @@ export const GameOverModal = memo(function GameOverModal({
   wagerSettlement,
   myUserId,
   ratingUpdate,
+  tournamentCode,
   onRematch,
   onClose,
 }: GameOverModalProps) {
@@ -192,6 +197,11 @@ export const GameOverModal = memo(function GameOverModal({
             >
               {rematchState === "offered" ? "Rematch offer sent…" : "Rematch"}
             </Button>
+          )}
+          {tournamentCode && (
+            <Link to={`/tournaments/${tournamentCode}`} className="flex w-full">
+              <Button fullWidth>Back to tournament</Button>
+            </Link>
           )}
           <Button variant="glass" onClick={onClose} fullWidth>
             Close
