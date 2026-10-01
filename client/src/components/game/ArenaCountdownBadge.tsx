@@ -39,7 +39,7 @@ export function ArenaCountdownBadge({ endsAt }: { endsAt: string }) {
 
   return (
     <Badge variant="neutral">
-      <span className="inline-flex items-center gap-1 tabular-nums">
+      <span className="inline-flex items-center gap-1 font-extrabold tabular-nums">
         <Timer className="h-3 w-3" />
         {remainingMs > 0 ? formatCountdown(remainingMs) : "Ending…"}
       </span>

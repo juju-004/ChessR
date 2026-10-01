@@ -11,6 +11,7 @@ import {
   type TournamentFormat,
 } from "../models/Tournament.js";
 import { Game } from "../models/Game.js";
+import { User } from "../models/User.js";
 import { ApiError } from "../utils/ApiError.js";
 import { withLock } from "../utils/distributedLock.js";
 import { assertNotRestricted } from "./suspension.service.js";
@@ -815,7 +816,7 @@ export async function joinTournament(
 }
 
 /** Only valid before the tournament starts, once it's active there's no
- *  backing out (arena players can pause instead, see setArenaPause; every
+ *  backing out (arena players can pause instead, see setTournamentPause; every
  *  other format has no equivalent, a joined player sees it through). If
  *  the creator leaves, the next earliest-joined player inherits the
  *  "creator" powers (start/cancel) rather than orphaning the tournament,
@@ -1355,8 +1356,17 @@ async function buildSwissRound(
     return p1 > 0 && p2 > 0;
   };
 
+  // Paused players are skipped entirely this round (they stay on the
+  // sheet with their points and are picked up again by whichever round is
+  // built after they resume). Safety net: if pausing would leave fewer
+  // than two people to pair, ignore the pauses for this one round rather
+  // than build an empty/one-player round that could never complete and
+  // would stall the whole event.
+  const unpaused = tournament.players.filter((p) => !p.paused);
+  const field = unpaused.length >= 2 ? unpaused : tournament.players;
+
   // Standing order, random among equals.
-  const sorted = [...tournament.players].sort(
+  const sorted = [...field].sort(
     (a, b) => b.points - a.points || Math.random() - 0.5,
   );
 
@@ -2141,31 +2151,51 @@ async function tryArenaPairings(tournamentId: string): Promise<void> {
   }
 }
 
-/** Toggles a player's arena pause state, see the ITournamentPlayer.paused
- *  doc comment. Un-pausing immediately tries to find them a new opponent
- *  rather than waiting for the next unrelated pairing event to happen to
- *  pick them up. */
-export async function setArenaPause(
+/** Toggles a player's pause state, see the ITournamentPlayer.paused doc
+ *  comment. Works for arena and swiss.
+ *
+ *  Arena: un-pausing immediately tries to find them a new opponent rather
+ *  than waiting for the next unrelated pairing event to happen to pick
+ *  them up.
+ *
+ *  Swiss: nothing needs to happen on the spot. buildSwissRound just skips
+ *  paused players, so a paused player is left out of the next round that
+ *  gets built, and one who resumes any time before that is paired in it.
+ *
+ *  The flag is flipped with an atomic positional $set rather than the
+ *  usual load-mutate-save, so it can't clobber (or be clobbered by) a
+ *  pairing/scoring save happening on the same document at the same time. */
+export async function setTournamentPause(
   tournamentId: string,
   userId: string,
   paused: boolean,
 ): Promise<ITournament> {
   const tournament = await Tournament.findById(tournamentId);
   if (!tournament) throw ApiError.notFound("Tournament not found");
-  if (tournament.format !== "arena")
-    throw ApiError.badRequest("Pausing is only available in arena tournaments");
+  if (tournament.format !== "arena" && tournament.format !== "swiss")
+    throw ApiError.badRequest(
+      "Pausing is only available in arena and swiss tournaments",
+    );
   if (tournament.status !== "active")
     throw ApiError.conflict("This tournament isn't currently active");
   const player = findPlayer(tournament, userId);
   if (!player) throw ApiError.badRequest("You're not in this tournament");
 
-  player.paused = paused;
-  if (!paused) player.arenaAvailableSince = new Date();
-  await tournament.save();
+  const set: Record<string, unknown> = { "players.$.paused": paused };
+  if (tournament.format === "arena" && !paused) {
+    set["players.$.arenaAvailableSince"] = new Date();
+  }
+  await Tournament.updateOne(
+    { _id: tournamentId, "players.user": userId },
+    { $set: set },
+  );
 
-  if (!paused) await tryArenaPairings(tournament.id);
+  if (tournament.format === "arena" && !paused) {
+    await tryArenaPairings(tournament.id);
+  }
 
-  return tournament;
+  const fresh = await Tournament.findById(tournamentId);
+  return fresh ?? tournament;
 }
 
 /** Called both when a user's socket connects (see presenceSocket.ts) and
@@ -2667,6 +2697,58 @@ async function distributePrize(tournament: ITournament): Promise<void> {
   }
 }
 
+/** Copies each listed user's CURRENT rating from their User document onto
+ *  their entry in tournament.players (in memory only, the caller saves).
+ *  Best-effort: a failed lookup just leaves the old number rather than
+ *  blocking the scoring that called it. */
+async function syncPlayerRatings(
+  tournament: ITournament,
+  userIds: (unknown | null | undefined)[],
+): Promise<void> {
+  const ids = userIds.filter(Boolean).map((id) => String(id));
+  if (ids.length === 0) return;
+  try {
+    const users = await User.find({ _id: { $in: ids } })
+      .select("rating")
+      .lean();
+    for (const u of users) {
+      const player = findPlayer(tournament, u._id);
+      if (player && typeof u.rating === "number") player.rating = u.rating;
+    }
+  } catch (err) {
+    console.error("tournament rating sync failed:", err);
+  }
+}
+
+/** For a tournament that hasn't finished, overlays every player's live
+ *  rating from their User document onto a lean tournament doc before it's
+ *  sent to a client, so the roster (and the pre-start rating order) never
+ *  shows a stale join-time number. Finished tournaments keep their stored
+ *  snapshot. */
+async function withLiveRatings<
+  T extends { status: string; players: { user: unknown; rating: number }[] },
+>(tournament: T): Promise<T> {
+  if (tournament.status !== "pending" && tournament.status !== "active") {
+    return tournament;
+  }
+  if (tournament.players.length === 0) return tournament;
+  try {
+    const users = await User.find({
+      _id: { $in: tournament.players.map((p) => String(p.user)) },
+    })
+      .select("rating")
+      .lean();
+    const ratingById = new Map(users.map((u) => [String(u._id), u.rating]));
+    for (const p of tournament.players) {
+      const live = ratingById.get(String(p.user));
+      if (typeof live === "number") p.rating = live;
+    }
+  } catch (err) {
+    console.error("tournament live rating overlay failed:", err);
+  }
+  return tournament;
+}
+
 function broadcastUpdate(
   tournament: ITournament,
   event: "tournament:update" | "tournament:finished" | "tournament:started" | "tournament:cancelled" = "tournament:update",
@@ -2784,6 +2866,13 @@ async function advanceTournamentIfPairingLocked(
     pairing.berserk = berserk;
 
     applyPairingScore(tournament, pairing, resultP, berserk, roundIndex, moveCount);
+    // The rating shown next to a player's name in the tournament is a copy
+    // taken at join time, so without this it never moved after a game.
+    // The game's rating change has already been applied by the time we get
+    // here (see endGameAndBroadcast), so just copy the fresh numbers over
+    // in the same save as the points, then broadcast once: everyone
+    // watching sees points and rating change together.
+    await syncPlayerRatings(tournament, [pairing.player1, pairing.player2]);
     await tournament.save();
     broadcastUpdate(tournament);
 
@@ -2873,7 +2962,7 @@ export async function getTournamentByCode(codeOrId: string) {
     : { code: codeOrId };
   const tournament = await Tournament.findOne(query).lean();
   if (!tournament) throw ApiError.notFound("Tournament not found");
-  return sanitizeForClient(tournament);
+  return sanitizeForClient(await withLiveRatings(tournament));
 }
 
 /** Only tournaments the creator opted to list publicly (isPublic) show up

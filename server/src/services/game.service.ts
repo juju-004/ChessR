@@ -687,7 +687,9 @@ export async function reconcileActiveGames(): Promise<{
       ).catch((err) =>
         console.error("settleWager failed during reconciliation:", err),
       );
-      applyRatingForGame(gameId, liveState.whiteId, liveState.blackId, timeoutWinner).catch((err) =>
+      // Awaited (not fire-and-forget) so the rating change is already in
+      // place when the tournament pairing below copies ratings over.
+      await applyRatingForGame(gameId, liveState.whiteId, liveState.blackId, timeoutWinner).catch((err) =>
         console.error("applyRatingForGame failed during reconciliation:", err),
       );
       if (g.cageMatchId && g.legIndex !== undefined) {

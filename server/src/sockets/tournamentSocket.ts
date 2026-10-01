@@ -7,7 +7,7 @@ import {
   leaveTournament,
   cancelTournament,
   updateTournament,
-  setArenaPause,
+  setTournamentPause,
   retryArenaPairingsForUser,
   type CreateTournamentInput,
 } from '../services/tournament.service.js';
@@ -272,7 +272,7 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
     safeHandler(socket, async (raw: unknown) => {
       const parsed = pauseSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid payload');
-      const tournament = await setArenaPause(parsed.data.tournamentId, userId, parsed.data.paused);
+      const tournament = await setTournamentPause(parsed.data.tournamentId, userId, parsed.data.paused);
       io.to(tournamentRoom(tournament.id)).emit('tournament:update', { tournamentId: tournament.id, code: tournament.code });
     }),
   );

@@ -4,6 +4,10 @@ interface PaginationProps {
   page: number;
   pageCount: number;
   onPageChange: (page: number) => void;
+  /** Wraps the current page number in a small rounded-square badge
+   *  instead of bare text. Off by default so every other pager keeps its
+   *  plain look; the standings table opts in. */
+  badge?: boolean;
 }
 
 /** Compact prev/current/next pager for client-side-paginated lists, used
@@ -11,7 +15,12 @@ interface PaginationProps {
  *  full set in one request, see Tournaments.tsx) and the cage match
  *  history list (see CageMatches.tsx). Not rendered at all for a single
  *  page. */
-export function Pagination({ page, pageCount, onPageChange }: PaginationProps) {
+export function Pagination({
+  page,
+  pageCount,
+  onPageChange,
+  badge = false,
+}: PaginationProps) {
   if (pageCount <= 1) return null;
   return (
     <div className="flex items-center justify-center gap-3 pt-1">
@@ -29,10 +38,23 @@ export function Pagination({ page, pageCount, onPageChange }: PaginationProps) {
        *  where the surrounding chevrons already make "page" and "of N"
        *  redundant and the fuller text was cramping tighter layouts like
        *  the standings table header. */}
-      <span className="hidden text-xs text-base-content/50 sm:inline">
-        Page {page + 1} of {pageCount}
-      </span>
-      <span className="text-xs text-base-content/50 sm:hidden">{page + 1}</span>
+      {badge ? (
+        <span className="flex items-center gap-1.5 text-xs text-base-content/50">
+          <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-[10px] bg-base-300/70 px-1.5 text-xs font-bold tabular-nums text-base-content">
+            {page + 1}
+          </span>
+          <span className="hidden sm:inline">of {pageCount}</span>
+        </span>
+      ) : (
+        <>
+          <span className="hidden text-xs text-base-content/50 sm:inline">
+            Page {page + 1} of {pageCount}
+          </span>
+          <span className="text-xs text-base-content/50 sm:hidden">
+            {page + 1}
+          </span>
+        </>
+      )}
       <button
         type="button"
         onClick={() => onPageChange(page + 1)}

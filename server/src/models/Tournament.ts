@@ -85,11 +85,12 @@ export interface ITournamentPlayer {
   // all, which only happens if someone leaves before the bracket is drawn).
   eliminatedRound: number | null;
   hadBye: boolean;
-  // Arena-only: the player has voluntarily stepped out of the pairing
-  // queue without withdrawing from the event entirely, like Lichess's
-  // pause button. They keep their points/standing and can toggle this
-  // back off at any time to resume being paired. Meaningless for every
-  // other format (there's no continuous pairing queue to step out of).
+  // Arena and swiss: the player has voluntarily stepped out of pairing
+  // without withdrawing from the event entirely, like Lichess's pause
+  // button. They keep their points/standing and can toggle this back off
+  // at any time to resume being paired (arena: immediately, swiss: from
+  // the next round that gets built; a game already in progress is
+  // unaffected). Meaningless for every other format.
   // Arena-only: when this player most recently became free to be paired
   // again (joined, un-paused, or their last game ended), null while
   // they're mid-game/paused/not yet joined. tryArenaPairings sorts its

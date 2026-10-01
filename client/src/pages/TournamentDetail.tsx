@@ -461,7 +461,7 @@ function BreakCountdown({ nextRoundStartsAt }: { nextRoundStartsAt: string }) {
       variant="solid"
       className="border-(--secondary)/30 bg-(--secondary)/10"
     >
-      <p className="flex items-center justify-center gap-1.5 text-center text-sm font-medium text-base-content">
+      <p className="flex items-center justify-center gap-1.5 text-center text-base font-extrabold text-base-content">
         <Clock className="h-4 w-4 text-(--secondary)" />
         {remainingMs > 0
           ? `Next round starts in ${Math.ceil(remainingMs / 1000)}s`
@@ -499,12 +499,12 @@ function StartCountdown({ scheduledStartAt }: { scheduledStartAt: string }) {
   const remainingMs = new Date(scheduledStartAt).getTime() - Date.now();
 
   return (
-    <p className="flex items-center gap-1.5 text-xs text-base-content/50">
+    <p className="flex items-center gap-1.5 text-sm font-bold text-base-content/70">
       <Clock className="h-3.5 w-3.5" />
       {remainingMs > 0 ? (
         <>
           Starts in{" "}
-          <span className="font-mono text-base-content">
+          <span className="font-mono font-extrabold text-base-content">
             {formatHms(remainingMs)}
           </span>{" "}
           ({new Date(scheduledStartAt).toLocaleString()})
@@ -535,12 +535,12 @@ function ArenaCountdown({ arenaEndsAt }: { arenaEndsAt: string }) {
       variant="solid"
       className="border-(--secondary)/30 bg-(--secondary)/10"
     >
-      <p className="flex items-center justify-center gap-1.5 text-center text-sm font-medium text-base-content">
+      <p className="flex items-center justify-center gap-1.5 text-center text-base font-extrabold text-base-content">
         <Clock className="h-4 w-4 text-(--secondary)" />
         {remainingMs > 0 ? (
           <>
             Arena ends in{" "}
-            <span className="font-mono text-base-content">
+            <span className="font-mono text-lg font-extrabold text-base-content">
               {formatHms(remainingMs)}
             </span>
           </>
@@ -718,7 +718,7 @@ function PlayerTournamentDetails({
     .reverse();
   const stats = [
     { label: "Games", value: player.gamesPlayed },
-    { label: "Berserk wins", value: player.berserkWins },
+    isArena && { label: "Berserk wins", value: player.berserkWins },
     isArena && { label: "Streak wins", value: player.streakWins },
     isPointsFormat && { label: "Points", value: player.points },
   ].filter(Boolean) as { label: string; value: number }[];
@@ -733,9 +733,12 @@ function PlayerTournamentDetails({
             size="md"
           />
           <div className="min-w-0">
-            <p className="truncate text-base font-semibold text-base-content">
+            <Link
+              to={`/profile/${player.username}`}
+              className="block truncate text-base font-semibold text-base-content transition-colors hover:text-(--secondary) hover:underline"
+            >
               {player.username}
-            </p>
+            </Link>
             <div className="mt-0.5 flex items-center gap-2">
               <RatingBadge
                 rating={player.rating}
@@ -1166,7 +1169,17 @@ export function TournamentDetail() {
   const myPlayer = tournament.players.find((p) => p.user === myId);
   const isCreator = tournament.createdBy === myId;
   const isPointsFormat = tournament.format !== "normal";
-  const standings = isPointsFormat ? rankTournamentPlayers(tournament) : [];
+  // Before the tournament starts everyone has 0 points, so "standings" is
+  // really just the roster: highest rating first (earlier joiner breaks a
+  // tie). Once it's started or finished, rank by points/tiebreak as usual.
+  const standings = isPointsFormat
+    ? tournament.status === "pending"
+      ? [...tournament.players].sort(
+          (a, b) =>
+            b.rating - a.rating || a.joinedAt.localeCompare(b.joinedAt),
+        )
+      : rankTournamentPlayers(tournament)
+    : [];
   const pairingPool =
     tournament.format === "arena"
       ? arenaPairingPool(tournament, watchingUserIds)
@@ -1311,7 +1324,7 @@ export function TournamentDetail() {
             onCancel={() => setEditing(false)}
           />
         ) : (
-          <Card variant="solid">
+          <Card variant="solid" className="pb-2.5!">
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full gradient-brand px-3 py-1 text-sm font-bold text-white shadow-sm shadow-(--primary)/25">
                 {speed && (
@@ -1324,7 +1337,7 @@ export function TournamentDetail() {
                 {headline}
               </span>
             </div>
-            <div className="mb-4 flex flex-wrap gap-1.5">
+            <div className="mb-4 flex flex-wrap gap-1.5 last:mb-0">
               {tournament.format === "swiss" && (
                 <Badge variant="neutral">{tournament.swissRounds} rounds</Badge>
               )}
@@ -1421,8 +1434,9 @@ export function TournamentDetail() {
 
             {tournament.status === "active" &&
               isPlayer &&
-              tournament.format === "arena" && (
-                <div className="flex flex-wrap gap-2">
+              (tournament.format === "arena" ||
+                tournament.format === "swiss") && (
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
                     variant="glass"
                     size="sm"
@@ -1438,6 +1452,13 @@ export function TournamentDetail() {
                       </>
                     )}
                   </Button>
+                  {tournament.format === "swiss" && (
+                    <p className="w-full text-xs text-base-content/50">
+                      {myPlayer?.paused
+                        ? "You're paused: you'll be skipped when the next round is paired. Resume any time and you'll be paired in the next round."
+                        : "Need a break? Pause to be skipped when the next round is paired. A game you're already in this round still counts."}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -1465,7 +1486,10 @@ export function TournamentDetail() {
             {tournament.players.length > 0 ? (
               <div className="flex flex-wrap justify-center gap-2">
                 {[...tournament.players]
-                  .sort((a, b) => a.joinedAt.localeCompare(b.joinedAt))
+                  .sort(
+                    (a, b) =>
+                      b.rating - a.rating || a.joinedAt.localeCompare(b.joinedAt),
+                  )
                   .map((p) => {
                     const isMe = p.user === myId;
                     const isOrganizer = p.user === tournament.createdBy;
@@ -1530,7 +1554,7 @@ export function TournamentDetail() {
         )}
 
         {tournament.prizeSchedule.length > 0 && (
-          <Card variant="solid">
+          <Card variant="solid" className="pb-2.5!">
             <button
               type="button"
               onClick={() => setPrizePoolOpen((v) => !v)}
@@ -1572,7 +1596,12 @@ export function TournamentDetail() {
               className="grid overflow-hidden transition-[grid-template-rows] duration-200 ease-in-out"
               style={{ gridTemplateRows: prizePoolOpen ? "1fr" : "0fr" }}
             >
-              <div className="min-h-0 space-y-1 pt-2 text-sm text-base-content/70">
+              <div
+                className={cn(
+                  "min-h-0 space-y-1 text-sm text-base-content/70",
+                  prizePoolOpen && "pt-2",
+                )}
+              >
                 {tournament.prizeSchedule.map((tier, i) => (
                   <div key={i} className="flex justify-between">
                     <span>
@@ -1636,6 +1665,7 @@ export function TournamentDetail() {
                   </button>
                 )}
                 <Pagination
+                  badge
                   page={safeStandingsPage}
                   pageCount={standingsPageCount}
                   onPageChange={setStandingsPage}
