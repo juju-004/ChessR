@@ -14,6 +14,8 @@ import { registerQuickPairingHandlers } from './quickPairingSocket.js';
 import { registerLobbyHandlers } from './lobbySocket.js';
 import { registerLatencyHandlers } from './latencySocket.js';
 import { setIo } from './io.js';
+import { startInstancePresenceBeat } from '../services/gamePresence.service.js';
+import { GAME_ENDED_EVENT, releaseLatencyHeartbeatForGame } from '../services/latency.service.js';
 
 export function initSocketServer(httpServer: HttpServer): Server {
   const io = new Server(httpServer, {
@@ -41,6 +43,18 @@ export function initSocketServer(httpServer: HttpServer): Server {
   io.adapter(createAdapter(pubClient, subClient));
 
   io.use(socketAuthMiddleware);
+
+  // Game-page presence lives in Redis (see gamePresence.service.ts); this
+  // instance's heartbeat is what lets peers tell its entries from a crashed
+  // instance's leftovers.
+  startInstancePresenceBeat();
+
+  // A game can end on another server instance than the one holding its
+  // players' sockets (clock timers, sweeps), so latency.service announces
+  // every game end cluster-wide; this stops the heartbeats on our sockets.
+  io.on(GAME_ENDED_EVENT, (gameId: unknown) => {
+    if (typeof gameId === 'string') releaseLatencyHeartbeatForGame(gameId);
+  });
 
   registerClockTimeoutHandler(io);
   registerFirstMoveTimeoutHandler(io);

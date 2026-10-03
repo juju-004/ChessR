@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 import {
   listMyCageMatches,
+  listMyFinishedCageMatches,
   computeCageStandings,
   type CageMatch,
 } from "../api/cageMatches.js";
@@ -22,12 +23,6 @@ import {
 } from "../components/ui/index.js";
 import { formatRelativeTime } from "@/lib/utils.js";
 import { cn } from "@/lib/cn.js";
-
-// Client-side page size for Match history, listMyCageMatches already
-// returns the full set in one request, so this just slices the array
-// that's already in memory rather than rendering a potentially long list
-// all at once. Same pattern as Tournaments.tsx.
-const PAGE_SIZE = 8;
 
 function opponentOf(match: CageMatch, myId: string | undefined) {
   return match.player1._id === myId ? match.player2 : match.player1;
@@ -96,35 +91,32 @@ function CageMatchRow({ m, myId }: { m: CageMatch; myId: string | undefined }) {
   );
 }
 
-/** A card of match rows with its own local page state, used for Match
- *  history, which can realistically grow long. Active matches stay
- *  unpaginated since there's rarely more than a handful at once. */
-function PaginatedMatchCard({
+/** Finished matches card. Each page is its own request (5 matches, newest
+ *  first), so the whole history never travels in one response. Active
+ *  matches stay unpaginated since there's rarely more than a handful. */
+function ServerPagedMatchCard({
   title,
   matches,
   myId,
+  page,
+  pageCount,
+  onPageChange,
   emptyMessage,
   loading = false,
 }: {
   title: string;
   matches: CageMatch[];
   myId: string | undefined;
+  /** 0-based, same as <Pagination>. */
+  page: number;
+  pageCount: number;
+  onPageChange: (page: number) => void;
   emptyMessage: string;
-  /** True until the first fetch settles, shows a spinner instead of the
+  /** True until the first page arrives, shows a spinner instead of the
    *  empty message so "No finished cage matches yet" doesn't flash before
-   *  the real list arrives. */
+   *  the real list lands. Later page changes keep the current rows up. */
   loading?: boolean;
 }) {
-  const [page, setPage] = useState(0);
-  const pageCount = Math.max(1, Math.ceil(matches.length / PAGE_SIZE));
-  // Clamp rather than reset to 0 outright, keeps you on the same page
-  // after the list shrinks by one instead of always bouncing back to page 1.
-  const safePage = Math.min(page, pageCount - 1);
-  const pageItems = matches.slice(
-    safePage * PAGE_SIZE,
-    safePage * PAGE_SIZE + PAGE_SIZE,
-  );
-
   return (
     <Card variant="solid">
       <CardHeader>
@@ -140,13 +132,13 @@ function PaginatedMatchCard({
             {matches.length === 0 && (
               <p className="text-sm text-base-content/50">{emptyMessage}</p>
             )}
-            {pageItems.map((m) => (
+            {matches.map((m) => (
               <CageMatchRow key={m._id} m={m} myId={myId} />
             ))}
             <Pagination
-              page={safePage}
+              page={page}
               pageCount={pageCount}
-              onPageChange={setPage}
+              onPageChange={onPageChange}
             />
           </>
         )}
@@ -161,8 +153,17 @@ export function CageMatches() {
   const myId = user?.id;
   const navigate = useNavigate();
   const location = useLocation();
-  const [matches, setMatches] = useState<CageMatch[]>([]);
+  // Active matches come from the default call; finished ones are paged
+  // by the server, one 5-match page per request (0-based page here).
+  const [activeMatches, setActiveMatches] = useState<CageMatch[]>([]);
   const [matchesLoading, setMatchesLoading] = useState(true);
+  const [finishedMatches, setFinishedMatches] = useState<CageMatch[]>([]);
+  const [finishedPage, setFinishedPage] = useState(0);
+  const [finishedPageCount, setFinishedPageCount] = useState(1);
+  const [finishedLoading, setFinishedLoading] = useState(true);
+  // Latest page for refreshMatches to re-fetch without becoming a dependency
+  // (which would re-subscribe the socket listeners on every page flip).
+  const finishedPageRef = useRef(0);
   const [refreshing, setRefreshing] = useState(false);
   const [status, setStatus] = useState<{
     message: string;
@@ -175,14 +176,37 @@ export function CageMatches() {
     )?.status ?? null,
   );
 
-  const activeMatches = matches.filter((m) => m.status === "active");
-  const finishedMatches = matches.filter((m) => m.status !== "active");
+  const loadFinished = useCallback((page: number) => {
+    return listMyFinishedCageMatches(page + 1)
+      .then((res) => {
+        setFinishedMatches(res.matches);
+        setFinishedPageCount(res.totalPages);
+        // The server clamps a stale page (list shrank) to the last real one.
+        finishedPageRef.current = res.page - 1;
+        setFinishedPage(res.page - 1);
+      })
+      .finally(() => setFinishedLoading(false));
+  }, []);
 
   const refreshMatches = useCallback(() => {
-    return listMyCageMatches()
-      .then((res) => setMatches(res.matches))
-      .finally(() => setMatchesLoading(false));
-  }, []);
+    return Promise.all([
+      listMyCageMatches()
+        .then((res) =>
+          setActiveMatches(res.matches.filter((m) => m.status === "active")),
+        )
+        .finally(() => setMatchesLoading(false)),
+      loadFinished(finishedPageRef.current),
+    ]);
+  }, [loadFinished]);
+
+  const handleFinishedPageChange = useCallback(
+    (page: number) => {
+      finishedPageRef.current = page;
+      setFinishedPage(page);
+      loadFinished(page);
+    },
+    [loadFinished],
+  );
 
   const handleManualRefresh = useCallback(() => {
     setRefreshing(true);
@@ -287,12 +311,15 @@ export function CageMatches() {
           </CardContent>
         </Card>
 
-        <PaginatedMatchCard
+        <ServerPagedMatchCard
           title="Finished"
           matches={finishedMatches}
           myId={myId}
+          page={finishedPage}
+          pageCount={finishedPageCount}
+          onPageChange={handleFinishedPageChange}
           emptyMessage="No finished cage matches yet."
-          loading={matchesLoading}
+          loading={finishedLoading}
         />
       </div>
     </Page>

@@ -134,6 +134,23 @@ export async function getLiveState(gameId: string): Promise<LiveGameState | null
   return raw ? (JSON.parse(raw) as LiveGameState) : null;
 }
 
+/** Atomic "I am the one ending this game" claim. Clock timers live in each
+ *  server process's memory, and with several instances more than one can
+ *  fire for the same game (the periodic sweep re-arms timers wherever it
+ *  runs). Without a claim, each firing ends the game again: duplicate
+ *  game:over / settled broadcasts, repeated rating and tournament
+ *  advancement work. Exactly one caller gets `true`. */
+export async function claimGameEnd(gameId: string): Promise<boolean> {
+  const ok = await redis.set(`game:${gameId}:ending`, '1', 'EX', 60 * 60, 'NX');
+  return ok === 'OK';
+}
+
+/** Gives the claim back when ending failed before the game actually ended,
+ *  so a retry (or another path) isn't locked out. */
+export async function releaseGameEndClaim(gameId: string): Promise<void> {
+  await redis.del(`game:${gameId}:ending`).catch(() => undefined);
+}
+
 export async function deleteLiveState(gameId: string): Promise<void> {
   await redis.del(stateKey(gameId));
 }

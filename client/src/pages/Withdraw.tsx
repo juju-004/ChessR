@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
-import { CheckCircle2, Landmark, XCircle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { AlertTriangle, CheckCircle2, Landmark, XCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
   getWalletConfig,
   getBanks,
   resolveAccount,
   withdraw,
+  getWithdrawStatus,
   type Bank,
 } from "../api/wallet.js";
 import { ApiRequestError } from "../api/http.js";
@@ -58,9 +59,18 @@ export function Withdraw() {
   const [banks, setBanks] = useState<Bank[]>([]);
 
   const [tokens, setTokens] = useState("");
-  const [bankCode, setBankCode] = useState("");
-  const [accountNumber, setAccountNumber] = useState("");
-  const [accountName, setAccountName] = useState("");
+  // Saved details are read once, up front, so the very first render already
+  // has them (previously they were restored in an effect, which raced the
+  // lookup effect below and wiped the restored account name).
+  const savedRef = useRef<SavedAccount | null>(readSavedAccount());
+  const [bankCode, setBankCode] = useState(savedRef.current?.bankCode ?? "");
+  const [accountNumber, setAccountNumber] = useState(
+    savedRef.current?.accountNumber ?? "",
+  );
+  const [accountName, setAccountName] = useState(
+    savedRef.current?.accountName ?? "",
+  );
+  const [withdrawBlockReason, setWithdrawBlockReason] = useState("");
   const [resolving, setResolving] = useState(false);
   const [resolveError, setResolveError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -69,33 +79,28 @@ export function Withdraw() {
   const [rememberDetails, setRememberDetails] = useState(
     () => readSavedAccount() !== null,
   );
-  // The debounced account-resolution effect below treats every accountNumber/
-  // bankCode change as "go resolve this", which would immediately overwrite
-  // the accountName we're about to prefill from storage with a fresh (but
-  // identical) lookup. This just tells that effect to skip its very first
-  // run so the restored name sticks without a flash of the resolving spinner.
-  const [skipNextResolve, setSkipNextResolve] = useState(false);
-
   useEffect(() => {
     getWalletConfig().then((res) => {
       setNairaPerToken(res.withdrawal.nairaPerToken);
       setMinTokens(res.withdrawal.minTokens);
     });
     getBanks().then((res) => setBanks(res.banks));
-
-    const saved = readSavedAccount();
-    if (saved) {
-      setSkipNextResolve(true);
-      setBankCode(saved.bankCode);
-      setAccountNumber(saved.accountNumber);
-      setAccountName(saved.accountName);
-    }
+    getWithdrawStatus()
+      .then((res) => setWithdrawBlockReason(res.eligible ? "" : (res.reason ?? "")))
+      .catch(() => {}); // non-fatal, the server enforces the rule on submit anyway
   }, []);
 
   // Debounced account resolution, fires once both fields look complete.
   useEffect(() => {
-    if (skipNextResolve) {
-      setSkipNextResolve(false);
+    // Restored from storage and untouched: keep the saved name, no lookup.
+    const saved = savedRef.current;
+    if (
+      saved &&
+      saved.accountNumber === accountNumber &&
+      saved.bankCode === bankCode
+    ) {
+      setAccountName(saved.accountName);
+      setResolveError("");
       return;
     }
     setAccountName("");
@@ -126,8 +131,9 @@ export function Withdraw() {
     tokensNum >= minTokens &&
     balance !== null &&
     tokensNum <= balance &&
-    !!accountName &&
-    !resolving &&
+    !!bankCode &&
+    accountNumber.length === 10 &&
+    !withdrawBlockReason &&
     !submitting;
 
   async function handleSubmit() {
@@ -139,12 +145,11 @@ export function Withdraw() {
         tokens: tokensNum,
         accountNumber,
         bankCode,
-        accountName,
+        bankName: banks.find((b) => b.code === bankCode)?.name,
+        accountName: accountName || undefined,
       });
       setSuccessMessage(
-        result.status === "success"
-          ? `Withdrawal of ₦${result.amountNaira.toLocaleString()} sent.`
-          : `Withdrawal submitted and is being processed (status: ${result.status}).`,
+        `Withdrawal request of ₦${result.amountNaira.toLocaleString()} submitted. It's pending while we send it to your bank, track it under Transactions.`,
       );
       if (rememberDetails) {
         try {
@@ -156,6 +161,7 @@ export function Withdraw() {
           // Non-fatal, the withdrawal itself already went through.
         }
       } else {
+        savedRef.current = null;
         try {
           localStorage.removeItem(REMEMBER_KEY);
         } catch {
@@ -205,7 +211,8 @@ export function Withdraw() {
       <Card variant="solid" className="w-full space-y-3">
         <p className="mb-4 flex flex-wrap items-center gap-1 text-xs text-base-content/50">
           Rate: ₦{nairaPerToken} per <RCoin size={11} /> Coin · Minimum
-          withdrawal: {minTokens} <RCoin size={11} /> Coins
+          withdrawal: {minTokens} <RCoin size={11} /> Coins · Payouts are
+          processed manually
         </p>
 
         <Input
@@ -216,6 +223,11 @@ export function Withdraw() {
           value={tokens}
           onChange={(e) => setTokens(e.target.value)}
           leadingIcon={<RCoin size={16} className="mb-3" />}
+          error={
+            balance !== null && tokensNum > balance
+              ? "You can't withdraw more than your balance"
+              : undefined
+          }
           hint={
             tokensNum > 0 ? `≈ ₦${estimatedNaira.toLocaleString()}` : undefined
           }
@@ -256,6 +268,14 @@ export function Withdraw() {
             <CheckCircle2 className="h-4 w-4" /> {accountName}
           </p>
         )}
+        {!accountName && accountNumber.length === 10 && !!bankCode && !resolving && (
+          <p className="mb-3.5 flex items-start gap-1.5 text-xs text-amber-500">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            We couldn't verify this account name. You can still submit, but
+            double-check the bank and account number, payouts sent to wrong
+            details can't be recovered.
+          </p>
+        )}
 
         <Switch
           checked={rememberDetails}
@@ -265,6 +285,12 @@ export function Withdraw() {
           className="mb-3.5 mt-7"
         />
 
+        {withdrawBlockReason && (
+          <div className="mb-3.5 flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3.5 py-2.5 text-sm text-amber-500">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>{withdrawBlockReason}</p>
+          </div>
+        )}
         {error && (
           <div className="mb-3.5 flex items-start gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-3.5 py-2.5 text-sm text-red-400">
             <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -285,7 +311,7 @@ export function Withdraw() {
           fullWidth
           className="mt-4"
         >
-          {submitting ? "Processing…" : "Withdraw"}
+          {submitting ? "Submitting…" : "Request withdrawal"}
         </Button>
       </Card>
     </Page>

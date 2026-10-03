@@ -11,6 +11,11 @@ import { PlatformRevenue } from '../models/PlatformRevenue.js';
 import { Tournament } from '../models/Tournament.js';
 import { analyzeGameForSuspicion } from '../services/anticheat.service.js';
 import { createNotification } from '../services/notification.service.js';
+import {
+  listWithdrawalsForAdmin,
+  resolveWithdrawalByAdmin,
+  listDepositsForAdmin,
+} from '../services/wallet.service.js';
 
 const loginSchema = z.object({
   username: z.string().min(1),
@@ -30,20 +35,40 @@ const revenueQuerySchema = z.object({
  *  cuts for auditing. See wallet.service.ts's computeRake/recordRake for
  *  where these rows come from, and RAKE_PERCENT in .env for the current
  *  rate. */
+
+// Summing the whole ledger is a full collection scan, and this endpoint is hit
+// on every load AND every page click of the feed. The per-source totals only
+// need to be roughly current (it's an admin dashboard), so they're cached
+// briefly in-process; the paginated entries below are always read fresh.
+const REVENUE_TOTALS_TTL_MS = 30_000;
+type RevenueTotalsRow = { _id: string; tokens: number; count: number };
+let revenueTotalsCache: { at: number; rows: RevenueTotalsRow[] } | null = null;
+
+async function getRevenueTotals(): Promise<RevenueTotalsRow[]> {
+  if (revenueTotalsCache && Date.now() - revenueTotalsCache.at < REVENUE_TOTALS_TTL_MS) {
+    return revenueTotalsCache.rows;
+  }
+  const rows = await PlatformRevenue.aggregate<RevenueTotalsRow>([
+    { $group: { _id: '$source', tokens: { $sum: '$tokens' }, count: { $sum: 1 } } },
+  ]);
+  revenueTotalsCache = { at: Date.now(), rows };
+  return rows;
+}
+
 export const getRevenueSummary = asyncHandler(async (req, res) => {
   const { page, limit } = revenueQuerySchema.parse(req.query);
 
-  const [totals, entries, total] = await Promise.all([
-    PlatformRevenue.aggregate<{ _id: string; tokens: number; count: number }>([
-      { $group: { _id: '$source', tokens: { $sum: '$tokens' }, count: { $sum: 1 } } },
-    ]),
+  const [totals, entries] = await Promise.all([
+    getRevenueTotals(),
     PlatformRevenue.find()
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
       .lean(),
-    PlatformRevenue.countDocuments(),
   ]);
+  // The row count is already in the grouped totals, so no separate
+  // countDocuments() pass over the collection.
+  const total = totals.reduce((n, row) => n + row.count, 0);
 
   const bySource: Record<string, { tokens: number; count: number }> = {
     game: { tokens: 0, count: 0 },
@@ -414,3 +439,40 @@ export const listNairaTournaments = asyncHandler(async (req, res) => {
   });
 });
 
+
+// --- Manual withdrawals (payouts are sent by hand, see wallet.service.ts's
+// initiateWithdrawal) and the deposit tracker (every naira paid in via
+// Paystack) ---------------------------------------------------------------
+
+const txListQuerySchema = z.object({
+  status: z.enum(['pending', 'success', 'failed']).optional(),
+  q: z.string().trim().max(100).optional(),
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(25),
+});
+
+export const listWithdrawals = asyncHandler(async (req, res) => {
+  const { status, page, limit } = txListQuerySchema.parse(req.query);
+  res.json(await listWithdrawalsForAdmin({ status, page, limit }));
+});
+
+const resolveWithdrawalSchema = z.object({
+  action: z.enum(['paid', 'decline']),
+  note: z.string().trim().max(500).optional(),
+});
+
+export const resolveWithdrawal = asyncHandler(async (req, res) => {
+  const { action, note } = resolveWithdrawalSchema.parse(req.body);
+  const tx = await resolveWithdrawalByAdmin(
+    String(req.params.id),
+    action,
+    note || undefined,
+    env.ADMIN_USERNAME ?? 'admin',
+  );
+  res.json({ id: tx._id, status: tx.status });
+});
+
+export const listDeposits = asyncHandler(async (req, res) => {
+  const { status, q, page, limit } = txListQuerySchema.parse(req.query);
+  res.json(await listDepositsForAdmin({ status, q: q || undefined, page, limit }));
+});

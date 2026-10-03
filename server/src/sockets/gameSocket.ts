@@ -10,6 +10,8 @@ import {
   deleteLiveState,
   GameTimeoutError,
   BerserkNotAllowedError,
+  claimGameEnd,
+  releaseGameEndClaim,
 } from '../services/gameState.service.js';
 import {
   appendMove,
@@ -23,7 +25,18 @@ import {
 import { advanceCageMatchLeg } from '../services/cageMatch.service.js';
 import { advanceTournamentIfPairing, berserkInTournamentGame } from '../services/tournament.service.js';
 import { applyRatingForGame } from '../services/rating.service.js';
-import { getLagCompensationMs } from '../services/latency.service.js';
+import {
+  getLagCompensationMs,
+  retainLatencyHeartbeat,
+  releaseLatencyHeartbeat,
+  notifyGameEnded,
+} from '../services/latency.service.js';
+import {
+  joinGamePresence,
+  leaveGamePresence,
+  getGamePresence,
+  type GamePresence,
+} from '../services/gamePresence.service.js';
 import { addChatMessage, getChatHistory, isChatRateLimited, isRepeatMessage, type ChatScope } from '../services/chat.service.js';
 import { assertNotRestricted } from '../services/suspension.service.js';
 import {
@@ -42,39 +55,28 @@ const spectatorRoom = (gameId: string) => `game:${gameId}:spectators`;
 // spectators in it) — see player_chat:send below and its doc comment.
 const playerRoom = (gameId: string) => `game:${gameId}:players`;
 
-/** io.in(room).fetchSockets() goes over the Redis adapter, it asks every
- *  connected server instance to report its local sockets in that room, and
- *  waits (default 5s) for all of them to reply. If one instance never
- *  answers, usually a previous deploy's process that got hard-killed before
- *  it could cleanly unsubscribe from Redis, this throws a timeout well after
- *  the fact rather than returning a snapshot. All of these snapshots are
- *  soft, self-correcting presence info (a spectator count, a connection
- *  dot), not anything load-bearing, so a failed fetch degrades to "nobody
- *  here right now" instead of blowing up the whole handler, it'll be right
- *  again on the next join/leave/connect event either way. */
-async function safeFetchSockets(io: Server, room: string) {
-  try {
-    return await io.in(room).fetchSockets();
-  } catch (err) {
-    console.error(`fetchSockets(${room}) failed, treating room as empty for this snapshot:`, err);
-    return [];
-  }
+/** Game-page presence (who is connected, how many spectators) is read from
+ *  Redis, see gamePresence.service.ts, NOT from io.in(room).fetchSockets().
+ *  fetchSockets() goes over the Redis adapter, asks every server instance to
+ *  report its local sockets and waits (default 5s) for all of them, so its
+ *  cost grows with instance count and one unresponsive instance stalls every
+ *  caller. A Redis hash read is one round trip regardless. The snapshots stay
+ *  soft, self-correcting presence info (a spectator count, a connection dot)
+ *  so a failed read degrades to "just me" instead of failing the handler. */
+function soloPresence(userId: string, role: 'white' | 'black' | 'spectator'): GamePresence {
+  return {
+    connectedUserIds: new Set([userId]),
+    spectatorUserIds: new Set(role === 'spectator' ? [userId] : []),
+  };
 }
 
-/** Counts *distinct users* currently in a game's spectator room (not raw
- *  sockets, someone with two tabs open shouldn't count twice) and
- *  broadcasts it to the whole game room, players included, since the
- *  spectator-count badge on the game page is visible to everyone there.
- *  excludeSocketId is for the disconnecting case: Socket.IO's
- *  'disconnecting' event fires just before it actually removes room
- *  membership, so without this the departing socket would still be
- *  counted as present in the room snapshot fetched here. */
-async function broadcastSpectatorCount(io: Server, gameId: string, excludeSocketId?: string): Promise<void> {
-  const sockets = await safeFetchSockets(io, spectatorRoom(gameId));
-  const remaining = excludeSocketId ? sockets.filter((s) => s.id !== excludeSocketId) : sockets;
-  const uniqueUserIds = new Set(remaining.map((s) => (s.data as AuthedSocketData).userId));
-  io.to(gameRoom(gameId)).emit('game:spectator_count', { gameId, count: uniqueUserIds.size });
+/** Broadcasts the distinct-spectator count to the whole game room, players
+ *  included, since the spectator-count badge is visible to everyone there. */
+function emitSpectatorCount(io: Server, gameId: string, presence: GamePresence): void {
+  io.to(gameRoom(gameId)).emit('game:spectator_count', { gameId, count: presence.spectatorUserIds.size });
 }
+
+const GAME_ROOM_PATTERN = /^game:([0-9a-f]{24})$/i;
 
 const joinSchema = z.object({ gameId: z.string().refine(mongoose.isValidObjectId) });
 const leaveSchema = joinSchema;
@@ -151,7 +153,16 @@ async function endGameAndBroadcast(
   clearGameTimer(gameId);
   clearFirstMoveTimer(gameId);
   clearAllPendingDisconnects(gameId);
-  const finalState = await endGame(gameId, result, endReason);
+  // Only one path (and, with several instances, only one instance) gets to
+  // end a given game, see claimGameEnd.
+  if (!(await claimGameEnd(gameId))) return;
+  let finalState;
+  try {
+    finalState = await endGame(gameId, result, endReason);
+  } catch (err) {
+    await releaseGameEndClaim(gameId);
+    throw err;
+  }
 
   // game:over goes out IMMEDIATELY, carrying only what's already known
   // (result, reason, final clocks). It used to wait for wager settlement
@@ -166,6 +177,7 @@ async function endGameAndBroadcast(
     whiteRemainingMs: finalState.whiteRemainingMs,
     blackRemainingMs: finalState.blackRemainingMs,
   });
+  notifyGameEnded(gameId);
 
   const wagerSettlement = await settleWager(
     gameId,
@@ -276,6 +288,7 @@ export function registerFirstMoveTimeoutHandler(io: Server) {
     await deleteLiveState(gameId);
 
     io.to(gameRoom(gameId)).emit('game:over', { gameId, result: null, reason: 'first_move_timeout' });
+    notifyGameEnded(gameId);
   });
 }
 
@@ -343,20 +356,18 @@ function isMoveRateLimited(socketId: string): boolean {
   return last !== undefined && now - last < MIN_MS_BETWEEN_MOVES;
 }
 
-async function userStillInRoom(io: Server, gameId: string, userId: string): Promise<boolean> {
-  let sockets;
+async function userStillInRoom(gameId: string, userId: string): Promise<boolean> {
   try {
-    sockets = await io.in(gameRoom(gameId)).fetchSockets();
+    return (await getGamePresence(gameId)).connectedUserIds.has(userId);
   } catch (err) {
     // Feeds the disconnect-grace/claim-available flow below, so an unknown
     // answer defaults to "still there" rather than "gone": misreading a
     // transient Redis hiccup as an opponent vanishing would wrongly start
     // the disconnect clock or open up a claim on an opponent who's actually
     // still playing.
-    console.error(`fetchSockets(${gameRoom(gameId)}) failed, assuming user is still present:`, err);
+    console.error(`game presence read failed for ${gameId}, assuming user is still present:`, err);
     return true;
   }
-  return sockets.some((s) => (s.data as AuthedSocketData).userId === userId);
 }
 
 async function handlePotentialDisconnect(io: Server, gameId: string, userId: string) {
@@ -371,7 +382,7 @@ async function handlePotentialDisconnect(io: Server, gameId: string, userId: str
 
   setTimeout(async () => {
     try {
-      const stillThere = await userStillInRoom(io, gameId, userId);
+      const stillThere = await userStillInRoom(gameId, userId);
       if (stillThere) return; // reconnected within the debounce window
 
       const freshState = await getLiveState(gameId);
@@ -389,7 +400,7 @@ async function handlePotentialDisconnect(io: Server, gameId: string, userId: str
         // Only fire if nothing has changed this in the meantime (reconnect, resign, etc.)
         const pending = pendingDisconnects.get(pendingKey(gameId, userId));
         if (!pending) return;
-        const stillGone = !(await userStillInRoom(io, gameId, userId));
+        const stillGone = !(await userStillInRoom(gameId, userId));
         if (!stillGone) return;
         io.to(gameRoom(gameId)).emit('game:claim_available', { userId });
       }, DISCONNECT_GRACE_MS);
@@ -434,7 +445,6 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         // never reaches the players, they don't get a chat UI at all, and
         // this means they never even receive the events for one.
         await socket.join(spectatorRoom(gameId));
-        broadcastSpectatorCount(io, gameId).catch((err) => console.error('broadcastSpectatorCount failed:', err));
       } else {
         // The two participants' own room, so their chat traffic never
         // reaches spectators either — see player_chat:send.
@@ -452,13 +462,41 @@ export function registerGameHandlers(io: Server, socket: Socket) {
 
       const liveState = await getLiveState(gameId);
 
-      // Snapshot of who's actually connected right now, combined with the
-      // opponent_connected/disconnected/reconnected events for live updates,
-      // this is what drives the connection dot next to each player's name.
-      const roomSockets = await safeFetchSockets(io, gameRoom(gameId));
-      const connectedUserIds = new Set(roomSockets.map((s) => (s.data as AuthedSocketData).userId));
+      // Lag compensation only matters for the two players of a live game
+      // (see latency.service.ts), so that's the only time a socket pays for
+      // the 2s ping/pong heartbeat. Spectators and finished/aborted games
+      // never start one. It's stopped again on game:leave, when the game
+      // ends, or on disconnect.
+      const joinStatus = liveState?.status ?? game.status;
+      if (role !== 'spectator' && (joinStatus === 'active' || joinStatus === 'waiting')) {
+        retainLatencyHeartbeat(
+          socket.id,
+          gameId,
+          () => socket.emit('latency:ping', Date.now()),
+          // Local, free check run on every tick: if this socket has left
+          // the game's room, however that happened, the heartbeat stops.
+          () => socket.rooms.has(gameRoom(gameId)),
+        );
+      }
+
+      // ONE Redis round trip for the whole join (register this socket and
+      // read who else is here), independent of how many server instances
+      // run. The snapshot drives the connection dot next to each player's
+      // name (with the opponent_connected/disconnected/reconnected events
+      // for live updates) and the spectator count.
+      let presence: GamePresence;
+      try {
+        presence = await joinGamePresence(gameId, socket.id, userId, role === 'spectator' ? 'spectator' : 'player');
+      } catch (err) {
+        console.error(`joinGamePresence(${gameId}) failed, using a solo snapshot:`, err);
+        presence = soloPresence(userId, role);
+      }
+      const connectedUserIds = presence.connectedUserIds;
       const whiteConnected = connectedUserIds.has(idOf(game.white)!);
       const blackConnected = game.black ? connectedUserIds.has(idOf(game.black)!) : false;
+      const spectatorCount = presence.spectatorUserIds.size;
+      // A new spectator changes the count for everyone already in the room.
+      if (role === 'spectator') emitSpectatorCount(io, gameId, presence);
 
       // Cheap self-healing measure: (re)scheduling on every join/reconnect
       // means the timer recovers on its own the moment anyone next touches
@@ -470,11 +508,9 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         scheduleFirstMoveTimer(gameId).catch((err) => console.error('scheduleFirstMoveTimer on join failed:', err));
       }
 
-      // So a freshly-joining client (player or spectator) has the current
-      // spectator count immediately, rather than waiting for the next
-      // broadcastSpectatorCount triggered by someone else joining/leaving.
-      const spectatorSockets = await safeFetchSockets(io, spectatorRoom(gameId));
-      const spectatorCount = new Set(spectatorSockets.map((s) => (s.data as AuthedSocketData).userId)).size;
+      // spectatorCount (computed above from the same snapshot) is also
+      // included in game:sync below, so a freshly-joining client has the
+      // current count immediately.
 
       // Spectator chat is now persisted (see chat.service.ts), so a
       // freshly-joining spectator (or one who just refreshed) gets the
@@ -551,8 +587,12 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       const wasSpectator = socket.rooms.has(spectatorRoom(gameId));
       await socket.leave(gameRoom(gameId));
       await socket.leave(spectatorRoom(gameId));
-      if (wasSpectator) {
-        broadcastSpectatorCount(io, gameId).catch((err) => console.error('broadcastSpectatorCount failed:', err));
+      releaseLatencyHeartbeat(socket.id, gameId);
+      try {
+        const presence = await leaveGamePresence(gameId, socket.id);
+        if (wasSpectator) emitSpectatorCount(io, gameId, presence);
+      } catch (err) {
+        console.error('leaveGamePresence failed:', err);
       }
     }),
   );
@@ -723,7 +763,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       // future change to this bookkeeping). A win/draw claim ends the game
       // outright, so it gets this one extra check rather than trusting
       // cached state for something with that much weight.
-      const stillGone = !(await userStillInRoom(io, gameId, opponentId));
+      const stillGone = !(await userStillInRoom(gameId, opponentId));
       if (!stillGone) {
         clearPendingDisconnect(gameId, opponentId);
         io.to(gameRoom(gameId)).emit('game:opponent_reconnected', { userId: opponentId });
@@ -900,6 +940,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       await deleteLiveState(gameId);
 
       io.to(gameRoom(gameId)).emit('game:over', { gameId, result: null, reason: 'aborted_no_moves' });
+      notifyGameEnded(gameId);
     }),
   );
 
@@ -1026,24 +1067,28 @@ export function registerGameHandlers(io: Server, socket: Socket) {
 
   socket.on('disconnecting', () => {
     lastMoveAtBySocket.delete(socket.id);
-    const rooms = Array.from(socket.rooms).filter((r) => r.startsWith('game:'));
-    for (const room of rooms) {
-      const gameId = room.slice('game:'.length);
+    // Only the main `game:<id>` room. The sub-rooms (`game:<id>:spectators`,
+    // `game:<id>:players`) also start with "game:" and used to be picked up
+    // here as bogus game ids, costing wasted lookups per room.
+    const gameIds: string[] = [];
+    for (const room of socket.rooms) {
+      const match = GAME_ROOM_PATTERN.exec(room);
+      if (match) gameIds.push(match[1]);
+    }
+    for (const gameId of gameIds) {
+      const wasSpectator = socket.rooms.has(spectatorRoom(gameId));
       handlePotentialDisconnect(io, gameId, userId).catch((err) =>
         console.error('handlePotentialDisconnect failed:', err),
       );
-    }
-    // Same spectator-count refresh as game:leave above, for the case where
-    // someone just closes the tab/loses connection instead of navigating
-    // away normally. excludeSocketId matters here specifically because
-    // 'disconnecting' fires just before Socket.IO removes this socket from
-    // its rooms, so a same-tick fetchSockets() would still count it.
-    const spectatorRooms = Array.from(socket.rooms).filter((r) => r.endsWith(':spectators'));
-    for (const room of spectatorRooms) {
-      const gameId = room.slice('game:'.length, -':spectators'.length);
-      broadcastSpectatorCount(io, gameId, socket.id).catch((err) =>
-        console.error('broadcastSpectatorCount failed:', err),
-      );
+      // Drop this socket from the presence hash and, for a spectator,
+      // refresh the count for everyone left. Done explicitly because
+      // 'disconnecting' fires before Socket.IO removes the room membership,
+      // and Redis presence knows nothing of Socket.IO's own bookkeeping.
+      leaveGamePresence(gameId, socket.id)
+        .then((presence) => {
+          if (wasSpectator) emitSpectatorCount(io, gameId, presence);
+        })
+        .catch((err) => console.error('leaveGamePresence on disconnect failed:', err));
     }
   });
 }

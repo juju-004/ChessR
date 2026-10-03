@@ -9,6 +9,7 @@ import { clearGameTimer, scheduleGameTimer, clearFirstMoveTimer, scheduleFirstMo
 import { debitWagerStake, creditWagerReturn, computeRake, recordRake } from "./wallet.service.js";
 import { getIo } from "../sockets/io.js";
 import { expireChat } from "./chat.service.js";
+import { notifyGameEnded } from "./latency.service.js";
 
 const generateCode = customAlphabet("ABCDEFGHJKMNPQRSTUVWXYZ23456789", 6);
 
@@ -257,6 +258,7 @@ async function finalizeCageMatchForfeit(
       if (legWasIdle) {
         try {
           getIo().to(`game:${gameId}`).emit("game:over", { gameId, result: null, reason: "aborted_no_moves" });
+          notifyGameEnded(gameId);
         } catch {
           // Socket.IO not initialized (e.g. script/test context), safe to ignore.
         }
@@ -290,6 +292,7 @@ async function finalizeCageMatchForfeit(
             reason: legEndReason,
             wagerSettlement,
           });
+          notifyGameEnded(gameId);
         } catch {
           // Socket.IO not initialized (e.g. script/test context), safe to ignore.
         }
@@ -700,11 +703,48 @@ export async function getCageMatchByCode(codeOrId: string) {
   return match;
 }
 
-export async function listMyCageMatches(userId: string) {
-  return CageMatch.find({ $or: [{ player1: userId }, { player2: userId }] })
-    .sort({ createdAt: -1 })
-    .limit(50)
-    .populate("player1", "username avatarGradient")
-    .populate("player2", "username avatarGradient")
-    .lean();
+/** Page size for the Finished cage matches list (and how many finished
+ *  matches the default response carries along with the active ones). */
+export const FINISHED_CAGE_MATCHES_PAGE_SIZE = 5;
+
+export async function listMyCageMatches(
+  userId: string,
+  opts: { scope?: "finished"; page?: number; limit?: number } = {},
+) {
+  const mine = { $or: [{ player1: userId }, { player2: userId }] };
+
+  if (opts.scope === "finished") {
+    const limit = opts.limit ?? FINISHED_CAGE_MATCHES_PAGE_SIZE;
+    const filter = { ...mine, status: { $ne: "active" } };
+    const total = await CageMatch.countDocuments(filter);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    // Clamp so a stale page number (the list shrank) returns the last page.
+    const page = Math.min(Math.max(1, opts.page ?? 1), totalPages);
+    const matches = await CageMatch.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .populate("player1", "username avatarGradient")
+      .populate("player2", "username avatarGradient")
+      .lean();
+    return { matches, page, limit, total, totalPages };
+  }
+
+  // Default (also what the dashboard uses): every active match plus just the
+  // newest few finished ones, rather than the whole history.
+  const [active, recentFinished] = await Promise.all([
+    CageMatch.find({ ...mine, status: "active" })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .populate("player1", "username avatarGradient")
+      .populate("player2", "username avatarGradient")
+      .lean(),
+    CageMatch.find({ ...mine, status: { $ne: "active" } })
+      .sort({ createdAt: -1 })
+      .limit(FINISHED_CAGE_MATCHES_PAGE_SIZE)
+      .populate("player1", "username avatarGradient")
+      .populate("player2", "username avatarGradient")
+      .lean(),
+  ]);
+  return { matches: [...active, ...recentFinished] };
 }

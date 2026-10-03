@@ -9,6 +9,7 @@ import {
   getBanks,
   resolveAccount,
   withdraw,
+  getWithdrawStatus,
   getTransactions,
   getPayoutAccount,
   savePayoutAccount,
@@ -31,6 +32,7 @@ router.post('/purchase', requireAuth, initPurchase);
 router.post('/purchase/verify', requireAuth, verifyPurchase);
 router.get('/banks', requireAuth, getBanks);
 router.get('/resolve-account', requireAuth, resolveAccount);
+router.get('/withdraw-status', requireAuth, getWithdrawStatus);
 router.post('/withdraw', requireAuth, withdrawLimiter, withdraw);
 router.get('/transactions', requireAuth, getTransactions);
 router.get('/payout-account', requireAuth, getPayoutAccount);

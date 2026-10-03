@@ -236,3 +236,96 @@ export function listNairaTournaments(page = 1, limit = 20) {
     `/naira-tournaments?page=${page}&limit=${limit}`,
   );
 }
+
+// --- Manual withdrawals + deposit tracker -----------------------------------
+// Payouts are sent by hand: a user's withdrawal request queues as 'pending'
+// until an admin sends the money and resolves it here. See wallet.service.ts
+// (server) initiateWithdrawal / resolveWithdrawalByAdmin.
+
+export type TxStatus = 'pending' | 'success' | 'failed';
+
+export interface AdminTxUser {
+  id: string;
+  username: string;
+  email: string;
+}
+
+export interface AdminWithdrawal {
+  id: string;
+  reference: string;
+  status: TxStatus;
+  tokens: number;
+  amountKobo: number;
+  user: AdminTxUser | null;
+  bankName: string | null;
+  bankCode: string | null;
+  accountNumber: string | null;
+  accountName: string | null;
+  failureReason: string | null;
+  adminNote: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+export interface WithdrawalListResponse {
+  withdrawals: AdminWithdrawal[];
+  summary: {
+    pendingCount: number;
+    pendingKobo: number;
+    paidCount: number;
+    paidKobo: number;
+    declinedCount: number;
+  };
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export function listWithdrawals(status?: TxStatus | 'all', page = 1, limit = 25) {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (status && status !== 'all') params.set('status', status);
+  return adminFetch<WithdrawalListResponse>(`/withdrawals?${params.toString()}`);
+}
+
+export function resolveWithdrawal(id: string, action: 'paid' | 'decline', note?: string) {
+  return adminFetch<{ id: string; status: TxStatus }>(`/withdrawals/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ action, note: note || undefined }),
+  });
+}
+
+export interface AdminDeposit {
+  id: string;
+  reference: string;
+  status: TxStatus;
+  tokens: number;
+  amountKobo: number;
+  user: AdminTxUser | null;
+  failureReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DepositListResponse {
+  deposits: AdminDeposit[];
+  summary: {
+    totalReceivedKobo: number;
+    totalTokensSold: number;
+    successCount: number;
+    pendingCount: number;
+    failedCount: number;
+    thisMonthKobo: number;
+  };
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export function listDeposits(status?: TxStatus | 'all', q?: string, page = 1, limit = 25) {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (status && status !== 'all') params.set('status', status);
+  if (q) params.set('q', q);
+  return adminFetch<DepositListResponse>(`/deposits?${params.toString()}`);
+}

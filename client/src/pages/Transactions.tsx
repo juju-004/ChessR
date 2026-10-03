@@ -146,6 +146,11 @@ export function Transactions() {
                         : ""}
                       {new Date(t.createdAt).toLocaleString()}
                     </p>
+                    {t.type === "withdrawal" && t.status === "pending" && (
+                      <p className="mt-0.5 text-xs text-amber-500">
+                        Awaiting payout, we'll notify you once it's sent.
+                      </p>
+                    )}
                     {t.status === "failed" && t.failureReason && (
                       <p className="mt-0.5 text-xs text-red-400">
                         {t.failureReason}

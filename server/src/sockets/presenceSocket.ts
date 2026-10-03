@@ -14,11 +14,13 @@ export function registerPresenceHandlers(io: Server, socket: Socket) {
   // they shouldn't vanish silently either (an unhandled rejection here once
   // made a Redis hiccup look like "presence is just broken" with no trace).
   void (async () => {
-    await registerSocket(userId, socket.id);
+    const cameOnline = await registerSocket(userId, socket.id);
     // A personal room lets other parts of the app (friend requests, challenges)
     // reach every tab/device a user has open without tracking raw socket ids.
     await socket.join(`user:${userId}`);
-    await notifyFriends(io, userId, 'friend:presence', { userId, online: true });
+    // Only the first socket is news to friends. Extra tabs/devices used to
+    // each cost a friends lookup plus one emit per friend for nothing.
+    if (cameOnline) await notifyFriends(io, userId, 'friend:presence', { userId, online: true });
     // Smart pairing (see arenaAvailablePlayers) skips offline players
     // entirely rather than pairing them against someone who isn't there, 
     // this is what picks them back up the instant they're actually back,
@@ -52,7 +54,8 @@ export function registerPresenceHandlers(io: Server, socket: Socket) {
 async function notifyFriends(io: Server, userId: string, event: string, payload: unknown) {
   const user = await User.findById(userId).select('friends').lean();
   if (!user) return;
-  for (const friendId of user.friends) {
-    io.to(`user:${friendId.toString()}`).emit(event, payload);
-  }
+  if (user.friends.length === 0) return;
+  // One emit addressed to every friend's room: a single adapter publish
+  // instead of one per friend.
+  io.to(user.friends.map((friendId) => `user:${friendId.toString()}`)).emit(event, payload);
 }

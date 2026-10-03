@@ -91,7 +91,8 @@ export function withdraw(params: {
   tokens: number;
   accountNumber: string;
   bankCode: string;
-  accountName: string;
+  bankName?: string;
+  accountName?: string;
 }) {
   return apiFetch<{
     status: string;
@@ -102,6 +103,12 @@ export function withdraw(params: {
     method: "POST",
     body: JSON.stringify(params),
   });
+}
+
+export function getWithdrawStatus() {
+  return apiFetch<{ eligible: boolean; reason?: string }>(
+    "/wallet/withdraw-status",
+  );
 }
 
 export function getTransactions(page = 1, limit = 20) {

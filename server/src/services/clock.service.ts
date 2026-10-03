@@ -13,6 +13,13 @@ export function setTimeoutHandler(fn: TimeoutHandler): void {
 
 const timers = new Map<string, NodeJS.Timeout>();
 
+/** True if this process already has a flag-fall timer armed for the game.
+ *  Lets the periodic reconcile sweep leave healthy games alone instead of
+ *  tearing down and rebuilding every timer once a minute. */
+export function hasGameTimer(gameId: string): boolean {
+  return timers.has(gameId);
+}
+
 export function clearGameTimer(gameId: string): void {
   const t = timers.get(gameId);
   if (t) {
@@ -102,6 +109,10 @@ export function setFirstMoveTimeoutHandler(fn: FirstMoveTimeoutHandler): void {
 }
 
 const firstMoveTimers = new Map<string, NodeJS.Timeout>();
+
+export function hasFirstMoveTimer(gameId: string): boolean {
+  return firstMoveTimers.has(gameId);
+}
 
 export function clearFirstMoveTimer(gameId: string): void {
   const t = firstMoveTimers.get(gameId);

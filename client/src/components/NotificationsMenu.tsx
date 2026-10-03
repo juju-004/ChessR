@@ -23,6 +23,7 @@ import {
   type NotificationItem,
 } from "../contexts/NotificationCenterContext.js";
 import type { NotificationType } from "../api/notifications.js";
+import { useIsDesktop } from "../hooks/useIsDesktop.js";
 
 interface NotificationsMenuProps {
   className?: string;
@@ -48,6 +49,9 @@ function timeControlLabel(tc: {
 export function NotificationsMenu({ className }: NotificationsMenuProps) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  // The popover is a quick glance, not the full list (that's the Expand
+  // button -> /notifications): 3 rows on desktop, 2 on mobile.
+  const isDesktop = useIsDesktop();
   const {
     items,
     unreadCount,
@@ -56,6 +60,8 @@ export function NotificationsMenu({ className }: NotificationsMenuProps) {
     respondToChallengeItem,
     respondToCageInviteItem,
   } = useNotificationCenter();
+
+  const visibleItems = items.slice(0, isDesktop ? 3 : 2);
 
   function handleSystemItemClick(
     item: Extract<NotificationItem, { kind: "system" }>,
@@ -103,7 +109,7 @@ export function NotificationsMenu({ className }: NotificationsMenuProps) {
         )}
 
         <div className="max-h-96 overflow-y-auto">
-          {items.map((item) => {
+          {visibleItems.map((item) => {
             if (item.kind === "friend_request") {
               return (
                 <div

@@ -204,6 +204,14 @@ export function Game() {
   const [pauseRequestSent, setPauseRequestSent] = useState(false);
   const [resumeRequestSent, setResumeRequestSent] = useState(false);
   const [gameOverModalDismissed, setGameOverModalDismissed] = useState(false);
+  // Join code of the next game in this cage match, set by `cage:next_leg`.
+  // The server sends it right as this leg ends (in either order relative to
+  // `game:over`), so it lives in its own state and the game over modal just
+  // shows "Go to next match" whenever it's set.
+  const [nextCageLegCode, setNextCageLegCode] = useState<string | null>(null);
+  useEffect(() => {
+    setNextCageLegCode(null);
+  }, [code]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatHasUnread, setChatHasUnread] = useState(false);
   // Player-to-player chat, a separate conversation/history from the
@@ -1152,6 +1160,15 @@ export function Game() {
     socket.on("cage:pause_declined", onPauseDeclinedLocal);
     socket.on("cage:resume_request_sent", onResumeRequestSent);
     socket.on("cage:resume_declined", onResumeDeclinedLocal);
+    function onCageNextLegOnThisLeg(payload: {
+      matchId: string;
+      nextLeg?: { joinCode: string };
+    }) {
+      if (payload.matchId !== gameMetaRef.current?.cageMatchId) return;
+      if (payload.nextLeg) setNextCageLegCode(payload.nextLeg.joinCode);
+    }
+
+    socket.on("cage:next_leg", onCageNextLegOnThisLeg);
     socket.on("cage:match_over", onCageMatchOverOnThisLeg);
 
     // Covers the common case where the socket is already connected by the
@@ -1182,6 +1199,7 @@ export function Game() {
       socket.off("cage:pause_declined", onPauseDeclinedLocal);
       socket.off("cage:resume_request_sent", onResumeRequestSent);
       socket.off("cage:resume_declined", onResumeDeclinedLocal);
+      socket.off("cage:next_leg", onCageNextLegOnThisLeg);
       socket.off("cage:match_over", onCageMatchOverOnThisLeg);
     };
   }, [
@@ -2158,6 +2176,14 @@ export function Game() {
           }
           myUserId={user?.id}
           tournamentCode={gameMeta?.tournamentId?.code}
+          onNextMatch={
+            nextCageLegCode
+              ? () => {
+                  setGameOverModalDismissed(true);
+                  navigate(`/game/${nextCageLegCode}`);
+                }
+              : null
+          }
           onRematch={handleRematch}
           onClose={() => setGameOverModalDismissed(true)}
         />

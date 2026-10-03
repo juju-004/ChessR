@@ -26,6 +26,8 @@ import {
   type AdminNairaTournament,
 } from "../api/admin.js";
 import { clearAdminToken } from "../api/adminAuthStore.js";
+import { AdminWithdrawals } from "../components/admin/AdminWithdrawals.js";
+import { AdminDeposits } from "../components/admin/AdminDeposits.js";
 import {
   Card,
   Badge,
@@ -80,7 +82,9 @@ const flagStatusVariant: Record<GameFlagStatus, "warning" | "success" | "error">
 
 export function AdminDashboard() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"reports" | "gameCheck" | "revenue" | "naira">("reports");
+  const [tab, setTab] = useState<
+    "reports" | "gameCheck" | "revenue" | "naira" | "withdrawals" | "deposits"
+  >("reports");
   const [status, setStatus] = useState<ReportStatus | "all">("pending");
   const [reports, setReports] = useState<AdminReportListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -180,7 +184,7 @@ export function AdminDashboard() {
       <div className="mb-4 flex items-center justify-between gap-2 sm:mb-5">
         <div className="flex min-w-0 items-center gap-2 text-base-content">
           <ShieldCheck className="h-5 w-5 shrink-0 text-(--primary)" />
-          <h1 className="truncate text-lg font-semibold">Report review</h1>
+          <h1 className="truncate text-lg font-semibold">Admin console</h1>
         </div>
         <Button
           variant="glass"
@@ -198,12 +202,14 @@ export function AdminDashboard() {
       <div className="mb-4 max-w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <Tabs
           value={tab}
-          onChange={(v) => setTab(v as "reports" | "gameCheck" | "revenue" | "naira")}
+          onChange={(v) => setTab(v as typeof tab)}
           items={[
             { value: "reports", label: "Reports" },
             { value: "gameCheck", label: "Game check" },
             { value: "revenue", label: "Revenue" },
             { value: "naira", label: "Naira tournaments" },
+            { value: "withdrawals", label: "Withdrawals" },
+            { value: "deposits", label: "Deposits" },
           ]}
         />
       </div>
@@ -391,6 +397,10 @@ export function AdminDashboard() {
             ))}
           </div>
         </>
+      ) : tab === "withdrawals" ? (
+        <AdminWithdrawals />
+      ) : tab === "deposits" ? (
+        <AdminDeposits />
       ) : tab === "naira" ? (
         <div className="space-y-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
@@ -574,8 +584,7 @@ export function AdminDashboard() {
                             {SOURCE_LABEL[source]}
                           </p>
                           <p className="text-sm font-semibold text-base-content">
-                            <RCoinAmount value={s.tokens} size={14} /> ·{" "}
-                            {s.count} {s.count === 1 ? "cut" : "cuts"}
+                            <RCoinAmount value={s.tokens} size={14} />
                           </p>
                         </div>
                       </Card>

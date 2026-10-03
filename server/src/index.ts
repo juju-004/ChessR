@@ -6,7 +6,7 @@ import { createApp } from './app.js';
 import { initSocketServer } from './sockets/index.js';
 import { getIo } from './sockets/io.js';
 import { reconcileActiveGames, sweepAbortedGames, sweepStaleWaitingGames } from './services/game.service.js';
-import { reconcileActiveTournaments, sweepCancelledTournaments, resolveDesyncedArenaPairings } from './services/tournament.service.js';
+import { reconcileActiveTournaments, sweepCancelledTournaments, resolveDesyncedPairings } from './services/tournament.service.js';
 import { reconcilePresence } from './services/presence.service.js';
 import {
   runAllQuickPairingPasses,
@@ -15,6 +15,22 @@ import {
 import { broadcastLobbyCounts } from './sockets/quickPairingSocket.js';
 import { FriendRequest } from './models/FriendRequest.js';
 import { Game } from './models/Game.js';
+import { monitorEventLoopDelay } from 'node:perf_hooks';
+import { runOncePerInterval } from './utils/distributedLock.js';
+import { stopInstancePresenceBeat } from './services/gamePresence.service.js';
+
+// Timing for the periodic sweeps: silent when fast, logs a warning when one
+// takes long enough that it could plausibly be delaying socket traffic.
+const SLOW_SWEEP_MS = 300;
+function timed<T>(name: string, fn: () => Promise<T>): Promise<T | void> {
+  const startedAt = performance.now();
+  return fn()
+    .catch((err) => console.error(`periodic ${name} failed:`, err))
+    .finally(() => {
+      const ms = performance.now() - startedAt;
+      if (ms > SLOW_SWEEP_MS) console.warn(`⏱️  ${name} took ${Math.round(ms)}ms`);
+    });
+}
 
 async function main() {
   await connectMongo();
@@ -54,7 +70,7 @@ async function main() {
   // restarting (very common in dev with hot-reload; also a real concern in
   // prod after a deploy or crash). Then keep sweeping periodically as a
   // general safety net.
-  reconcileActiveGames()
+  reconcileActiveGames({ rearmAll: true })
     .then(({ resumed, timedOut, aborted, idleCancelled }) => {
       if (resumed || timedOut || aborted || idleCancelled) {
         console.log(
@@ -88,14 +104,14 @@ async function main() {
     .catch((err) => console.error('reconcilePresence failed on boot:', err));
 
   // Self-heal for the "stuck on Finishing up…" arena incident (see
-  // resolveDesyncedArenaPairings' own doc comment): catches an arena
+  // resolveDesyncedPairings' own doc comment): catches an arena
   // tournament left "active" forever because a pairing's game finished but
   // never made it back into the tournament document.
-  resolveDesyncedArenaPairings()
+  resolveDesyncedPairings()
     .then(({ resolved }) => {
       if (resolved) console.log(`🔧 Repaired ${resolved} desynced arena pairing(s) on boot.`);
     })
-    .catch((err) => console.error('resolveDesyncedArenaPairings failed on boot:', err));
+    .catch((err) => console.error('resolveDesyncedPairings failed on boot:', err));
 
   // Cancelled tournaments carry no lasting value (no games were ever
   // played), so they're deleted a short while after cancellation rather
@@ -130,23 +146,53 @@ async function main() {
   // instead, while still being cheap (Game.find({status:'active'}) over a
   // realistic table size, once a minute).
   let reconcileTick = 0;
+  // Every instance runs this same interval, so each sweep is also gated
+  // cluster-wide (runOncePerInterval): with N instances the work still runs
+  // once per period instead of N times. The in-process `running` set keeps a
+  // sweep that outlasts its period from overlapping itself on this instance.
+  const SWEEP_PERIOD_MS = 60 * 1000;
+  const running = new Set<string>();
+  const sweep = (name: string, periodMs: number, fn: () => Promise<unknown>) => {
+    if (running.has(name)) return;
+    running.add(name);
+    void timed(name, () => runOncePerInterval(name, periodMs, fn)).finally(() => running.delete(name));
+  };
   const reconcileInterval = setInterval(() => {
     reconcileTick++;
-    reconcileActiveGames().catch((err) => console.error('periodic reconcileActiveGames failed:', err));
-    reconcileActiveTournaments().catch((err) => console.error('periodic reconcileActiveTournaments failed:', err));
-    resolveDesyncedArenaPairings().catch((err) => console.error('periodic resolveDesyncedArenaPairings failed:', err));
-    // Presence reconcile is the costliest sweep for Redis (a cluster-wide
-    // fetchSockets round trip plus two full SCANs, even with zero users),
-    // and it only repairs rare stuck-presence leftovers, so every 60th
-    // tick (hourly) is plenty and cuts its Redis use by ~98%.
-    if (reconcileTick % 60 === 0) {
-      reconcilePresence(getIo()).catch((err) => console.error('periodic reconcilePresence failed:', err));
+    sweep('reconcileActiveGames', SWEEP_PERIOD_MS, () => reconcileActiveGames());
+    sweep('reconcileActiveTournaments', SWEEP_PERIOD_MS, () => reconcileActiveTournaments());
+    // The tournament repair pass only fixes rare stuck states and is
+    // already pre-checked cheaply, so every 3rd tick (3 min) is plenty.
+    if (reconcileTick % 3 === 0) {
+      sweep('resolveDesyncedPairings', 3 * SWEEP_PERIOD_MS, () => resolveDesyncedPairings());
     }
-    sweepCancelledTournaments().catch((err) => console.error('periodic sweepCancelledTournaments failed:', err));
-    sweepAbortedGames().catch((err) => console.error('periodic sweepAbortedGames failed:', err));
-    sweepStaleWaitingGames().catch((err) => console.error('periodic sweepStaleWaitingGames failed:', err));
-  }, 60 * 1000);
+    // Presence reconcile is the costliest sweep for Redis (a cluster-wide
+    // fetchSockets round trip plus full SCANs, even with zero users), and it
+    // only repairs rare stuck-presence leftovers, so hourly is plenty and
+    // cuts its Redis use by ~98%. It is also the only sweep that still asks
+    // the whole cluster for its sockets, which is why it is gated so that
+    // exactly one instance does it per hour.
+    if (reconcileTick % 60 === 0) {
+      sweep('reconcilePresence', 60 * SWEEP_PERIOD_MS, () => reconcilePresence(getIo()));
+    }
+    sweep('sweepCancelledTournaments', SWEEP_PERIOD_MS, () => sweepCancelledTournaments());
+    sweep('sweepAbortedGames', SWEEP_PERIOD_MS, () => sweepAbortedGames());
+    sweep('sweepStaleWaitingGames', SWEEP_PERIOD_MS, () => sweepStaleWaitingGames());
+  }, SWEEP_PERIOD_MS);
   reconcileInterval.unref();
+
+  // Event-loop lag monitor: if something synchronous (or a flood of
+  // callbacks) is stalling the loop, every socket message waits behind it.
+  // Silent unless the 99th-percentile stall in the last minute was notable.
+  const loopDelay = monitorEventLoopDelay({ resolution: 20 });
+  loopDelay.enable();
+  const loopDelayInterval = setInterval(() => {
+    const p99 = loopDelay.percentile(99) / 1e6;
+    const max = loopDelay.max / 1e6;
+    if (p99 > 100) console.warn(`🐢 event loop lag: p99 ${Math.round(p99)}ms, max ${Math.round(max)}ms (last 60s)`);
+    loopDelay.reset();
+  }, 60 * 1000);
+  loopDelayInterval.unref();
 
   // Quick pairing needs a much tighter cadence than the 60s sweeps above:
   // it's what widens a waiting player's rating window over time, and what
@@ -191,6 +237,7 @@ async function main() {
     // a hang rather than only running once the hang is already over.
     const forceExit = setTimeout(() => process.exit(1), 10000);
     forceExit.unref();
+    await stopInstancePresenceBeat();
     await Promise.all([disconnectMongo(), disconnectRedis()]);
     clearTimeout(forceExit);
     process.exit(0);

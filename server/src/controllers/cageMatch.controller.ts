@@ -8,9 +8,15 @@ import type { AuthedRequest } from '../middleware/auth.js';
 // only knows the cage match's _id, not its human-friendly matchCode.
 const codeParamSchema = z.object({ code: z.string().min(4).max(24) });
 
+const mineQuerySchema = z.object({
+  scope: z.enum(['finished']).optional(),
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(20).optional(),
+});
+
 export const getMyCageMatches = asyncHandler(async (req: AuthedRequest, res) => {
-  const matches = await listMyCageMatches(req.user!.id);
-  res.json({ matches });
+  const { scope, page, limit } = mineQuerySchema.parse(req.query);
+  res.json(await listMyCageMatches(req.user!.id, { scope, page, limit }));
 });
 
 export const getCageMatchByCodeHandler = asyncHandler(async (req, res) => {

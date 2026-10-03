@@ -11,6 +11,7 @@ import {
   Play,
   Medal,
   LocateFixed,
+  Ban,
 } from "lucide-react";
 import {
   getTournamentByCode,
@@ -35,6 +36,12 @@ import { useConfirm } from "../contexts/ConfirmContext.js";
 import { copyToClipboard } from "@/lib/utils.js";
 import { cn } from "@/lib/cn.js";
 import { ChatDrawer } from "../components/chat/ChatDrawer.js";
+import {
+  TournamentActionBarMobile,
+  JoinPasswordModal,
+  type TournamentPrimaryAction,
+} from "../components/tournaments/TournamentActionBar.js";
+import type { DropdownItem } from "../components/ui/index.js";
 import type { ChatMessage } from "../lib/chatTypes.js";
 import { PrizePoolEditor } from "../components/tournaments/PrizePoolEditor.js";
 import {
@@ -570,46 +577,29 @@ function ArenaCountdown({ arenaEndsAt }: { arenaEndsAt: string }) {
  *  This mirrors that same window purely for what to show, the server is
  *  the actual authority and will reject a join that's arrived too late
  *  regardless of what this renders. */
+function isLateJoinOpen(tournament: Tournament): boolean {
+  if (tournament.format === "arena")
+    return (
+      !!tournament.arenaEndsAt &&
+      Date.now() < new Date(tournament.arenaEndsAt).getTime()
+    );
+  if (tournament.format === "swiss")
+    return tournament.currentRoundIndex < (tournament.swissRounds ?? 1) - 1;
+  return false;
+}
+
 function LateJoinRow({
   tournament,
-  joinPassword,
-  setJoinPassword,
-  join,
 }: {
   tournament: Tournament;
-  joinPassword: string;
-  setJoinPassword: (v: string) => void;
-  join: () => void;
 }) {
-  if (tournament.format !== "arena" && tournament.format !== "swiss")
-    return null;
-
-  const stillOpen =
-    tournament.format === "arena"
-      ? !!tournament.arenaEndsAt &&
-        Date.now() < new Date(tournament.arenaEndsAt).getTime()
-      : tournament.currentRoundIndex < (tournament.swissRounds ?? 1) - 1;
-
-  if (!stillOpen) return null;
+  if (!isLateJoinOpen(tournament)) return null;
 
   return (
     <div className="flex flex-wrap items-end gap-2">
       <p className="w-full text-xs text-base-content/50">
         This tournament is already under way, but you can still jump in.
       </p>
-      {tournament.hasPassword && (
-        <div className="w-40">
-          <Input
-            type="password"
-            placeholder="Password"
-            value={joinPassword}
-            onChange={(e) => setJoinPassword(e.target.value)}
-          />
-        </div>
-      )}
-      <Button variant="secondary" size="sm" onClick={join}>
-        Join
-      </Button>
     </div>
   );
 }
@@ -1024,8 +1014,12 @@ export function TournamentDetail() {
   const confirmDialog = useConfirm();
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [error, setError] = useState("");
-  const [joinPassword, setJoinPassword] = useState("");
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [joinError, setJoinError] = useState("");
   const [editing, setEditing] = useState(false);
+  // Join / leave / pause round-trip in flight: drives the spinner on the
+  // play/pause button (dock + desktop) until the server's answer lands.
+  const [primaryBusy, setPrimaryBusy] = useState(false);
   const [manualRoundIndex, setManualRoundIndex] = useState<number | null>(null);
   // Collapsed by default, the tier breakdown is useful detail but not
   // something you need to see every time you land on the page, especially
@@ -1045,6 +1039,10 @@ export function TournamentDetail() {
     new Set(),
   );
   const chatSheetOpenRef = useRef(chatSheetOpen);
+  const passwordModalOpenRef = useRef(passwordModalOpen);
+  useEffect(() => {
+    passwordModalOpenRef.current = passwordModalOpen;
+  }, [passwordModalOpen]);
   useEffect(() => {
     chatSheetOpenRef.current = chatSheetOpen;
   }, [chatSheetOpen]);
@@ -1100,7 +1098,21 @@ export function TournamentDetail() {
         setChatHasUnread(true);
       }
     }
+    // Join / leave / pause failures (wrong password, already in a game,
+    // too late...) arrive here; nothing on this page listened for them, so
+    // they used to fail silently. Inside the password modal they show under
+    // the field, otherwise as a short toast.
+    function onError(payload: { message: string }) {
+      setPrimaryBusy(false);
+      if (passwordModalOpenRef.current) {
+        setJoinError(payload.message);
+        return;
+      }
+      const n = notify(payload.message);
+      setTimeout(() => dismiss(n), 4000);
+    }
     socket.on("connect", watch);
+    socket.on("tournament:error", onError);
     socket.on("tournament:update", onUpdate);
     socket.on("tournament:started", onUpdate);
     socket.on("tournament:cancelled", onUpdate);
@@ -1114,6 +1126,7 @@ export function TournamentDetail() {
     if (socket.connected) watch();
     return () => {
       socket.off("connect", watch);
+      socket.off("tournament:error", onError);
       socket.off("tournament:update", onUpdate);
       socket.off("tournament:started", onUpdate);
       socket.off("tournament:cancelled", onUpdate);
@@ -1152,13 +1165,56 @@ export function TournamentDetail() {
     };
   }, [socket, tournament?._id]);
 
+  const amPlayer =
+    !!user?.id && !!tournament?.players.some((p) => p.user === user.id);
+  useEffect(() => {
+    if (amPlayer) {
+      setPasswordModalOpen(false);
+      setJoinError("");
+    }
+  }, [amPlayer]);
+
+  // The spinner ends when the answer shows up as a change in what the button
+  // reflects (joined / left, paused / resumed, status flip), on a
+  // tournament:error (see onError), or after a safety timeout so a lost
+  // reply can never leave it spinning forever.
+  const myPausedFlag = !!tournament?.players.find((p) => p.user === user?.id)
+    ?.paused;
+  const tournamentStatus = tournament?.status;
+  useEffect(() => {
+    setPrimaryBusy(false);
+  }, [amPlayer, myPausedFlag, tournamentStatus]);
+  useEffect(() => {
+    if (!primaryBusy) return;
+    const t = setTimeout(() => setPrimaryBusy(false), 8000);
+    return () => clearTimeout(t);
+  }, [primaryBusy]);
+
   if (error) {
-    return <PageError message={error} className="px-4" />;
+    return (
+      <>
+        <PageError message={error} className="px-4" />
+        <TournamentActionBarMobile
+          primary={null}
+          onChat={null}
+          onShare={null}
+          chatDot={false}
+          menuItems={[]}
+        />
+      </>
+    );
   }
   if (!tournament) {
     return (
       <div className="flex justify-center pt-16">
         <Spinner className="text-base-content/40" />
+        <TournamentActionBarMobile
+          primary={null}
+          onChat={null}
+          onShare={null}
+          chatDot={false}
+          menuItems={[]}
+        />
       </div>
     );
   }
@@ -1206,15 +1262,40 @@ export function TournamentDetail() {
     tournament.rounds[selectedRoundIndex] ??
     tournament.rounds[tournament.rounds.length - 1];
 
-  function join() {
+  function join(password?: string) {
     // Once you're a player, the server already knows it, the password is
     // only ever asked for here, at join time, never again on return visits.
+    setPrimaryBusy(true);
     socket?.emit("tournament:join", {
       tournamentId: tournament!._id,
-      password: joinPassword || undefined,
+      password: password || undefined,
     });
   }
+  /** Join button entry point: a passworded tournament asks in a modal first. */
+  function requestJoin() {
+    if (tournament!.hasPassword) {
+      setJoinError("");
+      setPasswordModalOpen(true);
+    } else {
+      join();
+    }
+  }
+  async function confirmLeave() {
+    if (
+      await confirmDialog({
+        title: "Leave this tournament?",
+        description:
+          tournament!.regFeeTokens > 0
+            ? "Your registration fee will be refunded."
+            : "You can join again any time before it starts.",
+        confirmLabel: "Leave",
+      })
+    ) {
+      leave();
+    }
+  }
   function leave() {
+    setPrimaryBusy(true);
     socket?.emit("tournament:leave", { tournamentId: tournament!._id });
   }
   async function cancel() {
@@ -1230,6 +1311,7 @@ export function TournamentDetail() {
     }
   }
   function togglePause(paused: boolean) {
+    setPrimaryBusy(true);
     socket?.emit("tournament:pause", { tournamentId: tournament!._id, paused });
   }
   function handleSendChat(message: string, replyToId?: string) {
@@ -1277,33 +1359,105 @@ export function TournamentDetail() {
     .filter(Boolean)
     .join(" ");
 
+  // --- Phone dock ----------------------------------------------------
+  // Play / pause is one slot that changes meaning with the tournament's
+  // state: join / leave before it starts, real pause / resume once an arena
+  // or swiss is running, join for a late entrant, nothing otherwise.
+  let dockPrimary: TournamentPrimaryAction | null = null;
+  if (tournament.status === "pending") {
+    if (!isPlayer) {
+      dockPrimary = { icon: "play", label: "Join tournament", onClick: requestJoin };
+    } else if (!isCreator || tournament.organizerOnly) {
+      // A playing creator is the tournament's anchor and can't walk out of
+      // it, but an organizer-only creator who tapped play is just an
+      // entrant, so the slot flips to pause (leave) for them too.
+      dockPrimary = { icon: "pause", label: "Leave tournament", onClick: confirmLeave };
+    }
+  } else if (tournament.status === "active") {
+    if (!isPlayer) {
+      if (isLateJoinOpen(tournament)) {
+        dockPrimary = { icon: "play", label: "Join tournament", onClick: requestJoin };
+      }
+    } else if (tournament.format === "arena" || tournament.format === "swiss") {
+      dockPrimary = myPlayer?.paused
+        ? { icon: "play", label: "Resume", onClick: () => togglePause(false) }
+        : { icon: "pause", label: "Pause", onClick: () => togglePause(true) };
+    }
+  }
+  // Mirrors updateTournament: editable while nobody but the creator has
+  // joined (the creator may be on the roster or not, e.g. an organizer-only
+  // creator who tapped play).
+  if (dockPrimary) dockPrimary.loading = primaryBusy;
+  const canEdit =
+    isCreator &&
+    tournament.status === "pending" &&
+    tournament.players.every((p) => p.user === tournament.createdBy);
+  const dockMenuItems: DropdownItem[] = [
+    ...(canEdit
+      ? [{ label: "Edit tournament", icon: Pencil, onClick: () => setEditing(true) }]
+      : []),
+    ...(isCreator && tournament.status === "pending"
+      ? [{ label: "Cancel tournament", icon: Ban, danger: true, onClick: cancel }]
+      : []),
+  ];
+
+  // Desktop twin of the dock's play / pause slot: a right-aligned row sitting
+  // just above the standings table (or the roster for knockout).
+  const desktopPrimary =
+    dockPrimary || tournament.chatEnabled ? (
+      <div className="hidden items-center justify-end gap-2 md:flex">
+        {tournament.chatEnabled && (
+          <Button
+            variant="glass"
+            size="sm"
+            className="relative"
+            onClick={() => {
+              setChatSheetOpen(true);
+              setChatHasUnread(false);
+            }}
+          >
+            <MessageSquare className="h-3.5 w-3.5" /> Chat
+            {chatHasUnread && (
+              <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500 ring-2 ring-base-200" />
+            )}
+          </Button>
+        )}
+        {dockPrimary && (
+          <Button
+            variant={dockPrimary.icon === "play" ? "secondary" : "glass"}
+            size="sm"
+            loading={dockPrimary.loading}
+            disabled={dockPrimary.disabled}
+            onClick={dockPrimary.onClick}
+          >
+            {!dockPrimary.loading &&
+              (dockPrimary.icon === "play" ? (
+                <Play className="h-3.5 w-3.5" />
+              ) : (
+                <Pause className="h-3.5 w-3.5" />
+              ))}{" "}
+            {dockPrimary.label}
+          </Button>
+        )}
+      </div>
+    ) : null;
+
   return (
     <Page
       title={tournament.name}
       back="/tournaments"
       actions={
-        <div className="flex items-center gap-2">
-          {tournament.chatEnabled && (
-            <Button
-              variant="glass"
-              size="sm"
-              className="relative"
-              onClick={() => {
-                setChatSheetOpen(true);
-                setChatHasUnread(false);
-              }}
-            >
-              <MessageSquare className="h-3.5 w-3.5" />{" "}
-              <span className="sm:flex hidden">Chat</span>
-              {chatHasUnread && (
-                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500 ring-2 ring-base-200" />
-              )}
-            </Button>
-          )}
+        <div className="hidden items-center gap-2 md:flex">
           <Button variant="glass" size="sm" onClick={handleShare}>
             <Share2 className="h-3.5 w-3.5" />{" "}
             <span className="sm:flex hidden">Share</span>
           </Button>
+          {canEdit && !editing && (
+            <Button variant="glass" size="sm" onClick={() => setEditing(true)}>
+              <Pencil className="h-3.5 w-3.5" />{" "}
+              <span className="sm:flex hidden">Edit</span>
+            </Button>
+          )}
         </div>
       }
     >
@@ -1368,61 +1522,18 @@ export function TournamentDetail() {
                     scheduledStartAt={tournament.scheduledStartAt}
                   />
                 )}
-                <div className="flex flex-wrap items-end gap-2">
-                  {!isPlayer && (
-                    <>
-                      {tournament.hasPassword && (
-                        <div className="w-40">
-                          <Input
-                            type="password"
-                            placeholder="Password"
-                            value={joinPassword}
-                            onChange={(e) => setJoinPassword(e.target.value)}
-                          />
-                        </div>
-                      )}
-                      <Button variant="secondary" size="sm" onClick={join}>
-                        Join
-                      </Button>
-                    </>
-                  )}
-                  {isPlayer && !isCreator && (
-                    <Button variant="glass" size="sm" onClick={leave}>
-                      Leave
+                {isCreator && (
+                  <div className="hidden flex-wrap items-end gap-2 md:flex">
+                    <Button variant="danger" size="sm" onClick={cancel}>
+                      Cancel
                     </Button>
-                  )}
-                  {isCreator && (
-                    <>
-                      {/* Mirrors the server's own "still safe to edit"
-                       *  threshold in updateTournament, organizerOnly
-                       *  tournaments never count the creator as a player,
-                       *  so their threshold is 0 joined players, not 1. */}
-                      {tournament.players.length <=
-                        (tournament.organizerOnly ? 0 : 1) && (
-                        <Button
-                          variant="glass"
-                          size="sm"
-                          onClick={() => setEditing(true)}
-                        >
-                          <Pencil className="h-3.5 w-3.5" /> Edit
-                        </Button>
-                      )}
-                      <Button variant="danger" size="sm" onClick={cancel}>
-                        Cancel
-                      </Button>
-                    </>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             )}
 
             {tournament.status === "active" && !isPlayer && (
-              <LateJoinRow
-                tournament={tournament}
-                joinPassword={joinPassword}
-                setJoinPassword={setJoinPassword}
-                join={join}
-              />
+              <LateJoinRow tournament={tournament} />
             )}
 
             {tournament.status === "active" &&
@@ -1430,21 +1541,6 @@ export function TournamentDetail() {
               (tournament.format === "arena" ||
                 tournament.format === "swiss") && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    variant="glass"
-                    size="sm"
-                    onClick={() => togglePause(!myPlayer?.paused)}
-                  >
-                    {myPlayer?.paused ? (
-                      <>
-                        <Play className="h-3.5 w-3.5" /> Resume
-                      </>
-                    ) : (
-                      <>
-                        <Pause className="h-3.5 w-3.5" /> Pause
-                      </>
-                    )}
-                  </Button>
                   {tournament.format === "swiss" && (
                     <p className="w-full text-xs text-base-content/50">
                       {myPlayer?.paused
@@ -1463,9 +1559,41 @@ export function TournamentDetail() {
                   : "."}
               </p>
             )}
+
+            {tournament.description && (
+              <div className="mt-3 border-t border-base-300 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDescriptionOpen((v) => !v)}
+                  className="flex w-full items-center justify-between text-left"
+                  aria-expanded={descriptionOpen}
+                >
+                  <span className="text-sm font-semibold text-base-content/70">
+                    Description
+                  </span>
+                  <ChevronDown
+                    className={`h-4 w-4 shrink-0 text-base-content/40 transition-transform ${
+                      descriptionOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+                {/* Same CSS-only grid-template-rows collapse as the prize
+                 *  pool card below rather than Framer Motion's
+                 *  height: "auto". */}
+                <div
+                  className="grid overflow-hidden transition-[grid-template-rows] duration-200 ease-in-out"
+                  style={{ gridTemplateRows: descriptionOpen ? "1fr" : "0fr" }}
+                >
+                  <div className="min-h-0 pt-2 pb-1 text-sm whitespace-pre-wrap text-base-content/70">
+                    {tournament.description}
+                  </div>
+                </div>
+              </div>
+            )}
           </Card>
         )}
 
+        {tournament.format === "normal" && tournament.status === "pending" && desktopPrimary}
         {tournament.status === "pending" && tournament.format === "normal" && (
           <Card variant="solid">
             <CardHeader>
@@ -1514,35 +1642,6 @@ export function TournamentDetail() {
                 Nobody's joined yet, be the first.
               </p>
             )}
-          </Card>
-        )}
-
-        {tournament.description && (
-          <Card variant="solid">
-            <button
-              type="button"
-              onClick={() => setDescriptionOpen((v) => !v)}
-              className="flex w-full items-center justify-between text-left"
-              aria-expanded={descriptionOpen}
-            >
-              <CardTitle>Description</CardTitle>
-              <ChevronDown
-                className={`h-4 w-4 shrink-0 text-base-content/40 transition-transform ${
-                  descriptionOpen ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-            {/* Same CSS-only grid-template-rows collapse as the prize pool
-             *  card below (see its comment) rather than Framer Motion's
-             *  height: "auto". */}
-            <div
-              className="grid overflow-hidden transition-[grid-template-rows] duration-200 ease-in-out"
-              style={{ gridTemplateRows: descriptionOpen ? "1fr" : "0fr" }}
-            >
-              <div className="min-h-0 pt-2 text-sm whitespace-pre-wrap text-base-content/70">
-                {tournament.description}
-              </div>
-            </div>
           </Card>
         )}
 
@@ -1635,10 +1734,12 @@ export function TournamentDetail() {
             <ArenaCountdown arenaEndsAt={tournament.arenaEndsAt} />
           )}
 
+        {tournament.format === "normal" && tournament.status !== "pending" && desktopPrimary}
         {tournament.format === "normal" && (
           <KnockoutBracket tournament={tournament} myId={myId} />
         )}
 
+        {isPointsFormat && desktopPrimary}
         {isPointsFormat && standings.length > 0 && (
           <Card variant="solid">
             <CardHeader>
@@ -1827,6 +1928,32 @@ export function TournamentDetail() {
             </Card>
           )}
       </div>
+
+      <TournamentActionBarMobile
+        primary={dockPrimary}
+        onChat={
+          tournament.chatEnabled
+            ? () => {
+                setChatSheetOpen(true);
+                setChatHasUnread(false);
+              }
+            : null
+        }
+        onShare={handleShare}
+        chatDot={chatHasUnread}
+        menuItems={dockMenuItems}
+      />
+
+      <JoinPasswordModal
+        open={passwordModalOpen}
+        tournamentName={tournament.name}
+        error={joinError}
+        onSubmit={(pw) => {
+          setJoinError("");
+          join(pw);
+        }}
+        onClose={() => setPasswordModalOpen(false)}
+      />
 
       {tournament.chatEnabled && (
         <ChatDrawer

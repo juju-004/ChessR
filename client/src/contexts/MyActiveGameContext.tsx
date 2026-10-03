@@ -7,10 +7,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext.js";
 import { useSocket } from "./SocketContext.js";
-import { useNotify } from "./NotificationContext.js";
 import { listMyActiveGames } from "../api/games.js";
 
 /** Don't re-check the server more than once per this window, connect,
@@ -38,19 +36,6 @@ export function MyActiveGameProvider({ children }: { children: ReactNode }) {
   joinCodeRef.current = joinCode;
 
   const socket = useSocket();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const { notify } = useNotify();
-  // Held in refs so syncFromServer keeps a stable identity: notify /
-  // navigate can change between renders, and a changing identity would
-  // re-run the seed effect below and refetch on every one of those.
-  const pathRef = useRef(location.pathname);
-  pathRef.current = location.pathname;
-  const notifyRef = useRef(notify);
-  notifyRef.current = notify;
-  const navigateRef = useRef(navigate);
-  navigateRef.current = navigate;
-
   // Bumped by every set/clear. A server fetch that started before one of
   // those and lands after it is stale (the event is newer than the fetch),
   // so it's dropped instead of overwriting the fresher answer.
@@ -66,12 +51,9 @@ export function MyActiveGameProvider({ children }: { children: ReactNode }) {
   // So on every sign the connection is back (socket reconnect, browser
   // back online, tab visible again) this re-asks the server.
   //
-  // `announce` is for those re-checks (not the first load): if a game shows
-  // up that we didn't know about, the person missed the event that would
-  // normally have pulled them in, so surface the same "play it now" toast
-  // instead of only quietly lighting up the icon.
+  // A game found on a re-check just lights up the game icon, no toast.
   const syncFromServer = useCallback(
-    (announce: boolean) => {
+    () => {
       const startedAtVersion = versionRef.current;
       return listMyActiveGames()
         .then(({ games }) => {
@@ -80,13 +62,6 @@ export function MyActiveGameProvider({ children }: { children: ReactNode }) {
           const prev = joinCodeRef.current;
           if (next === prev) return;
           setJoinCode(next);
-          if (announce && next && pathRef.current !== `/game/${next}`) {
-            notifyRef.current(
-              "Your game is ready.",
-              [{ label: "Play it now", onClick: () => navigateRef.current(`/game/${next}`) }],
-              20_000,
-            );
-          }
         })
         .catch(() => {
           /* Not critical, the next reconnect / focus tries again. */
@@ -101,7 +76,7 @@ export function MyActiveGameProvider({ children }: { children: ReactNode }) {
       setJoinCode(null);
       return;
     }
-    syncFromServer(false).finally(() => {
+    syncFromServer().finally(() => {
       seededRef.current = true;
     });
   }, [isAuthed, syncFromServer]);
@@ -115,7 +90,7 @@ export function MyActiveGameProvider({ children }: { children: ReactNode }) {
       const now = Date.now();
       if (now - lastSyncAtRef.current < RESYNC_MIN_GAP_MS) return;
       lastSyncAtRef.current = now;
-      syncFromServer(true);
+      syncFromServer();
     }
     function onVisible() {
       if (document.visibilityState === "visible") resync();

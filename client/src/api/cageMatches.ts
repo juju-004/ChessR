@@ -43,8 +43,25 @@ export interface CageMatch {
   endedAt?: string;
 }
 
+/** Page size of the Finished cage matches list, kept in step with
+ *  FINISHED_CAGE_MATCHES_PAGE_SIZE on the server. */
+export const FINISHED_PAGE_SIZE = 5;
+
+/** Every active match plus the newest few finished ones (what the dashboard
+ *  shows). The full finished history is paged, see listMyFinishedCageMatches. */
 export function listMyCageMatches() {
   return apiFetch<{ matches: CageMatch[] }>('/cage-matches/mine');
+}
+
+/** One page (1-based) of your finished/cancelled matches, newest first. */
+export function listMyFinishedCageMatches(page = 1, limit = FINISHED_PAGE_SIZE) {
+  return apiFetch<{
+    matches: CageMatch[];
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  }>(`/cage-matches/mine?scope=finished&page=${page}&limit=${limit}`);
 }
 
 export function getCageMatchByCode(code: string) {

@@ -24,6 +24,9 @@ interface GameOverModalProps {
   /** Set for a tournament game: adds a "Back to tournament" button above
    *  Close that links to that tournament's page. */
   tournamentCode?: string;
+  /** Set for a cage match leg once the server has the next game ready: adds
+   *  a "Go to next match" button that takes the player straight into it. */
+  onNextMatch?: (() => void) | null;
   onRematch: () => void;
   onClose: () => void;
 }
@@ -54,6 +57,7 @@ export const GameOverModal = memo(function GameOverModal({
   myUserId,
   ratingUpdate,
   tournamentCode,
+  onNextMatch,
   onRematch,
   onClose,
 }: GameOverModalProps) {
@@ -196,6 +200,11 @@ export const GameOverModal = memo(function GameOverModal({
               fullWidth
             >
               {rematchState === "offered" ? "Rematch offer sent…" : "Rematch"}
+            </Button>
+          )}
+          {onNextMatch && (
+            <Button onClick={onNextMatch} fullWidth>
+              Go to next match
             </Button>
           )}
           {tournamentCode && (

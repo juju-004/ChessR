@@ -175,6 +175,9 @@ const gameSchema = new Schema<IGame>(
 
 // Fast lookup of a user's open game to join, and open-game listing.
 gameSchema.index({ status: 1, createdAt: -1 });
+// Lets the 60s reconcile sweep page through active games in _id order
+// without sorting the whole active set on every page.
+gameSchema.index({ status: 1, _id: 1 });
 
 // Supports getUserGames (a profile's game history): filters on
 // {status: 'finished', $or: [{white}, {black}]}, sorted by endedAt. There

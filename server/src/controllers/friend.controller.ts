@@ -4,8 +4,8 @@ import { User } from '../models/User.js';
 import { FriendRequest } from '../models/FriendRequest.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { getUserSocketIds } from '../services/presence.service.js';
-import { getActiveGameCodeForUser } from '../services/game.service.js';
+import { getUserSocketIds, getOnlineUserIds } from '../services/presence.service.js';
+import { getActiveGameCodesForUsers } from '../services/game.service.js';
 import { getIo } from '../sockets/io.js';
 import type { AuthedRequest } from '../middleware/auth.js';
 
@@ -109,23 +109,37 @@ export const listFriends = asyncHandler(async (req: AuthedRequest, res) => {
     .lean();
   if (!user) throw ApiError.notFound('User not found');
 
-  const withPresence = await Promise.all(
-    (user.friends as any[]).map(async (f) => ({
+  // Presence and "mid-game" are each looked up for the WHOLE list at once
+  // (one pipelined Redis round trip, one Mongo query) rather than once per
+  // friend, which was 2 calls per friend on every friends-list load.
+  const friends = user.friends as any[];
+  const friendIds = friends.map((f) => f._id.toString());
+  const [onlineIds, gameCodes] = await Promise.all([
+    getOnlineUserIds(friendIds),
+    getActiveGameCodesForUsers(friendIds, req.user!.id),
+  ]);
+  const withPresence = friends.map((f) => {
+    const id = f._id.toString();
+    return {
       id: f._id,
       username: f.username,
       avatarUrl: f.avatarUrl,
       avatarGradient: f.avatarGradient ?? null,
       rating: f.rating,
-      online: (await getUserSocketIds(f._id.toString())).length > 0,
-      activeGameCode: await getActiveGameCodeForUser(f._id.toString(), req.user!.id),
-    })),
-  );
+      online: onlineIds.has(id),
+      activeGameCode: gameCodes.get(id) ?? null,
+    };
+  });
 
   res.json({ friends: withPresence });
 });
 
 export const listIncomingRequests = asyncHandler(async (req: AuthedRequest, res) => {
+  // Capped: anyone can send a request, so an unbounded list is a way to make
+  // one user's inbox request arbitrarily expensive.
   const requests = await FriendRequest.find({ to: req.user!.id, status: 'pending' })
+    .sort({ createdAt: -1 })
+    .limit(100)
     .populate('from', 'username avatarUrl avatarGradient rating')
     .lean();
   res.json({ requests });

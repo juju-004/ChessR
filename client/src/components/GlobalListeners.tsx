@@ -244,17 +244,10 @@ export function GlobalListeners() {
     function onCageNextLeg(payload: { nextLeg?: { joinCode: string } }) {
       if (!payload.nextLeg) return;
       const joinCode = payload.nextLeg.joinCode;
+      // No toast: setActiveGame lights up the game icon, which is the
+      // notice that a game is waiting (and a game over modal's "Go to next
+      // match" button covers anyone still on the finished leg).
       setActiveGame(joinCode);
-      notify(
-        "Your cage match's next game is starting.",
-        [
-          {
-            label: "Play it now",
-            onClick: () => navigate(`/game/${joinCode}`),
-          },
-        ],
-        20_000,
-      );
     }
 
     function onCageNextLegSpectator(payload: { joinCode: string }) {
@@ -343,8 +336,8 @@ export function GlobalListeners() {
     // an inter-round break (see scheduleRoundStart in tournament.service.ts).
     // Someone actively sitting on that tournament's page gets swept straight
     // into the game, since they're clearly there waiting for it; anyone else
-    // gets a notification with a button instead of being yanked out of
-    // whatever else they're doing.
+    // is left to the game icon (setActiveGame above) instead of being
+    // yanked out of whatever else they're doing.
     function onTournamentPairingReady(payload: {
       tournamentId: string;
       code: string;
@@ -353,20 +346,7 @@ export function GlobalListeners() {
       setActiveGame(payload.joinCode);
       const onThisTournamentPage =
         pathRef.current === `/tournaments/${payload.code}`;
-      if (onThisTournamentPage) {
-        navigate(`/game/${payload.joinCode}`);
-        return;
-      }
-      notify(
-        "Your tournament game has started.",
-        [
-          {
-            label: "Play it now",
-            onClick: () => navigate(`/game/${payload.joinCode}`),
-          },
-        ],
-        20_000,
-      );
+      if (onThisTournamentPage) navigate(`/game/${payload.joinCode}`);
     }
 
     // ChessR's own persisted notifications (welcome message, anti-cheat/

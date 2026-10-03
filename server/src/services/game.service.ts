@@ -3,13 +3,19 @@ import { Game, type IGame } from "../models/Game.js";
 import { User } from "../models/User.js";
 import { ApiError } from "../utils/ApiError.js";
 import {
+  claimGameEnd,
   initLiveState,
   getLiveState,
   computeTimeoutWinner,
   deleteLiveState,
   type LiveTimeControl,
 } from "./gameState.service.js";
-import { scheduleGameTimer, scheduleFirstMoveTimer } from "./clock.service.js";
+import {
+  scheduleGameTimer,
+  scheduleFirstMoveTimer,
+  hasGameTimer,
+  hasFirstMoveTimer,
+} from "./clock.service.js";
 import { getIo } from "../sockets/io.js";
 import { generateChess960Fen } from "./chess960.service.js";
 import { debitWagerStake, creditWagerReturn, computeRake, recordRake } from "./wallet.service.js";
@@ -25,6 +31,7 @@ import { runAutoCheatCheck } from "./anticheat.service.js";
 import { advanceCageMatchLeg } from "./cageMatch.service.js";
 // Same deliberate circular-import pattern as advanceCageMatchLeg above.
 import { advanceTournamentIfPairing } from "./tournament.service.js";
+import { notifyGameEnded } from "./latency.service.js";
 
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -90,12 +97,29 @@ export const LOBBY_ROOM = "lobby:open";
 /** Tells everyone watching the lobby the list of open games changed (one was
  *  created, cancelled or accepted), they refetch. Payload-free on purpose:
  *  the HTTP list is the single source of truth. */
+const LOBBY_EMIT_MIN_GAP_MS = 500;
+let lobbyEmitTimer: ReturnType<typeof setTimeout> | null = null;
+let lastLobbyEmitAt = 0;
+
+/** Every lobby viewer refetches the open-games list on this event, so a burst
+ *  of creates/accepts used to mean (changes x viewers) HTTP requests. Emits
+ *  are now spaced at least LOBBY_EMIT_MIN_GAP_MS apart (a change inside the
+ *  gap is covered by one trailing emit), and the list itself is cached
+ *  briefly, see listOpenGames. */
 function broadcastLobbyChanged(): void {
-  try {
-    getIo().to(LOBBY_ROOM).emit("lobby:changed");
-  } catch {
-    // Socket.IO not initialized (script/test context), safe to ignore.
-  }
+  openGamesCache = null;
+  if (lobbyEmitTimer) return; // a pending emit already covers this change
+  const wait = Math.max(0, LOBBY_EMIT_MIN_GAP_MS - (Date.now() - lastLobbyEmitAt));
+  lobbyEmitTimer = setTimeout(() => {
+    lobbyEmitTimer = null;
+    lastLobbyEmitAt = Date.now();
+    try {
+      getIo().to(LOBBY_ROOM).emit("lobby:changed");
+    } catch {
+      // Socket.IO not initialized (script/test context), safe to ignore.
+    }
+  }, wait);
+  lobbyEmitTimer.unref?.();
 }
 
 const generateCode = customAlphabet("ABCDEFGHJKMNPQRSTUVWXYZ23456789", 6);
@@ -410,7 +434,41 @@ export async function getActiveGameCodeForUser(userId: string, viewerId?: string
   return game?.joinCode ?? null;
 }
 
-export async function listOpenGames(excludeUserId?: string) {
+/** Batch form of getActiveGameCodeForUser: ONE query for a whole list of
+ *  users (the friends list used to run one query per friend). Same rule as
+ *  the single version: a game the viewer is also in is excluded. Returns
+ *  userId -> joinCode for whoever is mid-game. */
+export async function getActiveGameCodesForUsers(
+  userIds: string[],
+  viewerId?: string,
+): Promise<Map<string, string>> {
+  const codes = new Map<string, string>();
+  if (userIds.length === 0) return codes;
+  const games = await Game.find({
+    status: "active",
+    $or: [{ white: { $in: userIds } }, { black: { $in: userIds } }],
+    ...(viewerId ? { white: { $ne: viewerId }, black: { $ne: viewerId } } : {}),
+  })
+    .select("joinCode white black")
+    .lean();
+  const wanted = new Set(userIds);
+  for (const g of games) {
+    for (const side of [g.white, g.black]) {
+      const id = side?.toString();
+      if (id && wanted.has(id) && !codes.has(id)) codes.set(id, g.joinCode);
+    }
+  }
+  return codes;
+}
+
+// The anonymous list (what GET /games/open serves) is identical for every
+// viewer, and every lobby viewer refetches it at the same instant after a
+// lobby:changed. Concurrent callers share ONE query, and the result is reused
+// for a very short window; any local change clears it immediately.
+const OPEN_GAMES_CACHE_TTL_MS = 500;
+let openGamesCache: { at: number; promise: Promise<unknown[]> } | null = null;
+
+function queryOpenGames(excludeUserId?: string) {
   return Game.find({
     status: "waiting",
     isPrivate: false,
@@ -420,6 +478,22 @@ export async function listOpenGames(excludeUserId?: string) {
     .limit(50)
     .populate("white", "username avatarGradient rating")
     .lean();
+}
+
+export async function listOpenGames(excludeUserId?: string) {
+  if (excludeUserId) return queryOpenGames(excludeUserId);
+  const now = Date.now();
+  if (openGamesCache && now - openGamesCache.at < OPEN_GAMES_CACHE_TTL_MS) {
+    return (await openGamesCache.promise) as Awaited<ReturnType<typeof queryOpenGames>>;
+  }
+  const promise = queryOpenGames();
+  const entry = { at: now, promise: promise as Promise<unknown[]> };
+  openGamesCache = entry;
+  // A failed query must not be served from cache.
+  promise.catch(() => {
+    if (openGamesCache === entry) openGamesCache = null;
+  });
+  return promise;
 }
 
 export async function getGameByCode(code: string) {
@@ -497,6 +571,12 @@ export async function finalizeGame(
     },
     { select: 'cageMatchId' },
   ).lean();
+
+  // Every way a game ends (socket handlers, clock timers, the 60s sweeps)
+  // goes through here, so this is the one place that can guarantee the
+  // latency heartbeat stops, including endings that never emit game:over
+  // and endings that happen on a different server instance.
+  notifyGameEnded(gameId);
 
   // Standalone games only, a cage match leg's spectator chat is scoped to
   // the whole match (see chat.service.ts / chatScopeFor in gameSocket.ts)
@@ -599,118 +679,209 @@ export async function refundWagerBothSides(
   ]);
 }
 
-export async function reconcileActiveGames(): Promise<{
+type ReconcileLiveState = NonNullable<Awaited<ReturnType<typeof getLiveState>>>;
+
+/** Whether a game that has been sitting in its idle phase (under 2 moves)
+ *  for too long should be cancelled. Standalone games only, cage legs and
+ *  tournament pairings have their own first-move handling. */
+function idlePhaseExpired(
+  g: { cageMatchId?: unknown; tournamentId?: unknown; startedAt?: Date | null },
+  liveState: ReconcileLiveState,
+): boolean {
+  return (
+    !g.cageMatchId &&
+    !g.tournamentId &&
+    liveState.moveCount < 2 &&
+    !!g.startedAt &&
+    Date.now() - g.startedAt.getTime() > IDLE_PHASE_ABANDON_MS
+  );
+}
+
+// How many live states to read from Redis at once. The client has
+// auto-pipelining on, so a chunk goes out as one round trip instead of one
+// per game.
+const RECONCILE_CHUNK = 25;
+const RECONCILE_PAGE = 200;
+
+/**
+ * Safety net for games whose in-memory clock timers or live state were lost.
+ *
+ * `rearmAll` is for boot: the process just started, so every timer is gone
+ * and every healthy game needs both timers rebuilt. The periodic 60s run
+ * leaves healthy games alone and only re-arms a timer that's actually
+ * missing, instead of clearing and rebuilding two timers (and re-reading
+ * Redis twice) for every active game every minute. Anything that looks
+ * wrong (no live state, idle too long, clock expired) is re-read fresh from
+ * Redis right before acting, since the batched read can be a moment old.
+ */
+export async function reconcileActiveGames(opts: { rearmAll?: boolean } = {}): Promise<{
   resumed: number;
   timedOut: number;
   aborted: number;
   idleCancelled: number;
 }> {
-  const activeGames = await Game.find({ status: "active" }).lean();
+  const rearmAll = opts.rearmAll ?? false;
   let resumed = 0;
   let timedOut = 0;
   let aborted = 0;
   let idleCancelled = 0;
 
-  for (const g of activeGames) {
-    const gameId = g._id.toString();
-    const liveState = await getLiveState(gameId);
+  // Paged by _id (index {status, _id}) rather than one find() of every
+  // active game: memory and the per-batch Redis fan-out stay bounded however
+  // many games are live at once.
+  let lastId: unknown = null;
+  for (;;) {
+    // Only the fields this function actually reads. The default lean() pulled
+    // each game's entire moves array (a FEN per move) every minute.
+    const activeGames = await Game.find({ status: "active", ...(lastId ? { _id: { $gt: lastId } } : {}) })
+      .select("fen white black wagerTokens startedAt cageMatchId legIndex tournamentId roundIndex pairingIndex")
+      .sort({ _id: 1 })
+      .limit(RECONCILE_PAGE)
+      .lean();
+    if (activeGames.length === 0) break;
+    lastId = activeGames[activeGames.length - 1]._id;
 
-    if (!liveState) {
-      // No live state to resume from (Redis TTL expired, or it was never
-      // properly initialized), there's nothing safe to do but close it out
-      // rather than leave it stuck as "active" indefinitely. Since neither
-      // side did anything wrong here, refund both stakes rather than
-      // treating it as a loss for either player.
-      await finalizeGame(gameId, g.fen, "aborted", null, "abandoned");
-      await refundWagerBothSides(gameId, g.white.toString(), (g.black ?? "").toString(), g.wagerTokens).catch(
-        (err) => console.error("refundWagerBothSides failed during reconciliation:", err),
-      );
-      if (g.cageMatchId && g.legIndex !== undefined) {
-        // Same treatment as a live no-moves abort: no real winner to report,
-        // so it's scored as a draw for this leg rather than stalling the
-        // whole cage match indefinitely.
-        await advanceCageMatchLeg(g.cageMatchId.toString(), g.legIndex, "draw", "abandoned", gameId);
+    const prefetched = new Map<string, ReconcileLiveState | null>();
+    for (let i = 0; i < activeGames.length; i += RECONCILE_CHUNK) {
+      const chunk = activeGames.slice(i, i + RECONCILE_CHUNK);
+      const states = await Promise.all(chunk.map((c) => getLiveState(c._id.toString())));
+      chunk.forEach((c, idx) => prefetched.set(c._id.toString(), states[idx]));
+    }
+
+    for (const g of activeGames) {
+      const gameId = g._id.toString();
+      let liveState = prefetched.get(gameId) ?? null;
+      prefetched.delete(gameId);
+
+      // Fast path: live state exists, not idle-expired, clock not run out.
+      if (liveState && !idlePhaseExpired(g, liveState) && !computeTimeoutWinner(liveState)) {
+        if (rearmAll) {
+          await scheduleGameTimer(gameId);
+          await scheduleFirstMoveTimer(gameId);
+        } else if (!liveState.paused) {
+          // Mirror the conditions scheduleGameTimer / scheduleFirstMoveTimer
+          // use to decide whether a timer is needed at all, and only re-arm
+          // one that's needed but missing.
+          const needsClockTimer = liveState.timeControl.baseMs !== null && liveState.moveCount >= 2;
+          const needsFirstMoveTimer = liveState.moveCount < 2;
+          if (needsClockTimer && !hasGameTimer(gameId)) await scheduleGameTimer(gameId);
+          if (needsFirstMoveTimer && !hasFirstMoveTimer(gameId)) await scheduleFirstMoveTimer(gameId);
+        }
+        resumed++;
+        continue;
       }
-      if (g.tournamentId && g.roundIndex !== undefined && g.pairingIndex !== undefined) {
-        await advanceTournamentIfPairing(
-          g.tournamentId.toString(),
-          g.roundIndex,
-          g.pairingIndex,
-          "draw",
-          "abandoned",
+
+      // Something looks wrong: re-read right before acting on it.
+      liveState = await getLiveState(gameId);
+
+      if (!liveState) {
+        // No live state to resume from (Redis TTL expired, or it was never
+        // properly initialized), there's nothing safe to do but close it out
+        // rather than leave it stuck as "active" indefinitely. Since neither
+        // side did anything wrong here, refund both stakes rather than
+        // treating it as a loss for either player.
+        await finalizeGame(gameId, g.fen, "aborted", null, "abandoned");
+        await refundWagerBothSides(gameId, g.white.toString(), (g.black ?? "").toString(), g.wagerTokens).catch(
+          (err) => console.error("refundWagerBothSides failed during reconciliation:", err),
         );
+        // Anyone still on the page would otherwise sit on a live-looking
+        // board for a game that no longer exists.
+        getIo().to(`game:${gameId}`).emit("game:over", { gameId, result: null, reason: "abandoned" });
+        if (g.cageMatchId && g.legIndex !== undefined) {
+          // Same treatment as a live no-moves abort: no real winner to report,
+          // so it's scored as a draw for this leg rather than stalling the
+          // whole cage match indefinitely.
+          await advanceCageMatchLeg(g.cageMatchId.toString(), g.legIndex, "draw", "abandoned", gameId);
+        }
+        if (g.tournamentId && g.roundIndex !== undefined && g.pairingIndex !== undefined) {
+          await advanceTournamentIfPairing(
+            g.tournamentId.toString(),
+            g.roundIndex,
+            g.pairingIndex,
+            "draw",
+            "abandoned",
+          );
+        }
+        aborted++;
+        continue;
       }
-      aborted++;
-      continue;
-    }
 
-    if (
-      !g.cageMatchId &&
-      !g.tournamentId &&
-      liveState.moveCount < 2 &&
-      g.startedAt &&
-      Date.now() - g.startedAt.getTime() > IDLE_PHASE_ABANDON_MS
-    ) {
-      await finalizeGame(gameId, liveState.fen, "aborted", null, "idle_timeout", {
-        whiteRemainingMs: liveState.whiteRemainingMs,
-        blackRemainingMs: liveState.blackRemainingMs,
-      });
-      await refundWagerBothSides(gameId, liveState.whiteId, liveState.blackId, liveState.wagerTokens).catch(
-        (err) => console.error("refundWagerBothSides failed during idle reconciliation:", err),
-      );
-      await deleteLiveState(gameId);
-      getIo().to(`game:${gameId}`).emit("game:over", { gameId, result: null, reason: "idle_timeout" });
-      idleCancelled++;
-      continue;
-    }
-
-    const timeoutWinner = computeTimeoutWinner(liveState);
-    if (timeoutWinner) {
-      // The side that timed out is whichever one WASN'T the winner, their
-      // clock is what hit zero, so that's what gets persisted; the other
-      // side's clock wasn't running and keeps whatever liveState already
-      // has for it.
-      const loserRemainingMs = 0;
-      const winnerRemainingMs =
-        timeoutWinner === "white" ? liveState.whiteRemainingMs : liveState.blackRemainingMs;
-      await finalizeGame(gameId, liveState.fen, "finished", timeoutWinner, "timeout", {
-        whiteRemainingMs: timeoutWinner === "white" ? winnerRemainingMs : loserRemainingMs,
-        blackRemainingMs: timeoutWinner === "black" ? winnerRemainingMs : loserRemainingMs,
-      });
-      await deleteLiveState(gameId);
-      await settleWager(
-        gameId,
-        liveState.whiteId,
-        liveState.blackId,
-        liveState.wagerTokens,
-        timeoutWinner,
-      ).catch((err) =>
-        console.error("settleWager failed during reconciliation:", err),
-      );
-      // Awaited (not fire-and-forget) so the rating change is already in
-      // place when the tournament pairing below copies ratings over.
-      await applyRatingForGame(gameId, liveState.whiteId, liveState.blackId, timeoutWinner).catch((err) =>
-        console.error("applyRatingForGame failed during reconciliation:", err),
-      );
-      if (g.cageMatchId && g.legIndex !== undefined) {
-        await advanceCageMatchLeg(g.cageMatchId.toString(), g.legIndex, timeoutWinner, "timeout", gameId);
+      if (idlePhaseExpired(g, liveState)) {
+        await finalizeGame(gameId, liveState.fen, "aborted", null, "idle_timeout", {
+          whiteRemainingMs: liveState.whiteRemainingMs,
+          blackRemainingMs: liveState.blackRemainingMs,
+        });
+        await refundWagerBothSides(gameId, liveState.whiteId, liveState.blackId, liveState.wagerTokens).catch(
+          (err) => console.error("refundWagerBothSides failed during idle reconciliation:", err),
+        );
+        await deleteLiveState(gameId);
+        getIo().to(`game:${gameId}`).emit("game:over", { gameId, result: null, reason: "idle_timeout" });
+        notifyGameEnded(gameId);
+        idleCancelled++;
+        continue;
       }
-      if (g.tournamentId && g.roundIndex !== undefined && g.pairingIndex !== undefined) {
-        await advanceTournamentIfPairing(
-          g.tournamentId.toString(),
-          g.roundIndex,
-          g.pairingIndex,
+
+      const timeoutWinner = computeTimeoutWinner(liveState);
+      if (timeoutWinner) {
+        // The in-memory flag-fall timer (possibly on another instance) may be
+        // ending this same game right now; only one ender may proceed.
+        if (!(await claimGameEnd(gameId))) continue;
+        // The side that timed out is whichever one WASN'T the winner, their
+        // clock is what hit zero, so that's what gets persisted; the other
+        // side's clock wasn't running and keeps whatever liveState already
+        // has for it.
+        const loserRemainingMs = 0;
+        const winnerRemainingMs =
+          timeoutWinner === "white" ? liveState.whiteRemainingMs : liveState.blackRemainingMs;
+        await finalizeGame(gameId, liveState.fen, "finished", timeoutWinner, "timeout", {
+          whiteRemainingMs: timeoutWinner === "white" ? winnerRemainingMs : loserRemainingMs,
+          blackRemainingMs: timeoutWinner === "black" ? winnerRemainingMs : loserRemainingMs,
+        });
+        await deleteLiveState(gameId);
+        getIo().to(`game:${gameId}`).emit("game:over", {
+          gameId,
+          result: timeoutWinner,
+          reason: "timeout",
+          whiteRemainingMs: timeoutWinner === "white" ? winnerRemainingMs : loserRemainingMs,
+          blackRemainingMs: timeoutWinner === "black" ? winnerRemainingMs : loserRemainingMs,
+        });
+        await settleWager(
+          gameId,
+          liveState.whiteId,
+          liveState.blackId,
+          liveState.wagerTokens,
           timeoutWinner,
-          "timeout",
+        ).catch((err) =>
+          console.error("settleWager failed during reconciliation:", err),
         );
+        // Awaited (not fire-and-forget) so the rating change is already in
+        // place when the tournament pairing below copies ratings over.
+        await applyRatingForGame(gameId, liveState.whiteId, liveState.blackId, timeoutWinner).catch((err) =>
+          console.error("applyRatingForGame failed during reconciliation:", err),
+        );
+        if (g.cageMatchId && g.legIndex !== undefined) {
+          await advanceCageMatchLeg(g.cageMatchId.toString(), g.legIndex, timeoutWinner, "timeout", gameId);
+        }
+        if (g.tournamentId && g.roundIndex !== undefined && g.pairingIndex !== undefined) {
+          await advanceTournamentIfPairing(
+            g.tournamentId.toString(),
+            g.roundIndex,
+            g.pairingIndex,
+            timeoutWinner,
+            "timeout",
+          );
+        }
+        timedOut++;
+        continue;
       }
-      timedOut++;
-      continue;
+
+      await scheduleGameTimer(gameId);
+      await scheduleFirstMoveTimer(gameId);
+      resumed++;
     }
 
-    await scheduleGameTimer(gameId);
-    await scheduleFirstMoveTimer(gameId);
-    resumed++;
+
+    if (activeGames.length < RECONCILE_PAGE) break;
   }
 
   return { resumed, timedOut, aborted, idleCancelled };
@@ -735,6 +906,8 @@ export async function sweepStaleWaitingGames(): Promise<{ aborted: number }> {
     createdAt: { $lte: cutoff },
   })
     .select("_id white wagerTokens isPrivate")
+    // Bounded per tick; any backlog is cleared over the next ticks.
+    .limit(200)
     .lean();
 
   let aborted = 0;
@@ -756,6 +929,7 @@ export async function sweepStaleWaitingGames(): Promise<{ aborted: number }> {
     // Host may still be sitting on the game page; same payload the idle
     // abort sends so their board flips to "aborted" instead of hanging.
     getIo().to(`game:${gameId}`).emit("game:over", { gameId, result: null, reason: "idle_timeout" });
+    notifyGameEnded(gameId);
     if (!g.isPrivate) publicChanged = true;
     aborted++;
   }

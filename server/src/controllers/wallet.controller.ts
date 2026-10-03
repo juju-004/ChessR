@@ -14,6 +14,7 @@ import {
   initiateWithdrawal,
   resolveWithdrawalFromWebhook,
   listTransactions,
+  getWithdrawalEligibility,
 } from '../services/wallet.service.js';
 import { listBanks, resolveAccountNumber, verifyWebhookSignature } from '../services/paystack.service.js';
 
@@ -92,7 +93,10 @@ const withdrawSchema = z.object({
   tokens: z.number().int().positive(),
   accountNumber: z.string().length(10),
   bankCode: z.string().min(1),
-  accountName: z.string().min(1),
+  bankName: z.string().trim().min(1).max(100).optional(),
+  // Optional on purpose: a failed/slow Paystack name lookup must not block a
+  // withdrawal request (admin double-checks details before paying manually).
+  accountName: z.string().trim().max(120).optional(),
 });
 
 export const withdraw = asyncHandler(async (req: AuthedRequest, res) => {
@@ -104,6 +108,10 @@ export const withdraw = asyncHandler(async (req: AuthedRequest, res) => {
     tokens: transaction.tokens,
     amountNaira: transaction.amountKobo / 100,
   });
+});
+
+export const getWithdrawStatus = asyncHandler(async (req: AuthedRequest, res) => {
+  res.json(await getWithdrawalEligibility(req.user!.id));
 });
 
 const listQuerySchema = z.object({

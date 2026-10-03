@@ -1,15 +1,22 @@
 import type { Server } from 'socket.io';
 import { redis } from '../config/redis.js';
+import { pruneGamePresence } from './gamePresence.service.js';
 
 const userSocketsKey = (userId: string) => `presence:user:${userId}:sockets`;
 const socketUserKey = (socketId: string) => `presence:socket:${socketId}`;
 
-/** Call when a socket authenticates. A user may have several sockets (tabs/devices). */
-export async function registerSocket(userId: string, socketId: string): Promise<void> {
-  await Promise.all([
+/** Call when a socket authenticates. A user may have several sockets (tabs/devices).
+ *  Returns true when this is the user's ONLY socket right now, i.e. they just
+ *  came online (a second tab or device opening doesn't change that). */
+export async function registerSocket(userId: string, socketId: string): Promise<boolean> {
+  const [, , count] = await Promise.all([
     redis.sadd(userSocketsKey(userId), socketId),
     redis.set(socketUserKey(socketId), userId),
+    // Pipelined behind the sadd on the same connection, so the count already
+    // includes this socket.
+    redis.scard(userSocketsKey(userId)),
   ]);
+  return count === 1;
 }
 
 /** Call on socket disconnect. Returns true if that was the user's last active socket. */
@@ -31,6 +38,20 @@ export async function isUserOnline(userId: string): Promise<boolean> {
 
 export async function getUserSocketIds(userId: string): Promise<string[]> {
   return redis.smembers(userSocketsKey(userId));
+}
+
+/** Which of `userIds` are online, in ONE pipelined round trip (one SCARD
+ *  each, sent together) instead of a separate Redis call per user. */
+export async function getOnlineUserIds(userIds: string[]): Promise<Set<string>> {
+  const online = new Set<string>();
+  if (userIds.length === 0) return online;
+  const pipeline = redis.pipeline();
+  for (const id of userIds) pipeline.scard(userSocketsKey(id));
+  const results = await pipeline.exec();
+  results?.forEach(([err, count], i) => {
+    if (!err && (count as number) > 0) online.add(userIds[i]);
+  });
+  return online;
 }
 
 /** Safety net for "some users still show online even though they're not"
@@ -61,16 +82,26 @@ export async function reconcilePresence(io: Server): Promise<{ prunedSockets: nu
   const liveIds = new Set(liveSockets.map((s) => s.id));
   let prunedSockets = 0;
 
-  const userSocketsStream = redis.scanStream({ match: 'presence:user:*:sockets', count: 100 });
+  // One pipelined SMEMBERS per SCAN batch instead of one round trip per key.
+  const userSocketsStream = redis.scanStream({ match: 'presence:user:*:sockets', count: 200 });
   for await (const keys of userSocketsStream as AsyncIterable<string[]>) {
-    for (const key of keys) {
-      const socketIds = await redis.smembers(key);
-      const stale = socketIds.filter((id) => !liveIds.has(id));
-      if (stale.length === 0) continue;
-      await redis.srem(key, ...stale);
-      await Promise.all(stale.map((id) => redis.del(socketUserKey(id))));
+    if (keys.length === 0) continue;
+    const reads = redis.pipeline();
+    keys.forEach((key) => reads.smembers(key));
+    const results = (await reads.exec()) ?? [];
+    const cleanup = redis.pipeline();
+    let queued = 0;
+    keys.forEach((key, i) => {
+      const [err, members] = results[i] ?? [null, []];
+      if (err) return;
+      const stale = (members as string[]).filter((id) => !liveIds.has(id));
+      if (stale.length === 0) return;
+      cleanup.srem(key, ...stale);
+      stale.forEach((id) => cleanup.del(socketUserKey(id)));
+      queued++;
       prunedSockets += stale.length;
-    }
+    });
+    if (queued > 0) await cleanup.exec();
   }
 
   // The reverse mapping (socketId -> userId) can end up orphaned
@@ -85,6 +116,10 @@ export async function reconcilePresence(io: Server): Promise<{ prunedSockets: nu
       if (!liveIds.has(socketId)) await redis.del(key);
     }
   }
+
+  // Game-page presence (see gamePresence.service.ts) is swept with the same
+  // cluster-wide snapshot, so it costs no extra fetchSockets.
+  await pruneGamePresence(liveIds).catch((err) => console.error('pruneGamePresence failed:', err));
 
   return { prunedSockets };
 }

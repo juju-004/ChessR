@@ -40,7 +40,11 @@ export interface ITransaction extends Document {
   bankAccountNumber?: string;
   bankCode?: string;
   accountName?: string;
+  bankName?: string; // withdrawals, display only (so the admin sees "GTBank", not just a code)
   failureReason?: string;
+  adminNote?: string; // manual withdrawals, optional note the admin left when marking it paid
+  resolvedAt?: Date; // manual withdrawals, when an admin marked it paid/declined
+  resolvedBy?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -76,7 +80,11 @@ const transactionSchema = new Schema<ITransaction>(
     bankAccountNumber: { type: String },
     bankCode: { type: String },
     accountName: { type: String },
+    bankName: { type: String },
     failureReason: { type: String },
+    adminNote: { type: String },
+    resolvedAt: { type: Date },
+    resolvedBy: { type: String },
   },
   { timestamps: true },
 );
@@ -86,5 +94,8 @@ transactionSchema.index({ user: 1, createdAt: -1 });
 // previously unindexed, i.e. a full collection scan per webhook. Sparse
 // because only withdrawals have one.
 transactionSchema.index({ paystackTransferCode: 1 }, { sparse: true });
+// Admin withdrawal queue / deposit tracker both filter by type+status and
+// sort newest-first.
+transactionSchema.index({ type: 1, status: 1, createdAt: -1 });
 
 export const Transaction = mongoose.model<ITransaction>('Transaction', transactionSchema);

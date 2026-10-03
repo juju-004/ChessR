@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Types } from 'mongoose';
 import { User } from '../models/User.js';
 import { Game } from '../models/Game.js';
 import { ApiError } from '../utils/ApiError.js';
@@ -101,30 +102,67 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
 
   if (!user) throw ApiError.notFound('User not found');
 
-  const [wins, losses, draws] = await Promise.all([
-    Game.countDocuments({
-      status: 'finished',
-      $or: [
-        { white: user._id, result: 'white' },
-        { black: user._id, result: 'black' },
-      ],
-    }),
-    Game.countDocuments({
-      status: 'finished',
-      $or: [
-        { white: user._id, result: 'black' },
-        { black: user._id, result: 'white' },
-      ],
-    }),
-    Game.countDocuments({
-      status: 'finished',
-      result: 'draw',
-      $or: [{ white: user._id }, { black: user._id }],
-    }),
-  ]);
-
   const isFriend = req.user ? user.friends.some((f) => f.toString() === req.user!.id) : false;
   const isSelf = req.user?.id === user._id.toString();
+
+  // ONE aggregate for the record AND the head-to-head (this used to be 3
+  // countDocuments, or 6 when viewing someone else's profile). $match picks
+  // the profile user's finished games once; $facet then derives both tallies
+  // from that same pass, the h2h branch just narrowing to games the viewer
+  // was also in. Head-to-head only makes sense when someone's logged in and
+  // it's not their own profile.
+  const viewerId = req.user && !isSelf ? new Types.ObjectId(req.user.id) : null;
+  const tally = (me: Types.ObjectId) => ({
+    _id: null,
+    wins: {
+      $sum: {
+        $cond: [
+          {
+            $or: [
+              { $and: [{ $eq: ['$white', me] }, { $eq: ['$result', 'white'] }] },
+              { $and: [{ $eq: ['$black', me] }, { $eq: ['$result', 'black'] }] },
+            ],
+          },
+          1,
+          0,
+        ],
+      },
+    },
+    losses: {
+      $sum: {
+        $cond: [
+          {
+            $or: [
+              { $and: [{ $eq: ['$white', me] }, { $eq: ['$result', 'black'] }] },
+              { $and: [{ $eq: ['$black', me] }, { $eq: ['$result', 'white'] }] },
+            ],
+          },
+          1,
+          0,
+        ],
+      },
+    },
+    draws: { $sum: { $cond: [{ $eq: ['$result', 'draw'] }, 1, 0] } },
+  });
+  type Tally = { wins: number; losses: number; draws: number };
+  const [agg] = await Game.aggregate<{ stats: Tally[]; h2h?: Tally[] }>([
+    { $match: { status: 'finished', $or: [{ white: user._id }, { black: user._id }] } },
+    {
+      $facet: {
+        stats: [{ $group: tally(user._id as Types.ObjectId) }],
+        ...(viewerId
+          ? {
+              h2h: [
+                { $match: { $or: [{ white: viewerId }, { black: viewerId }] } },
+                { $group: tally(viewerId) },
+              ],
+            }
+          : {}),
+      },
+    },
+  ]);
+  const { wins = 0, losses = 0, draws = 0 } = agg?.stats?.[0] ?? {};
+
   // Only worth checking once we know it isn't the viewer's own profile, 
   // there's no "watch yourself" button to show either way.
   const activeGameCode = isSelf ? null : await getActiveGameCodeForUser(user._id.toString(), req.user?.id);
@@ -134,40 +172,16 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
   // "online" actually means (has at least one live socket connected).
   const online = isSelf ? true : await isUserOnline(user._id.toString());
 
-  // Head-to-head record against whoever's looking at this profile, only
-  // makes sense when someone's logged in and it's not their own profile.
+  // Head-to-head record against whoever's looking at this profile, from the
+  // same aggregate as the stats above.
   let h2h: { wins: number; losses: number; draws: number } | null = null;
-  if (req.user && !isSelf) {
-    const viewerId = req.user.id;
-    const [viewerWins, viewerLosses, viewerDraws] = await Promise.all([
-      Game.countDocuments({
-        status: 'finished',
-        $or: [
-          { white: viewerId, black: user._id, result: 'white' },
-          { white: user._id, black: viewerId, result: 'black' },
-        ],
-      }),
-      Game.countDocuments({
-        status: 'finished',
-        $or: [
-          { white: viewerId, black: user._id, result: 'black' },
-          { white: user._id, black: viewerId, result: 'white' },
-        ],
-      }),
-      Game.countDocuments({
-        status: 'finished',
-        result: 'draw',
-        $or: [
-          { white: viewerId, black: user._id },
-          { white: user._id, black: viewerId },
-        ],
-      }),
-    ]);
-    const total = viewerWins + viewerLosses + viewerDraws;
+  const h2hRow = agg?.h2h?.[0];
+  if (h2hRow) {
+    const total = h2hRow.wins + h2hRow.losses + h2hRow.draws;
     // null (not a zeroed object) when they've simply never played, lets
     // the client skip rendering the h2h card entirely rather than showing
     // an empty "0-0-0" for every stranger's profile.
-    h2h = total > 0 ? { wins: viewerWins, losses: viewerLosses, draws: viewerDraws } : null;
+    h2h = total > 0 ? { wins: h2hRow.wins, losses: h2hRow.losses, draws: h2hRow.draws } : null;
   }
 
   res.json({

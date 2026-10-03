@@ -10,7 +10,6 @@ import {
 } from "../api/cageMatches.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import { useSocket } from "../contexts/SocketContext.js";
-import { useNotify } from "../contexts/NotificationContext.js";
 import { useConfirm } from "../contexts/ConfirmContext.js";
 import { PageError } from "../components/PageError.js";
 import {
@@ -48,7 +47,6 @@ export function CageMatchDetail() {
   const { user } = useAuth();
   const socket = useSocket();
   const navigate = useNavigate();
-  const { notify } = useNotify();
   const confirmDialog = useConfirm();
 
   const [match, setMatch] = useState<CageMatch | null>(null);
@@ -72,17 +70,8 @@ export function CageMatchDetail() {
       nextLeg: { joinCode: string };
     }) {
       if (payload.matchId !== match!._id) return;
+      // No toast: the game icon shows that the next game is waiting.
       refresh();
-      notify(
-        "The next game is starting.",
-        [
-          {
-            label: "Play it now",
-            onClick: () => navigate(`/game/${payload.nextLeg.joinCode}`),
-          },
-        ],
-        15_000,
-      );
     }
     function onMatchOver(payload: { matchId: string }) {
       if (payload.matchId !== match!._id) return;

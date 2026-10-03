@@ -9,6 +9,9 @@ import {
   listGameFlags,
   updateGameFlag,
   listNairaTournaments,
+  listWithdrawals,
+  resolveWithdrawal,
+  listDeposits,
 } from '../controllers/admin.controller.js';
 import { requireAdmin } from '../middleware/adminAuth.js';
 
@@ -23,5 +26,8 @@ router.get('/revenue', requireAdmin, getRevenueSummary);
 router.get('/game-flags', requireAdmin, listGameFlags);
 router.patch('/game-flags/:id', requireAdmin, updateGameFlag);
 router.get('/naira-tournaments', requireAdmin, listNairaTournaments);
+router.get('/withdrawals', requireAdmin, listWithdrawals);
+router.patch('/withdrawals/:id', requireAdmin, resolveWithdrawal);
+router.get('/deposits', requireAdmin, listDeposits);
 
 export default router;

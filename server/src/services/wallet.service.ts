@@ -1,14 +1,12 @@
 import { nanoid } from "nanoid";
 import { User } from "../models/User.js";
 import { Transaction, type ITransaction } from "../models/Transaction.js";
+import { Game } from "../models/Game.js";
 import { PlatformRevenue } from "../models/PlatformRevenue.js";
 import { ApiError } from "../utils/ApiError.js";
 import { env } from "../config/env.js";
-import {
-  verifyTransaction,
-  createTransferRecipient,
-  initiateTransfer,
-} from "./paystack.service.js";
+import { verifyTransaction } from "./paystack.service.js";
+import { createNotification } from "./notification.service.js";
 
 // --- Token economy constants -------------------------------------------------
 // Deliberately a spread between buy and withdraw rates (standard practice), 
@@ -129,15 +127,72 @@ export interface WithdrawParams {
   tokens: number;
   accountNumber: string;
   bankCode: string;
-  accountName: string;
+  bankName?: string;
+  // Optional: the name Paystack resolved for this account number, if the
+  // lookup worked. Withdrawals are allowed without it (the admin sees
+  // "name not verified" and double-checks before sending).
+  accountName?: string;
 }
 
+export interface WithdrawalEligibility {
+  eligible: boolean;
+  reason?: string;
+}
+
+/** Anti-abuse rule: after adding funds, a user has to actually play before
+ *  they can cash out, so deposit -> immediate withdrawal can't be used to
+ *  launder money through the platform. "Play" means a finished game (normal,
+ *  cage match leg, or tournament pairing, these are all Game documents)
+ *  that STARTED after their most recent successful purchase and in which both
+ *  sides actually moved (2+ moves), so joining and instantly abandoning
+ *  doesn't count. Users who've never bought coins (they only hold winnings)
+ *  aren't affected. */
+export async function getWithdrawalEligibility(
+  userId: string,
+): Promise<WithdrawalEligibility> {
+  const lastPurchase = await Transaction.findOne({
+    user: userId,
+    type: "purchase",
+    status: "success",
+  })
+    .sort({ updatedAt: -1 })
+    .select("updatedAt")
+    .lean();
+  if (!lastPurchase) return { eligible: true };
+
+  const played = await Game.exists({
+    status: "finished",
+    startedAt: { $gte: lastPurchase.updatedAt },
+    "moves.1": { $exists: true },
+    $or: [{ white: userId }, { black: userId }],
+  });
+  if (played) return { eligible: true };
+
+  return {
+    eligible: false,
+    reason:
+      "You need to play at least one game (normal, cage match or tournament) after adding funds before you can withdraw.",
+  };
+}
+
+/**
+ * Manual payouts: Paystack transfers aren't enabled on this account yet, so a
+ * withdrawal request just QUEUES. The tokens are taken out of the user's
+ * balance immediately (so they can't be spent or withdrawn twice while the
+ * request waits), a 'pending' Transaction is recorded, and an admin sends the
+ * money by hand and then resolves it from the admin page (see
+ * resolveWithdrawalByAdmin below).
+ */
 export async function initiateWithdrawal(
   userId: string,
   params: WithdrawParams,
 ): Promise<ITransaction> {
-  const { tokens, accountNumber, bankCode, accountName } = params;
+  const { tokens, accountNumber, bankCode, bankName } = params;
+  const accountName = params.accountName?.trim() || undefined;
 
+  if (!Number.isInteger(tokens) || tokens <= 0) {
+    throw ApiError.badRequest("Enter a valid number of tokens");
+  }
   if (tokens < MIN_WITHDRAWAL_TOKENS) {
     throw ApiError.badRequest(
       `Minimum withdrawal is ${MIN_WITHDRAWAL_TOKENS} tokens`,
@@ -157,9 +212,15 @@ export async function initiateWithdrawal(
     );
   }
 
-  // Atomic conditional decrement, this is what prevents two concurrent
-  // withdrawal requests from both passing a naive "check then deduct" and
-  // taking the user's balance negative.
+  const eligibility = await getWithdrawalEligibility(userId);
+  if (!eligibility.eligible) {
+    throw ApiError.forbidden(eligibility.reason ?? "Withdrawals aren't available yet");
+  }
+
+  // Atomic conditional decrement: the balance check and the deduction are one
+  // database operation, so two concurrent requests can never both pass a
+  // "check then deduct" and take the balance negative. This is what stops a
+  // user withdrawing more than they have (the User schema also has min: 0).
   const debited = await User.findOneAndUpdate(
     { _id: userId, tokenBalance: { $gte: tokens } },
     { $inc: { tokenBalance: -tokens } },
@@ -170,51 +231,232 @@ export async function initiateWithdrawal(
   const amountKobo = tokens * WITHDRAWAL_NAIRA_PER_TOKEN * 100;
   const reference = `WD-${nanoid(20)}`;
 
-  const transaction = await Transaction.create({
-    user: userId,
-    type: "withdrawal",
-    status: "pending",
-    tokens,
-    amountKobo,
-    reference,
-    bankAccountNumber: accountNumber,
-    bankCode,
-    accountName,
-  });
-
   try {
-    const recipient = await createTransferRecipient({
-      name: accountName,
-      accountNumber,
-      bankCode,
-    });
-    const transfer = await initiateTransfer({
+    return await Transaction.create({
+      user: userId,
+      type: "withdrawal",
+      status: "pending",
+      tokens,
       amountKobo,
-      recipientCode: recipient.recipient_code,
-      reason: "R token withdrawal",
       reference,
+      bankAccountNumber: accountNumber,
+      bankCode,
+      bankName,
+      accountName,
     });
-
-    transaction.paystackRecipientCode = recipient.recipient_code;
-    transaction.paystackTransferCode = transfer.transfer_code;
-    // Paystack itself may report 'success' immediately (common in test mode)
-    // or 'pending' (finalized later via webhook, or stuck on 'otp' if Transfer
-    // OTP is enabled on the account, see README for what that means here).
-    if (transfer.status === "success") {
-      transaction.status = "success";
-    }
-    await transaction.save();
-    return transaction;
   } catch (err) {
-    // Recipient creation or transfer initiation failed outright, refund
-    // immediately rather than leaving the user's tokens stuck in limbo.
+    // Couldn't record the request, give the tokens straight back rather than
+    // leaving them taken with nothing queued.
     await User.updateOne({ _id: userId }, { $inc: { tokenBalance: tokens } });
-    transaction.status = "failed";
-    transaction.failureReason =
-      err instanceof Error ? err.message : "Transfer failed";
-    await transaction.save();
-    throw ApiError.badRequest(transaction.failureReason);
+    throw err;
   }
+}
+
+// --- Admin: manual withdrawal queue --------------------------------------------
+
+export type AdminWithdrawalAction = "paid" | "decline";
+
+export interface AdminListParams {
+  status?: "pending" | "success" | "failed";
+  page: number;
+  limit: number;
+}
+
+export async function listWithdrawalsForAdmin({ status, page, limit }: AdminListParams) {
+  const filter: Record<string, unknown> = { type: "withdrawal" };
+  if (status) filter.status = status;
+
+  const [rows, total, summary] = await Promise.all([
+    Transaction.find(filter)
+      // Oldest first for the pending queue so nothing gets forgotten at the
+      // bottom; newest first when looking at history.
+      .sort({ createdAt: status === "pending" ? 1 : -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .populate("user", "username email")
+      .lean(),
+    Transaction.countDocuments(filter),
+    Transaction.aggregate<{ _id: string; amountKobo: number; count: number }>([
+      { $match: { type: "withdrawal" } },
+      { $group: { _id: "$status", amountKobo: { $sum: "$amountKobo" }, count: { $sum: 1 } } },
+    ]),
+  ]);
+
+  const stat = (s: string) => summary.find((r) => r._id === s) ?? { amountKobo: 0, count: 0 };
+
+  return {
+    withdrawals: rows.map((t: any) => ({
+      id: t._id,
+      reference: t.reference,
+      status: t.status,
+      tokens: t.tokens,
+      amountKobo: t.amountKobo,
+      user: t.user ? { id: t.user._id, username: t.user.username, email: t.user.email } : null,
+      bankName: t.bankName ?? null,
+      bankCode: t.bankCode ?? null,
+      accountNumber: t.bankAccountNumber ?? null,
+      accountName: t.accountName ?? null,
+      failureReason: t.failureReason ?? null,
+      adminNote: t.adminNote ?? null,
+      resolvedAt: t.resolvedAt ?? null,
+      createdAt: t.createdAt,
+    })),
+    summary: {
+      pendingCount: stat("pending").count,
+      pendingKobo: stat("pending").amountKobo,
+      paidCount: stat("success").count,
+      paidKobo: stat("success").amountKobo,
+      declinedCount: stat("failed").count,
+    },
+    page,
+    limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+  };
+}
+
+/** Resolves a queued withdrawal. 'paid' = the admin has sent the money, the
+ *  transaction flips to success. 'decline' = it flips to failed and the tokens
+ *  are returned to the user. Both are guarded on status === 'pending' in the
+ *  update itself, so a double click / two admins can never resolve (or
+ *  refund) the same request twice. */
+export async function resolveWithdrawalByAdmin(
+  id: string,
+  action: AdminWithdrawalAction,
+  note: string | undefined,
+  adminName: string,
+): Promise<ITransaction> {
+  const set: Record<string, unknown> = {
+    status: action === "paid" ? "success" : "failed",
+    resolvedAt: new Date(),
+    resolvedBy: adminName,
+  };
+  if (action === "paid") {
+    if (note) set.adminNote = note;
+  } else {
+    set.failureReason = note || "Declined by admin";
+  }
+
+  const updated = await Transaction.findOneAndUpdate(
+    { _id: id, type: "withdrawal", status: "pending" },
+    { $set: set },
+    { new: true },
+  );
+
+  if (!updated) {
+    const exists = await Transaction.exists({ _id: id, type: "withdrawal" });
+    if (!exists) throw ApiError.notFound("Withdrawal not found");
+    throw ApiError.conflict("This withdrawal has already been resolved");
+  }
+
+  if (action === "decline") {
+    await User.updateOne({ _id: updated.user }, { $inc: { tokenBalance: updated.tokens } });
+  }
+
+  const naira = (updated.amountKobo / 100).toLocaleString();
+  try {
+    await createNotification({
+      recipientId: updated.user.toString(),
+      type: "admin_message",
+      title: action === "paid" ? "Withdrawal sent" : "Withdrawal declined",
+      body:
+        action === "paid"
+          ? `Your withdrawal of ₦${naira} has been sent to your bank account.`
+          : `Your withdrawal of ₦${naira} was declined and ${updated.tokens} R Coins were returned to your balance.${note ? ` Reason: ${note}` : ""}`,
+      link: "/wallet/transactions",
+    });
+  } catch (err) {
+    console.error("withdrawal notification failed:", err);
+  }
+
+  return updated;
+}
+
+// --- Admin: deposits (every naira sent to Chessr via Paystack) -----------------
+
+export async function listDepositsForAdmin({
+  status,
+  page,
+  limit,
+  q,
+}: AdminListParams & { q?: string }) {
+  const filter: Record<string, unknown> = { type: "purchase" };
+  if (status) filter.status = status;
+
+  if (q) {
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Prefix-anchored (^) so both lookups can use their indexes instead of
+    // scanning the whole users / transactions collections. An unanchored
+    // regex has no index bounds at all, and the reference one was also
+    // case-insensitive, which can't use tight bounds even when anchored.
+    // Trade-off: search now matches the START of a username or reference
+    // rather than any substring of it.
+    const users = await User.find({ usernameLower: { $regex: `^${escaped.toLowerCase()}` } })
+      .select("_id")
+      .limit(200)
+      .lean();
+    filter.$or = [
+      { reference: { $regex: `^${escaped}` } },
+      { user: { $in: users.map((u) => u._id) } },
+    ];
+  }
+
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+
+  const [rows, total, summary, month] = await Promise.all([
+    Transaction.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .populate("user", "username email")
+      .lean(),
+    Transaction.countDocuments(filter),
+    Transaction.aggregate<{ _id: string; amountKobo: number; tokens: number; count: number }>([
+      { $match: { type: "purchase" } },
+      {
+        $group: {
+          _id: "$status",
+          amountKobo: { $sum: "$amountKobo" },
+          tokens: { $sum: "$tokens" },
+          count: { $sum: 1 },
+        },
+      },
+    ]),
+    Transaction.aggregate<{ amountKobo: number }>([
+      { $match: { type: "purchase", status: "success", createdAt: { $gte: monthStart } } },
+      { $group: { _id: null, amountKobo: { $sum: "$amountKobo" } } },
+    ]),
+  ]);
+
+  const stat = (s: string) => summary.find((r) => r._id === s) ?? { amountKobo: 0, tokens: 0, count: 0 };
+
+  return {
+    deposits: rows.map((t: any) => ({
+      id: t._id,
+      reference: t.reference,
+      status: t.status,
+      tokens: t.tokens,
+      amountKobo: t.amountKobo,
+      user: t.user ? { id: t.user._id, username: t.user.username, email: t.user.email } : null,
+      failureReason: t.failureReason ?? null,
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
+    })),
+    summary: {
+      totalReceivedKobo: stat("success").amountKobo,
+      totalTokensSold: stat("success").tokens,
+      successCount: stat("success").count,
+      pendingCount: stat("pending").count,
+      failedCount: stat("failed").count,
+      thisMonthKobo: month[0]?.amountKobo ?? 0,
+    },
+    page,
+    limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+  };
 }
 
 /** Called from the transfer.success / transfer.failed / transfer.reversed

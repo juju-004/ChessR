@@ -129,8 +129,28 @@ export function listOpenTournaments(status?: TournamentStatus) {
   return apiFetch<{ tournaments: Tournament[] }>(`/tournaments${qs}`);
 }
 
+/** Page size of the Finished tournaments list, kept in step with
+ *  FINISHED_TOURNAMENTS_PAGE_SIZE on the server. */
+export const FINISHED_PAGE_SIZE = 5;
+
+export interface PageMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+/** Your pending/active tournaments (finished ones are paged separately, see
+ *  listMyFinishedTournaments). */
 export function listMyTournaments() {
   return apiFetch<{ tournaments: Tournament[] }>("/tournaments/mine");
+}
+
+/** One page (1-based) of your finished tournaments, newest first. */
+export function listMyFinishedTournaments(page = 1, limit = FINISHED_PAGE_SIZE) {
+  return apiFetch<{ tournaments: Tournament[] } & PageMeta>(
+    `/tournaments/mine?scope=finished&page=${page}&limit=${limit}`,
+  );
 }
 
 export function getTournamentByCode(code: string) {

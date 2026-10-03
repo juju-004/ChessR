@@ -49,3 +49,33 @@ export async function withLock<T>(
     await new Promise((resolve) => setTimeout(resolve, 40 + Math.random() * 60));
   }
 }
+
+const INSTANCE_TOKEN = randomUUID();
+
+/**
+ * Cluster-wide "at most once per interval" gate for periodic sweeps. Every
+ * server instance runs the same setInterval, so without this a deploy with N
+ * instances runs each sweep N times a minute: N times the Mongo queries and
+ * Redis round trips, all doing identical work and racing each other.
+ *
+ * The first instance to SET the key wins the tick; the key simply expires, it
+ * is never released early, so a slow winner can't be re-run by a second
+ * instance mid-flight. `intervalMs` should be the sweep's nominal period; the
+ * key lives slightly shorter so the next tick can always be claimed.
+ * Fails open: if Redis can't be asked, the sweep runs rather than silently
+ * never running.
+ */
+export async function runOncePerInterval<T>(
+  name: string,
+  intervalMs: number,
+  fn: () => Promise<T>,
+): Promise<T | undefined> {
+  const ttlMs = Math.max(1000, intervalMs - 5000);
+  try {
+    const won = await redis.set(`sweep:${name}`, INSTANCE_TOKEN, 'PX', ttlMs, 'NX');
+    if (won !== 'OK') return undefined;
+  } catch (err) {
+    console.error(`sweep gate for ${name} failed, running anyway:`, err);
+  }
+  return fn();
+}

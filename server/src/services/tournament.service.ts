@@ -35,7 +35,7 @@ import {
   recordRake,
 } from "./wallet.service.js";
 import { getIo } from "../sockets/io.js";
-import { isUserWatchingTournament } from "./presence.service.js";
+import { getWatchingUserIds } from "./presence.service.js";
 import { expireChat } from "./chat.service.js";
 import { createNotification } from "./notification.service.js";
 
@@ -103,14 +103,38 @@ async function scheduleRoundStart(
  *  some other way, round already active from a reconciliation sweep race,
  *  etc), so this re-verifies rather than trusting the closure's stale doc. */
 async function fireRoundStart(tournamentId: string, roundIndex: number): Promise<void> {
-  const tournament = await Tournament.findById(tournamentId);
-  if (!tournament || tournament.status !== "active") return;
-  const round = tournament.rounds[roundIndex];
-  if (!round || round.status !== "pending") return;
+  // Runs under the same lock as every other tournament mutation. This is
+  // called from BOTH the in-memory break timer and the 60s reconcile sweep,
+  // and without the lock the two could fire at the same instant, both see
+  // the round as "pending", and both create a Game for every pairing: the
+  // second save overwrote pairing.gameId, leaving the first game live and
+  // orphaned, i.e. a player sitting in a game while a second game of the
+  // same tournament landed on them.
+  const result = await withLock(
+    tournamentMutationLockKey(tournamentId),
+    async () => {
+      const tournament = await Tournament.findById(tournamentId);
+      if (!tournament || tournament.status !== "active") return;
+      const round = tournament.rounds[roundIndex];
+      if (!round || round.status !== "pending") return;
 
-  tournament.nextRoundStartsAt = null;
-  await activateRound(tournament, roundIndex);
+      tournament.nextRoundStartsAt = null;
+      await activateRound(tournament, roundIndex);
+    },
+    ROUND_LOCK_OPTS,
+  );
+  if (result === null) {
+    // Another mutation held the lock for the whole wait; the periodic
+    // sweep (nextRoundStartsAt is still set) will pick the round up again.
+    console.warn(`fireRoundStart: lock busy for tournament ${tournamentId} round ${roundIndex}, sweep will retry`);
+  }
 }
+
+// Lock options for anything that can end up creating games (activateRound).
+// The default 5s TTL is too tight: creating ~8 games sequentially (each one
+// several Mongo + Redis round trips) can outlive it, and once a lock expires
+// a second mutation can walk in mid-way, which is how rounds get clobbered.
+const ROUND_LOCK_OPTS = { ttlMs: 30_000, maxWaitMs: 8_000 };
 
 /** Boot/periodic self-heal for scheduleRoundStart's in-memory timer, finds
  *  any active tournament sitting in a break whose nextRoundStartsAt has
@@ -129,7 +153,9 @@ export async function reconcileActiveTournaments(): Promise<{
   const pending = await Tournament.find({
     status: "active",
     nextRoundStartsAt: { $ne: null },
-  }).select("currentRoundIndex nextRoundStartsAt breakSeconds");
+  })
+    .select("currentRoundIndex nextRoundStartsAt breakSeconds")
+    .lean();
 
   let activated = 0;
   let rearmed = 0;
@@ -139,17 +165,21 @@ export async function reconcileActiveTournaments(): Promise<{
     const roundIndex = doc.currentRoundIndex;
     const dueAt = doc.nextRoundStartsAt ? doc.nextRoundStartsAt.getTime() : 0;
     if (dueAt <= now) {
-      await fireRoundStart(doc.id, roundIndex);
-      activated++;
-    } else if (!pendingRoundTimers.has(doc.id)) {
+      try {
+        await fireRoundStart(String(doc._id), roundIndex);
+        activated++;
+      } catch (err) {
+        console.error(`reconcile: fireRoundStart failed for ${String(doc._id)}:`, err);
+      }
+    } else if (!pendingRoundTimers.has(String(doc._id))) {
       const timer = setTimeout(() => {
-        pendingRoundTimers.delete(doc.id);
-        fireRoundStart(doc.id, roundIndex).catch((err) =>
+        pendingRoundTimers.delete(String(doc._id));
+        fireRoundStart(String(doc._id), roundIndex).catch((err) =>
           console.error("re-armed round start failed:", err),
         );
       }, dueAt - now);
       timer.unref?.();
-      pendingRoundTimers.set(doc.id, timer);
+      pendingRoundTimers.set(String(doc._id), timer);
       rearmed++;
     }
   }
@@ -157,7 +187,9 @@ export async function reconcileActiveTournaments(): Promise<{
   const pendingStarts = await Tournament.find({
     status: "pending",
     scheduledStartAt: { $ne: null },
-  }).select("scheduledStartAt");
+  })
+    .select("scheduledStartAt")
+    .lean();
 
   let autoStarted = 0;
   let autoStartRearmed = 0;
@@ -165,15 +197,19 @@ export async function reconcileActiveTournaments(): Promise<{
   for (const doc of pendingStarts) {
     const dueAt = doc.scheduledStartAt ? doc.scheduledStartAt.getTime() : 0;
     if (dueAt <= now) {
-      await fireAutoStart(doc.id);
-      autoStarted++;
-    } else if (!pendingAutoStartTimers.has(doc.id)) {
+      try {
+        await fireAutoStart(String(doc._id));
+        autoStarted++;
+      } catch (err) {
+        console.error(`reconcile: fireAutoStart failed for ${String(doc._id)}:`, err);
+      }
+    } else if (!pendingAutoStartTimers.has(String(doc._id))) {
       const timer = setTimeout(() => {
-        pendingAutoStartTimers.delete(doc.id);
-        fireAutoStart(doc.id).catch((err) => console.error("re-armed auto-start failed:", err));
+        pendingAutoStartTimers.delete(String(doc._id));
+        fireAutoStart(String(doc._id)).catch((err) => console.error("re-armed auto-start failed:", err));
       }, dueAt - now);
       timer.unref?.();
-      pendingAutoStartTimers.set(doc.id, timer);
+      pendingAutoStartTimers.set(String(doc._id), timer);
       autoStartRearmed++;
     }
   }
@@ -185,19 +221,25 @@ export async function reconcileActiveTournaments(): Promise<{
     status: "active",
     format: "arena",
     arenaEndsAt: { $ne: null },
-  }).select("arenaEndsAt");
+  })
+    .select("arenaEndsAt")
+    .lean();
 
   for (const doc of pendingArenaEnds) {
     const dueAt = doc.arenaEndsAt ? doc.arenaEndsAt.getTime() : 0;
     if (dueAt <= now) {
-      await fireArenaEnd(doc.id);
-    } else if (!pendingArenaEndTimers.has(doc.id)) {
+      try {
+        await fireArenaEnd(String(doc._id));
+      } catch (err) {
+        console.error(`reconcile: fireArenaEnd failed for ${String(doc._id)}:`, err);
+      }
+    } else if (!pendingArenaEndTimers.has(String(doc._id))) {
       const timer = setTimeout(() => {
-        pendingArenaEndTimers.delete(doc.id);
-        fireArenaEnd(doc.id).catch((err) => console.error("re-armed arena end failed:", err));
+        pendingArenaEndTimers.delete(String(doc._id));
+        fireArenaEnd(String(doc._id)).catch((err) => console.error("re-armed arena end failed:", err));
       }, dueAt - now);
       timer.unref?.();
-      pendingArenaEndTimers.set(doc.id, timer);
+      pendingArenaEndTimers.set(String(doc._id), timer);
     }
   }
 
@@ -212,11 +254,13 @@ export async function reconcileActiveTournaments(): Promise<{
         pairings: { $elemMatch: { status: "pending", player2: { $ne: null } } },
       },
     },
-  }).select("rounds.status rounds.pairings.status rounds.pairings.player2");
+  })
+    .select("rounds.status rounds.pairings.status rounds.pairings.player2")
+    .lean();
   for (const doc of withHeldBack) {
     doc.rounds.forEach((r, idx) => {
       if (r.status === "active" && r.pairings.some((p) => p.status === "pending" && p.player2)) {
-        scheduleDeferredPairingRetry(doc.id, idx);
+        scheduleDeferredPairingRetry(String(doc._id), idx);
       }
     });
   }
@@ -267,7 +311,18 @@ async function fireAutoStart(tournamentId: string): Promise<void> {
   if (!tournament || tournament.status !== "pending") return;
 
   if (tournament.players.length >= tournament.minPlayers) {
-    await activateTournament(tournament);
+    // Atomic claim. The timer and the 60s sweep can both get here for the
+    // same tournament; only one may flip it pending -> active, otherwise
+    // round 0 gets built and its games created twice. (Can't use the
+    // tournament lock here: arena start calls tryArenaPairings, which takes
+    // that same non-reentrant lock.)
+    const claimed = await Tournament.findOneAndUpdate(
+      { _id: tournamentId, status: "pending" },
+      { $set: { status: "active" } },
+      { new: true },
+    );
+    if (!claimed) return;
+    await activateTournament(claimed);
   } else {
     await refundAllEscrow(tournament);
     tournament.status = "cancelled";
@@ -846,19 +901,24 @@ export async function leaveTournament(
   }
 
   const wasCreator = tournament.createdBy.toString() === userId;
-  if (wasCreator && tournament.prizePoolTokens > 0 && !tournament.prizePoolSettled) {
+  // An organizerOnly creator who joined with the play button is just
+  // stepping back off the roster: they still run the event, so the prize
+  // pool they funded stays committed, ownership doesn't move, and an empty
+  // roster is the normal state rather than a reason to cancel.
+  const organizerStepOut = wasCreator && tournament.organizerOnly;
+  if (!organizerStepOut && wasCreator && tournament.prizePoolTokens > 0 && !tournament.prizePoolSettled) {
     await creditTournamentReturn(userId, tournament.id, tournament.prizePoolTokens, "tournament_refund", "prize");
     tournament.prizePoolSettled = true;
     tournament.prizePoolTokens = 0;
     tournament.prizeSchedule = [];
   }
 
-  if (tournament.players.length === 0) {
+  if (tournament.players.length === 0 && !tournament.organizerOnly) {
     clearPendingAutoStart(tournament.id);
     tournament.status = "cancelled";
     tournament.cancelReason = "Not enough players to start the tournament";
     tournament.cancelledAt = new Date();
-  } else if (wasCreator) {
+  } else if (wasCreator && !tournament.organizerOnly) {
     tournament.createdBy = tournament.players[0].user;
   }
   await tournament.save();
@@ -962,12 +1022,15 @@ export async function updateTournament(
     throw ApiError.forbidden("Only the organizer can edit this");
   if (tournament.status !== "pending")
     throw ApiError.conflict("This tournament has already started");
-  // Editable only while nobody but possibly the creator has joined.
-  // organizerOnly tournaments never count the creator as a player (see
-  // createTournament), so their "safe to edit" threshold is 0 joined
-  // players rather than 1.
-  const maxEditablePlayers = tournament.organizerOnly ? 0 : 1;
-  if (tournament.players.length > maxEditablePlayers)
+  // Editable only while nobody but possibly the creator has joined. The
+  // creator may or may not be on the roster (an organizerOnly creator can
+  // still hop in with the play button, and back out again), so count
+  // everyone ELSE rather than comparing against a fixed roster size.
+  const creatorKey = tournament.createdBy.toString();
+  const otherPlayers = tournament.players.filter(
+    (p: ITournamentPlayer) => p.user.toString() !== creatorKey,
+  ).length;
+  if (otherPlayers > 0)
     throw ApiError.conflict("Can't edit a tournament once other players have joined");
 
   const format = input.format ?? tournament.format;
@@ -1039,16 +1102,16 @@ export async function updateTournament(
 
   // The creator is the only (possible) player so far, so their own reg-fee
   // contribution IS the whole pool, adjusting the fee just means adjusting
-  // what they personally already paid in. organizerOnly tournaments skip
-  // this entirely: the creator was never charged a registration fee at
-  // creation time (they're not a player), so there's nothing of theirs to
-  // adjust here either, see createTournament's matching skip.
+  // what they personally already paid in. If the creator isn't on the
+  // roster (organizerOnly and they haven't joined), they never paid a
+  // registration fee, so there's nothing of theirs to adjust, see
+  // createTournament's matching skip.
   const prizeDelta = committedPrizePoolTokens - tournament.prizePoolTokens;
   const regFeeDelta = regFeeTokens - tournament.regFeeTokens;
   if (prizeDelta !== 0) {
     await adjustTournamentEscrow(requesterId, tournament.id, prizeDelta, "tournament_prize_fund");
   }
-  if (!tournament.organizerOnly && regFeeDelta !== 0) {
+  if (findPlayer(tournament, requesterId) && regFeeDelta !== 0) {
     await adjustTournamentEscrow(requesterId, tournament.id, regFeeDelta, "tournament_reg_fee");
     tournament.regFeePoolTokens = regFeeTokens;
   }
@@ -1585,11 +1648,16 @@ async function retryDeferredPairings(tournamentId: string, roundIndex: number): 
         for (const pairing of waiting) {
           const p1Busy = busy.has(pairing.player1.toString());
           const p2Busy = busy.has(pairing.player2!.toString());
-          if (p1Busy === p2Busy) continue;
-          const winner = p1Busy ? "p2" : "p1";
+          if (!p1Busy && !p2Busy) continue; // both free, activateRound below starts it
+          // Exactly one side busy: that side forfeits. BOTH busy: nobody is
+          // at fault but the round can't wait forever (a held-back pairing
+          // blocks the whole round and therefore the whole tournament), so
+          // it's scored as a draw.
+          const winner: "p1" | "p2" | "draw" =
+            p1Busy && p2Busy ? "draw" : p1Busy ? "p2" : "p1";
           pairing.status = "finished";
           pairing.result = winner;
-          pairing.endReason = "forfeit_other_game";
+          pairing.endReason = winner === "draw" ? "both_busy" : "forfeit_other_game";
           applyPairingScore(tournament, pairing, winner, { p1: false, p2: false }, roundIndex);
           forfeited = true;
         }
@@ -1597,7 +1665,7 @@ async function retryDeferredPairings(tournamentId: string, roundIndex: number): 
       }
       await activateRound(tournament, roundIndex);
     },
-    { ttlMs: 20_000, maxWaitMs: 5000 },
+    ROUND_LOCK_OPTS,
   );
   // Couldn't get the lock: some other mutation is in flight, try again shortly.
   if (result === null) scheduleDeferredPairingRetry(tournamentId, roundIndex);
@@ -1619,6 +1687,28 @@ async function activateRound(
   roundIndex: number,
 ): Promise<void> {
   const round = tournament.rounds[roundIndex];
+
+  // HARD GATE (swiss / round-robin / knockout): a round never starts while
+  // any earlier round is unfinished, or while a game from this tournament
+  // from a different round is still live. This is the "every game in a round
+  // must finish before the next round" rule enforced at the one place games
+  // actually get created, so no caller (break timer, sweep, retry, script)
+  // can ever drop a second game of the same tournament on a player who is
+  // still playing. The round stays "pending"; healTournamentLocked retries.
+  if (tournament.format !== "arena" && round.status === "pending") {
+    const earlierUnfinished = tournament.rounds
+      .slice(0, roundIndex)
+      .some((r) => r.status !== "finished");
+    const stragglerGame = await liveStragglerGameExists(tournament, roundIndex);
+    if (earlierUnfinished || stragglerGame) {
+      console.warn(
+        `activateRound: refusing to start round ${roundIndex} of tournament ${tournament.id} ` +
+          `(earlierUnfinished=${earlierUnfinished}, liveGameFromOtherRound=${!!stragglerGame}), will retry`,
+      );
+      return;
+    }
+  }
+
   // Also re-entered for a round that's already active, to start pairings
   // that were held back (see retryDeferredPairings), so don't restamp it.
   if (round.status !== "active") {
@@ -1690,22 +1780,61 @@ async function activateRound(
           ? [pairing.player1.toString(), pairing.player2.toString()]
           : [pairing.player2.toString(), pairing.player1.toString()]
         : [pairing.player1.toString(), pairing.player2.toString()];
-    const game = await createDirectGame(
-      whiteId,
-      blackId,
-      timeControl,
-      undefined,
-      tournament.variant,
-      0,
-      undefined,
-      { tournamentId: tournament.id, roundIndex, pairingIndex: pairing.index },
-    );
-    pairing.whiteId = whiteId as any;
-    pairing.blackId = blackId as any;
+    // Idempotent: if a live Game already exists for exactly this pairing
+    // (a previous attempt created it but crashed/threw before the tournament
+    // doc was saved), adopt it instead of creating a second one.
+    let game: { _id: any; joinCode: string } | null = null;
+    let adopted = false;
+    let gameWhite = whiteId;
+    let gameBlack = blackId;
+    try {
+      const existing = await Game.findOne({
+        tournamentId: tournament.id,
+        roundIndex,
+        pairingIndex: pairing.index,
+        status: { $in: ["waiting", "active"] },
+      })
+        .select("_id joinCode white black")
+        .lean();
+      if (existing && existing.black) {
+        game = { _id: existing._id, joinCode: existing.joinCode };
+        gameWhite = existing.white.toString();
+        gameBlack = existing.black.toString();
+        adopted = true;
+      } else {
+        game = await createDirectGame(
+          whiteId,
+          blackId,
+          timeControl,
+          undefined,
+          tournament.variant,
+          0,
+          undefined,
+          { tournamentId: tournament.id, roundIndex, pairingIndex: pairing.index },
+        );
+      }
+    } catch (err) {
+      // One failed pairing must not abort the whole round half-way (that
+      // leaves live games the tournament doc never learns about). Leave it
+      // pending, the deferred retry below picks it up again.
+      console.error(
+        `activateRound: could not start pairing ${pairing.index} of round ${roundIndex} (tournament ${tournament.id}):`,
+        err,
+      );
+      anyHeldBack = true;
+      continue;
+    }
+    pairing.whiteId = gameWhite as any;
+    pairing.blackId = gameBlack as any;
     pairing.gameId = game._id;
     pairing.joinCode = game.joinCode;
     pairing.status = "active";
-    readyPlayers.push({ userId: whiteId, joinCode: game.joinCode }, { userId: blackId, joinCode: game.joinCode });
+    if (!adopted) {
+      readyPlayers.push(
+        { userId: gameWhite, joinCode: game.joinCode },
+        { userId: gameBlack, joinCode: game.joinCode },
+      );
+    }
   }
 
   await tournament.save();
@@ -1822,66 +1951,239 @@ async function fireArenaEnd(tournamentId: string): Promise<void> {
   if (!hasActivePairing(tournament)) await finishTournament(tournament);
 }
 
-/** Belt-and-suspenders safety net, run alongside reconcileActiveTournaments
- *  in index.ts's periodic sweep. Targets the exact desync
- *  advanceTournamentIfPairing's locking fix (see its own doc comment) was
- *  written to stop: a pairing left "active" in the tournament document
- *  even though its underlying Game already finished, because the result
- *  never made it back — previously a swallowed VersionError from
- *  concurrent saves, potentially something else entirely in the future.
- *  An arena tournament in that state can never see hasActivePairing() go
- *  false on its own, so without this it sits "active" forever, with the
- *  client stuck showing "Finishing up…" — this is what actually resolved
- *  the incident that prompted the locking fix in production, by finding
- *  the desynced pairing and replaying its game's real result through the
- *  normal (now-locked) advanceTournamentIfPairing path, same as if the
- *  game had reported in cleanly the first time. Scoped to arena
- *  specifically: it's the only format where "stuck past its own end time"
- *  is a self-contained, checkable condition (arenaEndsAt); a swiss/
- *  knockout pairing stuck "active" past a round's normal pace is a
- *  different, per-format shape of the same underlying class of bug and
- *  isn't covered by this sweep. */
-export async function resolveDesyncedArenaPairings(): Promise<{ resolved: number }> {
-  const stuck = await Tournament.find({
-    status: "active",
-    format: "arena",
-    arenaEndsAt: { $lte: new Date() },
-  }).select("rounds");
+/** Self-healing safety net for EVERY tournament format, run on boot and every
+ *  60s from index.ts. A tournament can only get stuck because some step of
+ *  "game ended -> pairing recorded -> round closed -> next round built ->
+ *  next round's games created" didn't complete (crash/redeploy, lock
+ *  contention, a VersionError from a concurrent join, a thrown error). Each
+ *  step leaves a state that's detectable from the database alone, so this
+ *  just finds those states and pushes them forward through the normal,
+ *  locked code paths:
+ *
+ *   1. pairing still "active" but its Game is already finished/aborted (or
+ *      the Game doc is gone)            -> replay the result
+ *   2. round "active" with every pairing finished -> close it
+ *   3. last round "finished" but tournament still "active" -> advance/finish
+ *   4. round "pending" with every earlier round finished but no break timer
+ *      pending (nextRoundStartsAt null) -> start it
+ *
+ *  All of it is idempotent, safe to run any number of times, and a healthy
+ *  tournament is untouched. (This used to be arena-only, which is why a
+ *  stuck swiss round needed an emergency script.) */
+export async function resolveDesyncedPairings(): Promise<{ resolved: number; healed: number }> {
+  // Cheap pre-check pass. This runs on a timer for EVERY active tournament,
+  // and the expensive part (loading the whole document, taking the Redis
+  // mutation lock) is only needed for the rare tournament that's actually
+  // stuck. So: one lean read of just the round/pairing statuses, ONE
+  // batched Game lookup for every active pairing across all tournaments,
+  // then only flagged tournaments go through the full, locked repair path
+  // below (which re-validates everything itself, so a false positive here
+  // costs nothing but the lock).
+  // Arena stores every game as its own round, so an arena document's rounds
+  // array grows without bound while it runs, and arenas never need the heal
+  // pass (looksStuck returns false for them). Reading all of those rounds into
+  // Node every few minutes for every arena was the costly part, so for arenas
+  // MongoDB reduces them to just the ids of their still-active pairings and
+  // only that small array crosses the wire.
+  const nonArena = (await Tournament.find({ status: "active", format: { $ne: "arena" } })
+    .select(
+      "format nextRoundStartsAt rounds.index rounds.status rounds.pairings.status rounds.pairings.gameId",
+    )
+    .lean()) as any[];
+  const arenaRows = await Tournament.aggregate<{ _id: unknown; gameIds: unknown[] }>([
+    { $match: { status: "active", format: "arena" } },
+    {
+      $project: {
+        gameIds: {
+          $reduce: {
+            input: { $ifNull: ["$rounds", []] },
+            initialValue: [],
+            in: {
+              $concatArrays: [
+                "$$value",
+                {
+                  $map: {
+                    input: {
+                      $filter: {
+                        input: { $ifNull: ["$$this.pairings", []] },
+                        as: "p",
+                        cond: {
+                          $and: [
+                            { $eq: ["$$p.status", "active"] },
+                            { $ne: [{ $ifNull: ["$$p.gameId", null] }, null] },
+                          ],
+                        },
+                      },
+                    },
+                    as: "p",
+                    in: "$$p.gameId",
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
+    },
+  ]);
+  const active: any[] = [
+    ...nonArena,
+    ...arenaRows.map((r) => ({ _id: r._id, format: "arena", rounds: [], arenaActiveGameIds: r.gameIds })),
+  ];
+  if (active.length === 0) return { resolved: 0, healed: 0 };
 
-  let resolved = 0;
-  for (const doc of stuck) {
-    for (const round of doc.rounds) {
-      for (const [pairingIndex, pairing] of round.pairings.entries()) {
-        if (pairing.status !== "active" || !pairing.gameId) continue;
-        const game = await Game.findById(pairing.gameId).select("status result endReason").lean();
-        // Game genuinely still being played (or somehow missing) — leave
-        // it, this isn't the desync case, just an arena tournament
-        // correctly still waiting on its last live game. "aborted" is the
-        // other terminal state (see reconcileActiveGames' own no-live-state
-        // branch, which finalizes an abandoned game as status "aborted"
-        // with endReason "abandoned" and calls advanceTournamentIfPairing
-        // itself right there) — a game that's "aborted" is exactly as over
-        // as one that's "finished", and originally missing that here is
-        // its own instance of this same desync: if THAT direct call had
-        // failed (the pre-lock-fix VersionError, or any future one-off
-        // hiccup), this sweep silently skipped it forever because it only
-        // checked for "finished".
-        if (!game || (game.status !== "finished" && game.status !== "aborted")) continue;
-        await advanceTournamentIfPairing(
-          doc.id,
-          round.index,
-          pairingIndex,
-          game.result ?? "draw",
-          game.endReason ?? "unknown",
-        );
-        resolved++;
+  const activePairingGameIds = new Map<string, string[]>();
+  const allGameIds = new Set<string>();
+  for (const t of active) {
+    const ids: string[] = t.arenaActiveGameIds ? t.arenaActiveGameIds.map((g: unknown) => String(g)) : [];
+    for (const g of ids) allGameIds.add(g);
+    for (const round of t.rounds ?? []) {
+      for (const pairing of round.pairings ?? []) {
+        if (pairing.status === "active" && pairing.gameId) {
+          const gid = String(pairing.gameId);
+          ids.push(gid);
+          allGameIds.add(gid);
+        }
       }
     }
+    activePairingGameIds.set(String(t._id), ids);
   }
-  if (resolved > 0) {
-    console.warn(`resolveDesyncedArenaPairings: repaired ${resolved} desynced arena pairing(s)`);
+
+  const games = allGameIds.size
+    ? await Game.find({ _id: { $in: [...allGameIds] } }).select("status").lean()
+    : [];
+  const existingIds = new Set(games.map((g) => String(g._id)));
+  const overIds = new Set(
+    games.filter((g) => g.status === "finished" || g.status === "aborted").map((g) => String(g._id)),
+  );
+
+  let resolved = 0;
+  let healed = 0;
+  for (const t of active) {
+    const id = String(t._id);
+    const needsReplay = (activePairingGameIds.get(id) ?? []).some(
+      (gid) => !existingIds.has(gid) || overIds.has(gid),
+    );
+    const needsHeal = looksStuck(t);
+    if (!needsReplay && !needsHeal) continue;
+    try {
+      if (needsReplay) resolved += await replayFinishedPairings(id);
+      // Replaying can itself leave a round ready to close, so heal always
+      // follows a replay (as it did before this pre-check existed).
+      healed += await healTournament(id);
+    } catch (err) {
+      console.error(`resolveDesyncedPairings: failed for tournament ${id}:`, err);
+    }
   }
-  return { resolved };
+  if (resolved > 0 || healed > 0) {
+    console.warn(`resolveDesyncedPairings: replayed ${resolved} pairing(s), healed ${healed} round state(s)`);
+  }
+  return { resolved, healed };
+}
+
+/** Cheap, read-only mirror of healTournament's stuck-state checks (2-4),
+ *  evaluated against the lean projection above. Arena has no rounds to
+ *  close, so it never needs the heal pass. */
+function looksStuck(t: any): boolean {
+  if (t.format === "arena") return false;
+  const rounds: any[] = t.rounds ?? [];
+  // 2. active round whose pairings are all finished
+  for (const r of rounds) {
+    const pairings: any[] = r.pairings ?? [];
+    if (r.status === "active" && pairings.length > 0 && pairings.every((p) => p.status === "finished")) {
+      return true;
+    }
+  }
+  // 3. last round finished but the tournament never advanced
+  if (rounds.length > 0 && rounds[rounds.length - 1].status === "finished") return true;
+  // 4. a pending round nobody is going to start
+  const nextIdx = rounds.findIndex((r) => r.status === "pending");
+  if (nextIdx !== -1 && rounds.slice(0, nextIdx).every((r) => r.status === "finished")) {
+    const dueAt = t.nextRoundStartsAt ? new Date(t.nextRoundStartsAt).getTime() : 0;
+    if (!t.nextRoundStartsAt || dueAt <= Date.now()) return true;
+  }
+  return false;
+}
+
+// A game that ended this recently is probably still mid-way through the
+// normal endGameAndBroadcast -> advanceTournamentIfPairing path, give it a
+// moment instead of racing it (the replay is idempotent either way).
+const REPLAY_MIN_AGE_MS = 15_000;
+
+async function replayFinishedPairings(tournamentId: string): Promise<number> {
+  const doc = await Tournament.findById(tournamentId).select("rounds status");
+  if (!doc || doc.status !== "active") return 0;
+  let replayed = 0;
+  for (const round of doc.rounds) {
+    for (const [pairingIndex, pairing] of round.pairings.entries()) {
+      if (pairing.status !== "active" || !pairing.gameId) continue;
+      const game = await Game.findById(pairing.gameId)
+        .select("status result endReason endedAt")
+        .lean();
+      if (!game) {
+        await advanceTournamentIfPairing(tournamentId, round.index, pairingIndex, "draw", "abandoned");
+        replayed++;
+        continue;
+      }
+      // "aborted" is as over as "finished" (reconcileActiveGames finalizes
+      // an abandoned game that way); anything else is genuinely in progress.
+      if (game.status !== "finished" && game.status !== "aborted") continue;
+      if (game.endedAt && Date.now() - new Date(game.endedAt).getTime() < REPLAY_MIN_AGE_MS) continue;
+      await advanceTournamentIfPairing(
+        tournamentId,
+        round.index,
+        pairingIndex,
+        (game.result as "white" | "black" | "draw" | null) ?? "draw",
+        game.endReason ?? "unknown",
+      );
+      replayed++;
+    }
+  }
+  return replayed;
+}
+
+async function healTournament(tournamentId: string): Promise<number> {
+  const result = await withLock(
+    tournamentMutationLockKey(tournamentId),
+    async () => {
+      const tournament = await Tournament.findById(tournamentId);
+      if (!tournament || tournament.status !== "active") return 0;
+      // Arena has no rounds to close, its own end timer + the replay above
+      // cover it.
+      if (tournament.format === "arena") return 0;
+      const rounds = tournament.rounds;
+
+      // 2. active round whose pairings are all finished
+      for (let i = 0; i < rounds.length; i++) {
+        const r = rounds[i];
+        if (r.status === "active" && r.pairings.length > 0 && r.pairings.every((p) => p.status === "finished")) {
+          await maybeCompleteRound(tournament, i);
+          return 1;
+        }
+      }
+
+      // 3. last round finished, tournament never advanced/finished
+      const last = rounds.length - 1;
+      if (last >= 0 && rounds[last].status === "finished") {
+        await advanceAfterRound(tournament, last);
+        return 1;
+      }
+
+      // 4. a pending round nobody is going to start
+      const nextIdx = rounds.findIndex((r) => r.status === "pending");
+      if (nextIdx !== -1 && rounds.slice(0, nextIdx).every((r) => r.status === "finished")) {
+        const dueAt = tournament.nextRoundStartsAt?.getTime() ?? 0;
+        if (!tournament.nextRoundStartsAt || dueAt <= Date.now()) {
+          tournament.nextRoundStartsAt = null;
+          await activateRound(tournament, nextIdx);
+          return 1;
+        }
+      }
+      return 0;
+    },
+    ROUND_LOCK_OPTS,
+  );
+  return result ?? 0;
 }
 
 /** Smart pairing, arena half: every player currently eligible for a new
@@ -1913,16 +2215,22 @@ async function arenaAvailablePlayers(
   const candidates = tournament.players.filter(
     (p) => !p.paused && !busy.has(p.user.toString()),
   );
-  const watchingFlags = await Promise.all(
-    candidates.map((p) => isUserWatchingTournament(p.user.toString(), tournament.id)),
-  );
+  if (candidates.length === 0) return [];
+  // The watcher list is read ONCE for the whole pool (two Redis calls total:
+  // the tournament's watcher set, then one MGET to turn those sockets into
+  // user ids). This used to call isUserWatchingTournament per candidate,
+  // which made two Redis calls each and re-read the same watcher set every
+  // time: ~2N calls per pairing pass for an N-player arena, on every game end.
+  const watching = new Set(await getWatchingUserIds(tournament.id));
+  const watchingCandidates = candidates.filter((p) => watching.has(p.user.toString()));
+  if (watchingCandidates.length === 0) return [];
+  // Only the players who'd otherwise be paired need the (Mongo) other-games
+  // check, so it's skipped for everyone who isn't on the page anyway.
   const inOtherGames = await findUsersInOtherGames(
-    candidates.map((p) => p.user.toString()),
+    watchingCandidates.map((p) => p.user.toString()),
     tournament.id,
   );
-  return candidates.filter(
-    (p, i) => watchingFlags[i] && !inOtherGames.has(p.user.toString()),
-  );
+  return watchingCandidates.filter((p) => !inOtherGames.has(p.user.toString()));
 }
 
 /** Given two candidate colorings (a=white/b=black vs b=white/a=black),
@@ -2106,7 +2414,7 @@ function tournamentMutationLockKey(tournamentId: string): string {
  *  successfully serialize against themselves while still racing each
  *  other. See advanceTournamentIfPairing's doc comment for the incident
  *  that happens when they do. */
-async function tryArenaPairings(tournamentId: string): Promise<void> {
+async function tryArenaPairingsOnce(tournamentId: string): Promise<void> {
   const result = await withLock(tournamentMutationLockKey(tournamentId), async () => {
     const tournament = await Tournament.findById(tournamentId);
     if (!tournament) return;
@@ -2144,11 +2452,43 @@ async function tryArenaPairings(tournamentId: string): Promise<void> {
     for (const roundIndex of newRoundIndexes) {
       await activateRound(tournament, roundIndex);
     }
-  });
+  }, ROUND_LOCK_OPTS);
 
   if (result === null) {
     console.error(`arena pairing lock timed out for tournament ${tournamentId}`);
   }
+}
+
+// Pairing triggers arrive in bursts: every player landing back on the
+// tournament page after a game ends fires its own retry in the same tick, and
+// each game finishing fires another. Each run loads the whole tournament
+// document and holds the tournament-wide lock, so N simultaneous triggers
+// used to mean N sequential full loads. Now at most one run is in flight per
+// tournament on this process, and any triggers arriving meanwhile collapse
+// into ONE follow-up run (which starts after they arrived, so none is lost).
+// Callers awaiting this still resolve only after a run that began after
+// their call has finished.
+const arenaPairingRuns = new Map<string, { dirty: boolean; promise: Promise<void> }>();
+
+function tryArenaPairings(tournamentId: string): Promise<void> {
+  const existing = arenaPairingRuns.get(tournamentId);
+  if (existing) {
+    existing.dirty = true;
+    return existing.promise;
+  }
+  const run = { dirty: false, promise: Promise.resolve() };
+  run.promise = (async () => {
+    try {
+      do {
+        run.dirty = false;
+        await tryArenaPairingsOnce(tournamentId);
+      } while (run.dirty);
+    } finally {
+      arenaPairingRuns.delete(tournamentId);
+    }
+  })();
+  arenaPairingRuns.set(tournamentId, run);
+  return run.promise;
 }
 
 /** Toggles a player's pause state, see the ITournamentPlayer.paused doc
@@ -2213,14 +2553,34 @@ export async function setTournamentPause(
  *  Multiple players can hit this within the same instant (everyone landing
  *  back on the tournament page right after a game ends), that's exactly
  *  what tryArenaPairings' lock-and-refetch is for, see its comment. */
+// A deploy or network blip reconnects every player at once, and each
+// reconnect (and each tournament page open) used to cost a Mongo query plus a
+// pairing attempt. A user who just triggered one gains nothing from a second
+// within a few seconds.
+const ARENA_RETRY_COOLDOWN_MS = 3000;
+const lastArenaRetryAt = new Map<string, number>();
+
 export async function retryArenaPairingsForUser(userId: string): Promise<void> {
+  const nowMs = Date.now();
+  const lastAt = lastArenaRetryAt.get(userId);
+  if (lastAt !== undefined && nowMs - lastAt < ARENA_RETRY_COOLDOWN_MS) return;
+  lastArenaRetryAt.set(userId, nowMs);
+  if (lastArenaRetryAt.size > 5000) {
+    for (const [id, at] of lastArenaRetryAt) if (nowMs - at > ARENA_RETRY_COOLDOWN_MS) lastArenaRetryAt.delete(id);
+  }
+  // Only the ids are needed (tryArenaPairings re-fetches the fresh document
+  // itself under its lock), so this skips hydrating whole tournament
+  // documents, with every round, pairing and player, on every socket connect
+  // and tournament page open. .lean() skips Mongoose hydration entirely.
   const tournaments = await Tournament.find({
     status: "active",
     format: "arena",
     "players.user": userId,
-  });
+  })
+    .select("_id")
+    .lean();
   for (const tournament of tournaments) {
-    await tryArenaPairings(tournament.id).catch((err) =>
+    await tryArenaPairings(String(tournament._id)).catch((err) =>
       console.error("arena re-pairing on reconnect failed:", err),
     );
   }
@@ -2397,6 +2757,39 @@ async function maybeCompleteRound(
   await advanceAfterRound(tournament, roundIndex);
 }
 
+/** True if a Game of this tournament is still waiting/active in Mongo even
+ *  though the tournament has no unfinished pairing for it (an orphan, e.g.
+ *  from a double round start in the past), or a game from a different round
+ *  than `exceptRoundIndex` is live. Games belonging to a pairing the
+ *  tournament already recorded as finished are ignored: endGameAndBroadcast
+ *  records the pairing result right away but flips the Game document to
+ *  "finished" a beat later (fire-and-forget), so without this exclusion the
+ *  game that JUST ended would look live and block every round change. */
+async function liveStragglerGameExists(
+  tournament: ITournament,
+  exceptRoundIndex?: number,
+): Promise<boolean> {
+  if (tournament.format === "arena") return false;
+  const finishedGameIds = tournament.rounds.flatMap((r) =>
+    r.pairings.filter((p) => p.status === "finished" && p.gameId).map((p) => p.gameId!),
+  );
+  return !!(await Game.exists({
+    tournamentId: tournament.id,
+    status: { $in: ["waiting", "active"] },
+    ...(exceptRoundIndex !== undefined ? { roundIndex: { $ne: exceptRoundIndex } } : {}),
+    ...(finishedGameIds.length ? { _id: { $nin: finishedGameIds } } : {}),
+  }));
+}
+
+async function hasLiveTournamentGames(tournament: ITournament): Promise<boolean> {
+  if (tournament.format === "arena") return false;
+  const stillActivePairing = tournament.rounds.some(
+    (r) => r.index <= tournament.currentRoundIndex && r.pairings.some((p) => p.status === "active"),
+  );
+  if (stillActivePairing) return true;
+  return liveStragglerGameExists(tournament);
+}
+
 async function advanceAfterRound(
   tournament: ITournament,
   roundIndex: number,
@@ -2434,6 +2827,17 @@ async function advanceAfterRound(
       return;
     }
     await tryArenaPairings(tournament.id);
+    return;
+  }
+
+  // Never build or start a following round while anything from this
+  // tournament is still being played. maybeCompleteRound already requires
+  // every pairing in THIS round to be finished; this also covers earlier
+  // rounds and any live game in the DB. If something is still live we stop
+  // here, the round stays "finished" and healTournamentLocked (60s sweep)
+  // builds the next one the moment the straggler is gone.
+  if (await hasLiveTournamentGames(tournament)) {
+    console.warn(`advanceAfterRound: tournament ${tournament.id} still has live games, deferring next round to the sweep`);
     return;
   }
 
@@ -2803,7 +3207,7 @@ export async function advanceTournamentIfPairing(
     const result = await withLock(
       tournamentMutationLockKey(tournamentId),
       () => advanceTournamentIfPairingLocked(tournamentId, roundIndex, pairingIndex, gameResult, endReason),
-      { maxWaitMs: 4000 },
+      ROUND_LOCK_OPTS,
     );
     if (result !== null) return result;
   }
@@ -2811,6 +3215,34 @@ export async function advanceTournamentIfPairing(
     `advanceTournamentIfPairing: gave up recording tournament ${tournamentId} round ${roundIndex} pairing ${pairingIndex} after repeated lock contention`,
   );
   return null;
+}
+
+/** Repair helper for resolveStuckTournament.ts: finishes any round that is
+ *  still marked "active" even though every one of its pairings is already
+ *  finished, i.e. the result got recorded but the step that closes the round
+ *  and builds the next one never completed (crash, lock contention, ...).
+ *  Does nothing for a healthy tournament. Returns how many rounds it closed. */
+export async function completeStuckRounds(tournamentId: string): Promise<number> {
+  const result = await withLock(
+    tournamentMutationLockKey(tournamentId),
+    async () => {
+      const tournament = await Tournament.findById(tournamentId);
+      if (!tournament || tournament.status !== "active") return 0;
+      let closed = 0;
+      for (let i = 0; i < tournament.rounds.length; i++) {
+        const round = tournament.rounds[i];
+        if (round.status !== "active") continue;
+        if (round.pairings.length === 0) continue;
+        if (round.pairings.some((p) => p.status !== "finished")) continue;
+        await maybeCompleteRound(tournament, i);
+        closed++;
+        break; // maybeCompleteRound may have built the next round; stop here
+      }
+      return closed;
+    },
+    { maxWaitMs: 4000 },
+  );
+  return result ?? 0;
 }
 
 async function advanceTournamentIfPairingLocked(
@@ -2825,7 +3257,10 @@ async function advanceTournamentIfPairingLocked(
     if (!tournament) return null;
     const round = tournament.rounds[roundIndex];
     const pairing = round?.pairings[pairingIndex];
-    if (!pairing || pairing.status !== "active") return null; // already processed
+    // Already processed (or never existed): nothing to do. Returns the doc, not
+    // null, because null means "lock contention, retry" to the caller and
+    // would burn all 3 retries and log a misleading "gave up" error.
+    if (!pairing || pairing.status !== "active") return tournament;
 
     let resultP: "p1" | "p2" | "draw" = "draw";
     let berserk = { p1: false, p2: false };
@@ -2974,6 +3409,16 @@ function sanitizeForClient<T extends { passwordHash?: string | null }>(
   return { ...rest, hasPassword: !!passwordHash };
 }
 
+/** List endpoints return up to 50 tournaments per request, and `rounds` is by
+ *  far the biggest field (a finished arena holds one round per game played;
+ *  a swiss holds every pairing of every round). The list cards only read
+ *  summary fields, so rounds are left out of the query and an empty array is
+ *  put back so the client's Tournament type still holds. The detail endpoint
+ *  (getTournamentByCode) still returns everything. */
+function withEmptyRounds<T extends { passwordHash?: string | null }>(doc: T) {
+  return { ...sanitizeForClient(doc), rounds: [] as never[] };
+}
+
 export async function getTournamentByCode(codeOrId: string) {
   const mongoose = await import("mongoose");
   const query = mongoose.isValidObjectId(codeOrId)
@@ -2991,30 +3436,74 @@ export async function listTournaments(
   status?: "pending" | "active" | "finished",
 ) {
   const query: Record<string, unknown> = { isPublic: true };
-  query.status = status ?? { $ne: "cancelled" };
+  // With no status filter, only the lists that are still live (pending +
+  // active). Finished public tournaments used to be included here and could
+  // crowd the 50-row cap, but no screen reads them from this endpoint (the
+  // Finished list is the per-user, paginated one, see listMyTournaments).
+  query.status = status ?? { $in: ["pending", "active"] };
   const tournaments = await Tournament.find(query)
+    .select("-rounds")
     .sort({ createdAt: -1 })
     .limit(50)
     .lean();
-  return tournaments.map(sanitizeForClient);
+  return tournaments.map(withEmptyRounds);
 }
 
-export async function listMyTournaments(userId: string) {
+/** Page size for the Finished tournaments list. Finished tournaments pile up
+ *  forever and each one carries its players, so they're served a few at a
+ *  time instead of all in one response. */
+export const FINISHED_TOURNAMENTS_PAGE_SIZE = 5;
+
+export async function listMyTournaments(
+  userId: string,
+  opts: { scope?: "finished"; page?: number; limit?: number } = {},
+) {
   // Matches both "you're an entrant" (players.user) and "you organize it
   // but don't play" (createdBy + organizerOnly), an organizerOnly creator
   // is deliberately never added to `players` (see createTournament), so
   // without the second clause here their own tournament would never show
   // up in their own "My tournaments" list.
-  const tournaments = await Tournament.find({
+  const mine = {
     $or: [
       { "players.user": userId },
       { createdBy: userId, organizerOnly: true },
     ],
+  };
+
+  if (opts.scope === "finished") {
+    const limit = opts.limit ?? FINISHED_TOURNAMENTS_PAGE_SIZE;
+    const filter = { ...mine, status: "finished" };
+    const total = await Tournament.countDocuments(filter);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    // Clamp so a stale page number (the list shrank) returns the last page
+    // instead of an empty one.
+    const page = Math.min(Math.max(1, opts.page ?? 1), totalPages);
+    const tournaments = await Tournament.find(filter)
+      .select("-rounds")
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean();
+    return {
+      tournaments: tournaments.map(withEmptyRounds),
+      page,
+      limit,
+      total,
+      totalPages,
+    };
+  }
+
+  // Default: only what's still live (pending/active). Finished ones come
+  // from the paginated branch above.
+  const tournaments = await Tournament.find({
+    ...mine,
+    status: { $in: ["pending", "active"] },
   })
+    .select("-rounds")
     .sort({ createdAt: -1 })
     .limit(50)
     .lean();
-  return tournaments.map(sanitizeForClient);
+  return { tournaments: tournaments.map(withEmptyRounds) };
 }
 
 // --- Cancelled tournament cleanup -------------------------------------------

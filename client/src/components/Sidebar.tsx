@@ -85,6 +85,9 @@ export function MobileDock() {
   const navigate = useNavigate();
   if (!isAuthed) return null;
   if (pathname.startsWith("/game/")) return null;
+  // Same hand-over for a single tournament's page (TournamentActionBarMobile),
+  // but not the list or the create form, which keep the normal nav.
+  if (/^\/tournaments\/(?!new$)[^/]+\/?$/.test(pathname)) return null;
 
   return (
     <nav aria-label="Primary" className="docker flex md:hidden">

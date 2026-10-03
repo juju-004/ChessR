@@ -135,9 +135,25 @@ export const tournamentRoom = (id: string) => `tournament:${id}`;
  *  format) stays in sync without polling. Called after anything that
  *  changes who's watching: tournament:watch, tournament:unwatch, and
  *  socket disconnect (see presenceSocket.ts). */
-export async function broadcastWatchers(io: Server, tournamentId: string): Promise<void> {
-  const userIds = await getWatchingUserIds(tournamentId);
-  io.to(tournamentRoom(tournamentId)).emit('tournament:watchers', { tournamentId, userIds });
+// Each emit carries the FULL watcher list to the whole room, so a crowd
+// opening the page at once (everyone returning after a round) used to cost
+// N emits of N ids to N viewers. Calls inside the window now collapse into
+// one trailing emit, which reads the list fresh when it fires, so it always
+// reflects every change made before it.
+const WATCHERS_BROADCAST_DELAY_MS = 400;
+const watcherBroadcastTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+export function broadcastWatchers(io: Server, tournamentId: string): Promise<void> {
+  if (watcherBroadcastTimers.has(tournamentId)) return Promise.resolve();
+  const timer = setTimeout(() => {
+    watcherBroadcastTimers.delete(tournamentId);
+    getWatchingUserIds(tournamentId)
+      .then((userIds) => io.to(tournamentRoom(tournamentId)).emit('tournament:watchers', { tournamentId, userIds }))
+      .catch((err) => console.error('broadcastWatchers failed:', err));
+  }, WATCHERS_BROADCAST_DELAY_MS);
+  timer.unref?.();
+  watcherBroadcastTimers.set(tournamentId, timer);
+  return Promise.resolve();
 }
 
 export function registerTournamentHandlers(io: Server, socket: Socket) {
@@ -253,7 +269,11 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
       // keeps showing them as still in the tournament even though other
       // players' clients correctly refresh.
       io.to(tournamentRoom(tournament.id)).emit('tournament:update', { tournamentId: tournament.id, code: tournament.code });
-      await socket.leave(tournamentRoom(parsed.data.tournamentId));
+      // An organizerOnly creator stepping off the roster is still on the
+      // page running the event, so they stay in the room for live updates.
+      const stillOrganizing =
+        tournament.organizerOnly && tournament.createdBy.toString() === userId;
+      if (!stillOrganizing) await socket.leave(tournamentRoom(parsed.data.tournamentId));
     }),
   );
 
