@@ -139,14 +139,11 @@ export function Profile() {
     function onSent() {
       notify("Challenge sent. Waiting for a response…", [], 3000);
     }
-    function onError(payload: { message: string }) {
-      notify(payload.message, [], 4000);
-    }
+    // No challenge:error handler here: GlobalListeners already toasts it, and
+    // a second toast from this page made every rejection show twice.
     socket.on("challenge:sent", onSent);
-    socket.on("challenge:error", onError);
     return () => {
       socket.off("challenge:sent", onSent);
-      socket.off("challenge:error", onError);
     };
   }, [socket, notify]);
 

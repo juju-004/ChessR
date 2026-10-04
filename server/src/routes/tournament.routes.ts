@@ -4,6 +4,8 @@ import {
   getOpenTournaments,
   getMyTournaments,
   getTournamentByCodeHandler,
+  getTournamentRoundHandler,
+  getTournamentPlayerHandler,
 } from "../controllers/tournament.controller.js";
 import { getTournamentOgCard } from "../controllers/og.controller.js";
 
@@ -16,5 +18,7 @@ router.get("/mine", requireAuth, getMyTournaments);
 // about needing frontend-side routing for this to actually get hit by them.
 router.get("/code/:code/card", getTournamentOgCard);
 router.get("/code/:code", optionalAuth, getTournamentByCodeHandler);
+router.get("/code/:code/rounds/:index", optionalAuth, getTournamentRoundHandler);
+router.get("/code/:code/players/:userId", optionalAuth, getTournamentPlayerHandler);
 
 export default router;

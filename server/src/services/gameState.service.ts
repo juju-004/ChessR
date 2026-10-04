@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Chess } from 'chess.js';
 import { redis } from '../config/redis.js';
 import { ApiError } from '../utils/ApiError.js';
@@ -129,9 +130,60 @@ export async function initLiveState(
   return state;
 }
 
+// Hash of the exact stored string each state object was parsed from. A move
+// writes its result back only if the stored string still hashes to this, see
+// writeStateIfUnchanged. (WeakMap: entries vanish with the state objects.)
+const stateHashes = new WeakMap<object, string>();
+
 export async function getLiveState(gameId: string): Promise<LiveGameState | null> {
   const raw = await redis.get(stateKey(gameId));
-  return raw ? (JSON.parse(raw) as LiveGameState) : null;
+  if (!raw) return null;
+  const state = JSON.parse(raw) as LiveGameState;
+  stateHashes.set(state, createHash('sha1').update(raw).digest('hex'));
+  return state;
+}
+
+/** Thrown when the game's stored state changed between reading it and
+ *  writing the result of a move (a resignation, flag-fall, draw or pause
+ *  landed in that gap). applyMove re-reads and re-validates. */
+export class LiveStateConflictError extends Error {
+  constructor() {
+    super('Game state changed while applying the move');
+  }
+}
+
+// applyMove used to read the state, compute the move, then plain-SET the
+// result, so anything that wrote the state in between (a resignation, a
+// flag-fall on another instance) was silently overwritten and the game came
+// back to life. This writes only if the stored value is still the one the
+// move was computed from; Redis runs the script atomically.
+const WRITE_IF_UNCHANGED_LUA = `
+local cur = redis.call('GET', KEYS[1])
+if not cur or redis.sha1hex(cur) ~= ARGV[1] then return 0 end
+redis.call('SET', KEYS[1], ARGV[2], 'EX', tonumber(ARGV[3]))
+return 1`;
+
+async function writeStateIfUnchanged(
+  gameId: string,
+  previous: LiveGameState,
+  next: LiveGameState,
+): Promise<void> {
+  const expected = stateHashes.get(previous);
+  if (!expected) {
+    // Not read through getLiveState (shouldn't happen): fall back to the old
+    // unconditional write rather than failing the move.
+    await redis.set(stateKey(gameId), JSON.stringify(next), 'EX', LIVE_STATE_TTL_SECONDS);
+    return;
+  }
+  const ok = await redis.eval(
+    WRITE_IF_UNCHANGED_LUA,
+    1,
+    stateKey(gameId),
+    expected,
+    JSON.stringify(next),
+    String(LIVE_STATE_TTL_SECONDS),
+  );
+  if (ok !== 1) throw new LiveStateConflictError();
 }
 
 /** Atomic "I am the one ending this game" claim. Clock timers live in each
@@ -262,7 +314,7 @@ async function finalizeMove(
     castlingRights: updatedRights,
     positionHistory: newPositionHistory,
   };
-  await redis.set(stateKey(gameId), JSON.stringify(newState), 'EX', LIVE_STATE_TTL_SECONDS);
+  await writeStateIfUnchanged(gameId, state, newState);
 
   return {
     san,
@@ -287,6 +339,29 @@ async function finalizeMove(
  * the mover's remaining time before the move is even validated.
  */
 export async function applyMove(
+  gameId: string,
+  userId: string,
+  move: { from: string; to: string; promotion?: string },
+  lagCompensationMs = 0,
+): Promise<MoveResult> {
+  // A conflict means something else wrote this game's state mid-move. Retry
+  // from the fresh state: the checks at the top of applyMoveOnce then decide
+  // properly (game over -> "already ended", paused -> "paused", flag fallen
+  // -> timeout) or the move simply goes through on the new state.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await applyMoveOnce(gameId, userId, move, lagCompensationMs);
+    } catch (err) {
+      if (err instanceof LiveStateConflictError && attempt < 2) continue;
+      if (err instanceof LiveStateConflictError) {
+        throw ApiError.conflict('The game changed while your move was being applied. Try again.');
+      }
+      throw err;
+    }
+  }
+}
+
+async function applyMoveOnce(
   gameId: string,
   userId: string,
   move: { from: string; to: string; promotion?: string },

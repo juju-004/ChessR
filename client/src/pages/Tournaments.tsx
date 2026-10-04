@@ -79,7 +79,7 @@ function TournamentRow({ t }: { t: Tournament }) {
           {/* No max-players figure anymore (fixed server-side cap), just
            *  how many have joined. */}
           {" "}
-          · {t.players.length} {t.players.length === 1 ? "player" : "players"}
+          · {t.playerCount ?? t.players.length} {(t.playerCount ?? t.players.length) === 1 ? "player" : "players"}
           {t.regFeeTokens > 0 && (
             <>
               {" "}

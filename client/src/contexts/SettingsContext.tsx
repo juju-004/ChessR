@@ -12,6 +12,7 @@ export interface Settings {
   showCoordinates: boolean;
   showLegalMoves: boolean;
   soundEnabled: boolean;
+  vibration: boolean;
   confirmResign: boolean;
 }
 
@@ -27,10 +28,36 @@ export const DEFAULT_SETTINGS: Settings = {
   showCoordinates: true,
   showLegalMoves: true,
   soundEnabled: true,
+  vibration: true,
   confirmResign: true,
 };
 
 const STORAGE_KEY = 'chess-app:settings';
+
+/**
+ * Piece art for everything except "classic" (bundled in index.css) lives in
+ * src/styles/pieces-*.css and is only fetched once a player actually selects
+ * that set. Vite turns each dynamic import into its own cached CSS chunk, so
+ * ~120 KB of base64 SVG is no longer render-blocking for everyone. Rules are
+ * scoped by .piece-theme-<name>, so a loaded-but-unselected set has no effect.
+ */
+const PIECE_THEME_CSS: Partial<Record<PieceTheme, () => Promise<unknown>>> = {
+  mono: () => import('../styles/pieces-mono.css'),
+  contrast: () => import('../styles/pieces-contrast.css'),
+  wood: () => import('../styles/pieces-wood.css'),
+};
+const pieceThemeLoads = new Map<PieceTheme, Promise<unknown>>();
+
+function ensurePieceThemeCss(theme: PieceTheme): void {
+  const load = PIECE_THEME_CSS[theme];
+  if (!load || pieceThemeLoads.has(theme)) return;
+  const p = load().catch(() => {
+    // Let a later selection retry (e.g. a flaky connection) instead of
+    // caching the failure. Pieces fall back to classic in the meantime.
+    pieceThemeLoads.delete(theme);
+  });
+  pieceThemeLoads.set(theme, p);
+}
 
 function loadSettings(): Settings {
   try {
@@ -39,7 +66,11 @@ function loadSettings(): Settings {
     // Merge over defaults rather than trusting the stored blob outright, so
     // adding a new setting later doesn't leave existing users with `undefined`
     // for it until they happen to touch that particular control.
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    const merged: Settings = { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    // Start fetching a saved non-classic set right away (before first
+    // render) so returning players don't see classic pieces flash first.
+    ensurePieceThemeCss(merged.pieceTheme);
+    return merged;
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -59,6 +90,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   }, [settings]);
+
+  useEffect(() => {
+    ensurePieceThemeCss(settings.pieceTheme);
+  }, [settings.pieceTheme]);
 
   function updateSetting<K extends keyof Settings>(key: K, value: Settings[K]) {
     setSettings((prev) => ({ ...prev, [key]: value }));

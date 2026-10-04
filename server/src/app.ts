@@ -1,5 +1,6 @@
 import express from 'express';
 import helmet from 'helmet';
+import compression from 'compression';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
@@ -25,6 +26,12 @@ export function createApp() {
   app.set('trust proxy', 1); // needed for correct rate-limit/IP behavior behind a load balancer
 
   app.use(helmet());
+  // gzip/deflate for JSON and HTML responses over the 1 KB default threshold
+  // (tournament payloads, game lists, profiles); the bodies are highly
+  // repetitive, so they typically shrink 5-10x. Registered before every
+  // route so all of them benefit. Only affects the Express app: Socket.IO
+  // frames keep perMessageDeflate off on purpose (see sockets/index.ts).
+  app.use(compression());
   app.use(
     cors({
       origin: env.CLIENT_ORIGIN,

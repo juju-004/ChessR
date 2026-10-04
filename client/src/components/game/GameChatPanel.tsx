@@ -1,35 +1,34 @@
+import { memo } from "react";
 import { ChatDrawer } from "../chat/ChatDrawer.js";
-import type { ChatMessage } from "../../lib/chatTypes.js";
+import { useGameChat, type GameChatStore } from "../../lib/gameChatStore.js";
 
 interface GameChatPanelProps {
   show: boolean;
-  open: boolean;
-  onClose: () => void;
-  messages: ChatMessage[];
+  /** Where messages / open state live. Subscribing here (instead of the
+   *  Game page holding them in state) keeps chat traffic from re-rendering
+   *  the whole page. */
+  store: GameChatStore;
   myUsername?: string | null;
-  /** Whether the game currently being viewed is a leg of a cage match, vs
-   *  a standalone game, only affects the notice text (persists across
-   *  legs vs. just this game). */
   onSend: (message: string, replyToId?: string) => void;
 }
 
-export function GameChatPanel({
+export const GameChatPanel = memo(function GameChatPanel({
   show,
-  open,
-  onClose,
-  messages,
+  store,
   myUsername,
   onSend,
 }: GameChatPanelProps) {
+  const open = useGameChat(store, (s) => s.spectator.open);
+  const messages = useGameChat(store, (s) => s.spectator.messages);
   return (
     <ChatDrawer
       show={show}
       open={open}
-      onClose={onClose}
+      onClose={() => store.close("spectator")}
       title="Spectator chat"
       messages={messages}
       myUsername={myUsername}
       onSend={onSend}
     />
   );
-}
+});

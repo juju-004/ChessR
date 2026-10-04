@@ -23,6 +23,7 @@ import {
   RCoin,
   Tabs,
 } from "../components/ui/index.js";
+import { claimToast } from "../lib/toastClaims.js";
 
 const CLIENT_URL = import.meta.env.VITE_CLIENT_URL ?? "http://localhost:5173";
 
@@ -88,10 +89,12 @@ export function CreateCageMatch() {
       setCreatedLinkId(payload.linkId);
     }
     socket.on("cage:sent", onSent);
+    const release0 = claimToast("cage:error");
     socket.on("cage:error", onError);
     socket.on("cage:link_created", onLinkCreated);
     return () => {
       socket.off("cage:sent", onSent);
+      release0();
       socket.off("cage:error", onError);
       socket.off("cage:link_created", onLinkCreated);
     };

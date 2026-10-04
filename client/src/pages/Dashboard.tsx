@@ -546,8 +546,8 @@ export function Dashboard() {
                     <p className="text-xs text-base-content/50">
                       {formatTournamentTimeControl(t)}
                       {" "}
-                      · {t.players.length}{" "}
-                      {t.players.length === 1 ? "player" : "players"}
+                      · {t.playerCount ?? t.players.length}{" "}
+                      {(t.playerCount ?? t.players.length) === 1 ? "player" : "players"}
                     </p>
                   </div>
                   <ArrowRight className="h-4 w-4 shrink-0 text-base-content/40" />

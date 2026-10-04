@@ -49,6 +49,36 @@ export function formatClock(ms: number): string {
 }
 
 /**
+ * How long until a ticking clock next needs a repaint: the moment the text
+ * formatClock() produces would change, or the moment the low-time styling
+ * flips, whichever comes first. Above the tenths cutoff the text only changes
+ * on whole-second boundaries (so one render per second, aligned to the
+ * boundary instead of a free-running 100ms poll); below it, on every tenth.
+ * The extra 2ms lands the timeout just past the boundary, never just before
+ * it, so the repaint shows the new value instead of the old one again.
+ */
+export function msUntilClockRepaint(
+  liveMs: number,
+  lowTimeThresholdMs = 0,
+): number {
+  const step = liveMs < DECISECONDS_DISPLAY_MS ? 100 : 1000;
+  let delay = (liveMs % step) + 2;
+  if (lowTimeThresholdMs > 0 && liveMs >= lowTimeThresholdMs) {
+    delay = Math.min(delay, liveMs - lowTimeThresholdMs + 2);
+  }
+  return delay;
+}
+
+/**
+ * For badges that show whole seconds remaining as Math.ceil(ms / 1000):
+ * how long until that number next changes. The extra 2ms lands the timeout
+ * just past the boundary, never just before it.
+ */
+export function msUntilNextWholeSecond(remainingMs: number): number {
+  return (remainingMs % 1000 || 1000) + 2;
+}
+
+/**
  * The "you're running low" threshold used for both the red clock styling
  * and the low-time warning sound, scaled to the time control instead of a
  * single flat number, since 10 seconds left means something very different

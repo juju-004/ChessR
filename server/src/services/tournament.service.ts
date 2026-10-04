@@ -1,6 +1,6 @@
 import { customAlphabet } from "nanoid";
 import bcrypt from "bcrypt";
-import type { Types } from "mongoose";
+import mongoose, { type Types } from "mongoose";
 import {
   Tournament,
   type ITournament,
@@ -2589,27 +2589,35 @@ export async function retryArenaPairingsForUser(userId: string): Promise<void> {
 // --- Scoring ---------------------------------------------------------------
 
 // Minimum number of plies (half-moves) a berserked game has to have
-// actually been played out to before its win counts as "berserked" for
-// scoring purposes. Below this, treat it as an ordinary win instead of
-// doubling it — stops a berserk immediately followed by a fast
-// resignation/disconnect win from farming double points for essentially
-// no game played. "5 moves" per David, read as 5 plies (half-moves)
-// since that's what Game.moves already counts one entry per.
+// actually been played out to before its win earns the berserk bonus.
+// Below this the win is scored as an ordinary win, which stops a berserk
+// immediately followed by a fast resignation/disconnect win from farming
+// the bonus for essentially no game played. "5 moves" per David, read as
+// 5 plies (half-moves) since that's what Game.moves counts one entry per.
 const ARENA_BERSERK_MIN_PLIES = 5;
-// Consecutive wins (this one included) needed before a win streak starts
-// doubling points, same threshold Lichess arena uses.
-const ARENA_STREAK_THRESHOLD = 3;
+// Consecutive wins a player needs BEFORE a game for that game to be "on
+// streak" (Lichess: win two in a row and the streak starts, so the third
+// game is the first one that is doubled).
+export const ARENA_STREAK_START_WINS = 2;
 
-/** Arena's own scoring, deliberately kept to exactly two bonus mechanisms
- *  (per David: "arena tournaments only have a berserk and a new win
- *  streak") rather than reusing swiss/round-robin's flat +0.5 berserk
- *  bonus below. A win is worth 1 point, doubled to 2 if EITHER the
- *  winner berserked (and played out at least ARENA_BERSERK_MIN_PLIES) OR
- *  the win extends their streak to ARENA_STREAK_THRESHOLD or beyond — the
- *  two bonuses don't stack multiplicatively, same as Lichess, so a
- *  berserked win partway through a streak is still just a double, not a
- *  quadruple. Draws are still worth 0.5 each and always break the streak,
- *  same as a loss. */
+/** True when this player's NEXT arena game is worth double (the flame). */
+export function isOnArenaStreak(p: { currentWinStreak?: number } | null | undefined): boolean {
+  return (p?.currentWinStreak ?? 0) >= ARENA_STREAK_START_WINS;
+}
+
+/** Arena scoring, Lichess style:
+ *
+ *    normal:           win 2, draw 1, loss 0
+ *    on streak:        win 4, draw 2, loss 0   (doubled)
+ *    berserk:          win 3 (2 + 1 bonus), draw 1
+ *    berserk on streak: win 5 (4 + 1 bonus), draw 2
+ *
+ *  "On streak" means the player had won at least ARENA_STREAK_START_WINS
+ *  games in a row going into this game. A win extends the streak; a draw
+ *  (even a doubled one) or a loss ends it. The berserk bonus is a flat +1
+ *  on a WIN only, never doubled by the streak, and only counts if the game
+ *  lasted ARENA_BERSERK_MIN_PLIES (otherwise it's scored as a plain win).
+ *  A berserked draw earns nothing extra. */
 function applyArenaPairingScore(
   p1: ITournamentPlayer | null | undefined,
   p2: ITournamentPlayer | null | undefined,
@@ -2618,17 +2626,20 @@ function applyArenaPairingScore(
   moveCount: number | undefined,
 ): { p1: number; p2: number } {
   if (result === "draw") {
+    // Streak status is read before the reset below.
+    const p1Points = isOnArenaStreak(p1) ? 2 : 1;
+    const p2Points = isOnArenaStreak(p2) ? 2 : 1;
     if (p1) {
-      p1.points += 0.5;
+      p1.points += p1Points;
       p1.gamesPlayed += 1;
       p1.currentWinStreak = 0;
     }
     if (p2) {
-      p2.points += 0.5;
+      p2.points += p2Points;
       p2.gamesPlayed += 1;
       p2.currentWinStreak = 0;
     }
-    return { p1: 0.5, p2: 0.5 };
+    return { p1: p1Points, p2: p2Points };
   }
 
   const winner = result === "p1" ? p1 : p2;
@@ -2637,16 +2648,14 @@ function applyArenaPairingScore(
   let winnerPoints = 0;
 
   if (winner) {
+    const onStreak = isOnArenaStreak(winner); // before this win is counted
     const berserkQualifies = winnerBerserked && (moveCount ?? 0) >= ARENA_BERSERK_MIN_PLIES;
-    winner.currentWinStreak += 1;
-    const streakQualifies = winner.currentWinStreak >= ARENA_STREAK_THRESHOLD;
-    const doubled = berserkQualifies || streakQualifies;
-
-    winnerPoints = doubled ? 2 : 1;
+    winnerPoints = (onStreak ? 4 : 2) + (berserkQualifies ? 1 : 0);
     winner.points += winnerPoints;
     winner.gamesPlayed += 1;
+    winner.currentWinStreak += 1;
     if (berserkQualifies) winner.berserkWins += 1;
-    if (streakQualifies) winner.streakWins += 1;
+    if (onStreak) winner.streakWins += 1;
   }
   if (loser) {
     loser.gamesPlayed += 1;
@@ -2654,6 +2663,14 @@ function applyArenaPairingScore(
   }
 
   return result === "p1" ? { p1: winnerPoints, p2: 0 } : { p1: 0, p2: winnerPoints };
+}
+
+const PLAYER_FORM_LENGTH = 3;
+
+/** Appends one result to a player's rolling form, keeping the newest
+ *  PLAYER_FORM_LENGTH (oldest first). */
+function pushForm(p: ITournamentPlayer, r: "W" | "D" | "L"): void {
+  p.form = [...(p.form ?? []), r].slice(-PLAYER_FORM_LENGTH);
 }
 
 function applyPairingScore(
@@ -2693,6 +2710,12 @@ function applyPairingScore(
     }
     pairing.pointsAwarded = { p1: 1, p2: 0 };
     return;
+  }
+
+  // Form badges (last 3 results) for every points-based format.
+  if (p1 && p2) {
+    pushForm(p1, result === "draw" ? "D" : result === "p1" ? "W" : "L");
+    pushForm(p2, result === "draw" ? "D" : result === "p2" ? "W" : "L");
   }
 
   if (tournament.format === "arena") {
@@ -3409,24 +3432,216 @@ function sanitizeForClient<T extends { passwordHash?: string | null }>(
   return { ...rest, hasPassword: !!passwordHash };
 }
 
-/** List endpoints return up to 50 tournaments per request, and `rounds` is by
- *  far the biggest field (a finished arena holds one round per game played;
- *  a swiss holds every pairing of every round). The list cards only read
- *  summary fields, so rounds are left out of the query and an empty array is
+/** List endpoints return up to 50 tournaments per request, and `rounds` and
+ *  `players` are by far the biggest fields (a finished arena holds one round
+ *  per game played; a 200-player field holds 200 player records). The list
+ *  cards only read summary fields, so both are dropped inside MongoDB (see
+ *  findTournamentCards, which also adds `playerCount`) and empty arrays are
  *  put back so the client's Tournament type still holds. The detail endpoint
- *  (getTournamentByCode) still returns everything. */
+ *  (getTournamentSummaryByCode) sends the roster; per-round pairings and
+ *  per-player history are fetched on demand. */
 function withEmptyRounds<T extends { passwordHash?: string | null }>(doc: T) {
-  return { ...sanitizeForClient(doc), rounds: [] as never[] };
+  return { ...sanitizeForClient(doc), rounds: [] as never[], players: [] as never[] };
 }
 
-export async function getTournamentByCode(codeOrId: string) {
-  const mongoose = await import("mongoose");
-  const query = mongoose.isValidObjectId(codeOrId)
-    ? { $or: [{ code: codeOrId }, { _id: codeOrId }] }
+/** One page of tournament list cards. Runs as an aggregation so MongoDB
+ *  reduces `players` to a count and drops `rounds` itself, only a few
+ *  hundred bytes per tournament cross the wire instead of every roster. */
+async function findTournamentCards(
+  filter: Record<string, unknown>,
+  opts: { skip?: number; limit: number },
+) {
+  return Tournament.aggregate<any>([
+    { $match: filter },
+    { $sort: { createdAt: -1 } },
+    ...(opts.skip ? [{ $skip: opts.skip }] : []),
+    { $limit: opts.limit },
+    { $addFields: { playerCount: { $size: { $ifNull: ["$players", []] } } } },
+    { $project: { rounds: 0, players: 0 } },
+  ]);
+}
+
+function tournamentMatch(codeOrId: string) {
+  return mongoose.isValidObjectId(codeOrId)
+    ? { $or: [{ code: codeOrId }, { _id: new mongoose.Types.ObjectId(codeOrId) }] }
     : { code: codeOrId };
-  const tournament = await Tournament.findOne(query).lean();
+}
+
+/** The FULL tournament document (every round and pairing). Kept for the
+ *  link-preview card, which isn't a hot path. The tournament page itself uses
+ *  getTournamentSummaryByCode below. */
+export async function getTournamentByCode(codeOrId: string) {
+  const tournament = await Tournament.findOne(tournamentMatch(codeOrId)).lean();
   if (!tournament) throw ApiError.notFound("Tournament not found");
   return sanitizeForClient(await withLiveRatings(tournament));
+}
+
+// What the standings table, roster and header need from each player. The
+// per-player extras (games played, berserk wins, streaks, bye flag, arena
+// availability timestamp) only matter in the player-details popup and are
+// fetched on demand, see getTournamentPlayerDetails.
+const PLAYER_SUMMARY_FIELDS = [
+  "user",
+  "username",
+  "avatarGradient",
+  "rating",
+  "joinedAt",
+  "points",
+  "tiebreak",
+  "currentWinStreak",
+  "form",
+  "paused",
+  "eliminatedRound",
+];
+
+const pairingCountOf = { $size: { $ifNull: ["$$r.pairings", []] } };
+
+/** Which rounds the summary carries in full:
+ *   - knockout: all of them (the bracket draws every round, and the whole
+ *     field is at most ~200 pairings);
+ *   - arena: only rounds that still have an unfinished pairing. An arena adds
+ *     one round per game, so the finished ones grow without bound while only
+ *     the live ones are ever shown (pairing pool, busy players);
+ *   - swiss / round-robin: only the current round, plus a stub (index,
+ *     status, pairingCount) for every other round so tabs, labels and
+ *     `rounds[currentRoundIndex]` indexing keep working. A stub's pairings
+ *     are fetched when its tab is opened, see getTournamentRound. */
+const SUMMARY_ROUNDS_EXPR = {
+  $switch: {
+    branches: [
+      {
+        case: { $eq: ["$format", "arena"] },
+        then: {
+          $filter: {
+            input: { $ifNull: ["$rounds", []] },
+            as: "r",
+            cond: {
+              $gt: [
+                {
+                  $size: {
+                    $filter: {
+                      input: { $ifNull: ["$$r.pairings", []] },
+                      as: "pp",
+                      cond: { $ne: ["$$pp.status", "finished"] },
+                    },
+                  },
+                },
+                0,
+              ],
+            },
+          },
+        },
+      },
+      {
+        case: { $in: ["$format", ["swiss", "robin", "round_robin"]] },
+        then: {
+          $map: {
+            input: { $ifNull: ["$rounds", []] },
+            as: "r",
+            in: {
+              $cond: [
+                { $eq: ["$$r.index", "$currentRoundIndex"] },
+                { $mergeObjects: ["$$r", { pairingCount: pairingCountOf }] },
+                {
+                  index: "$$r.index",
+                  status: "$$r.status",
+                  pairingCount: pairingCountOf,
+                  pairings: [],
+                },
+              ],
+            },
+          },
+        },
+      },
+    ],
+    default: { $ifNull: ["$rounds", []] },
+  },
+};
+
+/** What GET /tournaments/code/:code returns. Every viewer refetches this on
+ *  every tournament:update, so its size is multiplied by the number of people
+ *  watching: it carries a slim roster and only the rounds the page draws
+ *  immediately, never the whole pairing history. */
+export async function getTournamentSummaryByCode(codeOrId: string) {
+  const [doc] = await Tournament.aggregate<any>([
+    { $match: tournamentMatch(codeOrId) },
+    { $limit: 1 },
+    {
+      $addFields: {
+        players: {
+          $map: {
+            input: { $ifNull: ["$players", []] },
+            as: "p",
+            in: Object.fromEntries(PLAYER_SUMMARY_FIELDS.map((f) => [f, `$$p.${f}`])),
+          },
+        },
+        rounds: SUMMARY_ROUNDS_EXPR,
+      },
+    },
+  ]);
+  if (!doc) throw ApiError.notFound("Tournament not found");
+  return sanitizeForClient(await withLiveRatings(doc));
+}
+
+/** One round with all its pairings, for opening a round tab the summary only
+ *  sent a stub for. */
+export async function getTournamentRound(codeOrId: string, roundIndex: number) {
+  const [doc] = await Tournament.aggregate<any>([
+    { $match: tournamentMatch(codeOrId) },
+    { $limit: 1 },
+    {
+      $project: {
+        _id: 0,
+        round: {
+          $arrayElemAt: [
+            {
+              $filter: {
+                input: { $ifNull: ["$rounds", []] },
+                as: "r",
+                cond: { $eq: ["$$r.index", roundIndex] },
+              },
+            },
+            0,
+          ],
+        },
+      },
+    },
+  ]);
+  if (!doc) throw ApiError.notFound("Tournament not found");
+  if (!doc.round) throw ApiError.notFound("Round not found");
+  return doc.round;
+}
+
+/** Everything the player-details popup shows beyond the slim roster entry:
+ *  the full stats record and that player's own pairings in play order. The
+ *  pairing filter runs inside MongoDB, so even in an arena with thousands of
+ *  rounds only this one player's games are sent. */
+export async function getTournamentPlayerDetails(codeOrId: string, userId: string) {
+  if (!mongoose.isValidObjectId(userId)) throw ApiError.badRequest("Invalid player id");
+  const uid = new mongoose.Types.ObjectId(userId);
+  const match = tournamentMatch(codeOrId);
+
+  const [withPlayer, rows] = await Promise.all([
+    Tournament.findOne(match)
+      .select({ code: 1, players: { $elemMatch: { user: uid } } })
+      .lean(),
+    Tournament.aggregate<{ roundIndex: number; pairing: unknown }>([
+      { $match: match },
+      { $limit: 1 },
+      { $unwind: "$rounds" },
+      { $unwind: "$rounds.pairings" },
+      {
+        $match: {
+          $or: [{ "rounds.pairings.player1": uid }, { "rounds.pairings.player2": uid }],
+        },
+      },
+      { $project: { _id: 0, roundIndex: "$rounds.index", pairing: "$rounds.pairings" } },
+    ]),
+  ]);
+  if (!withPlayer) throw ApiError.notFound("Tournament not found");
+  const player = (withPlayer as any).players?.[0];
+  if (!player) throw ApiError.notFound("Player not found in this tournament");
+  return { player, pairings: rows };
 }
 
 /** Only tournaments the creator opted to list publicly (isPublic) show up
@@ -3441,11 +3656,7 @@ export async function listTournaments(
   // crowd the 50-row cap, but no screen reads them from this endpoint (the
   // Finished list is the per-user, paginated one, see listMyTournaments).
   query.status = status ?? { $in: ["pending", "active"] };
-  const tournaments = await Tournament.find(query)
-    .select("-rounds")
-    .sort({ createdAt: -1 })
-    .limit(50)
-    .lean();
+  const tournaments = await findTournamentCards(query, { limit: 50 });
   return tournaments.map(withEmptyRounds);
 }
 
@@ -3463,10 +3674,13 @@ export async function listMyTournaments(
   // is deliberately never added to `players` (see createTournament), so
   // without the second clause here their own tournament would never show
   // up in their own "My tournaments" list.
+  // ObjectId, not the raw string: aggregation pipelines (unlike find) don't
+  // cast filter values to the schema's types.
+  const uid = new mongoose.Types.ObjectId(userId);
   const mine = {
     $or: [
-      { "players.user": userId },
-      { createdBy: userId, organizerOnly: true },
+      { "players.user": uid },
+      { createdBy: uid, organizerOnly: true },
     ],
   };
 
@@ -3478,12 +3692,10 @@ export async function listMyTournaments(
     // Clamp so a stale page number (the list shrank) returns the last page
     // instead of an empty one.
     const page = Math.min(Math.max(1, opts.page ?? 1), totalPages);
-    const tournaments = await Tournament.find(filter)
-      .select("-rounds")
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .lean();
+    const tournaments = await findTournamentCards(filter, {
+      skip: (page - 1) * limit,
+      limit,
+    });
     return {
       tournaments: tournaments.map(withEmptyRounds),
       page,
@@ -3495,14 +3707,10 @@ export async function listMyTournaments(
 
   // Default: only what's still live (pending/active). Finished ones come
   // from the paginated branch above.
-  const tournaments = await Tournament.find({
-    ...mine,
-    status: { $in: ["pending", "active"] },
-  })
-    .select("-rounds")
-    .sort({ createdAt: -1 })
-    .limit(50)
-    .lean();
+  const tournaments = await findTournamentCards(
+    { ...mine, status: { $in: ["pending", "active"] } },
+    { limit: 50 },
+  );
   return { tournaments: tournaments.map(withEmptyRounds) };
 }
 

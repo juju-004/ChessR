@@ -61,7 +61,6 @@ import { GameChatPanel } from "../components/game/GameChatPanel.js";
 import { PageError } from "../components/PageError.js";
 import { ArenaCountdownBadge } from "../components/game/ArenaCountdownBadge.js";
 import { PlayerChatPanel } from "../components/game/PlayerChatPanel.js";
-import type { ChatMessage } from "../lib/chatTypes.js";
 import { useMyActiveGame } from "../contexts/MyActiveGameContext.js";
 import {
   GameActionBarDesktop,
@@ -91,7 +90,11 @@ import {
   playLowTimeSound,
   playBerserkSound,
   setSoundEnabled,
+  installAudioUnlock,
 } from "../sounds.js";
+import { haptics, setVibrationEnabled } from "../haptics.js";
+import { createGameChatStore, useGameChat } from "../lib/gameChatStore.js";
+import type { ChatMessage } from "../lib/chatTypes.js";
 import { copyToClipboard } from "@/lib/utils.js";
 import {
   formatTimeControl,
@@ -111,6 +114,15 @@ export function Game() {
   useEffect(() => {
     setSoundEnabled(settings.soundEnabled);
   }, [settings.soundEnabled]);
+  useEffect(() => {
+    setVibrationEnabled(settings.vibration);
+  }, [settings.vibration]);
+  // Resume the AudioContext on the first tap/click/key anywhere, so sounds
+  // fired by timers or socket events (low time, opponent's move) aren't
+  // silently dropped when the context is still suspended.
+  useEffect(() => {
+    installAudioUnlock();
+  }, []);
 
   const [gameMeta, setGameMeta] = useState<GameMeta | null>(null);
   // Mirrors gameMeta for the socket-wiring effect below, which needs to
@@ -212,13 +224,15 @@ export function Game() {
   useEffect(() => {
     setNextCageLegCode(null);
   }, [code]);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatHasUnread, setChatHasUnread] = useState(false);
-  // Player-to-player chat, a separate conversation/history from the
-  // spectator one above — see gameSocket.ts's player_chat:send. Only ever
-  // populated/rendered for the two participants, not spectators.
-  const [playerChatMessages, setPlayerChatMessages] = useState<ChatMessage[]>([]);
-  const [playerChatHasUnread, setPlayerChatHasUnread] = useState(false);
+  // Spectator chat and the players' private chat (a separate conversation,
+  // see gameSocket.ts's player_chat:send, only ever populated/rendered for
+  // the two participants) live in an external store rather than useState
+  // here, so a chat message or opening a sheet doesn't re-render this whole
+  // page. Only the chat drawers (messages/open) and the unread dots below
+  // subscribe. See lib/gameChatStore.ts.
+  const [chatStore] = useState(createGameChatStore);
+  const chatHasUnread = useGameChat(chatStore, (s) => s.spectator.unread);
+  const playerChatHasUnread = useGameChat(chatStore, (s) => s.player.unread);
   // Board flip is purely a local viewing preference, it doesn't touch
   // `myColor`/server state at all, just which edge of the board the local
   // player's pieces render on.
@@ -234,20 +248,8 @@ export function Game() {
   // directly.
   const viewPlyRef = useRef<number | null>(viewPly);
   const movesRef = useRef<MoveLogEntry[]>([]);
-  // Spectator chat lives in a bottom-sheet modal on mobile (there's no
-  // room for a persistent chat card next to a board that has to fit the
-  // viewport) instead of always-visible inline like on desktop.
-  const [chatSheetOpen, setChatSheetOpen] = useState(false);
-  const chatSheetOpenRef = useRef(chatSheetOpen);
-  useEffect(() => {
-    chatSheetOpenRef.current = chatSheetOpen;
-  }, [chatSheetOpen]);
-  // Same bottom-sheet-on-mobile treatment as spectator chat above.
-  const [playerChatSheetOpen, setPlayerChatSheetOpen] = useState(false);
-  const playerChatSheetOpenRef = useRef(playerChatSheetOpen);
-  useEffect(() => {
-    playerChatSheetOpenRef.current = playerChatSheetOpen;
-  }, [playerChatSheetOpen]);
+  // (Spectator chat lives in a bottom-sheet modal on mobile, and the player
+  // chat gets the same treatment, their open/closed state is in chatStore.)
   const CLIENT_URL = import.meta.env.VITE_CLIENT_URL ?? "http://localhost:5173";
 
   const chess = useMemo(() => new Chess(fen), [fen]);
@@ -320,7 +322,12 @@ export function Game() {
       const fens = canExtend ? [...cache!.fens] : [replay.fen()];
       const startIndex = canExtend ? cache!.moves.length : 0;
       for (let i = startIndex; i < moves.length; i++) {
-        replayMove(replay, moves[i].san, gameMeta?.variant, gameMeta?.initialFen ?? "");
+        replayMove(
+          replay,
+          moves[i].san,
+          gameMeta?.variant,
+          gameMeta?.initialFen ?? "",
+        );
         fens.push(replay.fen());
       }
 
@@ -607,17 +614,24 @@ export function Game() {
   // the threshold, then rearms if it climbs back above it (e.g. an
   // increment) so a second low-time stretch can warn again.
   //
-  // This runs its own 100ms `setInterval` rather than depending on a
-  // shared page-level "tick" state, it only ever calls playLowTimeSound()
-  // as a side effect, never setState, so it can't cascade into a re-render
-  // of the whole page the way the old `clockTick` state used to (that was
-  // the actual cause of animation jank on low-end devices: the whole Game
-  // page re-rendering 10x/sec while any clock was running).
+  // No polling: one timeout is set for the exact moment my clock crosses
+  // the threshold. It only ever calls playLowTimeSound() as a side effect,
+  // never setState, so it can't cascade into a re-render of the whole page
+  // (the old page-level `clockTick` state did, which caused animation jank
+  // on low-end devices). Any move / clock update changes the effect's
+  // dependencies, which cancels and re-arms the timeout.
   const lowTimeWarnedRef = useRef(false);
   useEffect(() => {
     if (!clockRunning || !myColor || lowTimeThresholdMs <= 0) return;
 
-    function check() {
+    function warnOnce() {
+      if (lowTimeWarnedRef.current) return;
+      lowTimeWarnedRef.current = true;
+      playLowTimeSound();
+      haptics.lowTime();
+    }
+
+    function arm(): (() => void) | undefined {
       const remainingMs =
         myColor === "white" ? whiteRemainingMs : blackRemainingMs;
       if (remainingMs === null) return;
@@ -630,18 +644,23 @@ export function Game() {
         ? remainingMs - (serverNow() - turnStartedAtMs)
         : remainingMs;
       if (liveMs > 0 && liveMs <= lowTimeThresholdMs) {
-        if (!lowTimeWarnedRef.current) {
-          lowTimeWarnedRef.current = true;
-          playLowTimeSound();
-        }
+        // Already under the threshold: warn now (once).
+        warnOnce();
       } else if (liveMs > lowTimeThresholdMs) {
         lowTimeWarnedRef.current = false;
+        // Only my own running clock can cross it; when it's the opponent's
+        // turn my time is frozen, and the turn change re-runs this effect.
+        if (isMyTurn) {
+          const timer = window.setTimeout(
+            warnOnce,
+            liveMs - lowTimeThresholdMs + 1,
+          );
+          return () => window.clearTimeout(timer);
+        }
       }
     }
 
-    check();
-    const interval = window.setInterval(check, 100);
-    return () => window.clearInterval(interval);
+    return arm();
   }, [
     clockRunning,
     myColor,
@@ -670,7 +689,8 @@ export function Game() {
       const list = moveListScrollRef.current;
       if (list) list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
       const strip = moveStripScrollRef.current;
-      if (strip) strip.scrollTo({ left: strip.scrollWidth, behavior: "smooth" });
+      if (strip)
+        strip.scrollTo({ left: strip.scrollWidth, behavior: "smooth" });
     });
     return () => cancelAnimationFrame(raf);
   }, [moves.length, viewPly]);
@@ -733,7 +753,8 @@ export function Game() {
         if (!finalFen) {
           try {
             const replay = new Chess(game.initialFen);
-            for (const m of movesList) replayMove(replay, m.san, game.variant, game.initialFen);
+            for (const m of movesList)
+              replayMove(replay, m.san, game.variant, game.initialFen);
             finalFen = replay.fen();
           } catch {
             finalFen = game.initialFen;
@@ -865,12 +886,12 @@ export function Game() {
       // whatever was in state rather than merging, this is a full,
       // authoritative history load (initial join, or a reconnect).
       if (Array.isArray(payload.spectatorChatHistory)) {
-        setChatMessages(payload.spectatorChatHistory);
+        chatStore.setHistory("spectator", payload.spectatorChatHistory);
       }
       // Only ever present for players (see gameSocket.ts), same
       // full-replace-on-(re)join semantics as spectatorChatHistory above.
       if (Array.isArray(payload.playerChatHistory)) {
-        setPlayerChatMessages(payload.playerChatHistory);
+        chatStore.setHistory("player", payload.playerChatHistory);
       }
     }
 
@@ -914,6 +935,27 @@ export function Game() {
       ]);
 
       playSoundForMove(payload.san);
+
+      // Haptics for players only (a spectator isn't the one being checked
+      // or captured), mirroring playSoundForMove's rules: a mating "#" gets
+      // no check buzz since game over follows immediately. After a move,
+      // the side to move is the one in check, so it's "me" if the FEN's
+      // turn field matches my colour.
+      const viewerRole = roleRef.current;
+      if (viewerRole !== "spectator") {
+        const san: string = payload.san ?? "";
+        const sideToMove =
+          String(payload.fen).split(" ")[1] === "w" ? "white" : "black";
+        if (
+          san.includes("+") &&
+          !san.includes("#") &&
+          sideToMove === viewerRole
+        ) {
+          haptics.check();
+        } else if (san.includes("x")) {
+          haptics.capture();
+        }
+      }
     }
 
     function onOver(payload: {
@@ -1075,21 +1117,19 @@ export function Game() {
       ]);
     }
 
+    // The store only shows the unread dot for messages that arrive while
+    // the panel's closed, and not for the echo of your own message (the
+    // socket broadcasts to the whole room including the sender).
     function onChatMessage(payload: ChatMessage) {
-      setChatMessages((prev) => [...prev.slice(-199), payload]);
-      // Dot only for messages that arrive while the panel's closed, and
-      // not for the echo of your own message (the socket broadcasts to
-      // the whole spectator room including the sender).
-      if (!chatSheetOpenRef.current && payload.username !== user?.username) {
-        setChatHasUnread(true);
-      }
+      chatStore.receive(
+        "spectator",
+        payload,
+        payload.username === user?.username,
+      );
     }
 
     function onPlayerChatMessage(payload: ChatMessage) {
-      setPlayerChatMessages((prev) => [...prev.slice(-199), payload]);
-      if (!playerChatSheetOpenRef.current && payload.username !== user?.username) {
-        setPlayerChatHasUnread(true);
-      }
+      chatStore.receive("player", payload, payload.username === user?.username);
     }
 
     function onLegPaused(payload: { gameId: string }) {
@@ -1282,8 +1322,11 @@ export function Game() {
     (orig: string, dest: string) => {
       if (!socket || !gameMeta) return;
       setMoveError("");
-      const localChess = new Chess(fen);
-      if (needsPromotion(localChess, orig, dest)) {
+      // `chess` is the memoized Chess for the current `fen`, and
+      // needsPromotion only reads it (moves() restores its own state), so
+      // the one new Chess(fen) left on this path is the one
+      // applyOptimisticMove needs to actually mutate.
+      if (needsPromotion(chess, orig, dest)) {
         if (settings.autoQueen) {
           applyOptimisticMove(orig, dest, "q");
           socket.emit("game:move", {
@@ -1300,7 +1343,7 @@ export function Game() {
       applyOptimisticMove(orig, dest);
       socket.emit("game:move", { gameId: gameMeta._id, from: orig, to: dest });
     },
-    [socket, gameMeta, fen, settings.autoQueen],
+    [socket, gameMeta, fen, chess, settings.autoQueen],
   );
 
   function handlePromotionPick(piece: "q" | "r" | "b" | "n") {
@@ -1523,23 +1566,32 @@ export function Game() {
   const prevHold = useHoldRepeat(handlePrevMove);
   const nextHold = useHoldRepeat(handleNextMove);
 
-  function handleSendChat(message: string, replyToId?: string) {
-    if (!socket || !gameMeta) return;
-    socket.emit("spectator_chat:send", {
-      gameId: gameMeta._id,
-      message,
-      ...(replyToId ? { replyToId } : {}),
-    });
-  }
+  // useCallback so the memoized chat panels aren't re-rendered by every
+  // unrelated Game render just because these got a new identity.
+  const chatGameId = gameMeta?._id;
+  const handleSendChat = useCallback(
+    (message: string, replyToId?: string) => {
+      if (!socket || !chatGameId) return;
+      socket.emit("spectator_chat:send", {
+        gameId: chatGameId,
+        message,
+        ...(replyToId ? { replyToId } : {}),
+      });
+    },
+    [socket, chatGameId],
+  );
 
-  function handleSendPlayerChat(message: string, replyToId?: string) {
-    if (!socket || !gameMeta) return;
-    socket.emit("player_chat:send", {
-      gameId: gameMeta._id,
-      message,
-      ...(replyToId ? { replyToId } : {}),
-    });
-  }
+  const handleSendPlayerChat = useCallback(
+    (message: string, replyToId?: string) => {
+      if (!socket || !chatGameId) return;
+      socket.emit("player_chat:send", {
+        gameId: chatGameId,
+        message,
+        ...(replyToId ? { replyToId } : {}),
+      });
+    },
+    [socket, chatGameId],
+  );
 
   const isPlayer = role !== "spectator";
   // Keyed off the position actually on screen (live, or historical while
@@ -1547,10 +1599,22 @@ export function Game() {
   // otherwise the check highlight would keep showing the live game's check
   // state while scrubbing through a history where a different (or no)
   // check was in effect at that ply.
-  const inCheck = useMemo(
-    () => isInCheck(isViewingHistory ? new Chess(displayFen) : chess),
-    [isViewingHistory, displayFen, chess],
-  );
+  //
+  // While scrubbing history this reads the SAN suffix of the move that led
+  // to the viewed ply ("+"/"#") instead of building a Chess from displayFen
+  // on every step. The one case SAN can't be trusted for is a Chess960
+  // castle (its SAN is a bare "O-O"/"O-O-O" with no check marker, see
+  // replayMove), which still falls back to checking the position itself.
+  const inCheck = useMemo(() => {
+    if (!isViewingHistory) return isInCheck(chess);
+    const san = viewPly! > 0 ? moves[viewPly! - 1]?.san : undefined;
+    if (!san) return false;
+    if (/[+#]$/.test(san)) return true;
+    if (gameMeta?.variant === "chess960" && san.startsWith("O-O")) {
+      return isInCheck(new Chess(displayFen));
+    }
+    return false;
+  }, [isViewingHistory, viewPly, moves, displayFen, chess, gameMeta?.variant]);
 
   // Memoized. GameDetailsCard is React.memo'd below it, and a plain array
   // literal here would be a fresh reference on every one of Game's many
@@ -1637,7 +1701,11 @@ export function Game() {
           title="View cage match"
           aria-label="Playing in a cage match — view details"
         >
-          <Badge variant="glass" className="hover:brightness-110" title="View cage match">
+          <Badge
+            variant="glass"
+            className="hover:brightness-110"
+            title="View cage match"
+          >
             <Swords className="h-3 w-3" />
           </Badge>
         </Link>,
@@ -1870,7 +1938,7 @@ export function Game() {
     ...(canBerserk
       ? [
           {
-            label: "Berserk: halve your clock for a bonus point",
+            label: "Berserk",
             icon: Swords,
             onClick: handleBerserk,
             danger: true,
@@ -1937,10 +2005,7 @@ export function Game() {
           {
             label: "Spectator chat",
             icon: MessageSquare,
-            onClick: () => {
-              setChatSheetOpen(true);
-              setChatHasUnread(false);
-            },
+            onClick: () => chatStore.open("spectator"),
             danger: false,
             mobilePrimary: true,
             dot: chatHasUnread,
@@ -1952,10 +2017,7 @@ export function Game() {
           {
             label: "Chat",
             icon: MessageSquare,
-            onClick: () => {
-              setPlayerChatSheetOpen(true);
-              setPlayerChatHasUnread(false);
-            },
+            onClick: () => chatStore.open("player"),
             danger: false,
             mobilePrimary: true,
             dot: playerChatHasUnread,
@@ -1986,7 +2048,7 @@ export function Game() {
   const mobileOverflowItems = actionItems.filter((item) => !item.mobilePrimary);
 
   return (
-    <div className="relative mx-auto md:min-h-[calc(100dvh-7rem)] flex max-w-6xl flex-col justify-center gap-2 md:gap-3 md:pb-2">
+    <div className="game-page relative mx-auto md:min-h-[calc(100dvh-7rem)] flex max-w-6xl flex-col justify-center gap-2 md:gap-3 md:pb-2">
       <GameNotificationsOverlay
         pausedLeg={pausedLeg}
         gameOver={!!gameOver}
@@ -2136,18 +2198,14 @@ export function Game() {
 
       <GameChatPanel
         show={showChat}
-        open={chatSheetOpen}
-        onClose={() => setChatSheetOpen(false)}
-        messages={chatMessages}
+        store={chatStore}
         myUsername={user?.username}
         onSend={handleSendChat}
       />
 
       <PlayerChatPanel
         show={showPlayerChat}
-        open={playerChatSheetOpen}
-        onClose={() => setPlayerChatSheetOpen(false)}
-        messages={playerChatMessages}
+        store={chatStore}
         myUsername={user?.username}
         onSend={handleSendPlayerChat}
       />

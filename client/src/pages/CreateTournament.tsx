@@ -377,7 +377,7 @@ export function CreateTournament() {
                   checked={berserkAllowed}
                   onChange={setBerserkAllowed}
                   label="Allow berserk"
-                  description="Half clock, no increment, doubles the point for that win if it's berserked and lasts at least 5 moves (or the win extends a 3+ win streak either way)."
+                  description="Half clock, no increment. A berserked win earns +1 point (3 instead of 2, or 5 on a streak) if the game lasts at least 5 moves in total. No bonus for a draw."
                 />
               )}
               <Switch

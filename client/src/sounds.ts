@@ -246,44 +246,31 @@ export function playGameStartSound() {
   ]);
 }
 
-/** Berserk: chess.com's berserk cue reads as a quick rising "power-up"
- *  flourish rather than an impact — closer in spirit to its own
- *  game-start chime than to a move/capture sound, just faster and more
- *  aggressive. Three-note rising square-wave sweep (each note itself
- *  ramping upward) landing on a sharp double-hit impact at the top, so it
- *  lands with the same tap+body punch as a capture right as the
- *  flourish peaks. Still the loudest, busiest sound in this file on
- *  purpose — it's a one-off declaration, not a per-move cue. */
+/** Berserk: a heavy "war drum" declaration instead of the old rising
+ *  power-up chirp. Two low drum hits in quick succession (boom-BOOM, the
+ *  second one bigger), each a pitch-dropping sine for the deep body plus a
+ *  short noise knock, with a rasping low sawtooth growl underneath and a
+ *  high-passed noise swell between the hits that reads as a blade being
+ *  drawn. Deliberately dark and weighty so it can't be mistaken for the
+ *  bright check/low-time alerts. Still the loudest sound in this file on
+ *  purpose, it's a one-off declaration, not a per-move cue. */
 export function playBerserkSound() {
+  // Drum bodies: sine sweeping down hard, the way a struck drum head settles.
   playTones([
-    {
-      freq: 440,
-      freqEnd: 660,
-      startOffset: 0,
-      duration: 0.06,
-      type: "square",
-      gain: 0.1,
-    },
-    {
-      freq: 660,
-      freqEnd: 990,
-      startOffset: 0.05,
-      duration: 0.06,
-      type: "square",
-      gain: 0.11,
-    },
-    {
-      freq: 990,
-      freqEnd: 1480,
-      startOffset: 0.1,
-      duration: 0.08,
-      type: "square",
-      gain: 0.12,
-    },
+    { freq: 130, freqEnd: 48, startOffset: 0, duration: 0.22, type: "sine", gain: 0.38 },
+    { freq: 105, freqEnd: 34, startOffset: 0.15, duration: 0.42, type: "sine", gain: 0.5 },
+    // Growl: low saw, slowly falling, just enough grit to feel aggressive.
+    { freq: 85, freqEnd: 55, startOffset: 0.15, duration: 0.38, type: "sawtooth", gain: 0.05 },
   ]);
   playImpact([
-    { startOffset: 0.17, duration: 0.03, gain: 0.3, freq: 1400, q: 3.5, attack: 0.002 }, // landing tap
-    { startOffset: 0.17, duration: 0.15, gain: 0.4, freq: 150, q: 2, attack: 0.003 }, // deep body thud
+    // Hit 1: knock + body
+    { startOffset: 0, duration: 0.025, gain: 0.3, freq: 1800, q: 3, attack: 0.001 },
+    { startOffset: 0, duration: 0.16, gain: 0.45, freq: 140, q: 1.5, attack: 0.002 },
+    // Blade-draw swell between the hits (noise rising into the second hit)
+    { startOffset: 0.05, duration: 0.14, gain: 0.1, freq: 5200, q: 0.7, filterType: "highpass", attack: 0.1 },
+    // Hit 2: bigger knock + longer body
+    { startOffset: 0.15, duration: 0.03, gain: 0.4, freq: 2200, q: 3, attack: 0.001 },
+    { startOffset: 0.15, duration: 0.3, gain: 0.6, freq: 110, q: 1.5, attack: 0.002 },
   ]);
 }
 
@@ -312,4 +299,46 @@ export function playGameOverSound() {
     { freq: 392, startOffset: 0.12, duration: 0.16 },
     { freq: 261, startOffset: 0.26, duration: 0.28 },
   ]);
+}
+
+/**
+ * Unlocks audio on the first user gesture anywhere on the page.
+ *
+ * Browsers (iOS Safari especially) keep an AudioContext suspended until it's
+ * created/resumed inside a gesture handler. Most sounds are triggered by a
+ * drag or click so they resume it themselves, but a sound that fires from a
+ * timer or a socket event with no gesture of its own (the low-time warning,
+ * an opponent's move) can find it still suspended, for example for a
+ * spectator or someone who loaded a game already in progress. Listening for
+ * the first pointer/touch/key event covers all of those. Idempotent, and
+ * removes its own listeners once the context is actually running.
+ */
+let audioUnlockInstalled = false;
+export function installAudioUnlock() {
+  if (audioUnlockInstalled || typeof document === 'undefined') return;
+  audioUnlockInstalled = true;
+  // touchend, not just touchstart/pointerdown: iOS only counts a completed
+  // touch as an activation gesture.
+  const events = ['pointerdown', 'touchend', 'click', 'keydown'] as const;
+  const remove = () => {
+    for (const e of events) document.removeEventListener(e, unlock, true);
+  };
+  function unlock() {
+    try {
+      const audioCtx = getCtx();
+      if (audioCtx.state === 'running') {
+        remove();
+        return;
+      }
+      void audioCtx
+        .resume()
+        .then(() => {
+          if (audioCtx.state === 'running') remove();
+        })
+        .catch(() => {});
+    } catch {
+      /* AudioContext unavailable; nothing to unlock */
+    }
+  }
+  for (const e of events) document.addEventListener(e, unlock, { capture: true, passive: true });
 }

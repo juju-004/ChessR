@@ -23,6 +23,7 @@ import {
 } from "../components/ui/index.js";
 import { formatRelativeTime } from "@/lib/utils.js";
 import { cn } from "@/lib/cn.js";
+import { claimToast } from "../lib/toastClaims.js";
 
 function opponentOf(match: CageMatch, myId: string | undefined) {
   return match.player1._id === myId ? match.player2 : match.player1;
@@ -247,12 +248,16 @@ export function CageMatches() {
     }
     socket.on("cage:declined", onDeclined);
     socket.on("cage:accepted", onAccepted);
+    const release0 = claimToast("cage:error");
+    const release1 = claimToast("cage:declined");
     socket.on("cage:error", onError);
     socket.on("cage:next_leg", refreshMatches);
     socket.on("cage:match_over", refreshMatches);
     return () => {
       socket.off("cage:declined", onDeclined);
       socket.off("cage:accepted", onAccepted);
+      release0();
+      release1();
       socket.off("cage:error", onError);
       socket.off("cage:next_leg", refreshMatches);
       socket.off("cage:match_over", refreshMatches);

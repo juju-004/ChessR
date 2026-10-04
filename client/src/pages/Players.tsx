@@ -27,6 +27,7 @@ import { RCoin } from "@/components/ui/RCoin.js";
 import { ResponsiveOverlay } from "@/components/ui/ResponsiveOverlay.js";
 import { Spinner } from "@/components/ui/Spinner.js";
 import { RatingBadge } from "@/components/RatingBadge.js";
+import { claimToast } from "../lib/toastClaims.js";
 
 /** Merged "Players" page, search-for-anyone (the old /find) and your
  *  friends list + requests + challenge form (the old /friends) used to be
@@ -128,6 +129,7 @@ export function Players() {
     socket.on("friend:removed", onFriendRemoved);
     socket.on("friend:presence", onPresence);
     socket.on("challenge:sent", onSent);
+    const release0 = claimToast("challenge:error");
     socket.on("challenge:error", onError);
 
     return () => {
@@ -135,6 +137,7 @@ export function Players() {
       socket.off("friend:removed", onFriendRemoved);
       socket.off("friend:presence", onPresence);
       socket.off("challenge:sent", onSent);
+      release0();
       socket.off("challenge:error", onError);
     };
   }, [socket, refreshFriends]);

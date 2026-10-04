@@ -1,11 +1,10 @@
+import { memo } from "react";
 import { ChatDrawer } from "../chat/ChatDrawer.js";
-import type { ChatMessage } from "../../lib/chatTypes.js";
+import { useGameChat, type GameChatStore } from "../../lib/gameChatStore.js";
 
 interface PlayerChatPanelProps {
   show: boolean;
-  open: boolean;
-  onClose: () => void;
-  messages: ChatMessage[];
+  store: GameChatStore;
   myUsername?: string | null;
   onSend: (message: string, replyToId?: string) => void;
 }
@@ -15,20 +14,21 @@ interface PlayerChatPanelProps {
  *  does). Same ChatDrawer component GameChatPanel.tsx wraps for spectator
  *  chat, just pointed at the separate player_chat socket events/scope
  *  (see gameSocket.ts's player_chat:send) so the two conversations never
- *  mix in either direction. */
-export function PlayerChatPanel({
+ *  mix in either direction. Reads its messages/open state straight from
+ *  the chat store, see GameChatPanel. */
+export const PlayerChatPanel = memo(function PlayerChatPanel({
   show,
-  open,
-  onClose,
-  messages,
+  store,
   myUsername,
   onSend,
 }: PlayerChatPanelProps) {
+  const open = useGameChat(store, (s) => s.player.open);
+  const messages = useGameChat(store, (s) => s.player.messages);
   return (
     <ChatDrawer
       show={show}
       open={open}
-      onClose={onClose}
+      onClose={() => store.close("player")}
       title="Chat"
       notice="Only visible to you and your opponent."
       messages={messages}
@@ -36,4 +36,4 @@ export function PlayerChatPanel({
       onSend={onSend}
     />
   );
-}
+});

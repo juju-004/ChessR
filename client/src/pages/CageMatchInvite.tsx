@@ -20,6 +20,7 @@ import {
   RCoin,
   Spinner,
 } from "../components/ui/index.js";
+import { claimToast } from "../lib/toastClaims.js";
 
 const WINNER_MODE_LABEL: Record<CageWinnerMode, string> = {
   total_score: "Total score (win = 1, draw = 0.5)",
@@ -77,11 +78,13 @@ export function CageMatchInvite() {
     }
     s.on("connect", lookup);
     s.on("cage:link_info", onInfo);
+    const release0 = claimToast("cage:error");
     s.on("cage:error", onError);
     if (s.connected) lookup();
     return () => {
       s.off("connect", lookup);
       s.off("cage:link_info", onInfo);
+      release0();
       s.off("cage:error", onError);
     };
     // cage:accepted navigation is handled app-wide by GlobalListeners, this

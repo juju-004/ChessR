@@ -1,3 +1,4 @@
+import { isToastClaimed } from "../lib/toastClaims.js";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useSocket } from "../contexts/SocketContext.js";
@@ -125,6 +126,9 @@ export function GlobalListeners() {
     }
 
     function onChallengeError(payload: { message: string }) {
+      // A page that shows this rejection inline (Players) says so via
+      // claimToast; a second toast on top is the duplicate being avoided.
+      if (isToastClaimed("challenge:error")) return;
       notify(payload.message, [], 6000);
     }
 
@@ -230,6 +234,7 @@ export function GlobalListeners() {
     }
 
     function onCageDeclined() {
+      if (isToastClaimed("cage:declined")) return;
       notify("Your cage match invite was declined.", [], 4000);
     }
 
@@ -238,6 +243,7 @@ export function GlobalListeners() {
     }
 
     function onCageError(payload: { message: string }) {
+      if (isToastClaimed("cage:error")) return;
       notify(payload.message, [], 6000);
     }
 

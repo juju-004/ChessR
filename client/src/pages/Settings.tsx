@@ -16,6 +16,7 @@ import { InstallAppButton } from "../components/InstallAppButton.js";
 import { useInstallPrompt } from "../hooks/useInstallPrompt.js";
 import { computeDests } from "../chessUtils.js";
 import { Chess } from "chess.js";
+import { isVibrationSupported } from "../haptics.js";
 import {
   Page,
   Card,
@@ -254,6 +255,18 @@ export function Settings() {
                 description="Play a subtle sound for moves, captures, and checks."
                 checked={settings.soundEnabled}
                 onChange={(v) => updateSetting("soundEnabled", v)}
+                className="rounded-lg px-1 py-2 hover:bg-base-100"
+              />
+              <Switch
+                label="Vibration"
+                description={
+                  isVibrationSupported()
+                    ? "Buzz your phone on a check, a capture, or when your clock runs low."
+                    : "Not supported by this browser or device (iPhones don't allow web apps to vibrate)."
+                }
+                checked={settings.vibration && isVibrationSupported()}
+                onChange={(v) => updateSetting("vibration", v)}
+                disabled={!isVibrationSupported()}
                 className="rounded-lg px-1 py-2 hover:bg-base-100"
               />
               <Switch

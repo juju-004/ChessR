@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { Swords, UserRound } from "lucide-react";
 import {
   formatClock,
+  msUntilClockRepaint,
+  msUntilNextWholeSecond,
   type CapturedPieceCount,
   type MaterialDiff,
 } from "../chessUtils.js";
@@ -177,10 +179,28 @@ function FirstMoveBadge({
 }) {
   const [, forceTick] = useState(0);
 
+  // Wakes only when the badge's output can change: once when it first
+  // becomes visible (5s in), then on each whole-second boundary of the
+  // countdown, and a last time when it expires and hides. Replaces a
+  // free-running 500ms poll that re-rendered twice per visible change.
   useEffect(() => {
-    const interval = window.setInterval(() => forceTick((n) => n + 1), 500);
-    return () => window.clearInterval(interval);
-  }, []);
+    let timer: number | undefined;
+    const schedule = () => {
+      const elapsedMs = serverNow() - turnStartedAtMs;
+      const remainingMs = graceMs - elapsedMs;
+      if (remainingMs <= 0) return;
+      const delay =
+        elapsedMs < 5000
+          ? 5000 - elapsedMs + 2
+          : msUntilNextWholeSecond(remainingMs);
+      timer = window.setTimeout(() => {
+        forceTick((n) => n + 1);
+        schedule();
+      }, delay);
+    };
+    schedule();
+    return () => window.clearTimeout(timer);
+  }, [turnStartedAtMs, graceMs]);
 
   // serverNow(), not a bare Date.now() — same reasoning as computeLiveMs
   // below: turnStartedAtMs came from the server, so this needs the same
@@ -212,7 +232,7 @@ function FirstMoveBadge({
  * Opponent-disconnected countdown, rendered in the panel's badge slot (same
  * place as FirstMoveBadge). Counts down the seconds until the game can be
  * claimed, then swaps to compact Win / Draw claim buttons. Owns its own
- * 500ms tick so re-renders never reach past this badge (same reasoning as
+ * once-a-second tick so re-renders never reach past this badge (same reasoning as
  * ClockBadge / FirstMoveBadge).
  */
 function DisconnectBadge({
@@ -226,13 +246,23 @@ function DisconnectBadge({
 }) {
   const [, forceTick] = useState(0);
 
+  // One timeout per displayed second (and one at expiry, to swap in the
+  // claim buttons) instead of a 500ms poll. Date.now() is right here:
+  // Game.tsx builds expiresAt as `Date.now() + graceMs` on THIS device
+  // (the server only sends the duration), so both sides of the comparison
+  // use the same local clock.
   useEffect(() => {
-    if (expiresAt - Date.now() <= 0) return; // already claimable
-    const interval = window.setInterval(() => {
-      forceTick((n) => n + 1);
-      if (expiresAt - Date.now() <= 0) window.clearInterval(interval);
-    }, 500);
-    return () => window.clearInterval(interval);
+    let timer: number | undefined;
+    const schedule = () => {
+      const left = expiresAt - Date.now();
+      if (left <= 0) return; // already claimable
+      timer = window.setTimeout(() => {
+        forceTick((n) => n + 1);
+        schedule();
+      }, msUntilNextWholeSecond(left));
+    };
+    schedule();
+    return () => window.clearTimeout(timer);
   }, [expiresAt]);
 
   const remainingMs = Math.max(0, expiresAt - Date.now());
@@ -320,8 +350,8 @@ function computeLiveMs(
 
 /**
  * The actual ticking countdown badge, split out into its own component so
- * its 100ms re-render (while `isTicking`) is scoped to just this small
- * node instead of the whole game page.
+ * its re-renders (once a second, or every 100ms under the tenths cutoff,
+ * while `isTicking`) are scoped to just this small node instead of the whole game page.
  *
  * This used to be a value (`liveMs`) computed in Game.tsx's render body
  * from a page-level 100ms `setInterval`, which meant every clock tick
@@ -349,11 +379,25 @@ function ClockBadge({
 }) {
   const [, forceTick] = useState(0);
 
+  // Self-rescheduling timeout instead of a fixed 100ms interval: it fires
+  // only when the displayed text (or the low-time styling) can actually
+  // change, once a second on the second boundary, then every 100ms only
+  // below the tenths cutoff. See msUntilClockRepaint in chessUtils.ts.
   useEffect(() => {
-    if (!isTicking) return;
-    const interval = window.setInterval(() => forceTick((n) => n + 1), 100);
-    return () => window.clearInterval(interval);
-  }, [isTicking]);
+    if (!isTicking || baseRemainingMs === null) return;
+    let timer: number | undefined;
+    const schedule = () => {
+      const liveMs = computeLiveMs(baseRemainingMs, turnStartedAtMs, true);
+      // Nothing left to count down (the server ends the game); stop.
+      if (liveMs === null || liveMs <= 0) return;
+      timer = window.setTimeout(() => {
+        forceTick((n) => n + 1);
+        schedule();
+      }, msUntilClockRepaint(liveMs, lowTimeThresholdMs));
+    };
+    schedule();
+    return () => window.clearTimeout(timer);
+  }, [isTicking, baseRemainingMs, turnStartedAtMs, lowTimeThresholdMs]);
 
   const liveMs = computeLiveMs(baseRemainingMs, turnStartedAtMs, isTicking);
   const isLow =
@@ -367,7 +411,7 @@ function ClockBadge({
     <div
       className={cn(
         // No transition-colors, no animate-pulse: this badge re-renders
-        // every 100ms while ticking (see this component's own doc
+        // repeatedly while ticking (see this component's own doc
         // comment), so both the active/inactive color transition and the
         // low-time pulse were re-triggering constantly during play, not
         // just on the state changes they were meant for. David: flagged

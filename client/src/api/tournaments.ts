@@ -18,14 +18,22 @@ export interface TournamentPlayer {
   joinedAt: string;
   points: number;
   tiebreak: number;
-  gamesPlayed: number;
-  berserkWins: number;
-  // Arena-only scoring stats (see applyArenaPairingScore server-side).
-  // Always 0 for every other format.
-  currentWinStreak: number;
-  streakWins: number;
   eliminatedRound: number | null;
-  hadBye: boolean;
+  // Not part of the tournament payload (every viewer refetches that on every
+  // update); they arrive with getTournamentPlayerDetails when a player's row
+  // is opened.
+  gamesPlayed?: number;
+  berserkWins?: number;
+  // Arena-only scoring stats (see applyArenaPairingScore server-side).
+  // currentWinStreak is also part of the live tournament payload (it drives
+  // the flame in standings); the rest arrive with the player details.
+  // Always 0 for every other format.
+  currentWinStreak?: number;
+  streakWins?: number;
+  // Last 3 finished game results, oldest first (standings "Form" column).
+  // Missing on players whose games predate the field.
+  form?: ("W" | "D" | "L")[];
+  hadBye?: boolean;
   // Arena-only, see the server's ITournamentPlayer doc comment. Always
   // false for every other format.
   paused: boolean;
@@ -58,6 +66,10 @@ export interface TournamentRound {
   index: number;
   status: "pending" | "active" | "finished";
   pairings: TournamentPairing[];
+  /** How many pairings the round really has. A swiss/round-robin round that
+   *  isn't the current one arrives as a stub (empty `pairings`) and is
+   *  filled in by getTournamentRound when its tab is opened. */
+  pairingCount?: number;
 }
 
 export interface Tournament {
@@ -83,6 +95,8 @@ export interface Tournament {
   cancelReason: string | null;
   minPlayers: number;
   players: TournamentPlayer[];
+  /** Set on list responses, which send an empty `players` array. */
+  playerCount?: number;
   berserkAllowed: boolean;
   chatEnabled: boolean;
   isPublic: boolean;
@@ -153,10 +167,37 @@ export function listMyFinishedTournaments(page = 1, limit = FINISHED_PAGE_SIZE) 
   );
 }
 
+export function getTournamentRound(code: string, index: number) {
+  return apiFetch<{ round: TournamentRound }>(
+    `/tournaments/code/${encodeURIComponent(code)}/rounds/${index}`,
+  );
+}
+
+export interface TournamentPlayerPairing {
+  roundIndex: number;
+  pairing: TournamentPairing;
+}
+
+export function getTournamentPlayerDetails(code: string, userId: string) {
+  return apiFetch<{ player: TournamentPlayer; pairings: TournamentPlayerPairing[] }>(
+    `/tournaments/code/${encodeURIComponent(code)}/players/${encodeURIComponent(userId)}`,
+  );
+}
+
 export function getTournamentByCode(code: string) {
   return apiFetch<{ tournament: Tournament }>(
     `/tournaments/code/${encodeURIComponent(code)}`,
   );
+}
+
+/** Arena: a player who has won this many games in a row is "on streak", so
+ *  their next game is worth double (flame icon). Mirrors the server's
+ *  ARENA_STREAK_START_WINS in tournament.service.ts. */
+export const ARENA_STREAK_START_WINS = 2;
+export function isOnArenaStreak(
+  p: { currentWinStreak?: number } | null | undefined,
+): boolean {
+  return (p?.currentWinStreak ?? 0) >= ARENA_STREAK_START_WINS;
 }
 
 /** Sorted standings for swiss/robin/round_robin formats, for 'normal'

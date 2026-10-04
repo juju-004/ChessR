@@ -12,10 +12,14 @@ import {
   Medal,
   LocateFixed,
   Ban,
+  Flame,
 } from "lucide-react";
 import {
   getTournamentByCode,
+  getTournamentRound,
+  getTournamentPlayerDetails,
   rankTournamentPlayers,
+  isOnArenaStreak,
   usernameOf,
   gradientOf,
   timeControlSpeed,
@@ -25,6 +29,8 @@ import {
   MAX_TOURNAMENT_PLAYERS,
   type Tournament,
   type TournamentPairing,
+  type TournamentPlayerPairing,
+  type TournamentRound,
   type TournamentPlayer,
   type TournamentFormat,
   type TournamentPrizeTier,
@@ -423,7 +429,7 @@ function EditTournamentForm({
               checked={berserkAllowed}
               onChange={setBerserkAllowed}
               label="Allow berserk"
-              description="Half clock, no increment, doubles the point for that win if it's berserked and lasts at least 5 moves (or the win extends a 3+ win streak either way)."
+              description="Half clock, no increment. A berserked win earns +1 point (3 instead of 2, or 5 on a streak) if the game lasts at least 5 moves in total. No bonus for a draw."
             />
           )}
           <Switch
@@ -604,29 +610,6 @@ function LateJoinRow({
   );
 }
 
-/** Every pairing a given player was part of, across every round, in the
- *  order the rounds were played, the raw material for their round-by-round
- *  line in PlayerTournamentDetails. */
-function pairingsForPlayer(
-  tournament: Tournament,
-  userId: string,
-): { roundIndex: number; pairing: TournamentPairing; isP1: boolean }[] {
-  const records: {
-    roundIndex: number;
-    pairing: TournamentPairing;
-    isP1: boolean;
-  }[] = [];
-  for (const round of tournament.rounds) {
-    for (const pairing of round.pairings) {
-      if (pairing.player1 === userId)
-        records.push({ roundIndex: round.index, pairing, isP1: true });
-      else if (pairing.player2 === userId)
-        records.push({ roundIndex: round.index, pairing, isP1: false });
-    }
-  }
-  return records;
-}
-
 /** Client-side mirror of the server's arenaAvailablePlayers pairing pool
  *  (see tournament.service.ts), including the "actually watching the
  *  page" presence check — watchingUserIds comes from the server's
@@ -693,6 +676,32 @@ function RankBadge({ rank }: { rank: number }) {
  *  the desktop popover and the mobile bottom sheet (see the standings
  *  table below, via ResponsiveOverlay) so the two surfaces can never drift
  *  out of sync with each other. */
+/** Last (up to) 3 results as small rounded badges, oldest first so the
+ *  rightmost one is the latest. Desktop standings only. */
+function FormBadges({ form }: { form?: ("W" | "D" | "L")[] }) {
+  if (!form || form.length === 0) {
+    return <span className="block text-center text-base-content/30">-</span>;
+  }
+  return (
+    <div className="flex items-center justify-center gap-1">
+      {form.map((r, i) => (
+        <span
+          key={i}
+          title={r === "W" ? "Win" : r === "D" ? "Draw" : "Loss"}
+          className={cn(
+            "inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold leading-none",
+            r === "W" && "bg-green-500/20 text-green-400",
+            r === "D" && "bg-base-content/10 text-base-content/60",
+            r === "L" && "bg-red-500/20 text-red-400",
+          )}
+        >
+          {r}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function PlayerTournamentDetails({
   tournament,
   player,
@@ -702,7 +711,39 @@ function PlayerTournamentDetails({
 }) {
   const isPointsFormat = tournament.format !== "normal";
   const isArena = tournament.format === "arena";
-  const records = pairingsForPlayer(tournament, player.user);
+  // Only mounted once the player's row is opened (Popover / Modal render
+  // their children only while open), so this is the lazy load: the
+  // tournament payload carries just name, rating and points, and the full
+  // stats and this player's own games come from the server now.
+  const [details, setDetails] = useState<{
+    player: TournamentPlayer;
+    pairings: TournamentPlayerPairing[];
+  } | null>(null);
+  const [detailsFailed, setDetailsFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    getTournamentPlayerDetails(tournament.code, player.user)
+      .then((res) => {
+        if (cancelled) return;
+        setDetails(res);
+        setDetailsFailed(false);
+      })
+      .catch(() => {
+        if (!cancelled) setDetailsFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // points/tiebreak/status change when this player's games finish, which
+    // is exactly when an open popup should refresh (the old data stays on
+    // screen until the new arrives).
+  }, [tournament.code, player.user, player.points, player.tiebreak, tournament.status]);
+  const fullPlayer = details?.player ?? player;
+  const records = (details?.pairings ?? []).map(({ roundIndex, pairing }) => ({
+    roundIndex,
+    pairing,
+    isP1: pairing.player1 === player.user,
+  }));
   // Most recent game first (David: "make the games they played from
   // bottom to top") — the underlying array stays in chronological order
   // (pairingsForPlayer/applyPairingScore both rely on that ordering
@@ -714,12 +755,18 @@ function PlayerTournamentDetails({
     .map((r, i) => ({ ...r, gameNumber: i + 1 }))
     .slice()
     .reverse();
+  // Arena only, and only while it's running: a player who has won 2+ in a
+  // row has their next game doubled (flame + orange, same as the standings).
+  const onStreak =
+    isArena &&
+    tournament.status === "active" &&
+    isOnArenaStreak(player.currentWinStreak !== undefined ? player : fullPlayer);
   const stats = [
-    { label: "Games", value: player.gamesPlayed },
-    isArena && { label: "Berserk wins", value: player.berserkWins },
-    isArena && { label: "Streak wins", value: player.streakWins },
+    { label: "Games", value: fullPlayer.gamesPlayed ?? "…" },
+    isArena && { label: "Berserk wins", value: fullPlayer.berserkWins ?? "…" },
+    isArena && { label: "Streak wins", value: fullPlayer.streakWins ?? "…" },
     isPointsFormat && { label: "Points", value: player.points },
-  ].filter(Boolean) as { label: string; value: number }[];
+  ].filter(Boolean) as { label: string; value: number | string }[];
 
   return (
     <div className="w-full flex flex-col items-center max-w-full space-y-2">
@@ -761,9 +808,17 @@ function PlayerTournamentDetails({
               <p
                 className={cn(
                   " text-base md:text-lg font-bold",
-                  s.label === "Points" ? "text-secondary" : "text-base-content",
+                  s.label === "Points"
+                    ? onStreak
+                      ? "text-orange-400"
+                      : "text-secondary"
+                    : "text-base-content",
+                  s.label === "Points" && onStreak && "inline-flex items-center justify-center gap-1 w-full",
                 )}
               >
+                {s.label === "Points" && onStreak && (
+                  <Flame className="h-4 w-4 shrink-0" aria-label="On a win streak" />
+                )}
                 {s.value}
               </p>
               <p className="text-[11px] text-base-content/50">{s.label}</p>
@@ -771,6 +826,12 @@ function PlayerTournamentDetails({
           ))}
         </div>
       </div>
+
+      {!details && (
+        <p className="w-full px-1 text-center text-xs text-base-content/50">
+          {detailsFailed ? "Couldn't load this player's games." : "Loading games…"}
+        </p>
+      )}
 
       {displayRecords.length > 0 && (
         <div className="space-y-1 w-full">
@@ -813,9 +874,9 @@ function PlayerTournamentDetails({
                   // The actual points this specific game earned, rather
                   // than a plain Won/Lost — matters most for arena, where
                   // a win isn't always worth the same (see
-                  // applyArenaPairingScore server-side: 1 point normally,
-                  // 2 if it was berserked-and-qualified or landed on a 3+
-                  // win streak), but shown the same way across every
+                  // applyArenaPairingScore server-side: win 2, berserked 3,
+                  // on a streak 4, berserked on a streak 5, draw 1 or 2 on a
+                  // streak), but shown the same way across every
                   // points-based format so the row doesn't change shape
                   // between them.
                   const myPoints = isP1
@@ -1021,6 +1082,10 @@ export function TournamentDetail() {
   // play/pause button (dock + desktop) until the server's answer lands.
   const [primaryBusy, setPrimaryBusy] = useState(false);
   const [manualRoundIndex, setManualRoundIndex] = useState<number | null>(null);
+  // Pairings of swiss / round-robin rounds the server only sent a stub for
+  // (see TournamentRound.pairingCount), keyed "index:status" so a round that
+  // moves from active to finished is fetched again.
+  const [fetchedRounds, setFetchedRounds] = useState<Record<string, TournamentRound>>({});
   // Collapsed by default, the tier breakdown is useful detail but not
   // something you need to see every time you land on the page, especially
   // once the header/card title already shows the total.
@@ -1056,6 +1121,26 @@ export function TournamentDetail() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Opening a round tab whose pairings weren't included in the tournament
+  // payload loads just that round.
+  useEffect(() => {
+    if (!tournament || tournament.format === "arena" || tournament.format === "normal") return;
+    const index = manualRoundIndex ?? tournament.currentRoundIndex;
+    const stub = tournament.rounds[index];
+    if (!stub || stub.pairings.length >= (stub.pairingCount ?? 0)) return;
+    const key = `${stub.index}:${stub.status}`;
+    if (fetchedRounds[key]) return;
+    let cancelled = false;
+    getTournamentRound(tournament.code, stub.index)
+      .then(({ round }) => {
+        if (!cancelled) setFetchedRounds((prev) => ({ ...prev, [key]: round }));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [tournament, manualRoundIndex, fetchedRounds]);
 
   useEffect(() => {
     if (!socket || !tournament) return;
@@ -1258,9 +1343,15 @@ export function TournamentDetail() {
   // a different tab it stays there across refreshes rather than yanking
   // them back to "current" every time the tournament state re-polls.
   const selectedRoundIndex = manualRoundIndex ?? tournament.currentRoundIndex;
-  const selectedRound =
+  const selectedRoundStub =
     tournament.rounds[selectedRoundIndex] ??
     tournament.rounds[tournament.rounds.length - 1];
+  const selectedRoundLoading =
+    !!selectedRoundStub &&
+    selectedRoundStub.pairings.length < (selectedRoundStub.pairingCount ?? 0);
+  const selectedRound = selectedRoundLoading
+    ? (fetchedRounds[`${selectedRoundStub?.index}:${selectedRoundStub?.status}`] ?? selectedRoundStub)
+    : selectedRoundStub;
 
   function join(password?: string) {
     // Once you're a player, the server already knows it, the password is
@@ -1772,7 +1863,10 @@ export function TournamentDetail() {
                   <tr className="bg-base-300/50 text-left text-[11px] font-semibold uppercase tracking-wide text-base-content/50">
                     <th className="w-10 px-3 py-2">#</th>
                     <th className="px-3 py-2">Player</th>
-                    <th className="w-14 px-3 py-2 text-right">Pts</th>
+                    <th className="hidden w-24 px-3 py-2 text-center md:table-cell">
+                      Form
+                    </th>
+                    <th className={cn("px-3 py-2 text-right", tournament.format === "arena" ? "w-20" : "w-14")}>Pts</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1832,13 +1926,31 @@ export function TournamentDetail() {
                             />
                           </ResponsiveOverlay>
                         </td>
+                        <td className="hidden px-3 py-2 md:table-cell">
+                          <FormBadges form={p.form} />
+                        </td>
                         <td
                           className={cn(
                             isMe ? "text-secondary" : "text-base-content",
                             "px-3 py-2 text-right font-semibold",
                           )}
                         >
-                          {p.points}
+                          {tournament.format === "arena" &&
+                          tournament.status === "active" &&
+                          isOnArenaStreak(p) ? (
+                            <span
+                              className="inline-flex items-center justify-end gap-0.5 text-orange-400"
+                              title="On a win streak: next game is worth double"
+                            >
+                              <Flame
+                                className="h-3.5 w-3.5 shrink-0"
+                                aria-label="On a win streak"
+                              />
+                              {p.points}
+                            </span>
+                          ) : (
+                            p.points
+                          )}
                         </td>
                       </tr>
                     );
@@ -1916,6 +2028,11 @@ export function TournamentDetail() {
                 </CardTitle>
               </CardHeader>
               <div className="space-y-1.5">
+                {selectedRound.pairings.length === 0 && selectedRoundLoading && (
+                  <p className="py-3 text-center text-sm text-base-content/50">
+                    Loading pairings…
+                  </p>
+                )}
                 {selectedRound.pairings.map((pairing) => (
                   <PairingRow
                     key={pairing.index}

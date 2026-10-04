@@ -14,6 +14,7 @@ import { registerQuickPairingHandlers } from './quickPairingSocket.js';
 import { registerLobbyHandlers } from './lobbySocket.js';
 import { registerLatencyHandlers } from './latencySocket.js';
 import { setIo } from './io.js';
+import { installSocketFloodGuard } from './floodGuard.js';
 import { startInstancePresenceBeat } from '../services/gamePresence.service.js';
 import { GAME_ENDED_EVENT, releaseLatencyHeartbeatForGame } from '../services/latency.service.js';
 
@@ -60,6 +61,7 @@ export function initSocketServer(httpServer: HttpServer): Server {
   registerFirstMoveTimeoutHandler(io);
 
   io.on('connection', (socket) => {
+    installSocketFloodGuard(socket);
     registerPresenceHandlers(io, socket);
     registerGameHandlers(io, socket);
     registerChallengeHandlers(io, socket);

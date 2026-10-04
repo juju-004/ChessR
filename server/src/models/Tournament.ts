@@ -80,6 +80,10 @@ export interface ITournamentPlayer {
   // input" role berserkWins plays for the berserk bonus.
   currentWinStreak: number;
   streakWins: number;
+  // Result of each of this player's last PLAYER_FORM_LENGTH finished games
+  // (arena/swiss/round-robin), oldest first. Shown as the "Form" badges in
+  // the standings. Byes and knockout games aren't recorded.
+  form: ("W" | "D" | "L")[];
   // Knockout-only: null while still alive, otherwise the round index they
   // were knocked out in (or -1 if they never got placed into the bracket at
   // all, which only happens if someone leaves before the bracket is drawn).
@@ -124,7 +128,7 @@ export interface ITournamentPairing {
   // Only meaningful once status is "finished" (both null/0 before then).
   // Recorded at scoring time (see applyPairingScore/applyArenaPairingScore
   // in tournament.service.ts) rather than re-derived from `result` on
-  // read, since arena's doubling (berserk-qualified or a 3+ win streak)
+  // read, since arena's streak doubling and berserk bonus (2/1/0, doubled on a streak, +1 berserk win)
   // can't be reliably reconstructed after the fact from the pairing alone
   // — the streak part in particular depends on the player's state at the
   // moment this specific pairing finished, not anything visible on the
@@ -352,6 +356,7 @@ const playerSchema = new Schema<ITournamentPlayer>(
     berserkWins: { type: Number, default: 0 },
     currentWinStreak: { type: Number, default: 0 },
     streakWins: { type: Number, default: 0 },
+    form: { type: [String], default: [] },
     eliminatedRound: { type: Number, default: null },
     hadBye: { type: Boolean, default: false },
     paused: { type: Boolean, default: false },

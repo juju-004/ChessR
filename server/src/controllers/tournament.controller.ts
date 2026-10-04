@@ -1,7 +1,9 @@
 import { z } from "zod";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import {
-  getTournamentByCode,
+  getTournamentSummaryByCode,
+  getTournamentRound,
+  getTournamentPlayerDetails,
   listTournaments,
   listMyTournaments,
 } from "../services/tournament.service.js";
@@ -32,6 +34,28 @@ export const getMyTournaments = asyncHandler(async (req: AuthedRequest, res) => 
 
 export const getTournamentByCodeHandler = asyncHandler(async (req, res) => {
   const { code } = codeParamSchema.parse(req.params);
-  const tournament = await getTournamentByCode(code);
+  const tournament = await getTournamentSummaryByCode(code);
   res.json({ tournament });
+});
+
+const roundParamSchema = z.object({
+  code: z.string().min(4).max(24),
+  index: z.coerce.number().int().min(0).max(100_000),
+});
+
+/** One round's full pairings, fetched when a round tab is opened. */
+export const getTournamentRoundHandler = asyncHandler(async (req, res) => {
+  const { code, index } = roundParamSchema.parse(req.params);
+  res.json({ round: await getTournamentRound(code, index) });
+});
+
+const playerParamSchema = z.object({
+  code: z.string().min(4).max(24),
+  userId: z.string().length(24),
+});
+
+/** A player's full stats and own pairings, fetched when their row is opened. */
+export const getTournamentPlayerHandler = asyncHandler(async (req, res) => {
+  const { code, userId } = playerParamSchema.parse(req.params);
+  res.json(await getTournamentPlayerDetails(code, userId));
 });
