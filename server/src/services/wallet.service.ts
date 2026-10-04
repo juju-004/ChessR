@@ -9,7 +9,7 @@ import { verifyTransaction } from "./paystack.service.js";
 import { createNotification } from "./notification.service.js";
 
 // --- Token economy constants -------------------------------------------------
-// Deliberately a spread between buy and withdraw rates (standard practice), 
+// Deliberately a spread between buy and withdraw rates (standard practice),
 // without one, buying tokens and immediately withdrawing them would be
 // risk-free arbitrage against whatever Paystack's transaction fees don't
 // already eat into.
@@ -171,7 +171,7 @@ export async function getWithdrawalEligibility(
   return {
     eligible: false,
     reason:
-      "You need to play at least one game (normal, cage match or tournament) after adding funds before you can withdraw.",
+      "You need to play at least one game after adding funds before you can withdraw.",
   };
 }
 
@@ -214,7 +214,9 @@ export async function initiateWithdrawal(
 
   const eligibility = await getWithdrawalEligibility(userId);
   if (!eligibility.eligible) {
-    throw ApiError.forbidden(eligibility.reason ?? "Withdrawals aren't available yet");
+    throw ApiError.forbidden(
+      eligibility.reason ?? "Withdrawals aren't available yet",
+    );
   }
 
   // Atomic conditional decrement: the balance check and the deduction are one
@@ -262,7 +264,11 @@ export interface AdminListParams {
   limit: number;
 }
 
-export async function listWithdrawalsForAdmin({ status, page, limit }: AdminListParams) {
+export async function listWithdrawalsForAdmin({
+  status,
+  page,
+  limit,
+}: AdminListParams) {
   const filter: Record<string, unknown> = { type: "withdrawal" };
   if (status) filter.status = status;
 
@@ -278,11 +284,18 @@ export async function listWithdrawalsForAdmin({ status, page, limit }: AdminList
     Transaction.countDocuments(filter),
     Transaction.aggregate<{ _id: string; amountKobo: number; count: number }>([
       { $match: { type: "withdrawal" } },
-      { $group: { _id: "$status", amountKobo: { $sum: "$amountKobo" }, count: { $sum: 1 } } },
+      {
+        $group: {
+          _id: "$status",
+          amountKobo: { $sum: "$amountKobo" },
+          count: { $sum: 1 },
+        },
+      },
     ]),
   ]);
 
-  const stat = (s: string) => summary.find((r) => r._id === s) ?? { amountKobo: 0, count: 0 };
+  const stat = (s: string) =>
+    summary.find((r) => r._id === s) ?? { amountKobo: 0, count: 0 };
 
   return {
     withdrawals: rows.map((t: any) => ({
@@ -291,7 +304,9 @@ export async function listWithdrawalsForAdmin({ status, page, limit }: AdminList
       status: t.status,
       tokens: t.tokens,
       amountKobo: t.amountKobo,
-      user: t.user ? { id: t.user._id, username: t.user.username, email: t.user.email } : null,
+      user: t.user
+        ? { id: t.user._id, username: t.user.username, email: t.user.email }
+        : null,
       bankName: t.bankName ?? null,
       bankCode: t.bankCode ?? null,
       accountNumber: t.bankAccountNumber ?? null,
@@ -350,7 +365,10 @@ export async function resolveWithdrawalByAdmin(
   }
 
   if (action === "decline") {
-    await User.updateOne({ _id: updated.user }, { $inc: { tokenBalance: updated.tokens } });
+    await User.updateOne(
+      { _id: updated.user },
+      { $inc: { tokenBalance: updated.tokens } },
+    );
   }
 
   const naira = (updated.amountKobo / 100).toLocaleString();
@@ -391,7 +409,9 @@ export async function listDepositsForAdmin({
     // case-insensitive, which can't use tight bounds even when anchored.
     // Trade-off: search now matches the START of a username or reference
     // rather than any substring of it.
-    const users = await User.find({ usernameLower: { $regex: `^${escaped.toLowerCase()}` } })
+    const users = await User.find({
+      usernameLower: { $regex: `^${escaped.toLowerCase()}` },
+    })
       .select("_id")
       .limit(200)
       .lean();
@@ -413,7 +433,12 @@ export async function listDepositsForAdmin({
       .populate("user", "username email")
       .lean(),
     Transaction.countDocuments(filter),
-    Transaction.aggregate<{ _id: string; amountKobo: number; tokens: number; count: number }>([
+    Transaction.aggregate<{
+      _id: string;
+      amountKobo: number;
+      tokens: number;
+      count: number;
+    }>([
       { $match: { type: "purchase" } },
       {
         $group: {
@@ -425,12 +450,19 @@ export async function listDepositsForAdmin({
       },
     ]),
     Transaction.aggregate<{ amountKobo: number }>([
-      { $match: { type: "purchase", status: "success", createdAt: { $gte: monthStart } } },
+      {
+        $match: {
+          type: "purchase",
+          status: "success",
+          createdAt: { $gte: monthStart },
+        },
+      },
       { $group: { _id: null, amountKobo: { $sum: "$amountKobo" } } },
     ]),
   ]);
 
-  const stat = (s: string) => summary.find((r) => r._id === s) ?? { amountKobo: 0, tokens: 0, count: 0 };
+  const stat = (s: string) =>
+    summary.find((r) => r._id === s) ?? { amountKobo: 0, tokens: 0, count: 0 };
 
   return {
     deposits: rows.map((t: any) => ({
@@ -439,7 +471,9 @@ export async function listDepositsForAdmin({
       status: t.status,
       tokens: t.tokens,
       amountKobo: t.amountKobo,
-      user: t.user ? { id: t.user._id, username: t.user.username, email: t.user.email } : null,
+      user: t.user
+        ? { id: t.user._id, username: t.user.username, email: t.user.email }
+        : null,
       failureReason: t.failureReason ?? null,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
@@ -741,7 +775,8 @@ export async function creditTournamentReturn(
     type: kind,
     reference: { $regex: `^${escaped}(-\\d+)?$` },
   });
-  const reference = priorRefunds === 0 ? baseReference : `${baseReference}-${priorRefunds + 1}`;
+  const reference =
+    priorRefunds === 0 ? baseReference : `${baseReference}-${priorRefunds + 1}`;
 
   await Transaction.create({
     user: userId,

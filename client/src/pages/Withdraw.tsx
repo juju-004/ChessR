@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Landmark, XCircle } from "lucide-react";
-import { Link } from "react-router-dom";
 import {
   getWalletConfig,
   getBanks,
@@ -86,7 +85,9 @@ export function Withdraw() {
     });
     getBanks().then((res) => setBanks(res.banks));
     getWithdrawStatus()
-      .then((res) => setWithdrawBlockReason(res.eligible ? "" : (res.reason ?? "")))
+      .then((res) =>
+        setWithdrawBlockReason(res.eligible ? "" : (res.reason ?? "")),
+      )
       .catch(() => {}); // non-fatal, the server enforces the rule on submit anyway
   }, []);
 
@@ -197,17 +198,6 @@ export function Withdraw() {
       back="/"
       bare
     >
-      <div className="mb-4 flex items-center justify-between rounded-xl border border-base-300 bg-base-100/60 px-3.5 py-2.5 text-sm">
-        <span className="text-base-content/70">
-          Won a Chessr tournament prize?
-        </span>
-        <Link
-          to="/wallet/account-details"
-          className="font-medium text-(--secondary) hover:underline"
-        >
-          Manage payout account details
-        </Link>
-      </div>
       <Card variant="solid" className="w-full space-y-3">
         <p className="mb-4 flex flex-wrap items-center gap-1 text-xs text-base-content/50">
           Rate: ₦{nairaPerToken} per <RCoin size={11} /> Coin · Minimum
@@ -268,14 +258,16 @@ export function Withdraw() {
             <CheckCircle2 className="h-4 w-4" /> {accountName}
           </p>
         )}
-        {!accountName && accountNumber.length === 10 && !!bankCode && !resolving && (
-          <p className="mb-3.5 flex items-start gap-1.5 text-xs text-amber-500">
-            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            We couldn't verify this account name. You can still submit, but
-            double-check the bank and account number, payouts sent to wrong
-            details can't be recovered.
-          </p>
-        )}
+        {!accountName &&
+          accountNumber.length === 10 &&
+          !!bankCode &&
+          !resolving && (
+            <p className="mb-3.5 flex items-start gap-1.5 text-xs text-amber-500">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              We couldn't verify this account name. Please double-check the
+              details, payouts sent to wrong details can't be recovered.
+            </p>
+          )}
 
         <Switch
           checked={rememberDetails}
