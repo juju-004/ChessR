@@ -121,7 +121,16 @@ export const Popover = memo(function Popover({
       top = Math.min(top, window.innerHeight - panelHeight - MARGIN);
       top = Math.max(top, MARGIN);
 
-      setStyle({ position: "fixed", top, left, visibility: "visible" });
+      // Skip the state update (and the rerender) when nothing moved, which
+      // is most scroll frames.
+      setStyle((prev) =>
+        prev.position === "fixed" &&
+        prev.visibility === "visible" &&
+        prev.top === top &&
+        prev.left === left
+          ? prev
+          : { position: "fixed", top, left, visibility: "visible" },
+      );
     }
 
     reposition();

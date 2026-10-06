@@ -1,5 +1,5 @@
 import { getLiveState, computeTimeoutWinner, getSideToMove } from './gameState.service.js';
-import { Game } from '../models/Game.js';
+import { getGameSeriesMeta } from './gameMeta.service.js';
 
 type TimeoutHandler = (gameId: string, winner: 'white' | 'black') => Promise<void>;
 
@@ -145,8 +145,8 @@ export async function scheduleFirstMoveTimer(gameId: string): Promise<void> {
     return;
   }
 
-  const gameDoc = await Game.findById(gameId).select('cageMatchId tournamentId').lean();
-  const isSeriesGame = !!(gameDoc?.cageMatchId || gameDoc?.tournamentId);
+  const seriesMeta = await getGameSeriesMeta(gameId);
+  const isSeriesGame = !!(seriesMeta?.cageMatchId || seriesMeta?.tournamentId);
   const graceMs = computeFirstMoveGraceMs(isSeriesGame);
   // Captured now, checked again in fire() below: if a move actually lands
   // (or the game is paused/rescheduled) before this timer goes off, that

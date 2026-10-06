@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import { Chess } from 'chess.js';
 import { redis } from '../config/redis.js';
+import { Game, type IMove } from '../models/Game.js';
 import { ApiError } from '../utils/ApiError.js';
 import {
   getStartingFiles,
@@ -14,7 +16,20 @@ import {
 const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const LIVE_STATE_TTL_SECONDS = 60 * 60 * 6; // 6h safety net; refreshed on every move
 
+// Every this-many moves, the move list and current position are copied from
+// Redis into the Game document (about 4 writes for a 40-move game instead of
+// 40). If Redis is lost mid-game, at most this many moves are lost, and the
+// recovery sweep closes the game with the snapshotted position and moves
+// rather than the starting ones.
+const SNAPSHOT_EVERY_MOVES = 10;
+
 const stateKey = (gameId: string) => `game:${gameId}:state`;
+// The move list of a game in progress. It lives ONLY here until the game ends,
+// then finalizeGame (game.service.ts) writes it to Mongo in one go.
+const movesKey = (gameId: string) => `game:${gameId}:moves`;
+
+/** One played move, same shape as the entries of Game.moves in Mongo. */
+export type LiveMove = IMove;
 
 export interface LiveTimeControl {
   baseMs: number | null; // null = unlimited
@@ -126,6 +141,8 @@ export async function initLiveState(
     castlingRights: initialCastlingRights(),
     positionHistory: [repetitionKey(fen)],
   };
+  // `del` first so no stale move list from an earlier use of this id can leak in.
+  await redis.del(movesKey(gameId));
   await redis.set(stateKey(gameId), JSON.stringify(state), 'EX', LIVE_STATE_TTL_SECONDS);
   return state;
 }
@@ -135,12 +152,45 @@ export async function initLiveState(
 // writeStateIfUnchanged. (WeakMap: entries vanish with the state objects.)
 const stateHashes = new WeakMap<object, string>();
 
+// How long reading each state object took (Redis GET + parse), and when that
+// finished, so finalizeMove can report per-stage move timings (see
+// services/moveTiming.service.ts). WeakMap: entries vanish with the state.
+const stateReadTimings = new WeakMap<object, { getMs: number; readDoneAt: number }>();
+
 export async function getLiveState(gameId: string): Promise<LiveGameState | null> {
+  const t0 = performance.now();
   const raw = await redis.get(stateKey(gameId));
   if (!raw) return null;
   const state = JSON.parse(raw) as LiveGameState;
   stateHashes.set(state, createHash('sha1').update(raw).digest('hex'));
+  const t1 = performance.now();
+  stateReadTimings.set(state, { getMs: t1 - t0, readDoneAt: t1 });
   return state;
+}
+
+/** Copies the live move list and position into the Game document. Best effort:
+ *  a failure only means a bigger gap to lose if Redis dies, so it is logged and
+ *  never fails (or delays) the move that triggered it. */
+async function snapshotGameToMongo(gameId: string, moveCount: number): Promise<void> {
+  try {
+    const moves = await getLiveMoves(gameId);
+    // Only snapshot a complete list (a game that was already under way when
+    // per-move Mongo writes were removed won't have one).
+    if (moves.length === 0 || moves[0].moveNumber !== 1) return;
+    const last = moves[moves.length - 1];
+    await Game.updateOne(
+      {
+        _id: gameId,
+        // A game that has ended is finalizeGame's to write, and an older
+        // snapshot must never overwrite a newer one.
+        status: 'active',
+        [`moves.${moves.length - 1}`]: { $exists: false },
+      },
+      { $set: { moves, fen: last.fenAfter } },
+    );
+  } catch (err) {
+    console.error(`snapshotGameToMongo failed for game ${gameId} at move ${moveCount}:`, err);
+  }
 }
 
 /** Thrown when the game's stored state changed between reading it and
@@ -161,27 +211,40 @@ const WRITE_IF_UNCHANGED_LUA = `
 local cur = redis.call('GET', KEYS[1])
 if not cur or redis.sha1hex(cur) ~= ARGV[1] then return 0 end
 redis.call('SET', KEYS[1], ARGV[2], 'EX', tonumber(ARGV[3]))
+redis.call('RPUSH', KEYS[2], ARGV[4])
+redis.call('EXPIRE', KEYS[2], tonumber(ARGV[3]))
 return 1`;
 
 async function writeStateIfUnchanged(
   gameId: string,
   previous: LiveGameState,
   next: LiveGameState,
+  move: LiveMove,
 ): Promise<void> {
   const expected = stateHashes.get(previous);
   if (!expected) {
     // Not read through getLiveState (shouldn't happen): fall back to the old
     // unconditional write rather than failing the move.
-    await redis.set(stateKey(gameId), JSON.stringify(next), 'EX', LIVE_STATE_TTL_SECONDS);
+    await redis
+      .multi()
+      .set(stateKey(gameId), JSON.stringify(next), 'EX', LIVE_STATE_TTL_SECONDS)
+      .rpush(movesKey(gameId), JSON.stringify(move))
+      .expire(movesKey(gameId), LIVE_STATE_TTL_SECONDS)
+      .exec();
     return;
   }
+  // The new state and the move are stored by the same atomic script, so the
+  // move list can never be a move ahead of or behind the position, and a
+  // move that loses the race (conflict) is not recorded at all.
   const ok = await redis.eval(
     WRITE_IF_UNCHANGED_LUA,
-    1,
+    2,
     stateKey(gameId),
+    movesKey(gameId),
     expected,
     JSON.stringify(next),
     String(LIVE_STATE_TTL_SECONDS),
+    JSON.stringify(move),
   );
   if (ok !== 1) throw new LiveStateConflictError();
 }
@@ -207,6 +270,34 @@ export async function deleteLiveState(gameId: string): Promise<void> {
   await redis.del(stateKey(gameId));
 }
 
+/** Every move played so far in a game that is (or just was) live. */
+export async function getLiveMoves(gameId: string): Promise<LiveMove[]> {
+  const raw = await redis.lrange(movesKey(gameId), 0, -1);
+  const moves: LiveMove[] = [];
+  for (const entry of raw) {
+    try {
+      moves.push(JSON.parse(entry) as LiveMove);
+    } catch {
+      // A corrupt entry is skipped rather than failing the whole read.
+    }
+  }
+  return moves;
+}
+
+/** Called by finalizeGame once the moves are safely in Mongo. */
+export async function deleteLiveMoves(gameId: string): Promise<void> {
+  await redis.del(movesKey(gameId));
+}
+
+/** Mongo's list plus the live one. Normally Mongo has none of a live game's
+ *  moves and this is just the live list; the filter only matters for a game
+ *  that was already part-way through when per-move Mongo writes were removed. */
+export function mergeLiveMoves(mongoMoves: ReadonlyArray<LiveMove>, liveMoves: LiveMove[]): LiveMove[] {
+  if (liveMoves.length === 0) return [...mongoMoves];
+  const first = liveMoves[0].moveNumber;
+  return [...mongoMoves.filter((m) => m.moveNumber < first), ...liveMoves];
+}
+
 export interface MoveResult {
   san: string;
   from: string;
@@ -226,6 +317,8 @@ export interface MoveResult {
    *  does, handing the side to move a free Redis-latency's worth of time
    *  on every single move. */
   turnStartedAtMs: number;
+  /** Per-stage server timings for this move, for move-latency diagnostics. */
+  timings?: { getMs: number; computeMs: number; writeMs: number; attempts: number };
 }
 
 /** Shared tail-end for both the normal-move and castling paths: clock
@@ -241,6 +334,7 @@ async function finalizeMove(
   promotion: string | undefined,
   updatedRights: CastlingRightsState,
   lagCompensationMs = 0,
+  moveTimestampMs: number = Date.now(),
 ): Promise<MoveResult> {
   let whiteRemainingMs = state.whiteRemainingMs;
   let blackRemainingMs = state.blackRemainingMs;
@@ -314,7 +408,24 @@ async function finalizeMove(
     castlingRights: updatedRights,
     positionHistory: newPositionHistory,
   };
-  await writeStateIfUnchanged(gameId, state, newState);
+  const liveMove: LiveMove = {
+    san,
+    from,
+    to,
+    ...(promotion ? { promotion } : {}),
+    fenAfter: newFen,
+    moveNumber: newState.moveCount,
+    timestampMs: moveTimestampMs,
+  };
+  const writeStart = performance.now();
+  await writeStateIfUnchanged(gameId, state, newState, liveMove);
+  const writeMs = performance.now() - writeStart;
+  const read = stateReadTimings.get(state);
+  // Not awaited: the move must not wait on Mongo. A game-ending move is
+  // skipped, finalizeGame is about to write the full list anyway.
+  if (!isGameOver && newState.moveCount % SNAPSHOT_EVERY_MOVES === 0) {
+    void snapshotGameToMongo(gameId, newState.moveCount);
+  }
 
   return {
     san,
@@ -329,6 +440,12 @@ async function finalizeMove(
     whiteRemainingMs,
     blackRemainingMs,
     turnStartedAtMs: newState.turnStartedAtMs,
+    timings: {
+      getMs: read?.getMs ?? 0,
+      computeMs: read ? Math.max(0, writeStart - read.readDoneAt) : 0,
+      writeMs,
+      attempts: 1, // applyMove overwrites this when it had to retry
+    },
   };
 }
 
@@ -343,6 +460,7 @@ export async function applyMove(
   userId: string,
   move: { from: string; to: string; promotion?: string },
   lagCompensationMs = 0,
+  moveTimestampMs: number = Date.now(),
 ): Promise<MoveResult> {
   // A conflict means something else wrote this game's state mid-move. Retry
   // from the fresh state: the checks at the top of applyMoveOnce then decide
@@ -350,7 +468,9 @@ export async function applyMove(
   // -> timeout) or the move simply goes through on the new state.
   for (let attempt = 0; ; attempt++) {
     try {
-      return await applyMoveOnce(gameId, userId, move, lagCompensationMs);
+      const result = await applyMoveOnce(gameId, userId, move, lagCompensationMs, moveTimestampMs);
+      if (result.timings) result.timings.attempts = attempt + 1;
+      return result;
     } catch (err) {
       if (err instanceof LiveStateConflictError && attempt < 2) continue;
       if (err instanceof LiveStateConflictError) {
@@ -366,6 +486,7 @@ async function applyMoveOnce(
   userId: string,
   move: { from: string; to: string; promotion?: string },
   lagCompensationMs = 0,
+  moveTimestampMs: number = Date.now(),
 ): Promise<MoveResult> {
   const state = await getLiveState(gameId);
   if (!state) throw ApiError.notFound('Game is not active');
@@ -416,6 +537,7 @@ async function applyMoveOnce(
         undefined,
         updatedRights,
         lagCompensationMs,
+        moveTimestampMs,
       );
     }
   }
@@ -445,6 +567,7 @@ async function applyMoveOnce(
     moveResult.promotion,
     updatedRights,
     lagCompensationMs,
+    moveTimestampMs,
   );
 }
 

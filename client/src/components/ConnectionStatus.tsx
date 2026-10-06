@@ -6,12 +6,12 @@ import { recordClockOffsetSample, resetClockOffset } from "@/lib/clockSync.js";
 
 type ConnState = "connecting" | "connected" | "reconnecting" | "disconnected";
 
-// Lichess pings roughly every 2s and displays a smoothed reading rather
-// than the raw last round-trip, a single slow sample (a GC pause, a wifi
-// blip) shouldn't make the dot/number jump around on its own. Matched here:
-// a 2s cadence with an exponential moving average over the last several
-// samples instead of the previous 4s interval showing the bare last value.
-const PING_INTERVAL_MS = 2000;
+// The displayed latency is a smoothed reading (exponential moving average)
+// rather than the raw last round-trip, so a single slow sample (a GC pause, a
+// wifi blip) doesn't make the dot/number jump around on its own.
+// Pinged every 15s (was 2s) to keep per-client traffic low; one ping is also
+// sent immediately on every (re)connect.
+const PING_INTERVAL_MS = 15_000;
 const PING_TIMEOUT_MS = 6000;
 // Weight given to each new sample in the running average, lower is
 // smoother/slower to react, higher tracks the latest sample more closely.

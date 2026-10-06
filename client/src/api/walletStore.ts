@@ -34,8 +34,23 @@ export function subscribeBalance(listener: () => void): () => void {
 /** Re-fetches from the server and updates the shared store, call this after
  *  any action that could change the balance (purchase, withdrawal) instead of
  *  relying on each page to manage its own copy. */
-export async function refreshBalance(): Promise<number> {
-  const res = await getBalance();
-  setCachedBalance(res.tokenBalance);
-  return res.tokenBalance;
+let inflightRefresh: Promise<number> | null = null;
+
+/** Single-flight: the navbar badge, account menu and the page itself all
+ *  call this on mount, so concurrent callers share one GET /wallet/balance
+ *  instead of each sending their own. A call made after the request settles
+ *  starts a fresh one, so post-purchase/withdrawal refreshes still hit the
+ *  server. */
+export function refreshBalance(): Promise<number> {
+  if (!inflightRefresh) {
+    inflightRefresh = getBalance()
+      .then((res) => {
+        setCachedBalance(res.tokenBalance);
+        return res.tokenBalance;
+      })
+      .finally(() => {
+        inflightRefresh = null;
+      });
+  }
+  return inflightRefresh;
 }

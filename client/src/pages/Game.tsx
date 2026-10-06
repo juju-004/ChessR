@@ -13,6 +13,12 @@ import { ApiRequestError } from "../api/http.js";
 import { serverNow } from "../lib/clockSync.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import { useSocket } from "../contexts/SocketContext.js";
+import {
+  markMoveSent,
+  clearMoveSent,
+  takeMoveRtt,
+  reportMoveTiming,
+} from "../moveTiming.js";
 import { useNotify } from "../contexts/NotificationContext.js";
 import { useSettings } from "../contexts/SettingsContext.js";
 import { useConfirm } from "../contexts/ConfirmContext.js";
@@ -322,12 +328,7 @@ export function Game() {
       const fens = canExtend ? [...cache!.fens] : [replay.fen()];
       const startIndex = canExtend ? cache!.moves.length : 0;
       for (let i = startIndex; i < moves.length; i++) {
-        replayMove(
-          replay,
-          moves[i].san,
-          gameMeta?.variant,
-          gameMeta?.initialFen ?? "",
-        );
+        replayMove(replay, moves[i].san, gameMeta?.variant, gameMeta?.initialFen ?? "");
         fens.push(replay.fen());
       }
 
@@ -689,8 +690,7 @@ export function Game() {
       const list = moveListScrollRef.current;
       if (list) list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
       const strip = moveStripScrollRef.current;
-      if (strip)
-        strip.scrollTo({ left: strip.scrollWidth, behavior: "smooth" });
+      if (strip) strip.scrollTo({ left: strip.scrollWidth, behavior: "smooth" });
     });
     return () => cancelAnimationFrame(raf);
   }, [moves.length, viewPly]);
@@ -753,8 +753,7 @@ export function Game() {
         if (!finalFen) {
           try {
             const replay = new Chess(game.initialFen);
-            for (const m of movesList)
-              replayMove(replay, m.san, game.variant, game.initialFen);
+            for (const m of movesList) replayMove(replay, m.san, game.variant, game.initialFen);
             finalFen = replay.fen();
           } catch {
             finalFen = game.initialFen;
@@ -919,6 +918,17 @@ export function Game() {
       confirmedLastMoveRef.current = [payload.from, payload.to];
       pendingOptimisticMoveRef.current = false;
       optimisticFenRef.current = null;
+      // Only non-null for the confirmation of a move this player just sent.
+      const moveRtt = takeMoveRtt();
+      if (moveRtt !== null && socket) {
+        reportMoveTiming(
+          socket,
+          payload.gameId,
+          payload.moveNumber,
+          moveRtt,
+          payload.serverProcessingMs,
+        );
+      }
       setWhiteRemainingMs(payload.whiteRemainingMs);
       setBlackRemainingMs(payload.blackRemainingMs);
       setTurnStartedAtMs(payload.turnStartedAtMs);
@@ -944,13 +954,8 @@ export function Game() {
       const viewerRole = roleRef.current;
       if (viewerRole !== "spectator") {
         const san: string = payload.san ?? "";
-        const sideToMove =
-          String(payload.fen).split(" ")[1] === "w" ? "white" : "black";
-        if (
-          san.includes("+") &&
-          !san.includes("#") &&
-          sideToMove === viewerRole
-        ) {
+        const sideToMove = String(payload.fen).split(" ")[1] === "w" ? "white" : "black";
+        if (san.includes("+") && !san.includes("#") && sideToMove === viewerRole) {
           haptics.check();
         } else if (san.includes("x")) {
           haptics.capture();
@@ -1028,6 +1033,7 @@ export function Game() {
 
     function onError(payload: { message: string }) {
       setMoveError(payload.message);
+      clearMoveSent();
       // Only revert if a move is actually the thing awaiting confirmation
       // right now — see pendingOptimisticMoveRef's doc comment, this is a
       // shared error channel for more than just moves.
@@ -1121,11 +1127,7 @@ export function Game() {
     // the panel's closed, and not for the echo of your own message (the
     // socket broadcasts to the whole room including the sender).
     function onChatMessage(payload: ChatMessage) {
-      chatStore.receive(
-        "spectator",
-        payload,
-        payload.username === user?.username,
-      );
+      chatStore.receive("spectator", payload, payload.username === user?.username);
     }
 
     function onPlayerChatMessage(payload: ChatMessage) {
@@ -1288,6 +1290,9 @@ export function Game() {
     dest: string,
     promotion?: "q" | "r" | "b" | "n",
   ) {
+    // Start of the send -> confirmation measurement (see moveTiming.ts);
+    // every caller emits game:move right after this.
+    markMoveSent();
     try {
       const localChess = new Chess(fen);
       // Chess960 castling can't go through chess.js's own .move() at all
@@ -1701,11 +1706,7 @@ export function Game() {
           title="View cage match"
           aria-label="Playing in a cage match — view details"
         >
-          <Badge
-            variant="glass"
-            className="hover:brightness-110"
-            title="View cage match"
-          >
+          <Badge variant="glass" className="hover:brightness-110" title="View cage match">
             <Swords className="h-3 w-3" />
           </Badge>
         </Link>,
@@ -1938,7 +1939,7 @@ export function Game() {
     ...(canBerserk
       ? [
           {
-            label: "Berserk",
+            label: "Berserk: halve your clock, +1 point if you win",
             icon: Swords,
             onClick: handleBerserk,
             danger: true,

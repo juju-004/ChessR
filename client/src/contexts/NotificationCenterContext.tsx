@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
@@ -365,20 +366,31 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
     );
   }, []);
 
-  const unreadCount = items.filter((i) => !i.seen).length;
+  const unreadCount = useMemo(() => items.filter((i) => !i.seen).length, [items]);
+
+  const value = useMemo<NotificationCenterValue>(
+    () => ({
+      items,
+      unreadCount,
+      markAllSeen,
+      respondToFriendRequestItem,
+      respondToChallengeItem,
+      respondToCageInviteItem,
+      markSystemItemSeenLocally,
+    }),
+    [
+      items,
+      unreadCount,
+      markAllSeen,
+      respondToFriendRequestItem,
+      respondToChallengeItem,
+      respondToCageInviteItem,
+      markSystemItemSeenLocally,
+    ],
+  );
 
   return (
-    <NotificationCenterContext.Provider
-      value={{
-        items,
-        unreadCount,
-        markAllSeen,
-        respondToFriendRequestItem,
-        respondToChallengeItem,
-        respondToCageInviteItem,
-        markSystemItemSeenLocally,
-      }}
-    >
+    <NotificationCenterContext.Provider value={value}>
       {children}
     </NotificationCenterContext.Provider>
   );

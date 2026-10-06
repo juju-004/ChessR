@@ -1,7 +1,9 @@
 import type { Server, Socket } from 'socket.io';
+import { performance } from 'node:perf_hooks';
 import { z } from 'zod';
 import mongoose from 'mongoose';
 import { Game } from '../models/Game.js';
+import { redis } from '../config/redis.js';
 import { User } from '../models/User.js';
 import {
   applyMove,
@@ -12,9 +14,10 @@ import {
   BerserkNotAllowedError,
   claimGameEnd,
   releaseGameEndClaim,
+  getLiveMoves,
+  mergeLiveMoves,
 } from '../services/gameState.service.js';
 import {
-  appendMove,
   finalizeGame,
   createDirectGame,
   settleWager,
@@ -39,6 +42,7 @@ import {
 } from '../services/gamePresence.service.js';
 import { addChatMessage, getChatHistory, isChatRateLimited, isRepeatMessage, type ChatScope } from '../services/chat.service.js';
 import { assertNotRestricted } from '../services/suspension.service.js';
+import { getGameSeriesMeta, primeGameSeriesMeta, forgetGameSeriesMeta } from '../services/gameMeta.service.js';
 import {
   scheduleGameTimer,
   clearGameTimer,
@@ -47,9 +51,14 @@ import {
   clearFirstMoveTimer,
   setFirstMoveTimeoutHandler,
 } from '../services/clock.service.js';
+import { recordServerMove, recordClientMove } from '../services/moveTiming.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
 const gameRoom = (gameId: string) => `game:${gameId}`;
+// A pending draw offer lives in Redis (not process memory) so the opponent can
+// answer it from a socket connected to a different server instance.
+const drawOfferKey = (gameId: string) => `game:${gameId}:draw_offer`;
+const DRAW_OFFER_TTL_SECONDS = 10 * 60;
 const spectatorRoom = (gameId: string) => `game:${gameId}:spectators`;
 // Just the two participants, a subset of gameRoom (which also has
 // spectators in it) — see player_chat:send below and its doc comment.
@@ -87,6 +96,13 @@ const moveSchema = z.object({
   promotion: z.enum(['q', 'r', 'b', 'n']).optional(),
 });
 const gameIdSchema = z.object({ gameId: z.string().refine(mongoose.isValidObjectId) });
+// A player's own measurement of send -> confirmation, see moveTiming.service.ts.
+const moveTimingSchema = z.object({
+  gameId: z.string().refine(mongoose.isValidObjectId),
+  moveNumber: z.number().int().min(1).max(10_000),
+  rttMs: z.number().min(0).max(60_000),
+  transport: z.string().max(20).optional(),
+});
 const claimSchema = z.object({
   gameId: z.string().refine(mongoose.isValidObjectId),
   claim: z.enum(['win', 'draw']),
@@ -142,6 +158,17 @@ function safeHandler<T>(socket: Socket, fn: (payload: T) => Promise<void>) {
       emitError(socket, err instanceof Error ? err.message : 'Something went wrong');
     });
   };
+}
+
+async function retryWithBackoff<T>(fn: () => Promise<T>, attempts = 5, baseDelayMs = 250): Promise<T> {
+  for (let i = 0; ; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (i >= attempts - 1) throw err;
+      await new Promise((resolve) => setTimeout(resolve, baseDelayMs * 2 ** i));
+    }
+  }
 }
 
 async function endGameAndBroadcast(
@@ -204,14 +231,25 @@ async function endGameAndBroadcast(
     wagerSettlement,
     ratingUpdate,
   });
-  finalizeGame(gameId, finalState.fen, 'finished', result, endReason, {
-    whiteRemainingMs: finalState.whiteRemainingMs,
-    blackRemainingMs: finalState.blackRemainingMs,
-  }).catch((err) => console.error('finalizeGame failed:', err));
-  deleteLiveState(gameId).catch((err) => console.error('deleteLiveState failed:', err));
+  // Awaited, with retries: this is now the only write that puts the game's
+  // moves into Mongo, and the cage/tournament advancement below reads them
+  // from there. The live state is only deleted once it has succeeded, so a
+  // failure leaves everything in Redis for the recovery sweep.
+  try {
+    await retryWithBackoff(() =>
+      finalizeGame(gameId, finalState.fen, 'finished', result, endReason, {
+        whiteRemainingMs: finalState.whiteRemainingMs,
+        blackRemainingMs: finalState.blackRemainingMs,
+      }),
+    );
+    await deleteLiveState(gameId).catch((err) => console.error('deleteLiveState failed:', err));
+  } catch (err) {
+    console.error(`finalizeGame(${gameId}) failed after retries; live state kept:`, err);
+  }
 
   await advanceCageMatchIfLeg(gameId, result, endReason);
   await advanceTournamentIfPairingLeg(gameId, result, endReason);
+  forgetGameSeriesMeta(gameId);
 }
 
 // If a game is one leg of a cage match, advance the series: either the next
@@ -224,7 +262,7 @@ async function advanceCageMatchIfLeg(
   result: 'white' | 'black' | 'draw',
   endReason: string,
 ) {
-  const gameDoc = await Game.findById(gameId).select('cageMatchId legIndex').lean();
+  const gameDoc = await getGameSeriesMeta(gameId);
   if (!gameDoc?.cageMatchId || gameDoc.legIndex === undefined) return;
   await advanceCageMatchLeg(gameDoc.cageMatchId.toString(), gameDoc.legIndex, result, endReason, gameId);
 }
@@ -237,7 +275,7 @@ async function advanceTournamentIfPairingLeg(
   result: 'white' | 'black' | 'draw',
   endReason: string,
 ) {
-  const gameDoc = await Game.findById(gameId).select('tournamentId roundIndex pairingIndex').lean();
+  const gameDoc = await getGameSeriesMeta(gameId);
   if (!gameDoc?.tournamentId || gameDoc.roundIndex === undefined || gameDoc.pairingIndex === undefined) return;
   await advanceTournamentIfPairing(
     gameDoc.tournamentId.toString(),
@@ -264,8 +302,8 @@ export function registerClockTimeoutHandler(io: Server) {
 // result, so this reuses that path rather than duplicating it.
 export function registerFirstMoveTimeoutHandler(io: Server) {
   setFirstMoveTimeoutHandler(async (gameId, expiredSide) => {
-    const gameDoc = await Game.findById(gameId).select('cageMatchId tournamentId').lean();
-    const isSeriesGame = !!(gameDoc?.cageMatchId || gameDoc?.tournamentId);
+    const seriesMeta = await getGameSeriesMeta(gameId);
+    const isSeriesGame = !!(seriesMeta?.cageMatchId || seriesMeta?.tournamentId);
 
     if (isSeriesGame) {
       const winner = expiredSide === 'white' ? 'black' : 'white';
@@ -420,11 +458,23 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       if (!parsed.success) return emitError(socket, 'Invalid join payload');
       const { gameId } = parsed.data;
 
-      const game = await Game.findById(gameId)
-        .populate('white', 'username avatarGradient rating')
-        .populate('black', 'username avatarGradient rating')
+      // One Game read plus ONE batched User read for both players, instead
+      // of populate()'s separate query per player.
+      const rawGame = await Game.findById(gameId).lean();
+      if (!rawGame) return emitError(socket, 'Game not found');
+      const playerIds = [rawGame.white, rawGame.black].filter((v): v is NonNullable<typeof v> => !!v);
+      const playerDocs = await User.find({ _id: { $in: playerIds } })
+        .select('username avatarGradient rating')
         .lean();
-      if (!game) return emitError(socket, 'Game not found');
+      const playerById = new Map(playerDocs.map((u) => [String(u._id), u]));
+      const game = {
+        ...rawGame,
+        white: playerById.get(String(rawGame.white)) ?? rawGame.white,
+        black: rawGame.black ? (playerById.get(String(rawGame.black)) ?? rawGame.black) : rawGame.black,
+      };
+      // Already loaded here, so the timers/chat/abort/end-of-game code never
+      // needs its own query for the cage/tournament tags.
+      primeGameSeriesMeta(gameId, rawGame);
 
       // `white`/`black` may or may not be populated depending on the query
       // above, so this normalizes either shape (raw ObjectId or populated
@@ -461,6 +511,9 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       }
 
       const liveState = await getLiveState(gameId);
+      // A game in progress keeps its move list in Redis (Mongo gets it when
+      // the game ends), so the sync below is built from there.
+      const liveMoves = liveState ? await getLiveMoves(gameId) : [];
 
       // Lag compensation only matters for the two players of a live game
       // (see latency.service.ts), so that's the only time a socket pays for
@@ -542,7 +595,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         whiteConnected,
         blackConnected,
         spectatorCount,
-        moves: game.moves,
+        moves: mergeLiveMoves(game.moves, liveMoves),
         timeControl: game.timeControl,
         wagerTokens: game.wagerTokens,
         cageMatchId: game.cageMatchId ?? null,
@@ -600,6 +653,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
   socket.on(
     'game:move',
     safeHandler(socket, async (raw: unknown) => {
+      const handlerStart = performance.now();
       const parsed = moveSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid move payload');
       if (isMoveRateLimited(socket.id)) return emitError(socket, 'Please slow down');
@@ -608,10 +662,14 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       try {
         const lagCompensationMs = getLagCompensationMs(socket.id);
         const moveTimestampMs = Date.now();
-        const result = await applyMove(gameId, userId, { from, to, promotion }, lagCompensationMs);
+        const applyStart = performance.now();
+        const result = await applyMove(gameId, userId, { from, to, promotion }, lagCompensationMs, moveTimestampMs);
+        const emitStart = performance.now();
+        const handlerMs = emitStart - handlerStart;
 
-        // Broadcast first. Mongo persistence is for history/reconnect sync, it
-        // doesn't need to gate how fast the opponent sees the move land.
+        // The move was already stored (in Redis, atomically with the new
+        // position) by applyMove. Nothing is written to Mongo per move; the
+        // whole move list goes there once, when the game ends.
         io.to(gameRoom(gameId)).emit('game:move', {
           gameId,
           san: result.san,
@@ -625,22 +683,27 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           // The value the server's own clock math uses (see MoveResult),
           // NOT a fresh Date.now() taken after the Redis write.
           turnStartedAtMs: result.turnStartedAtMs,
-          // Same timestamp persisted via appendMove below (not two separate
+          // The same timestamp stored with the move (not two separate
           // Date.now() calls), this is what lets a client reconstruct a
           // per-move clock/think-time reading without a full refetch, same
           // as it already can for a finished game's persisted moves.
           timestampMs: moveTimestampMs,
+          // Server time spent on this move before the broadcast; the mover's
+          // client subtracts it from its own round trip to see the network part.
+          serverProcessingMs: Math.round(handlerMs * 10) / 10,
         });
-
-        appendMove(gameId, {
-          san: result.san,
-          from: result.from,
-          to: result.to,
-          promotion: result.promotion,
-          fenAfter: result.fenAfter,
+        recordServerMove({
+          gameId,
           moveNumber: result.moveNumber,
-          timestampMs: moveTimestampMs,
-        }).catch((err) => console.error('appendMove failed:', err));
+          getMs: result.timings?.getMs ?? 0,
+          computeMs: result.timings?.computeMs ?? 0,
+          writeMs: result.timings?.writeMs ?? 0,
+          applyMs: emitStart - applyStart,
+          handlerMs,
+          emitMs: performance.now() - emitStart,
+          attempts: result.timings?.attempts ?? 1,
+          lagCompMs: lagCompensationMs,
+        });
 
         if (result.isGameOver) {
           await endGameAndBroadcast(io, gameId, result.result!, result.endReason!);
@@ -660,6 +723,15 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       }
     }),
   );
+
+  // Fire-and-forget report from the mover's browser: how long its own move
+  // took to come back confirmed. Only feeds the diagnostics, never game state.
+  socket.on('game:move_timing', (raw: unknown) => {
+    const parsed = moveTimingSchema.safeParse(raw);
+    if (!parsed.success) return;
+    const { gameId, moveNumber, rttMs, transport } = parsed.data;
+    recordClientMove(gameId, moveNumber, rttMs, transport ?? 'unknown');
+  });
 
   socket.on(
     'game:resign',
@@ -709,7 +781,19 @@ export function registerGameHandlers(io: Server, socket: Socket) {
     safeHandler(socket, async (raw: unknown) => {
       const parsed = gameIdSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid payload');
-      socket.to(gameRoom(parsed.data.gameId)).emit('game:draw_offered', { by: userId });
+      const { gameId } = parsed.data;
+
+      // Only a player in a live game can offer a draw (spectators in the
+      // room used to be able to), and the offer is recorded so that
+      // game:respond_draw can verify there really is one to accept.
+      const state = await getLiveState(gameId);
+      if (!state || state.status !== 'active') return emitError(socket, 'Game is not active');
+      if (state.whiteId !== userId && state.blackId !== userId) {
+        return emitError(socket, 'You are not a player in this game');
+      }
+
+      await redis.set(drawOfferKey(gameId), userId, 'EX', DRAW_OFFER_TTL_SECONDS);
+      socket.to(gameRoom(gameId)).emit('game:draw_offered', { by: userId });
     }),
   );
 
@@ -721,13 +805,25 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       if (!parsed.success) return emitError(socket, 'Invalid payload');
       const { gameId, accept } = parsed.data;
 
+      const state = await getLiveState(gameId);
+      if (!state || state.status !== 'active') return emitError(socket, 'Game is not active');
+      // Must be one of the two players. Previously any socket that knew the
+      // game id could send accept:true and end the game as a draw.
+      if (state.whiteId !== userId && state.blackId !== userId) {
+        return emitError(socket, 'You are not a player in this game');
+      }
+
+      // And there must be a pending offer made by the OTHER player.
+      const offeredBy = await redis.get(drawOfferKey(gameId));
+      if (!offeredBy || offeredBy === userId) {
+        return emitError(socket, 'There is no draw offer to respond to');
+      }
+      await redis.del(drawOfferKey(gameId));
+
       if (!accept) {
         socket.to(gameRoom(gameId)).emit('game:draw_declined', { by: userId });
         return;
       }
-
-      const state = await getLiveState(gameId);
-      if (!state) return emitError(socket, 'Game is not active');
 
       await endGameAndBroadcast(io, gameId, 'draw', 'draw_agreement');
     }),
@@ -782,7 +878,9 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       if (!parsed.success) return emitError(socket, 'Invalid payload');
       const { gameId } = parsed.data;
 
-      const game = await Game.findById(gameId).lean();
+      // Only the fields used below; a bare .lean() would also pull the whole
+      // `moves` array.
+      const game = await Game.findById(gameId).select('status cageMatchId white black').lean();
       if (!game) return emitError(socket, 'Game not found');
       if (game.status !== 'finished') return emitError(socket, 'Game has not finished yet');
       if (game.cageMatchId) return emitError(socket, 'Cage match games cannot be rematched');
@@ -814,7 +912,9 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       const pending = pendingRematches.get(gameId);
       if (!pending) return emitError(socket, 'That rematch offer has expired');
 
-      const game = await Game.findById(gameId).lean();
+      const game = await Game.findById(gameId)
+        .select('white black timeControl variant wagerTokens')
+        .lean();
       if (!game) return emitError(socket, 'Original game not found');
 
       const isWhite = game.white.toString() === userId;
@@ -913,7 +1013,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       if (!parsed.success) return emitError(socket, 'Invalid payload');
       const { gameId } = parsed.data;
 
-      const game = await Game.findById(gameId).select('cageMatchId tournamentId').lean();
+      const game = await getGameSeriesMeta(gameId);
       if (!game) return emitError(socket, 'Game not found');
       if (game.cageMatchId) return emitError(socket, 'Cage match legs can only be paused, not aborted');
       if (game.tournamentId) return emitError(socket, 'Tournament games cannot be aborted');
@@ -964,8 +1064,9 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         return emitError(socket, 'Only spectators can use this chat');
       }
 
+      let avatarGradient: string | null = null;
       try {
-        await assertNotRestricted(userId);
+        ({ avatarGradient } = await assertNotRestricted(userId));
       } catch (err) {
         return emitError(socket, err instanceof Error ? err.message : 'Chat is currently restricted for your account');
       }
@@ -977,9 +1078,9 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         return emitError(socket, "You already sent that, try saying something new");
       }
 
-      const game = await Game.findById(gameId).select('cageMatchId').lean();
-      if (!game) return emitError(socket, 'Game not found');
-      const { scope, id } = chatScopeFor(game as any);
+      const seriesMeta = await getGameSeriesMeta(gameId);
+      if (!seriesMeta) return emitError(socket, 'Game not found');
+      const { scope, id } = chatScopeFor({ _id: gameId, cageMatchId: seriesMeta.cageMatchId });
 
       let replyTo: { id: string; username: string; message: string } | null = null;
       if (replyToId) {
@@ -996,11 +1097,9 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       }
 
       const { username } = socket.data as AuthedSocketData;
-      const user = await User.findById(userId).select('avatarGradient').lean();
-
       const saved = await addChatMessage(scope, id, {
         username,
-        avatarGradient: user?.avatarGradient ?? null,
+        avatarGradient,
         message,
         replyTo,
       });
@@ -1025,8 +1124,9 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         return emitError(socket, 'Only the players in this game can use this chat');
       }
 
+      let avatarGradient: string | null = null;
       try {
-        await assertNotRestricted(userId);
+        ({ avatarGradient } = await assertNotRestricted(userId));
       } catch (err) {
         return emitError(socket, err instanceof Error ? err.message : 'Chat is currently restricted for your account');
       }
@@ -1038,9 +1138,9 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         return emitError(socket, "You already sent that, try saying something new");
       }
 
-      const game = await Game.findById(gameId).select('cageMatchId').lean();
-      if (!game) return emitError(socket, 'Game not found');
-      const { scope, id } = playerChatScopeFor(game as any);
+      const seriesMeta = await getGameSeriesMeta(gameId);
+      if (!seriesMeta) return emitError(socket, 'Game not found');
+      const { scope, id } = playerChatScopeFor({ _id: gameId, cageMatchId: seriesMeta.cageMatchId });
 
       let replyTo: { id: string; username: string; message: string } | null = null;
       if (replyToId) {
@@ -1052,11 +1152,9 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       }
 
       const { username } = socket.data as AuthedSocketData;
-      const user = await User.findById(userId).select('avatarGradient').lean();
-
       const saved = await addChatMessage(scope, id, {
         username,
-        avatarGradient: user?.avatarGradient ?? null,
+        avatarGradient,
         message,
         replyTo,
       });

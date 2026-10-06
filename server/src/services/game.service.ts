@@ -8,6 +8,9 @@ import {
   getLiveState,
   computeTimeoutWinner,
   deleteLiveState,
+  getLiveMoves,
+  deleteLiveMoves,
+  mergeLiveMoves,
   type LiveTimeControl,
 } from "./gameState.service.js";
 import {
@@ -477,7 +480,11 @@ function queryOpenGames(excludeUserId?: string) {
     .sort({ createdAt: -1 })
     .limit(50)
     .populate("white", "username avatarGradient rating")
-    .lean();
+    .lean()
+    // .exec() returns a real Promise. Without it this returns a Mongoose Query
+    // (a thenable), and every .then/.catch/await on it re-runs the query, so
+    // the cache below hit "Query was already executed" and /games/open 500'd.
+    .exec();
 }
 
 export async function listOpenGames(excludeUserId?: string) {
@@ -513,34 +520,17 @@ export async function getGameByCode(code: string) {
     .populate("tournamentId", "code name format status arenaMinutes arenaEndsAt berserkAllowed")
     .lean();
   if (!game) throw ApiError.notFound("No game found with that code");
+  // A game in progress keeps its moves and current position in Redis, not
+  // Mongo, until it ends (see finalizeGame).
+  if (game.status === "active") {
+    const id = String(game._id);
+    const [liveMoves, liveState] = await Promise.all([getLiveMoves(id), getLiveState(id)]);
+    if (liveMoves.length > 0) {
+      game.moves = mergeLiveMoves(game.moves, liveMoves) as unknown as typeof game.moves;
+    }
+    if (liveState) game.fen = liveState.fen;
+  }
   return game;
-}
-
-export async function appendMove(
-  gameId: string,
-  move: {
-    san: string;
-    from: string;
-    to: string;
-    promotion?: string;
-    fenAfter: string;
-    moveNumber: number;
-    /** Pass the exact timestamp used for the live game:move broadcast
-     *  (see gameSocket.ts) so the persisted record and what clients saw
-     *  in real time agree, instead of drifting by whatever gap sits
-     *  between the broadcast and this DB write landing. Defaults to
-     *  "now" for any other caller that doesn't have one handy. */
-    timestampMs?: number;
-  },
-): Promise<void> {
-  const { timestampMs, ...rest } = move;
-  await Game.updateOne(
-    { _id: gameId },
-    {
-      $push: { moves: { ...rest, timestampMs: timestampMs ?? Date.now() } },
-      $set: { fen: move.fenAfter },
-    },
-  );
 }
 
 export async function finalizeGame(
@@ -551,6 +541,19 @@ export async function finalizeGame(
   endReason: string | null,
   finalClock?: { whiteRemainingMs: number | null; blackRemainingMs: number | null },
 ): Promise<void> {
+  // The move list exists only in Redis until now. This one write is the
+  // game's single move-list write to Mongo.
+  const liveMoves = await getLiveMoves(gameId);
+  if (liveMoves.length > 0 && liveMoves[0].moveNumber > 1) {
+    // Redis holds only the tail of the list: a game that was under way when
+    // per-move Mongo writes were removed, or one whose Redis list was lost
+    // part-way. Mongo holds the earlier moves (written per move back then,
+    // or by a periodic snapshot), possibly overlapping the live ones. Merge
+    // by move number, which is also safe to retry.
+    const existing = await Game.findById(gameId).select('moves').lean();
+    const merged = mergeLiveMoves(existing?.moves ?? [], liveMoves);
+    await Game.updateOne({ _id: gameId }, { $set: { moves: merged } });
+  }
   const updated = await Game.findByIdAndUpdate(
     gameId,
     {
@@ -567,10 +570,17 @@ export async function finalizeGame(
         // thread one through just to satisfy the signature.
         whiteRemainingMs: finalClock?.whiteRemainingMs ?? null,
         blackRemainingMs: finalClock?.blackRemainingMs ?? null,
+        ...(liveMoves.length > 0 && liveMoves[0].moveNumber === 1 ? { moves: liveMoves } : {}),
       },
     },
     { select: 'cageMatchId' },
   ).lean();
+
+  // Only now that Mongo has them (an error above leaves the list in Redis
+  // for a retry).
+  if (liveMoves.length > 0) {
+    await deleteLiveMoves(gameId).catch((err) => console.error('deleteLiveMoves failed:', err));
+  }
 
   // Every way a game ends (socket handlers, clock timers, the 60s sweeps)
   // goes through here, so this is the one place that can guarantee the

@@ -161,9 +161,17 @@ export async function watchTournament(tournamentId: string, socketId: string): P
  *  tournamentId it just unwatched from (or null if it wasn't watching
  *  anything), so callers can re-broadcast the updated watcher list to that
  *  tournament's room without needing to track it separately themselves. */
-export async function unwatchTournament(socketId: string): Promise<string | null> {
+export async function unwatchTournament(
+  socketId: string,
+  onlyTournamentId?: string,
+): Promise<string | null> {
   const tournamentId = await redis.get(socketWatchingKey(socketId));
   if (!tournamentId) return null;
+  // The explicit client `tournament:unwatch` passes the tournament it means.
+  // If this socket has since moved on to watching a different one, that
+  // late unwatch must not wipe the newer watch. (Disconnect passes nothing
+  // and clears whatever the socket was watching.)
+  if (onlyTournamentId && tournamentId !== onlyTournamentId) return null;
   await Promise.all([
     redis.srem(tournamentWatchersKey(tournamentId), socketId),
     redis.del(socketWatchingKey(socketId)),

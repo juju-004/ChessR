@@ -464,7 +464,7 @@ function BreakCountdown({ nextRoundStartsAt }: { nextRoundStartsAt: string }) {
   const [, forceTick] = useState(0);
 
   useEffect(() => {
-    const interval = window.setInterval(() => forceTick((n) => n + 1), 500);
+    const interval = window.setInterval(() => forceTick((n) => n + 1), 1000);
     return () => window.clearInterval(interval);
   }, []);
 
@@ -1112,10 +1112,28 @@ export function TournamentDetail() {
     chatSheetOpenRef.current = chatSheetOpen;
   }, [chatSheetOpen]);
 
+  // Single-flight: a burst of tournament:update events (several games ending
+  // together) used to fire one overlapping request each, and an older
+  // response could land after a newer one. While a fetch is running, further
+  // calls just mark "fetch once more when done".
+  const refreshInFlight = useRef(false);
+  const refreshQueued = useRef(false);
   const refresh = useCallback(() => {
+    if (refreshInFlight.current) {
+      refreshQueued.current = true;
+      return;
+    }
+    refreshInFlight.current = true;
     getTournamentByCode(code)
       .then((res) => setTournament(res.tournament))
-      .catch(() => setError("Tournament not found"));
+      .catch(() => setError("Tournament not found"))
+      .finally(() => {
+        refreshInFlight.current = false;
+        if (refreshQueued.current) {
+          refreshQueued.current = false;
+          refresh();
+        }
+      });
   }, [code]);
 
   useEffect(() => {

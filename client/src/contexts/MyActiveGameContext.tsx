@@ -1,6 +1,7 @@
 import {
   createContext,
   useCallback,
+  useMemo,
   useContext,
   useEffect,
   useRef,
@@ -117,8 +118,12 @@ export function MyActiveGameProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const value = useMemo(
+    () => ({ joinCode, setActiveGame, clearActiveGame }),
+    [joinCode, setActiveGame, clearActiveGame],
+  );
   return (
-    <MyActiveGameContext.Provider value={{ joinCode, setActiveGame, clearActiveGame }}>
+    <MyActiveGameContext.Provider value={value}>
       {children}
     </MyActiveGameContext.Provider>
   );

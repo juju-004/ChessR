@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   useSettings,
   DEFAULT_SETTINGS,
@@ -109,7 +109,8 @@ export function Settings() {
     }
   }
 
-  const previewChess = new Chess();
+  const previewChess = useMemo(() => new Chess(), []);
+  const previewDests = useMemo(() => computeDests(previewChess), [previewChess]);
 
   async function handleReset() {
     if (
@@ -317,7 +318,7 @@ export function Settings() {
                 viewOnly={false}
                 turnColor="white"
                 movableColor="white"
-                dests={computeDests(previewChess)}
+                dests={previewDests}
                 onUserMove={() => {}}
                 animationEnabled={settings.pieceAnimation}
                 showCoordinates={settings.showCoordinates}

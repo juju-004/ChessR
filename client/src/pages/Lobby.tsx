@@ -39,7 +39,7 @@ import {
 } from "../components/ui/index.js";
 
 // Safety net for a dropped socket event, the list is otherwise pushed live.
-const POLL_MS = 20_000;
+const POLL_MS = 60_000;
 
 function variantLabel(v: GameVariant) {
   return v === "chess960" ? "Chess960" : "Standard";
@@ -80,7 +80,17 @@ export function Lobby() {
   // staring at a lobby while their clock starts.
   const prevMyStatus = useRef<MyActiveGame["status"] | null>(null);
 
+  // Single-flight: lobby:changed fires for every create/join/cancel by anyone
+  // and each load is two requests, so overlapping calls collapse into one
+  // running fetch plus one follow-up.
+  const loadInFlight = useRef(false);
+  const loadQueued = useRef(false);
   const load = useCallback(async () => {
+    if (loadInFlight.current) {
+      loadQueued.current = true;
+      return;
+    }
+    loadInFlight.current = true;
     try {
       const [open, mine] = await Promise.all([
         listOpenGames(),
@@ -100,17 +110,38 @@ export function Lobby() {
       prevMyStatus.current = mineNow?.status ?? null;
       setMyGame(mineNow);
       setLoadError("");
-    } catch {
+    } catch (err) {
+      // The message below is generic; the real cause (HTTP status such as
+      // 401/429/500, or a network error) is in the console and in the
+      // server's request log.
+      console.error("Lobby load failed:", err);
       setLoadError("Couldn't load the lobby. Retrying…");
       setGames((g) => g ?? []);
       setMyGame((m) => (m === undefined ? null : m));
+    } finally {
+      loadInFlight.current = false;
+      if (loadQueued.current) {
+        loadQueued.current = false;
+        void load();
+      }
     }
   }, [navigate]);
 
   useEffect(() => {
     load();
-    const id = setInterval(load, POLL_MS);
-    return () => clearInterval(id);
+    // Safety-net poll only; live updates arrive via lobby:changed. Skipped
+    // while the tab is hidden, with one catch-up fetch when it's shown again.
+    const id = setInterval(() => {
+      if (!document.hidden) load();
+    }, POLL_MS);
+    const onVisible = () => {
+      if (!document.hidden) load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [load]);
 
   useEffect(() => {

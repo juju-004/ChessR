@@ -2114,12 +2114,21 @@ async function replayFinishedPairings(tournamentId: string): Promise<number> {
   const doc = await Tournament.findById(tournamentId).select("rounds status");
   if (!doc || doc.status !== "active") return 0;
   let replayed = 0;
+  // One query for every active pairing's game instead of one per pairing
+  // (this runs for each active tournament in the 60s sweep).
+  const activeGameIds = doc.rounds.flatMap((r) =>
+    r.pairings.filter((p) => p.status === "active" && p.gameId).map((p) => p.gameId!),
+  );
+  const gameRows = activeGameIds.length
+    ? await Game.find({ _id: { $in: activeGameIds } })
+        .select("status result endReason endedAt")
+        .lean()
+    : [];
+  const gameById = new Map(gameRows.map((g) => [String(g._id), g]));
   for (const round of doc.rounds) {
     for (const [pairingIndex, pairing] of round.pairings.entries()) {
       if (pairing.status !== "active" || !pairing.gameId) continue;
-      const game = await Game.findById(pairing.gameId)
-        .select("status result endReason endedAt")
-        .lean();
+      const game = gameById.get(String(pairing.gameId));
       if (!game) {
         await advanceTournamentIfPairing(tournamentId, round.index, pairingIndex, "draw", "abandoned");
         replayed++;
@@ -3176,14 +3185,47 @@ async function withLiveRatings<
   return tournament;
 }
 
+// Every viewer refetches the whole tournament summary (an aggregate plus a
+// User.find for live ratings) on each tournament:update. One finished arena
+// game used to emit 2+ of these back to back (score saved, then the new
+// pairings), so a 100-player arena meant ~200+ summary queries per game end.
+// Updates for the same tournament inside this window now collapse into ONE
+// trailing emit, sent after everything has been saved, so clients still see
+// the final state. Terminal events (started/finished/cancelled) go out
+// immediately and cancel any pending update, since they make clients refetch
+// anyway.
+const UPDATE_COALESCE_MS = 300;
+const pendingUpdateEmits = new Map<string, ReturnType<typeof setTimeout>>();
+
 function broadcastUpdate(
   tournament: ITournament,
   event: "tournament:update" | "tournament:finished" | "tournament:started" | "tournament:cancelled" = "tournament:update",
 ) {
+  const id = String(tournament.id);
+  const code = tournament.code;
   try {
+    if (event === "tournament:update") {
+      if (pendingUpdateEmits.has(id)) return;
+      const timer = setTimeout(() => {
+        pendingUpdateEmits.delete(id);
+        try {
+          getIo().to(`tournament:${id}`).emit("tournament:update", { tournamentId: id, code });
+        } catch {
+          // Socket.IO not initialized (script/test context).
+        }
+      }, UPDATE_COALESCE_MS);
+      timer.unref?.();
+      pendingUpdateEmits.set(id, timer);
+      return;
+    }
+    const pending = pendingUpdateEmits.get(id);
+    if (pending) {
+      clearTimeout(pending);
+      pendingUpdateEmits.delete(id);
+    }
     getIo()
-      .to(`tournament:${tournament.id}`)
-      .emit(event, { tournamentId: tournament.id, code: tournament.code });
+      .to(`tournament:${id}`)
+      .emit(event, { tournamentId: id, code });
   } catch {
     // Socket.IO not initialized (script/test context), state is still
     // correctly persisted; clients pick it up on next fetch/reconnect.

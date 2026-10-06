@@ -159,6 +159,20 @@ export function broadcastWatchers(io: Server, tournamentId: string): Promise<voi
 export function registerTournamentHandlers(io: Server, socket: Socket) {
   const { userId } = socket.data as AuthedSocketData;
 
+  // tournament:watch / tournament:unwatch for one socket must be applied in
+  // the order the client sent them. Socket.IO runs async handlers
+  // concurrently, and the client fires unwatch immediately followed by
+  // watch whenever the detail page remounts (React StrictMode in dev, a
+  // quick tab hide/show). Interleaved, the late unwatch could delete the
+  // fresh watch from Redis, so the player silently vanished from the
+  // pairing pool and was never paired until the next reload.
+  let presenceQueue: Promise<unknown> = Promise.resolve();
+  const inPresenceOrder = (fn: () => Promise<void>): Promise<void> => {
+    const run = presenceQueue.then(fn, fn);
+    presenceQueue = run.catch(() => undefined);
+    return run;
+  };
+
   socket.on(
     'tournament:create',
     safeHandler(socket, async (raw: unknown) => {
@@ -222,9 +236,12 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
     safeHandler(socket, async (raw: unknown) => {
       const parsed = idSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid payload');
-      await socket.join(tournamentRoom(parsed.data.tournamentId));
-      await watchTournament(parsed.data.tournamentId, socket.id);
-      await broadcastWatchers(io, parsed.data.tournamentId);
+      const watchId = parsed.data.tournamentId;
+      await inPresenceOrder(async () => {
+        await socket.join(tournamentRoom(watchId));
+        await watchTournament(watchId, socket.id);
+        await broadcastWatchers(io, watchId);
+      });
       // Immediate re-check rather than waiting for some unrelated pairing
       // event elsewhere to happen to pick this player up now that they're
       // actually looking at the page, see retryArenaPairingsForUser.
@@ -251,9 +268,12 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
     safeHandler(socket, async (raw: unknown) => {
       const parsed = idSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid payload');
-      await socket.leave(tournamentRoom(parsed.data.tournamentId));
-      await unwatchTournament(socket.id);
-      await broadcastWatchers(io, parsed.data.tournamentId);
+      const unwatchId = parsed.data.tournamentId;
+      await inPresenceOrder(async () => {
+        await socket.leave(tournamentRoom(unwatchId));
+        await unwatchTournament(socket.id, unwatchId);
+        await broadcastWatchers(io, unwatchId);
+      });
     }),
   );
 

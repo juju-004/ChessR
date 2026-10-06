@@ -18,12 +18,15 @@ import { ApiError } from '../utils/ApiError.js';
  *  from a central request-level middleware, since unlike the old
  *  all-or-nothing lockout this restriction is scoped to particular
  *  actions, not the whole authenticated surface. */
-export async function assertNotRestricted(userId: string): Promise<void> {
-  const user = await User.findById(userId).select('suspendedUntil').lean();
+export async function assertNotRestricted(userId: string): Promise<{ avatarGradient: string | null }> {
+  // avatarGradient rides along on the same read so chat sending doesn't
+  // need a second User query for it.
+  const user = await User.findById(userId).select('suspendedUntil avatarGradient').lean();
   if (user?.suspendedUntil && user.suspendedUntil.getTime() > Date.now()) {
     throw ApiError.forbidden(
       `You're temporarily restricted from playing and chatting until ${user.suspendedUntil.toLocaleString()}.`,
     );
   }
+  return { avatarGradient: user?.avatarGradient ?? null };
 }
 
