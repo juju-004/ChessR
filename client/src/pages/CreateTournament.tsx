@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Trophy } from "lucide-react";
 import {
   FORMAT_LABEL,
@@ -10,6 +10,7 @@ import {
   type TournamentPrizeTier,
 } from "../api/tournaments.js";
 import { useSocket } from "../contexts/SocketContext.js";
+import { getTeam } from "../api/teams.js";
 import { useRakePercent } from "../hooks/useRakePercent.js";
 import { HelpTip } from "../components/HelpTip.js";
 import { PrizePoolEditor } from "../components/tournaments/PrizePoolEditor.js";
@@ -18,6 +19,7 @@ import {
   Card,
   CardContent,
   Input,
+  EmojiInput,
   Textarea,
   Select,
   Button,
@@ -49,6 +51,17 @@ export function CreateTournament() {
   const socket = useSocket();
   const navigate = useNavigate();
   const rakePercent = useRakePercent();
+  // /tournaments/new?team=<id> creates an in-house tournament for a team
+  // the caller owns: only its members can join, and it's never listed
+  // publicly. The server re-checks ownership, this is just the UI side.
+  const teamId = useSearchParams()[0].get("team");
+  const [teamName, setTeamName] = useState<string | null>(null);
+  useEffect(() => {
+    if (!teamId) return;
+    getTeam(teamId)
+      .then((r) => setTeamName(r.team.name))
+      .catch(() => setTeamName(null));
+  }, [teamId]);
 
   const [status, setStatus] = useState<{
     message: string;
@@ -166,7 +179,8 @@ export function CreateTournament() {
       incrementSeconds: preset.incrementSeconds,
       berserkAllowed: format === "arena" && berserkAllowed,
       chatEnabled,
-      isPublic,
+      isPublic: teamId ? false : isPublic,
+      ...(teamId ? { teamId } : {}),
       organizerOnly,
       thirdPlaceMatch: format === "normal" ? thirdPlaceMatch : false,
       prizeSchedule: prizeTiers,
@@ -182,16 +196,25 @@ export function CreateTournament() {
   }
 
   return (
-    <Page title="Create a tournament" back="/tournaments">
+    <Page
+      title={teamId ? "Create an in-house tournament" : "Create a tournament"}
+      back={teamId ? `/teams/${teamId}` : "/tournaments"}
+    >
       <div className="mx-auto space-y-4">
+        {teamId && (
+          <p className="rounded-xl bg-(--primary)/10 px-3 py-2 text-sm text-base-content/80">
+            In-house tournament for <strong>{teamName ?? "your team"}</strong>.
+            Only team members can join, and it won't appear in the public list.
+          </p>
+        )}
         <Card variant="solid">
           <CardContent className="space-y-5">
             {/* Basics */}
             <section className="space-y-3">
-              <Input
+              <EmojiInput
                 label="Tournament name"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={setName}
                 placeholder="Friday Night Blitz"
                 maxLength={MAX_EVENT_NAME_LENGTH}
               />
@@ -366,12 +389,14 @@ export function CreateTournament() {
               />
             </section>
             <section className="space-y-3 border-t border-base-300 pt-4">
-              <Switch
-                checked={isPublic}
-                onChange={setIsPublic}
-                label="List publicly"
-                description="Visible in the Open tournaments list for anyone to find."
-              />
+              {!teamId && (
+                <Switch
+                  checked={isPublic}
+                  onChange={setIsPublic}
+                  label="List publicly"
+                  description="Visible in the Open tournaments list for anyone to find."
+                />
+              )}
               {format === "arena" && (
                 <Switch
                   checked={berserkAllowed}

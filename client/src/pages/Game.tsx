@@ -13,12 +13,6 @@ import { ApiRequestError } from "../api/http.js";
 import { serverNow } from "../lib/clockSync.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import { useSocket } from "../contexts/SocketContext.js";
-import {
-  markMoveSent,
-  clearMoveSent,
-  takeMoveRtt,
-  reportMoveTiming,
-} from "../moveTiming.js";
 import { useNotify } from "../contexts/NotificationContext.js";
 import { useSettings } from "../contexts/SettingsContext.js";
 import { useConfirm } from "../contexts/ConfirmContext.js";
@@ -918,17 +912,6 @@ export function Game() {
       confirmedLastMoveRef.current = [payload.from, payload.to];
       pendingOptimisticMoveRef.current = false;
       optimisticFenRef.current = null;
-      // Only non-null for the confirmation of a move this player just sent.
-      const moveRtt = takeMoveRtt();
-      if (moveRtt !== null && socket) {
-        reportMoveTiming(
-          socket,
-          payload.gameId,
-          payload.moveNumber,
-          moveRtt,
-          payload.serverProcessingMs,
-        );
-      }
       setWhiteRemainingMs(payload.whiteRemainingMs);
       setBlackRemainingMs(payload.blackRemainingMs);
       setTurnStartedAtMs(payload.turnStartedAtMs);
@@ -1033,7 +1016,6 @@ export function Game() {
 
     function onError(payload: { message: string }) {
       setMoveError(payload.message);
-      clearMoveSent();
       // Only revert if a move is actually the thing awaiting confirmation
       // right now — see pendingOptimisticMoveRef's doc comment, this is a
       // shared error channel for more than just moves.
@@ -1290,9 +1272,6 @@ export function Game() {
     dest: string,
     promotion?: "q" | "r" | "b" | "n",
   ) {
-    // Start of the send -> confirmation measurement (see moveTiming.ts);
-    // every caller emits game:move right after this.
-    markMoveSent();
     try {
       const localChess = new Chess(fen);
       // Chess960 castling can't go through chess.js's own .move() at all

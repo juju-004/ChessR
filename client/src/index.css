@@ -361,6 +361,31 @@ body {
   flex: 1 1 0%;
 }
 
+/* Site-nav dock: Dashboard is pinned at the left, the other items live in a
+   horizontally scrollable strip so extra tabs (Teams etc.) still fit on small
+   phones. Only the strip scrolls, the pinned item and the pill stay put. */
+.docker-item-pinned {
+  flex: 0 0 auto;
+  min-width: 3.4rem;
+}
+.docker-scroll {
+  display: flex;
+  flex: 1 1 0%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.docker-scroll::-webkit-scrollbar {
+  display: none;
+}
+.docker-item-scroll {
+  flex: 1 0 auto;
+  min-width: 3.6rem;
+}
+
 .game .docker-item {
   opacity: 1;
   padding: 0.7rem 0.25rem;

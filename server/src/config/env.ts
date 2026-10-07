@@ -27,10 +27,6 @@ const envSchema = z.object({
   // computeRake() helper in wallet.service.ts, so this one knob controls
   // all three. A whole-number percent, 0-100 (0 = rake disabled entirely).
   // See wallet.service.ts's computeRake for the actual math.
-  // Move-latency diagnostics, see services/moveTiming.service.ts.
-  MOVE_TIMING_LOG: z.enum(['off', 'summary', 'all']).default('summary'),
-  MOVE_TIMING_SLOW_MS: z.coerce.number().min(1).default(150),
-
   RAKE_PERCENT: z.coerce.number().min(0).max(100).default(10),
 
   // Fixed credentials for the single expert-review admin account (see

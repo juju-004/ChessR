@@ -96,12 +96,6 @@ export const staggerItem: Variants = fadeInUp;
 
 // --- Modal / overlay ------------------------------------------------------------
 
-export const modalBackdrop: Variants = {
-  hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: tweenBase },
-  exit: { opacity: 0, transition: tweenFast },
-};
-
 // A tween, not a spring, springSnappy settles in ~250-300ms even though
 // it "looks" fast because of the initial overshoot; a modal/popover
 // opening or closing is a frequent, high-traffic interaction where that
@@ -109,6 +103,23 @@ export const modalBackdrop: Variants = {
 // instead.
 export const overlayIn: Transition = { duration: 0.14, ease: EASE_OUT };
 export const overlayOut: Transition = { duration: 0.09, ease: EASE_OUT };
+
+// The backdrop uses the exact same durations as the dialog (overlayIn/
+// overlayOut), not the slower general-purpose tweenBase/tweenFast. With
+// different durations the dialog finished fading out first and the dim layer
+// then lingered a few frames on its own before vanishing, which read as a
+// blink on close.
+export const modalBackdrop: Variants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: overlayIn },
+  exit: { opacity: 0, transition: overlayOut },
+};
+
+// Chat drawer/bottom sheet only. Shorter than overlayIn/overlayOut (which
+// modals and popovers share) because the sheet travels a long distance
+// (full height / full width), so any extra duration reads as sluggish.
+export const sheetIn: Transition = { duration: 0.12, ease: [0.32, 0.72, 0, 1] };
+export const sheetOut: Transition = { duration: 0.08, ease: [0.4, 0, 1, 1] };
 
 export const modalContent: Variants = {
   hidden: { opacity: 0, scale: 0.96, y: 6 },

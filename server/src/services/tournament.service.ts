@@ -12,6 +12,7 @@ import {
 } from "../models/Tournament.js";
 import { Game } from "../models/Game.js";
 import { User } from "../models/User.js";
+import { Team } from "../models/Team.js";
 import { ApiError } from "../utils/ApiError.js";
 import { withLock } from "../utils/distributedLock.js";
 import { assertNotRestricted } from "./suspension.service.js";
@@ -435,6 +436,9 @@ export interface CreateTournamentInput {
   // Show up in the public "Open tournaments" browse list? Defaults to false
   // (link/code-only) if omitted.
   isPublic?: boolean;
+  // Makes this an in-house tournament for the given team (creator must own
+  // it). Forces isPublic off. Immutable after creation.
+  teamId?: string | null;
   // If true, the creator runs the event without playing in it, they're
   // never added to `players` and never charged regFeeTokens (they still
   // fund the prize pool, if any, same as any other creator). Defaults to
@@ -558,6 +562,16 @@ export async function createTournament(
     throw ApiError.badRequest(
       "Give your tournament a name (at least 3 characters)",
     );
+  let teamId: mongoose.Types.ObjectId | null = null;
+  if (input.teamId) {
+    if (!mongoose.isValidObjectId(input.teamId)) throw ApiError.badRequest("Invalid team");
+    const team = await Team.findById(input.teamId).select("owner").lean();
+    if (!team) throw ApiError.notFound("Team not found");
+    if (team.owner.toString() !== creatorId) {
+      throw ApiError.forbidden("Only the team owner can organise in-house tournaments");
+    }
+    teamId = team._id;
+  }
   if (
     input.baseMinutes !== null &&
     (input.baseMinutes < 1 || input.baseMinutes > 180)
@@ -688,7 +702,9 @@ export async function createTournament(
     // to have hidden/disabled its own toggle correctly.
     berserkAllowed: input.format === "arena" ? input.berserkAllowed : false,
     chatEnabled: input.chatEnabled ?? false,
-    isPublic: input.isPublic ?? false,
+    // In-house tournaments are never listed publicly.
+    isPublic: teamId ? false : (input.isPublic ?? false),
+    team: teamId,
     thirdPlaceMatch: input.format === "normal" ? (input.thirdPlaceMatch ?? false) : false,
     prizePoolCurrency,
     prizeSchedule,
@@ -774,6 +790,12 @@ export async function joinTournament(
     throw ApiError.badRequest("You've already joined this tournament");
   if (tournament.players.length >= MAX_TOURNAMENT_PLAYERS)
     throw ApiError.conflict("This tournament is full");
+  if (tournament.team) {
+    const isTeamMember = await Team.exists({ _id: tournament.team, "members.user": userId });
+    if (!isTeamMember) {
+      throw ApiError.forbidden("This is an in-house tournament, only team members can join");
+    }
+  }
   if (tournament.passwordHash) {
     const matches = !!password && (await bcrypt.compare(password, tournament.passwordHash));
     if (!matches) throw ApiError.forbidden("Incorrect tournament password");
@@ -1138,7 +1160,7 @@ export async function updateTournament(
   tournament.berserkAllowed =
     format === "arena" ? (input.berserkAllowed ?? tournament.berserkAllowed) : false;
   tournament.chatEnabled = input.chatEnabled ?? tournament.chatEnabled;
-  tournament.isPublic = input.isPublic ?? tournament.isPublic;
+  tournament.isPublic = tournament.team ? false : (input.isPublic ?? tournament.isPublic);
   tournament.prizeSchedule = prizeSchedule;
   tournament.prizePoolTokens = committedPrizePoolTokens;
   tournament.regFeeTokens = regFeeTokens;
@@ -3700,6 +3722,30 @@ export async function listTournaments(
   query.status = status ?? { $in: ["pending", "active"] };
   const tournaments = await findTournamentCards(query, { limit: 50 });
   return tournaments.map(withEmptyRounds);
+}
+
+/** A team's in-house tournaments. 'upcoming' = pending + active (soonest
+ *  start first isn't needed, newest first matches every other list), and
+ *  'finished' is paged like the personal Finished list. */
+export async function listTeamTournaments(
+  teamId: string,
+  opts: { scope: "upcoming" | "finished"; page?: number; limit?: number },
+) {
+  const team = new mongoose.Types.ObjectId(teamId);
+  if (opts.scope === "upcoming") {
+    const tournaments = await findTournamentCards(
+      { team, status: { $in: ["pending", "active"] } },
+      { limit: 50 },
+    );
+    return { tournaments: tournaments.map(withEmptyRounds) };
+  }
+  const limit = opts.limit ?? FINISHED_TOURNAMENTS_PAGE_SIZE;
+  const filter = { team, status: "finished" };
+  const total = await Tournament.countDocuments(filter);
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const page = Math.min(Math.max(1, opts.page ?? 1), totalPages);
+  const tournaments = await findTournamentCards(filter, { skip: (page - 1) * limit, limit });
+  return { tournaments: tournaments.map(withEmptyRounds), page, limit, total, totalPages };
 }
 
 /** Page size for the Finished tournaments list. Finished tournaments pile up

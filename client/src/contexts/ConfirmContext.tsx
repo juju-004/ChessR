@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from "react";
 import { ConfirmModal } from "../components/ui/ConfirmModal.js";
 
 export interface ConfirmOptions {
@@ -37,6 +37,12 @@ const ConfirmContext = createContext<ConfirmFn | null>(null);
  */
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<PendingConfirm | null>(null);
+  // Keeps showing the last dialog's text while the modal fades out. Without
+  // this the title/description went blank the instant `pending` cleared, so
+  // the dialog visibly collapsed and jumped during its exit animation.
+  const lastShown = useRef<ConfirmOptions | null>(null);
+  if (pending) lastShown.current = pending;
+  const shown = pending ?? lastShown.current;
 
   const confirm = useCallback<ConfirmFn>((options) => {
     return new Promise<boolean>((resolve) => {
@@ -56,11 +62,11 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
         open={!!pending}
         onClose={() => settle(false)}
         onConfirm={() => settle(true)}
-        title={pending?.title ?? ""}
-        description={pending?.description}
-        confirmLabel={pending?.confirmLabel}
-        cancelLabel={pending?.cancelLabel}
-        variant={pending?.variant}
+        title={shown?.title ?? ""}
+        description={shown?.description}
+        confirmLabel={shown?.confirmLabel}
+        cancelLabel={shown?.cancelLabel}
+        variant={shown?.variant}
       />
     </ConfirmContext.Provider>
   );

@@ -1,4 +1,11 @@
-import { memo, useRef, useState, type FormEvent } from "react";
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import {
   motion,
   AnimatePresence,
@@ -7,7 +14,7 @@ import {
 } from "framer-motion";
 import { CornerUpLeft, MessageSquare, Send, X } from "lucide-react";
 import { Avatar, Button } from "../ui/index.js";
-import { overlayIn, overlayOut } from "../../lib/motion.js";
+import { sheetIn, sheetOut } from "../../lib/motion.js";
 import { useIsDesktop } from "../../hooks/useIsDesktop.js";
 import type { ChatMessage } from "../../lib/chatTypes.js";
 import { cn } from "@/lib/cn.js";
@@ -133,7 +140,10 @@ const ChatBubble = memo(function ChatBubble({
  *  below) redo that work every tick too).
  *  Splitting things this way means typing, and the clock ticking, no
  *  longer touch this at all, only a genuinely new message does. */
-const MessageList = memo(function MessageList({
+const INITIAL_VISIBLE = 30;
+const PAGE_SIZE = 50;
+
+export const MessageList = memo(function MessageList({
   messages,
   myUsername,
   onReply,
@@ -144,18 +154,69 @@ const MessageList = memo(function MessageList({
   myUsername?: string | null;
   onReply: (message: ChatMessage) => void;
 }) {
+  // Only the newest INITIAL_VISIBLE messages mount when the drawer opens.
+  // The store keeps up to 200, and every bubble carries its own drag motion
+  // values, so mounting all of them in the same frame the slide-in animation
+  // starts was the main source of open-time jank on phones. Older messages
+  // are one tap away.
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const stickToBottom = useRef(true);
+  const prevHeight = useRef<number | null>(null);
+
+  const start = Math.max(0, messages.length - visibleCount);
+  const visible = start === 0 ? messages : messages.slice(start);
+
+  // Land on the newest message when opened, and follow new ones as long as
+  // the reader hasn't scrolled up. After "Show earlier", keep the reader's
+  // place instead of jumping.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (prevHeight.current !== null) {
+      el.scrollTop += el.scrollHeight - prevHeight.current;
+      prevHeight.current = null;
+    } else if (stickToBottom.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [visible.length, messages.length]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      stickToBottom.current =
+        el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
   return (
     <div
+      ref={scrollRef}
       className={cn(
-        "mb-2 flex flex-1 flex-col gap-1.5 overflow-y-auto rounded-xl bg-base-100/60 p-2.5 ",
+        "mb-2 flex flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain rounded-xl bg-base-100/60 p-2.5 ",
         isModal ? "min-h-[40vh]" : "min-h-0",
       )}
     >
       {messages.length === 0 && (
         <p className="text-sm text-base-content/50">No messages yet.</p>
       )}
-      {messages.map((m, i) => {
-        const prev = messages[i - 1];
+      {start > 0 && (
+        <button
+          type="button"
+          onClick={() => {
+            prevHeight.current = scrollRef.current?.scrollHeight ?? null;
+            setVisibleCount((c) => c + PAGE_SIZE);
+          }}
+          className="mx-auto shrink-0 rounded-full bg-base-300/60 px-3 py-1 text-xs text-base-content/60 hover:text-base-content"
+        >
+          Show earlier messages
+        </button>
+      )}
+      {visible.map((m, i) => {
+        const prev = i === 0 ? messages[start - 1] : visible[i - 1];
         const showMeta =
           !prev || prev.username !== m.username || m.at - prev.at > 5 * 60_000;
         return (
@@ -174,7 +235,7 @@ const MessageList = memo(function MessageList({
 
 /** Input row, its own component so keystrokes only ever re-render this,
  *  never the message list or the panel chrome around it. */
-const ChatComposer = memo(function ChatComposer({
+export const ChatComposer = memo(function ChatComposer({
   replyingTo,
   onCancelReply,
   onSend,
@@ -304,8 +365,8 @@ function ChatDrawerImpl({
           className="fixed inset-0 z-50 bg-black/60"
           onClick={onClose}
           initial={{ opacity: 0 }}
-          animate={{ opacity: 1, transition: overlayIn }}
-          exit={{ opacity: 0, transition: overlayOut }}
+          animate={{ opacity: 1, transition: sheetIn }}
+          exit={{ opacity: 0, transition: sheetOut }}
         >
           {/* Bottom sheet, phone only. elevated-flat, not elevated-strong:
               no box-shadow at all here (this panel repaints on every
@@ -316,14 +377,14 @@ function ChatDrawerImpl({
               shadow. */}
           {!isDesktop && (
             <motion.div
-              className="elevated-flat absolute inset-x-0 bottom-0 flex max-h-[70vh] flex-col rounded-t-2xl border-t border-base-300/60 p-4"
+              className="elevated-flat absolute inset-x-0 bottom-0 flex max-h-[70vh] flex-col will-change-transform rounded-t-2xl border-t border-base-300/60 p-4"
               style={{
                 paddingBottom: "calc(1rem + env(safe-area-inset-bottom))",
               }}
               onClick={(e) => e.stopPropagation()}
               initial={{ y: "100%" }}
-              animate={{ y: 0, transition: overlayIn }}
-              exit={{ y: "100%", transition: overlayOut }}
+              animate={{ y: 0, transition: sheetIn }}
+              exit={{ y: "100%", transition: sheetOut }}
             >
               {header}
               {body}
@@ -335,14 +396,14 @@ function ChatDrawerImpl({
               box-shadow. */}
           {isDesktop && (
             <motion.div
-              className="elevated-flat absolute inset-y-0 right-0 flex w-full max-w-sm flex-col border-l border-base-300/60 p-4"
+              className="elevated-flat absolute inset-y-0 right-0 flex w-full max-w-sm flex-col will-change-transform border-l border-base-300/60 p-4"
               style={{
                 paddingTop: "calc(1rem + env(safe-area-inset-top))",
               }}
               onClick={(e) => e.stopPropagation()}
               initial={{ x: "100%" }}
-              animate={{ x: 0, transition: overlayIn }}
-              exit={{ x: "100%", transition: overlayOut }}
+              animate={{ x: 0, transition: sheetIn }}
+              exit={{ x: "100%", transition: sheetOut }}
             >
               {header}
               {body}

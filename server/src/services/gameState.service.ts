@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { performance } from 'node:perf_hooks';
 import { Chess } from 'chess.js';
 import { redis } from '../config/redis.js';
 import { Game, type IMove } from '../models/Game.js';
@@ -152,19 +151,11 @@ export async function initLiveState(
 // writeStateIfUnchanged. (WeakMap: entries vanish with the state objects.)
 const stateHashes = new WeakMap<object, string>();
 
-// How long reading each state object took (Redis GET + parse), and when that
-// finished, so finalizeMove can report per-stage move timings (see
-// services/moveTiming.service.ts). WeakMap: entries vanish with the state.
-const stateReadTimings = new WeakMap<object, { getMs: number; readDoneAt: number }>();
-
 export async function getLiveState(gameId: string): Promise<LiveGameState | null> {
-  const t0 = performance.now();
   const raw = await redis.get(stateKey(gameId));
   if (!raw) return null;
   const state = JSON.parse(raw) as LiveGameState;
   stateHashes.set(state, createHash('sha1').update(raw).digest('hex'));
-  const t1 = performance.now();
-  stateReadTimings.set(state, { getMs: t1 - t0, readDoneAt: t1 });
   return state;
 }
 
@@ -317,8 +308,6 @@ export interface MoveResult {
    *  does, handing the side to move a free Redis-latency's worth of time
    *  on every single move. */
   turnStartedAtMs: number;
-  /** Per-stage server timings for this move, for move-latency diagnostics. */
-  timings?: { getMs: number; computeMs: number; writeMs: number; attempts: number };
 }
 
 /** Shared tail-end for both the normal-move and castling paths: clock
@@ -417,10 +406,7 @@ async function finalizeMove(
     moveNumber: newState.moveCount,
     timestampMs: moveTimestampMs,
   };
-  const writeStart = performance.now();
   await writeStateIfUnchanged(gameId, state, newState, liveMove);
-  const writeMs = performance.now() - writeStart;
-  const read = stateReadTimings.get(state);
   // Not awaited: the move must not wait on Mongo. A game-ending move is
   // skipped, finalizeGame is about to write the full list anyway.
   if (!isGameOver && newState.moveCount % SNAPSHOT_EVERY_MOVES === 0) {
@@ -440,12 +426,6 @@ async function finalizeMove(
     whiteRemainingMs,
     blackRemainingMs,
     turnStartedAtMs: newState.turnStartedAtMs,
-    timings: {
-      getMs: read?.getMs ?? 0,
-      computeMs: read ? Math.max(0, writeStart - read.readDoneAt) : 0,
-      writeMs,
-      attempts: 1, // applyMove overwrites this when it had to retry
-    },
   };
 }
 
@@ -468,9 +448,7 @@ export async function applyMove(
   // -> timeout) or the move simply goes through on the new state.
   for (let attempt = 0; ; attempt++) {
     try {
-      const result = await applyMoveOnce(gameId, userId, move, lagCompensationMs, moveTimestampMs);
-      if (result.timings) result.timings.attempts = attempt + 1;
-      return result;
+      return await applyMoveOnce(gameId, userId, move, lagCompensationMs, moveTimestampMs);
     } catch (err) {
       if (err instanceof LiveStateConflictError && attempt < 2) continue;
       if (err instanceof LiveStateConflictError) {

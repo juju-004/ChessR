@@ -1,8 +1,16 @@
-import { type ReactNode, memo } from "react";
+import { type ReactNode, memo, useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/cn.js";
 import { modalBackdrop, modalContent } from "@/lib/motion.js";
+
+// How many Modals are open right now. A modal that opens on top of another
+// (e.g. a confirm dialog over a form) skips its own dim layer: stacking two
+// bg-black/60 backdrops made the page visibly darker while both were open
+// and then lightened it again as the top one faded out, which is the
+// "backdrop blink" on close. The bottom modal's backdrop already covers the
+// page, so the nested one doesn't need another.
+let openModalCount = 0;
 
 export interface ModalProps {
   open: boolean;
@@ -37,6 +45,16 @@ export const Modal = memo(function Modal({
   children,
   className,
 }: ModalProps) {
+  const [nested, setNested] = useState(false);
+  useLayoutEffect(() => {
+    if (!open) return;
+    setNested(openModalCount > 0);
+    openModalCount++;
+    return () => {
+      openModalCount--;
+    };
+  }, [open]);
+
   const header = title && (
     <div className="mb-5 flex w-full items-center gap-3 pt-2 px-2 pb-3">
       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -61,7 +79,10 @@ export const Modal = memo(function Modal({
             exit="exit"
             variants={modalBackdrop}
             onClick={onClose}
-            className="absolute inset-0 bg-black/60"
+            className={cn(
+              "absolute inset-0 will-change-[opacity]",
+              nested ? "bg-transparent" : "bg-black/60",
+            )}
           />
           <motion.div
             initial="hidden"

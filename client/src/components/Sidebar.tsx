@@ -1,9 +1,10 @@
-import { memo } from "react";
+import { memo, useEffect, useRef } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   LayoutDashboard,
   Users,
+  UsersRound,
   Swords,
   Trophy,
   Settings,
@@ -26,6 +27,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/players", label: "Players", icon: Users },
+  { to: "/teams", label: "Teams", icon: UsersRound },
   { to: "/cage", label: "Cage", icon: Swords },
   { to: "/tournaments", label: "Tournaments", icon: Trophy },
   { to: "/settings", label: "Settings", icon: Settings },
@@ -83,36 +85,44 @@ export function MobileDock() {
   const { isAuthed } = useAuth();
   const { pathname } = useLocation();
   const navigate = useNavigate();
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  // Keep the active tab visible inside the scrolling strip (horizontal only).
+  useEffect(() => {
+    const el = scrollerRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
+    el?.scrollIntoView({ inline: "nearest", block: "nearest" });
+  }, [pathname]);
   if (!isAuthed) return null;
   if (pathname.startsWith("/game/")) return null;
   // Same hand-over for a single tournament's page (TournamentActionBarMobile),
   // but not the list or the create form, which keep the normal nav.
   if (/^\/tournaments\/(?!new$)[^/]+\/?$/.test(pathname)) return null;
 
+  const renderItem = (item: NavItem, extra: string) => {
+    const isActive = item.end ? pathname === item.to : pathname.startsWith(item.to);
+    const Icon = item.icon;
+    return (
+      <button
+        key={item.to}
+        type="button"
+        onClick={() => navigate(item.to)}
+        aria-label={item.label}
+        aria-current={isActive ? "page" : undefined}
+        className={cn("docker-item", extra, isActive && "docker-item-active")}
+      >
+        <Icon className="h-5 w-5" strokeWidth={isActive ? 2.5 : 2} />
+        <span>{item.label}</span>
+      </button>
+    );
+  };
+
   return (
     <nav aria-label="Primary" className="docker flex md:hidden">
-      {NAV_ITEMS.map((item) => {
-        const isActive = item.end
-          ? pathname === item.to
-          : pathname.startsWith(item.to);
-        const Icon = item.icon;
-        return (
-          <button
-            key={item.to}
-            type="button"
-            onClick={() => navigate(item.to)}
-            aria-label={item.label}
-            aria-current={isActive ? "page" : undefined}
-            className={cn(
-              "docker-item docker-item-grow",
-              isActive && "docker-item-active",
-            )}
-          >
-            <Icon className="h-5 w-5" strokeWidth={isActive ? 2.5 : 2} />
-            <span>{item.label}</span>
-          </button>
-        );
-      })}
+      {/* Dashboard is pinned: it sits outside the scroller so it never moves. */}
+      {renderItem(NAV_ITEMS[0], "docker-item-pinned")}
+      {/* Everything else scrolls sideways when the row is too wide for the phone. */}
+      <div ref={scrollerRef} className="docker-scroll">
+        {NAV_ITEMS.slice(1).map((item) => renderItem(item, "docker-item-scroll"))}
+      </div>
     </nav>
   );
 }

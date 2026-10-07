@@ -1,5 +1,4 @@
 import type { Server, Socket } from 'socket.io';
-import { performance } from 'node:perf_hooks';
 import { z } from 'zod';
 import mongoose from 'mongoose';
 import { Game } from '../models/Game.js';
@@ -51,7 +50,6 @@ import {
   clearFirstMoveTimer,
   setFirstMoveTimeoutHandler,
 } from '../services/clock.service.js';
-import { recordServerMove, recordClientMove } from '../services/moveTiming.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
 const gameRoom = (gameId: string) => `game:${gameId}`;
@@ -96,13 +94,6 @@ const moveSchema = z.object({
   promotion: z.enum(['q', 'r', 'b', 'n']).optional(),
 });
 const gameIdSchema = z.object({ gameId: z.string().refine(mongoose.isValidObjectId) });
-// A player's own measurement of send -> confirmation, see moveTiming.service.ts.
-const moveTimingSchema = z.object({
-  gameId: z.string().refine(mongoose.isValidObjectId),
-  moveNumber: z.number().int().min(1).max(10_000),
-  rttMs: z.number().min(0).max(60_000),
-  transport: z.string().max(20).optional(),
-});
 const claimSchema = z.object({
   gameId: z.string().refine(mongoose.isValidObjectId),
   claim: z.enum(['win', 'draw']),
@@ -653,7 +644,6 @@ export function registerGameHandlers(io: Server, socket: Socket) {
   socket.on(
     'game:move',
     safeHandler(socket, async (raw: unknown) => {
-      const handlerStart = performance.now();
       const parsed = moveSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid move payload');
       if (isMoveRateLimited(socket.id)) return emitError(socket, 'Please slow down');
@@ -662,10 +652,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       try {
         const lagCompensationMs = getLagCompensationMs(socket.id);
         const moveTimestampMs = Date.now();
-        const applyStart = performance.now();
         const result = await applyMove(gameId, userId, { from, to, promotion }, lagCompensationMs, moveTimestampMs);
-        const emitStart = performance.now();
-        const handlerMs = emitStart - handlerStart;
 
         // The move was already stored (in Redis, atomically with the new
         // position) by applyMove. Nothing is written to Mongo per move; the
@@ -688,21 +675,6 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           // per-move clock/think-time reading without a full refetch, same
           // as it already can for a finished game's persisted moves.
           timestampMs: moveTimestampMs,
-          // Server time spent on this move before the broadcast; the mover's
-          // client subtracts it from its own round trip to see the network part.
-          serverProcessingMs: Math.round(handlerMs * 10) / 10,
-        });
-        recordServerMove({
-          gameId,
-          moveNumber: result.moveNumber,
-          getMs: result.timings?.getMs ?? 0,
-          computeMs: result.timings?.computeMs ?? 0,
-          writeMs: result.timings?.writeMs ?? 0,
-          applyMs: emitStart - applyStart,
-          handlerMs,
-          emitMs: performance.now() - emitStart,
-          attempts: result.timings?.attempts ?? 1,
-          lagCompMs: lagCompensationMs,
         });
 
         if (result.isGameOver) {
@@ -723,15 +695,6 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       }
     }),
   );
-
-  // Fire-and-forget report from the mover's browser: how long its own move
-  // took to come back confirmed. Only feeds the diagnostics, never game state.
-  socket.on('game:move_timing', (raw: unknown) => {
-    const parsed = moveTimingSchema.safeParse(raw);
-    if (!parsed.success) return;
-    const { gameId, moveNumber, rttMs, transport } = parsed.data;
-    recordClientMove(gameId, moveNumber, rttMs, transport ?? 'unknown');
-  });
 
   socket.on(
     'game:resign',

@@ -33,6 +33,11 @@ export interface IUser extends Document {
   emailVerificationExpires?: Date;
   tokenBalance: number;
   friends: Types.ObjectId[];
+  /** Teams this user OWNS (mirror of Team.owner, see team.controller.ts).
+   *  Kept on the user so the 3-owned-teams cap can be enforced atomically in
+   *  a single conditional update instead of a racy count-then-insert.
+   *  Membership in other people's teams is unlimited. */
+  ownedTeams: Types.ObjectId[];
   avatarUrl?: string;
   /** Preset id from the client's avatarGradients.ts list, validated against
    *  that same allow-list server-side (see user.controller.ts) so this can
@@ -134,6 +139,7 @@ const userSchema = new Schema<IUser>(
     emailVerificationExpires: { type: Date, select: false },
     tokenBalance: { type: Number, default: 0, min: 0 },
     friends: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+    ownedTeams: { type: [{ type: Schema.Types.ObjectId, ref: 'Team' }], default: [] },
     avatarUrl: { type: String },
     avatarGradient: { type: String },
     bio: { type: String, maxlength: 160, trim: true },

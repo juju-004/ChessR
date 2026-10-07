@@ -50,6 +50,8 @@ const createSchema = z.object({
   berserkAllowed: z.boolean().default(true),
   chatEnabled: z.boolean().default(false),
   isPublic: z.boolean().default(false),
+  // In-house tournament for a team the caller owns (checked in createTournament).
+  teamId: z.string().refine(mongoose.isValidObjectId).nullable().optional(),
   organizerOnly: z.boolean().default(false),
   // Knockout-only, see CreateTournamentInput's doc comment. Immutable
   // after creation, same as organizerOnly, so this isn't in editSchema

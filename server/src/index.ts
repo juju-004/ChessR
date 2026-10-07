@@ -5,7 +5,6 @@ import { disconnectRedis } from './config/redis.js';
 import { createApp } from './app.js';
 import { initSocketServer } from './sockets/index.js';
 import { getIo } from './sockets/io.js';
-import { startMoveTimingReporter } from './services/moveTiming.service.js';
 import { reconcileActiveGames, sweepAbortedGames, sweepStaleWaitingGames } from './services/game.service.js';
 import { reconcileActiveTournaments, sweepCancelledTournaments, resolveDesyncedPairings } from './services/tournament.service.js';
 import { reconcilePresence } from './services/presence.service.js';
@@ -194,9 +193,6 @@ async function main() {
     loopDelay.reset();
   }, 60 * 1000);
   loopDelayInterval.unref();
-
-  // Per-move latency breakdown (see services/moveTiming.service.ts).
-  startMoveTimingReporter();
 
   // Quick pairing needs a much tighter cadence than the 60s sweeps above:
   // it's what widens a waiting player's rating window over time, and what

@@ -194,6 +194,10 @@ export interface ITournament extends Document {
   // stumble onto it without the link. Independent of passwordHash: a public
   // tournament can still require a password to actually join.
   isPublic: boolean;
+  // In-house tournament: when set, this belongs to a team, only that team's
+  // members can join, and it's never listed publicly (see createTournament /
+  // joinTournament in tournament.service.ts). Null for ordinary tournaments.
+  team: Types.ObjectId | null;
   // --- Prize pool: creator-funded, paid out by final rank -------------------
   // Entirely separate from the registration fee below. The creator defines a
   // payout schedule at creation time (e.g. 1st gets 200, 2nd gets 100, 3rd
@@ -403,6 +407,7 @@ const tournamentSchema = new Schema<ITournament>(
     berserkAllowed: { type: Boolean, default: true },
     chatEnabled: { type: Boolean, default: false },
     isPublic: { type: Boolean, default: false },
+    team: { type: Schema.Types.ObjectId, ref: "Team", default: null },
     prizePoolCurrency: { type: String, enum: ["tokens", "naira"], default: "tokens" },
     prizeSchedule: { type: [prizeTierSchema], default: [] },
     prizePoolTokens: { type: Number, default: 0 },
@@ -447,6 +452,8 @@ const tournamentSchema = new Schema<ITournament>(
 tournamentSchema.index({ status: 1, createdAt: -1 });
 // Public tournaments list: isPublic + status, newest first.
 tournamentSchema.index({ isPublic: 1, status: 1, createdAt: -1 });
+// A team's in-house tournaments, newest first.
+tournamentSchema.index({ team: 1, status: 1, createdAt: -1 });
 // "My tournaments" ($or on players.user) and arena re-pairing on reconnect
 // both match on a player's id inside the players array. This used to be a
 // full collection scan on every load of the Tournaments page.

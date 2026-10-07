@@ -90,6 +90,7 @@ import {
   Badge,
   Spinner,
   Input,
+  EmojiInput,
   Textarea,
   Select,
   Switch,
@@ -235,10 +236,10 @@ function EditTournamentForm({
             <CardTitle>Edit tournament</CardTitle>
           </CardHeader>
 
-          <Input
+          <EmojiInput
             label="Tournament name"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={setName}
             maxLength={MAX_EVENT_NAME_LENGTH}
           />
 

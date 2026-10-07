@@ -10,6 +10,7 @@ import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
 import authRoutes from './routes/auth.routes.js';
 import userRoutes from './routes/user.routes.js';
 import friendRoutes from './routes/friend.routes.js';
+import teamRoutes from './routes/team.routes.js';
 import gameRoutes from './routes/game.routes.js';
 import cageMatchRoutes from './routes/cageMatch.routes.js';
 import tournamentRoutes from './routes/tournament.routes.js';
@@ -72,6 +73,7 @@ export function createApp() {
   app.use('/api/auth', authRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api/friends', friendRoutes);
+  app.use('/api/teams', teamRoutes);
   app.use('/api/games', gameRoutes);
   app.use('/api/cage-matches', cageMatchRoutes);
   app.use('/api/tournaments', tournamentRoutes);
