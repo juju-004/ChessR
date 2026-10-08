@@ -1,6 +1,6 @@
 {
-  "name": "Chess r",
-  "short_name": "Chess r",
+  "name": "Chessr",
+  "short_name": "Chessr",
   "description": "Multiplayer chess with cage matches, tournaments, and wagers.",
   "start_url": "/",
   "scope": "/",

@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Plus } from "lucide-react";
-import { getLeague, type LeagueDetailResponse } from "../api/leagues.js";
+import { Plus, Trash2 } from "lucide-react";
+import {
+  deleteLeague,
+  getLeague,
+  type LeagueDetailResponse,
+} from "../api/leagues.js";
+import { useConfirm } from "../contexts/ConfirmContext.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import { LeagueStandings } from "../components/tournaments/LeagueStandings.js";
@@ -23,6 +28,8 @@ export function LeagueDetail() {
   const socket = useSocket();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const confirm = useConfirm();
+  const [deleting, setDeleting] = useState(false);
   const [data, setData] = useState<LeagueDetailResponse | null>(null);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -71,6 +78,25 @@ export function LeagueDetail() {
   }
 
   const { league, tournaments, standings, throughTournament } = data;
+
+  async function handleDelete() {
+    const ok = await confirm({
+      title: `Delete "${league.name}"?`,
+      description:
+        "The league table goes away. Its tournaments are kept and carry on as normal standalone tournaments, but their points no longer add up here.",
+      confirmLabel: "Delete league",
+      variant: "danger",
+    });
+    if (!ok) return;
+    setDeleting(true);
+    try {
+      await deleteLeague(league.id);
+      navigate("/tournaments", { replace: true });
+    } catch (err) {
+      setError(errMsg(err));
+      setDeleting(false);
+    }
+  }
   const full = league.tournamentCount >= league.maxTournaments;
 
   return (
@@ -80,21 +106,34 @@ export function LeagueDetail() {
       description={`${league.organizationName} · ${tournaments.length} of ${league.maxTournaments} tournaments`}
       actions={
         league.mine ? (
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={full}
-            title={full ? `This league already has its ${league.maxTournaments} tournaments` : undefined}
-            onClick={() => navigate(`/tournaments/new?league=${league.id}`)}
-          >
-            <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">Add tournament</span>
-            <span className="sm:hidden">Add</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="danger"
+              size="sm"
+              loading={deleting}
+              onClick={handleDelete}
+              aria-label="Delete league"
+            >
+              <Trash2 className="h-4 w-4" />
+              <span className="hidden sm:inline">Delete</span>
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={full}
+              title={full ? `This league already has its ${league.maxTournaments} tournaments` : undefined}
+              onClick={() => navigate(`/tournaments/new?league=${league.id}`)}
+            >
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Add tournament</span>
+              <span className="sm:hidden">Add</span>
+            </Button>
+          </div>
         ) : undefined
       }
     >
       <div className="mx-auto space-y-4">
+        {error && <p className="text-sm text-red-400">{error}</p>}
         {league.description && (
           <Card variant="solid">
             <p className="whitespace-pre-wrap text-sm text-base-content/70">

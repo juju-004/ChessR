@@ -1,4 +1,9 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type FormEvent,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { Crown, KeyRound, Lock, Plus, Search, Users } from "lucide-react";
 import {
@@ -9,7 +14,6 @@ import {
 } from "../api/teams.js";
 import { errMsg } from "../lib/errMsg.js";
 import { useSocket } from "../contexts/SocketContext.js";
-import { JoinTeamButton } from "../components/teams/JoinTeamButton.js";
 import { Page } from "@/components/ui/Page.js";
 import { Card } from "@/components/ui/Card.js";
 import { Button } from "@/components/ui/Button.js";
@@ -92,21 +96,19 @@ export function Teams() {
     };
   }, [socket, tab, query, refreshMine, runSearch]);
 
-  function onJoinChanged(team: TeamSummary, result: "joined" | "requested" | "cancelled") {
-    if (result === "joined") return navigate(`/teams/${team.id}`);
-    setResults((r) => r.map((x) => (x.id === team.id ? { ...x, requestPending: result === "requested" } : x)));
-  }
-
   return (
     <Page
       title="Teams"
-      description="Chat, organise in-house tournaments and play together."
+      description="Organise in-house tournaments and play together."
+      responsiveDescription
       actions={
         <Button
           size="sm"
           onClick={() => setCreateOpen(true)}
           disabled={atOwnerLimit}
-          title={atOwnerLimit ? `You already own ${ownedLimit} teams` : undefined}
+          title={
+            atOwnerLimit ? `You already own ${ownedLimit} teams` : undefined
+          }
         >
           <Plus className="h-4 w-4" /> New team
         </Button>
@@ -124,7 +126,10 @@ export function Teams() {
       </div>
 
       {error && (
-        <p role="alert" className="mb-3 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-500">
+        <p
+          role="alert"
+          className="mb-3 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-500"
+        >
           {error}
         </p>
       )}
@@ -132,30 +137,43 @@ export function Teams() {
       {tab === "mine" && (
         <>
           {mineLoading ? (
-            <div className="flex justify-center py-12"><Spinner /></div>
+            <div className="flex justify-center py-12">
+              <Spinner />
+            </div>
           ) : mine.length === 0 ? (
             <Card className="p-8 text-center">
               <Users className="mx-auto mb-2 h-8 w-8 text-base-content/30" />
               <p className="font-medium">You're not in any team yet</p>
-              <p className="mt-1 text-sm text-base-content/60">Create one or find a team to join.</p>
+              <p className="mt-1 text-sm text-base-content/60">
+                Create one or find a team to join.
+              </p>
               <div className="mt-4 flex justify-center gap-2">
-                <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New team</Button>
-                <Button size="sm" variant="outline" onClick={() => setTab("find")}>Find teams</Button>
+                <Button size="sm" onClick={() => setCreateOpen(true)}>
+                  <Plus className="h-4 w-4" /> New team
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setTab("find")}
+                >
+                  Find teams
+                </Button>
               </div>
             </Card>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {mine.map((t) => (
-                <TeamCard key={t.id} team={t} onOpen={() => navigate(`/teams/${t.id}`)}>
-                  <Button size="sm" variant={t.isOwner ? "primary" : "outline"} onClick={() => navigate(`/teams/${t.id}`)}>
-                    {t.isOwner ? "Manage" : "Open"}
-                  </Button>
-                </TeamCard>
+                <TeamCard
+                  key={t.id}
+                  team={t}
+                  onOpen={() => navigate(`/teams/${t.id}`)}
+                />
               ))}
             </div>
           )}
           <p className="mt-3 text-xs text-base-content/50">
-            You own {ownedCount} of {ownedLimit} teams. You can join as many teams as you like.
+            You own {ownedCount} of {ownedLimit} teams. You can join as many
+            teams as you like.
           </p>
         </>
       )}
@@ -172,22 +190,20 @@ export function Teams() {
           />
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {searching && results.length === 0 ? (
-              <div className="col-span-full flex justify-center py-8"><Spinner /></div>
+              <div className="col-span-full flex justify-center py-8">
+                <Spinner />
+              </div>
             ) : results.length === 0 ? (
-              <p className="col-span-full py-8 text-center text-sm text-base-content/50">No teams found.</p>
+              <p className="col-span-full py-8 text-center text-sm text-base-content/50">
+                No teams found.
+              </p>
             ) : (
               results.map((t) => (
-                <TeamCard key={t.id} team={t} onOpen={() => navigate(`/teams/${t.id}`)}>
-                  {t.isMember ? (
-                    <Button size="sm" variant="outline" onClick={() => navigate(`/teams/${t.id}`)}>Open</Button>
-                  ) : (
-                    <JoinTeamButton
-                      team={t}
-                      onChanged={(r) => onJoinChanged(t, r)}
-                      onError={setError}
-                    />
-                  )}
-                </TeamCard>
+                <TeamCard
+                  key={t.id}
+                  team={t}
+                  onOpen={() => navigate(`/teams/${t.id}`)}
+                />
               ))
             )}
           </div>
@@ -209,35 +225,58 @@ export function Teams() {
 function TeamCard({
   team,
   onOpen,
-  children,
 }: {
   team: TeamSummary;
   onOpen: () => void;
-  children: ReactNode;
 }) {
+  const needsApproval =
+    !team.isMember &&
+    team.joinMode === "request" &&
+    !team.hasCode &&
+    !team.requestPending;
   return (
-    <Card className="flex flex-col gap-3 p-4">
-      <button type="button" onClick={onOpen} className="min-w-0 text-left">
-        <div className="flex items-center gap-2">
-          <h3 className="truncate font-semibold">{team.name}</h3>
-          {team.isOwner && <Crown className="h-4 w-4 shrink-0 text-amber-500" aria-label="Owner" />}
-          {team.hasCode && <KeyRound className="h-3.5 w-3.5 shrink-0 text-base-content/40" aria-label="Entry code" />}
-          {!team.hasCode && team.joinMode === "request" && (
-            <Lock className="h-3.5 w-3.5 shrink-0 text-base-content/40" aria-label="Approval needed" />
-          )}
-        </div>
-        <p className="mt-0.5 line-clamp-2 min-h-8 text-sm text-base-content/60">
-          {team.description || "No description"}
-        </p>
-        <p className="mt-1 text-xs text-base-content/50">
-          {team.memberCount} {team.memberCount === 1 ? "member" : "members"}
-        </p>
-      </button>
+    <Card
+      interactive
+      role="link"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className="cursor-pointer p-4 text-left transition-colors hover:border-(--primary)/40"
+    >
       <div className="flex items-center gap-2">
-        {children}
-        {!team.isMember && team.joinMode === "request" && !team.hasCode && !team.requestPending && (
-          <Badge variant="neutral">Approval needed</Badge>
+        <h3 className="min-w-0 truncate font-semibold">{team.name}</h3>
+        {team.isOwner && (
+          <Crown
+            className="h-4 w-4 shrink-0 text-amber-500"
+            aria-label="Owner"
+          />
         )}
+        {team.hasCode && (
+          <KeyRound
+            className="h-3.5 w-3.5 shrink-0 text-base-content/40"
+            aria-label="Entry code"
+          />
+        )}
+        {!team.hasCode && team.joinMode === "request" && (
+          <Lock
+            className="h-3.5 w-3.5 shrink-0 text-base-content/40"
+            aria-label="Approval needed"
+          />
+        )}
+      </div>
+      <p className="mt-0.5 line-clamp-2 min-h-8 text-sm text-base-content/60">
+        {team.description || "No description"}
+      </p>
+      <div className="mt-1 flex items-center gap-2 text-xs text-base-content/50">
+        <span>
+          {team.memberCount} {team.memberCount === 1 ? "member" : "members"}
+        </span>
+        {needsApproval && <Badge variant="neutral">Approval needed</Badge>}
       </div>
     </Card>
   );
@@ -289,7 +328,13 @@ function CreateTeamModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Create a team" icon={<Users className="h-4 w-4" />} className="max-w-md">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Create a team"
+      icon={<Users className="h-4 w-4" />}
+      className="max-w-md"
+    >
       <form onSubmit={submit} className="flex flex-col gap-3 px-2 pb-2">
         <EmojiInput
           label="Team name"
@@ -321,10 +366,22 @@ function CreateTeamModal({
           autoComplete="off"
           hint="4–16 letters or numbers. Anyone with the code joins instantly, and without one people can't join directly."
         />
-        {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
+        {error && (
+          <p role="alert" className="text-sm text-red-500">
+            {error}
+          </p>
+        )}
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button type="submit" loading={saving} disabled={name.trim().length < 3}>Create team</Button>
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            loading={saving}
+            disabled={name.trim().length < 3}
+          >
+            Create team
+          </Button>
         </div>
       </form>
     </Modal>

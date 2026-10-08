@@ -10,7 +10,9 @@ import { cn } from "../../lib/cn.js";
 function Movement({ row }: { row: LeagueStandingRow }) {
   if (row.movement === null) return null;
   if (row.movement === 0) {
-    return <Minus className="h-3 w-3 text-base-content/30" aria-label="No change" />;
+    return (
+      <Minus className="h-3 w-3 text-base-content/30" aria-label="No change" />
+    );
   }
   const up = row.movement > 0;
   return (
@@ -33,7 +35,7 @@ function Movement({ row }: { row: LeagueStandingRow }) {
 export function LeagueStandings({
   rows,
   myId,
-  title = "League standings",
+  title = "Standings",
   subtitle,
   leagueLink,
   showLastColumn = true,
@@ -70,7 +72,9 @@ export function LeagueStandings({
               title
             )}
           </CardTitle>
-          {subtitle && <p className="mt-0.5 text-xs text-base-content/50">{subtitle}</p>}
+          {subtitle && (
+            <p className="mt-0.5 text-xs text-base-content/50">{subtitle}</p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {myIndex !== -1 && (
@@ -82,7 +86,12 @@ export function LeagueStandings({
               <LocateFixed className="h-3.5 w-3.5" /> Me
             </button>
           )}
-          <Pagination badge page={safePage} pageCount={pageCount} onPageChange={setPage} />
+          <Pagination
+            badge
+            page={safePage}
+            pageCount={pageCount}
+            onPageChange={setPage}
+          />
         </div>
       </CardHeader>
       {rows.length === 0 ? (
@@ -108,13 +117,28 @@ export function LeagueStandings({
                     key={r.user}
                     className={cn(
                       "border-t border-base-300/60",
-                      isMe ? "bg-(--secondary)/10" : i % 2 === 0 ? "bg-base-100/50" : "bg-base-200/50",
+                      isMe
+                        ? "bg-(--secondary)/10"
+                        : i % 2 === 0
+                          ? "bg-base-100/50"
+                          : "bg-base-200/50",
                     )}
                   >
-                    <td className="py-2 pl-3 font-semibold text-base-content/70">{r.rank}</td>
-                    <td className={cn("max-w-0 px-3 py-2", isMe && "font-semibold text-(--secondary)")}>
+                    <td className="py-2 pl-3 font-semibold text-base-content/70">
+                      {r.rank}
+                    </td>
+                    <td
+                      className={cn(
+                        "max-w-0 px-3 py-2",
+                        isMe && "font-semibold text-(--secondary)",
+                      )}
+                    >
                       <div className="flex min-w-0 items-center gap-1.5">
-                        <Avatar username={r.username} gradient={r.avatarGradient} size="xs" />
+                        <Avatar
+                          username={r.username}
+                          gradient={r.avatarGradient}
+                          size="xs"
+                        />
                         <span className="min-w-0 truncate">{r.username}</span>
                         <span className="shrink-0">
                           <Movement row={r} />

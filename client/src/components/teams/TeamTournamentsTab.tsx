@@ -16,7 +16,13 @@ type Scope = "upcoming" | "finished";
 /** A team's in-house tournaments, split into upcoming/active and finished.
  *  The owner can organise a new one, which opens the normal tournament
  *  creator pre-set for this team (members-only, never listed publicly). */
-export function TeamTournamentsTab({ teamId, isOwner }: { teamId: string; isOwner: boolean }) {
+export function TeamTournamentsTab({
+  teamId,
+  isOwner,
+}: {
+  teamId: string;
+  isOwner: boolean;
+}) {
   const navigate = useNavigate();
   const [scope, setScope] = useState<Scope>("upcoming");
   const [page, setPage] = useState(0); // 0-based for <Pagination>
@@ -49,7 +55,7 @@ export function TeamTournamentsTab({ teamId, isOwner }: { teamId: string; isOwne
         <div className="overflow-x-auto">
           <Tabs
             items={[
-              { value: "upcoming", label: "Upcoming & active" },
+              { value: "upcoming", label: "Active" },
               { value: "finished", label: "Finished" },
             ]}
             value={scope}
@@ -60,29 +66,37 @@ export function TeamTournamentsTab({ teamId, isOwner }: { teamId: string; isOwne
           />
         </div>
         {isOwner && (
-          <Button size="sm" onClick={() => navigate(`/tournaments/new?team=${teamId}`)}>
-            <Plus className="h-4 w-4" /> Organise tournament
+          <Button
+            size="sm"
+            onClick={() => navigate(`/tournaments/new?team=${teamId}`)}
+          >
+            <Plus className="h-4 w-4" /> New{" "}
+            <span className="md:inline-flex hidden">tournament</span>
           </Button>
         )}
       </div>
 
-      {error && <p role="alert" className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-500">{error}</p>}
+      {error && (
+        <p
+          role="alert"
+          className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-500"
+        >
+          {error}
+        </p>
+      )}
 
       {loading && items.length === 0 ? (
-        <div className="flex justify-center py-10"><Spinner /></div>
+        <div className="flex justify-center py-10">
+          <Spinner />
+        </div>
       ) : items.length === 0 ? (
         <Card className="p-8 text-center">
           <Trophy className="mx-auto mb-2 h-8 w-8 text-base-content/30" />
           <p className="font-medium">
-            {scope === "upcoming" ? "No upcoming tournaments" : "No finished tournaments yet"}
+            {scope === "upcoming"
+              ? "No active tournaments"
+              : "No finished tournaments yet"}
           </p>
-          {scope === "upcoming" && (
-            <p className="mt-1 text-sm text-base-content/60">
-              {isOwner
-                ? "Organise an in-house tournament for your members."
-                : "When the owner organises one, it'll show up here."}
-            </p>
-          )}
         </Card>
       ) : (
         <div className="space-y-2">
@@ -92,7 +106,9 @@ export function TeamTournamentsTab({ teamId, isOwner }: { teamId: string; isOwne
         </div>
       )}
 
-      {scope === "finished" && <Pagination page={page} pageCount={pageCount} onPageChange={setPage} />}
+      {scope === "finished" && (
+        <Pagination page={page} pageCount={pageCount} onPageChange={setPage} />
+      )}
     </div>
   );
 }

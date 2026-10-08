@@ -4,6 +4,7 @@ import type { AuthedRequest } from "../middleware/auth.js";
 import { MAX_CUMULATIVE_TOURNAMENTS, MIN_CUMULATIVE_TOURNAMENTS } from "../models/CumulativeLeague.js";
 import {
   createCumulative,
+  deleteCumulative,
   getCumulative,
   getCumulativeStandings,
   listCumulatives,
@@ -42,4 +43,10 @@ export const getStandings = asyncHandler(async (req, res) => {
   const { id } = idParamSchema.parse(req.params);
   const { tournament } = standingsQuerySchema.parse(req.query);
   res.json(await getCumulativeStandings(id, tournament));
+});
+
+export const remove = asyncHandler(async (req: AuthedRequest, res) => {
+  const { id } = idParamSchema.parse(req.params);
+  await deleteCumulative(id, req.user!.id);
+  res.status(204).end();
 });

@@ -607,20 +607,21 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
-        <footer className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 pt-2 pb-2 text-xs text-base-content/50">
-          <Link to="/about" className="hover:text-base-content hover:underline">
-            About us
-          </Link>
-          <span className="text-base-content/20">·</span>
+        <footer className="flex flex-col items-center gap-y-1 pt-2 pb-2 text-xs text-base-content/50">
+          <div className="flex items-center justify-center gap-x-4">
+            <Link to="/about" className="hover:text-base-content hover:underline">
+              About us
+            </Link>
+            <span className="text-base-content/20">·</span>
+            <Link to="/terms" className="hover:text-base-content hover:underline">
+              Terms of Service
+            </Link>
+          </div>
           <Link
             to="/organization/request"
             className="hover:text-base-content hover:underline"
           >
             Organisation request
-          </Link>
-          <span className="text-base-content/20">·</span>
-          <Link to="/terms" className="hover:text-base-content hover:underline">
-            Terms of Service
           </Link>
         </footer>
       </div>

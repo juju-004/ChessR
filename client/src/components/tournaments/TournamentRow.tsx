@@ -28,18 +28,18 @@ export function TournamentRow({ t }: { t: Tournament }) {
   return (
     <Link
       to={`/tournaments/${t.code}`}
-      className="flex items-center justify-between gap-3 rounded-xl border border-base-300 bg-base-100/60 px-3 py-2.5 transition-colors hover:border-(--primary)/40"
+      className="flex min-w-0 items-center justify-between gap-3 overflow-hidden rounded-xl border border-base-300 bg-base-100/60 px-3 py-2.5 transition-colors hover:border-(--primary)/40"
     >
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="min-w-0 font-medium break-words text-base-content">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="w-full min-w-0 font-medium text-base-content [overflow-wrap:anywhere] sm:w-auto">
             {t.name}
           </span>
           <Badge variant={STATUS_VARIANT[t.status]}>{t.status}</Badge>
           {t.team && <Badge variant="primary">In-house</Badge>}
           {t.teamBattle && <Badge variant="primary">Team battle</Badge>}
         </div>
-        <div className="mt-0.5 text-xs text-base-content/50">
+        <div className="mt-1 text-xs leading-relaxed text-base-content/50 [overflow-wrap:anywhere]">
           {t.organizationName ? `${t.organizationName} · ` : ""}
           {FORMAT_LABEL[t.format]} ·{" "}
           <TimeControlIcon

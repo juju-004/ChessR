@@ -476,47 +476,6 @@ export function CreateTournament() {
               </div>
             </section>
 
-            {/* League */}
-            {!battleMode && !teamId && myLeagues.length > 0 && (
-              <section className="space-y-3 border-t border-base-300 pt-4">
-                <Select
-                  label={
-                    <span className="inline-flex items-center gap-1">
-                      Add to a league
-                      <HelpTip>
-                        Makes this the next stage of one of your leagues. Players join each
-                        tournament separately and their points carry forward into the league
-                        table. Swiss or Arena only.
-                      </HelpTip>
-                    </span>
-                  }
-                  value={leagueId}
-                  onChange={(e) => {
-                    setLeagueId(e.target.value);
-                    setStatus(null);
-                  }}
-                >
-                  <option value="">Not part of a league</option>
-                  {myLeagues.map((c) => (
-                    <option
-                      key={c.id}
-                      value={c.id}
-                      disabled={c.tournamentCount >= c.maxTournaments}
-                    >
-                      {c.name} ({c.tournamentCount}/{c.maxTournaments})
-                    </option>
-                  ))}
-                </Select>
-                {selectedLeague &&
-                  !(LEAGUE_FORMATS as readonly string[]).includes(format) && (
-                    <p className="text-xs text-red-400">
-                      Knockout and round-robin can't be part of a league. Choose Swiss or
-                      Arena as the format.
-                    </p>
-                  )}
-              </section>
-            )}
-
             {/* Players & schedule */}
             <section className="space-y-3 border-t border-base-300 pt-4">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -609,14 +568,29 @@ export function CreateTournament() {
                 value={prizeTiers}
                 onChange={setPrizeTiers}
                 currency={prizePoolCurrency}
-              />
-              <Switch
-                checked={prizePoolCurrency === "naira"}
-                onChange={(checked) =>
-                  handlePrizeCurrencyChange(checked ? "naira" : "tokens")
+                headerAction={
+                  <span
+                    className="flex items-center gap-2"
+                    title="Prize pool in naira: real cash, disbursed manually by us over WhatsApp"
+                  >
+                    <span
+                      className={`text-sm font-medium ${
+                        prizePoolCurrency === "naira"
+                          ? "text-base-content"
+                          : "text-base-content/40"
+                      }`}
+                      aria-hidden="true"
+                    >
+                      ₦
+                    </span>
+                    <Switch
+                      checked={prizePoolCurrency === "naira"}
+                      onChange={(checked) =>
+                        handlePrizeCurrencyChange(checked ? "naira" : "tokens")
+                      }
+                    />
+                  </span>
                 }
-                label="Prize pool in naira (₦)"
-                description="Real cash, disbursed manually by us over WhatsApp. "
               />
               <Input
                 label="Password (optional)"
@@ -626,6 +600,48 @@ export function CreateTournament() {
                 placeholder="*******"
               />
             </section>
+
+            {/* League */}
+            {!battleMode && !teamId && myLeagues.length > 0 && (
+              <section className="space-y-3 border-t border-base-300 pt-4">
+                <Select
+                  label={
+                    <span className="inline-flex items-center gap-1">
+                      Add to a league
+                      <HelpTip>
+                        Makes this the next stage of one of your leagues. Players join each
+                        tournament separately and their points carry forward into the league
+                        table. Swiss or Arena only.
+                      </HelpTip>
+                    </span>
+                  }
+                  value={leagueId}
+                  onChange={(e) => {
+                    setLeagueId(e.target.value);
+                    setStatus(null);
+                  }}
+                >
+                  <option value="">Not part of a league</option>
+                  {myLeagues.map((c) => (
+                    <option
+                      key={c.id}
+                      value={c.id}
+                      disabled={c.tournamentCount >= c.maxTournaments}
+                    >
+                      {c.name} ({c.tournamentCount}/{c.maxTournaments})
+                    </option>
+                  ))}
+                </Select>
+                {selectedLeague &&
+                  !(LEAGUE_FORMATS as readonly string[]).includes(format) && (
+                    <p className="text-xs text-red-400">
+                      Knockout and round-robin can't be part of a league. Choose Swiss or
+                      Arena as the format.
+                    </p>
+                  )}
+              </section>
+            )}
+
             <section className="space-y-3 border-t border-base-300 pt-4">
               {!teamId && (
                 <Switch

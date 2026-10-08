@@ -1,7 +1,7 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { requireAuth, optionalAuth } from "../middleware/auth.js";
-import { getAll, getMine, create, getOne, getStandings } from "../controllers/cumulative.controller.js";
+import { getAll, getMine, create, getOne, getStandings, remove } from "../controllers/cumulative.controller.js";
 
 const router = Router();
 
@@ -19,5 +19,6 @@ router.get("/mine", requireAuth, getMine);
 router.post("/", requireAuth, createLimiter, create);
 router.get("/:id", optionalAuth, getOne);
 router.get("/:id/standings", optionalAuth, getStandings);
+router.delete("/:id", requireAuth, remove);
 
 export default router;

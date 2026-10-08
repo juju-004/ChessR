@@ -315,3 +315,23 @@ export async function getCumulative(cumulativeId: string, userId?: string) {
     ...standingsPayload(league, ordered),
   };
 }
+
+// --- Delete -------------------------------------------------------------------
+
+/** Deletes a league. Only the organisation account that created it may. Its
+ *  tournaments are NOT deleted (players may have joined, paid fees or won
+ *  prizes in them), they're just detached and carry on as ordinary
+ *  standalone tournaments with their own standings. */
+export async function deleteCumulative(cumulativeId: string, userId: string): Promise<void> {
+  assertValidId(cumulativeId);
+  const league = await CumulativeLeague.findById(cumulativeId).select("createdBy").lean();
+  if (!league) throw ApiError.notFound("League not found");
+  if (String(league.createdBy) !== userId) {
+    throw ApiError.forbidden("Only the organisation that created a league can delete it");
+  }
+  await Tournament.updateMany(
+    { cumulative: cumulativeId },
+    { $set: { cumulative: null, cumulativeName: null } },
+  );
+  await CumulativeLeague.deleteOne({ _id: cumulativeId, createdBy: userId });
+}

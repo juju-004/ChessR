@@ -97,3 +97,9 @@ export function getLeagueStandings(id: string, tournamentCode?: string) {
     `/cumulatives/${id}/standings${qs}`,
   ).then(({ cumulative, ...rest }) => ({ ...rest, league: cumulative }));
 }
+
+/** Organisation-only (the league's creator). Its tournaments stay, they just
+ *  stop being part of a league. */
+export function deleteLeague(id: string) {
+  return apiFetch<void>(`/cumulatives/${id}`, { method: "DELETE" });
+}

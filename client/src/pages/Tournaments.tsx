@@ -294,7 +294,7 @@ function CreateLeagueModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="New league">
+    <Modal open={open} onClose={onClose} title="New league" icon={<Layers />}>
       <div className="space-y-3">
         <p className="text-xs text-base-content/60">
           A series of Swiss or Arena tournaments. Players join each tournament

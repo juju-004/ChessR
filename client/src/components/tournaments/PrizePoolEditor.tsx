@@ -8,6 +8,7 @@ import {
   MAX_TOURNAMENT_PLAYERS,
   type TournamentPrizeTier,
 } from "../../api/tournaments.js";
+import type { ReactNode } from "react";
 import { HelpTip } from "../HelpTip.js";
 import { RCoin } from "../ui/RCoin.js";
 import { Textarea } from "../ui/index.js";
@@ -21,6 +22,9 @@ interface PrizePoolEditorProps {
    *  see CreateTournament.tsx's currency toggle for what actually changes
    *  server-side. */
   currency?: "tokens" | "naira";
+  /** Optional control shown on the right of the "Prize pool" label row
+   *  (justify-between), e.g. the naira toggle on the create form. */
+  headerAction?: ReactNode;
 }
 
 function AmountUnit({
@@ -47,6 +51,7 @@ export function PrizePoolEditor({
   value,
   onChange,
   currency = "tokens",
+  headerAction,
 }: PrizePoolEditorProps) {
   const [text, setText] = useState(() => prizeTiersToText(value));
   const [errors, setErrors] = useState<string[]>([]);
@@ -69,7 +74,7 @@ export function PrizePoolEditor({
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-1 text-sm text-base-content/80">
           <span className="text-xs font-medium sm:text-sm">
-            Prize pool{currency === "naira" ? " (₦)" : ""}
+            Prize pool{currency === "naira" && !headerAction ? " (₦)" : ""}
           </span>
           <HelpTip>
             One place (or range of places) per line: rank, then how much it
@@ -80,12 +85,18 @@ export function PrizePoolEditor({
               " Amounts are naira here, not R Coins — nothing is deducted from your wallet, this is just the payout schedule we'll disburse manually."}
           </HelpTip>
         </span>
-        {total > 0 && (
-          <span className="inline-flex items-center gap-1 text-xs text-base-content/50">
-            {total} <AmountUnit currency={currency} /> total
-          </span>
-        )}
+        {headerAction ??
+          (total > 0 && (
+            <span className="inline-flex items-center gap-1 text-xs text-base-content/50">
+              {total} <AmountUnit currency={currency} /> total
+            </span>
+          ))}
       </div>
+      {headerAction && total > 0 && (
+        <span className="flex items-center justify-end gap-1 text-xs text-base-content/50">
+          {total} <AmountUnit currency={currency} /> total
+        </span>
+      )}
 
       <Textarea
         value={text}

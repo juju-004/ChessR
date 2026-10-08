@@ -128,7 +128,7 @@ export function OrganizationRequest() {
 
   return (
     <Page title="Organisation request" back>
-      <div className="mx-auto max-w-lg space-y-4">
+      <div className="mx-auto max-w-2xl space-y-4">
         {loading ? (
           <div className="flex justify-center py-12">
             <Spinner className="text-base-content/40" />
@@ -228,27 +228,29 @@ export function OrganizationRequest() {
             {showForm && (
               <Card variant="solid">
                 <form onSubmit={submit} className="space-y-4">
-                  <Input
-                    label="Organisation name"
-                    leadingIcon={<Building2 className="h-4 w-4" />}
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Lagos Chess Club"
-                    maxLength={40}
-                    required
-                  />
-                  <Input
-                    label="WhatsApp phone number"
-                    leadingIcon={<Phone className="h-4 w-4" />}
-                    type="tel"
-                    inputMode="tel"
-                    value={whatsapp}
-                    onChange={(e) => setWhatsapp(e.target.value)}
-                    placeholder="+234 801 234 5678"
-                    hint="Include the country code. We'll reach out here to verify you."
-                    maxLength={24}
-                    required
-                  />
+                  <div className="grid w-full grid-cols-1 items-start gap-4 md:grid-cols-2">
+                    <Input
+                      label="Organisation name"
+                      leadingIcon={<Building2 className="h-4 w-4" />}
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Lagos Chess Club"
+                      maxLength={40}
+                      required
+                    />
+                    <Input
+                      label="WhatsApp phone number"
+                      leadingIcon={<Phone className="h-4 w-4" />}
+                      type="tel"
+                      inputMode="tel"
+                      value={whatsapp}
+                      onChange={(e) => setWhatsapp(e.target.value)}
+                      placeholder="+234 801 234 5678"
+                      hint="Include the country code. We'll reach out here to verify you."
+                      maxLength={24}
+                      required
+                    />
+                  </div>
                   {error && (
                     <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-400">
                       {error}
