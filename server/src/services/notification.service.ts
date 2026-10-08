@@ -1,5 +1,6 @@
 import { Notification, type INotification, type NotificationType } from '../models/Notification.js';
 import { getIo } from '../sockets/io.js';
+import { Types } from 'mongoose';
 
 export interface CreateNotificationParams {
   recipientId: string;
@@ -58,7 +59,7 @@ export async function createNotificationsForMany(
   if (recipientIds.length === 0) return;
   const docs = await Notification.insertMany(
     recipientIds.map((recipient) => ({
-      recipient,
+      recipient: new Types.ObjectId(recipient),
       type: params.type,
       title: params.title,
       body: params.body,

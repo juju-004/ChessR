@@ -109,7 +109,10 @@ const ONLINE_PLAYERS_LIMIT = 5;
 export const listOnlinePlayers = asyncHandler(async (req: AuthedRequest, res) => {
   const viewerId = req.user!.id;
   const ids = await getTopOnlineUserIds(viewerId, ONLINE_PLAYERS_LIMIT);
-  if (ids.length === 0) return res.json({ players: [] });
+  if (ids.length === 0) {
+    res.json({ players: [] });
+    return;
+  }
 
   const [users, gameCodes] = await Promise.all([
     User.find({ _id: { $in: ids } })

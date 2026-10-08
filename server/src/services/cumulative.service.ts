@@ -258,7 +258,7 @@ async function loadOrderedForStandings(league: Pick<ICumulativeLeague, "tourname
   return league.tournaments.map((id) => byId.get(String(id))).filter(Boolean);
 }
 
-function standingsPayload(league: any, ordered: any[], forCode?: string) {
+function standingsPayload(_league: any, ordered: any[], forCode?: string) {
   let idx = forCode ? ordered.findIndex((t) => t.code === forCode) : -1;
   if (idx === -1) {
     // League page (or an unknown/cancelled code): the latest started stage.

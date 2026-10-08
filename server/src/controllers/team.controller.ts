@@ -419,7 +419,8 @@ export const joinTeam = asyncHandler(async (req: AuthedRequest, res) => {
 
   if (canJoinNow) {
     if (!(await addMember(team._id, me))) throw ApiError.conflict('This team is full');
-    return res.json({ status: 'joined', id: team.id });
+    res.json({ status: 'joined', id: team.id });
+    return;
   }
 
   // Request-to-join.
@@ -527,7 +528,8 @@ export const leaveTeam = asyncHandler(async (req: AuthedRequest, res) => {
       throw ApiError.conflict('Finish or cancel the team’s tournaments before deleting it.');
     }
     await disband(team); // sole member leaving: nothing left to keep
-    return res.json({ disbanded: true });
+    res.json({ disbanded: true });
+    return;
   }
 
   await removeMember(team, me);
