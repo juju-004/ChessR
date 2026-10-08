@@ -8,7 +8,11 @@ import {
   X,
   TvMinimalPlay,
 } from "lucide-react";
-import { searchUsers, type UserSearchResult } from "../api/users.js";
+import {
+  searchUsers,
+  listOnlinePlayers,
+  type UserSearchResult,
+} from "../api/users.js";
 import { listFriends, sendFriendRequest, type Friend } from "../api/friends.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import {
@@ -62,6 +66,10 @@ export function Players() {
   // accept/remove/online-status socket events — those shouldn't re-flash
   // a spinner over an already-loaded list, just the initial mount should).
   const [friendsLoading, setFriendsLoading] = useState(true);
+  // Top online players (excluding you), see GET /users/online/players. Empty
+  // until the first fetch resolves, and the whole card stays hidden while
+  // it's empty, so there's no loading state to render.
+  const [onlinePlayers, setOnlinePlayers] = useState<Friend[]>([]);
   const [friendSearch, setFriendSearch] = useState("");
   const [tcIndex, setTcIndex] = useState(2);
   const [variant, setVariant] = useState<"standard" | "chess960">("standard");
@@ -75,13 +83,13 @@ export function Players() {
   const [results, setResults] = useState<UserSearchResult[]>([]);
   const [searchError, setSearchError] = useState("");
   const [sentRequestIds, setSentRequestIds] = useState<Set<string>>(new Set());
-  /** Which friend's row currently has its challenge overlay open, null
-   *  means none. Only one at a time, so a single piece of state (rather
-   *  than a per-friend open flag) is enough, and it lets the "Send
-   *  challenge" button close its own overlay after sending. */
-  const [challengingFriendId, setChallengingFriendId] = useState<string | null>(
-    null,
-  );
+  /** Which row currently has its challenge overlay open, null means none.
+   *  Only one at a time, so a single piece of state (rather than a per-row
+   *  open flag) is enough, and it lets the "Send challenge" button close
+   *  its own overlay after sending. Keyed by list + player id, since the
+   *  same player can appear in more than one list at once (online players
+   *  and friends, say) and only the row that was clicked should open. */
+  const [challengingKey, setChallengingKey] = useState<string | null>(null);
 
   const refreshFriends = useCallback(() => {
     listFriends()
@@ -92,6 +100,32 @@ export function Players() {
   useEffect(() => {
     refreshFriends();
   }, [refreshFriends]);
+
+  const refreshOnlinePlayers = useCallback(() => {
+    listOnlinePlayers()
+      .then((res) => setOnlinePlayers(res.players))
+      .catch(() => {
+        // Non-essential card: on a failed refresh keep showing what we had.
+      });
+  }, []);
+
+  // Only friends get a live presence push (friend:presence), so everyone
+  // else's online/offline changes are picked up by a light poll instead,
+  // paused while the tab is hidden, plus an immediate refresh on return.
+  useEffect(() => {
+    refreshOnlinePlayers();
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") refreshOnlinePlayers();
+    }, 30_000);
+    function onVisible() {
+      if (document.visibilityState === "visible") refreshOnlinePlayers();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [refreshOnlinePlayers]);
 
   useEffect(() => {
     if (!socket) return;
@@ -114,6 +148,7 @@ export function Players() {
     }
     function onPresence() {
       refreshFriends();
+      refreshOnlinePlayers();
     }
     function onSent() {
       setStatus({
@@ -140,7 +175,7 @@ export function Players() {
       release0();
       socket.off("challenge:error", onError);
     };
-  }, [socket, refreshFriends]);
+  }, [socket, refreshFriends, refreshOnlinePlayers]);
 
   function handleAccept(requestId: string) {
     respondToFriendRequestItem(requestId, true);
@@ -155,7 +190,7 @@ export function Players() {
     respondToFriendRequestItem(requestId, false);
   }
 
-  function handleChallenge(friendId: string) {
+  function handleChallenge(targetId: string) {
     if (!socket) return;
     const tc = TIME_CONTROLS[tcIndex];
     // Wagers are opt-in now: 0 = a free game.
@@ -164,7 +199,7 @@ export function Players() {
       Math.max(0, Math.floor(Number(wagerInput) || 0)),
     );
     socket.emit("challenge:send", {
-      toUserId: friendId,
+      toUserId: targetId,
       baseMinutes: tc.baseMinutes,
       incrementSeconds: tc.incrementSeconds,
       variant,
@@ -174,7 +209,7 @@ export function Players() {
       message: `Challenge sent. Waiting for a response…`,
       isError: false,
     });
-    setChallengingFriendId(null);
+    setChallengingKey(null);
   }
 
   function handleSearchChange(value: string) {
@@ -213,11 +248,125 @@ export function Players() {
 
   const friendIds = useMemo(() => new Set(friends.map((f) => f.id)), [friends]);
 
+  /** Watch (if they're mid-game) or Challenge, shared by every list on this
+   *  page (search results, online players, friends), since anyone can
+   *  challenge anyone, friend or not. Time control/variant/wager (for a live
+   *  challenge) and the cage match option both live in the one overlay;
+   *  those settings persist across players (same tcIndex/variant/wagerInput
+   *  state) so re-challenging with the same setup is still one click. The
+   *  trigger itself stays open-able even when the player's offline (a cage
+   *  match invite doesn't need them online right now the way an instant
+   *  challenge does), only "Send" is gated on presence. */
+  function renderPlayerAction(
+    p: {
+      id: string;
+      username: string;
+      online: boolean;
+      activeGameCode?: string | null;
+    },
+    list: string,
+  ) {
+    if (p.activeGameCode) {
+      return (
+        <Link to={`/game/${p.activeGameCode}`}>
+          <Button variant="glass" size="sm">
+            <TvMinimalPlay className="h-4 w-4" />{" "}
+            <span className="hidden! sm:flex">Watch</span>
+          </Button>
+        </Link>
+      );
+    }
+    const key = `${list}:${p.id}`;
+    return (
+      <ResponsiveOverlay
+        title={`Challenge ${p.username}`}
+        align="end"
+        className="w-72 max-w-[calc(100vw-2rem)]"
+        open={challengingKey === key}
+        onOpenChange={(open) => setChallengingKey(open ? key : null)}
+        icon={<Swords></Swords>}
+        trigger={
+          <Button size="sm" variant="secondary">
+            <Swords className="size-3" />
+            <span className="sm:flex hidden">Challenge</span>
+          </Button>
+        }
+      >
+        <div className="space-y-3 px-4 md:px-2">
+          <Select
+            label="Time control"
+            value={tcIndex}
+            onChange={(e) => setTcIndex(Number(e.target.value))}
+          >
+            {TIME_CONTROLS.map((tc, i) => (
+              <option key={tc.label} value={i}>
+                {tc.label}
+              </option>
+            ))}
+          </Select>
+
+          <Select
+            label="Variant"
+            value={variant}
+            onChange={(e) =>
+              setVariant(e.target.value as "standard" | "chess960")
+            }
+          >
+            <option value="standard">Standard</option>
+            <option value="chess960">Chess960 (Fischer Random)</option>
+          </Select>
+
+          <Input
+            label={
+              <span className="inline-flex items-center gap-1">
+                <RCoin size={12} /> Coin wager (optional)
+              </span>
+            }
+            type="number"
+            min={0}
+            max={MAX_WAGER_TOKENS}
+            step={1}
+            value={wagerInput}
+            onChange={(e) => setWagerInput(e.target.value)}
+            error={
+              Number(wagerInput) > 0 &&
+              Math.floor(Number(wagerInput) || 0) < MIN_STAKE_TOKENS
+                ? `Enter 0 for a free game, or at least ${MIN_STAKE_TOKENS} R`
+                : undefined
+            }
+          />
+          <span className="w-full gap-2 grid grid-cols-2">
+            <Button
+              variant="secondary"
+              onClick={() => handleChallenge(p.id)}
+              disabled={
+                !p.online ||
+                (Math.floor(Number(wagerInput) || 0) > 0 &&
+                  Math.floor(Number(wagerInput) || 0) < MIN_STAKE_TOKENS)
+              }
+            >
+              {p.online ? "Send" : "offline"}
+            </Button>
+
+            <Link
+              to={`/cage/new?challenge=${p.id}&name=${encodeURIComponent(p.username)}`}
+              onClick={() => setChallengingKey(null)}
+            >
+              <Button variant="glass" className="w-full">
+                <Swords className="h-4 w-4" /> Cage
+              </Button>
+            </Link>
+          </span>
+        </div>
+      </ResponsiveOverlay>
+    );
+  }
+
   return (
     <Page
       playersPage
       title="Players"
-      description="Search for anyone, manage friends, and send challenges."
+      description="Search for anyone, manage friends, and challenge any player."
     >
       <div className="space-y-4">
         {status && (
@@ -268,9 +417,13 @@ export function Players() {
                     <RatingBadge rating={u.rating} />
                   </span>
                   <span
-                    className="flex flex-wrap gap-2"
+                    className="flex flex-wrap items-center gap-2"
                     onClick={(e) => e.stopPropagation()}
                   >
+                    {renderPlayerAction(
+                      { id: u._id, username: u.username, online: u.online },
+                      "search",
+                    )}
                     {!alreadyFriend && (
                       <Button
                         variant="secondary"
@@ -297,13 +450,11 @@ export function Players() {
           </div>
         </Card>
 
+        {requests.length > 0 && (
         <Card variant="solid">
           <h1 className="mb-2 text-lg font-semibold text-base-content">
             Friend requests
           </h1>
-          {requests.length === 0 && (
-            <p className="text-sm text-base-content/60">No pending requests.</p>
-          )}
           {requests.map((r) => (
             <div
               key={r.id}
@@ -339,11 +490,47 @@ export function Players() {
             </div>
           ))}
         </Card>
+        )}
+
+        {onlinePlayers.length > 0 && (
+          <Card variant="solid" className="w-full">
+            <h1 className="mb-3 text-lg font-semibold text-base-content">
+              Online players
+            </h1>
+            {onlinePlayers.map((p) => (
+              <div
+                key={p.id}
+                onClick={() => navigate(`/profile/${p.username}`)}
+                className="-mx-2 flex cursor-pointer items-center justify-between gap-2 rounded-lg border-b border-base-300 px-2 py-2 transition-colors last:border-none hover:bg-base-100/60!"
+              >
+                <span className="flex min-w-0 flex-1 items-center gap-2.5 text-sm text-base-content">
+                  <Avatar
+                    username={p.username}
+                    size="sm"
+                    gradient={p.avatarGradient}
+                    status="online"
+                    className="shrink-0"
+                  />
+                  <span className="min-w-0 truncate">{p.username}</span>
+                  <span className="shrink-0">
+                    <RatingBadge rating={p.rating} />
+                  </span>
+                </span>
+                <span
+                  className="flex shrink-0 items-center gap-2"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {renderPlayerAction(p, "online")}
+                </span>
+              </div>
+            ))}
+          </Card>
+        )}
 
         <Card variant="solid" className="w-full">
           <h1 className="mb-3 text-lg font-semibold text-base-content">
             Friends{" "}
-            {friends.length && (
+            {friends.length > 0 && (
               <span className="text-sm! opacity-50">
                 ({`${friends.length}`})
               </span>
@@ -405,113 +592,7 @@ export function Players() {
                     className="flex shrink-0 items-center gap-2"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {f.activeGameCode ? (
-                      <Link to={`/game/${f.activeGameCode}`}>
-                        <Button variant="glass" size="sm">
-                          <TvMinimalPlay className="h-4 w-4" />{" "}
-                          <span className="hidden! sm:flex">Watch</span>
-                        </Button>
-                      </Link>
-                    ) : (
-                      // Time control/variant/wager (for a live challenge) and
-                      // the cage match option both live in this one overlay now
-                      //, settings persist across friends (same tcIndex/
-                      // variant/wagerInput state) so re-challenging someone
-                      // with the same setup is still one click. The trigger
-                      // itself stays open-able even when the friend's offline
-                      // (a cage match invite doesn't need them online right
-                      // now the way an instant challenge does), only "Send
-                      // challenge" is gated on presence.
-                      <ResponsiveOverlay
-                        title={`Challenge ${f.username}`}
-                        align="end"
-                        className="w-72 max-w-[calc(100vw-2rem)]"
-                        open={challengingFriendId === f.id}
-                        onOpenChange={(open) =>
-                          setChallengingFriendId(open ? f.id : null)
-                        }
-                        icon={<Swords></Swords>}
-                        trigger={
-                          <Button size="sm" variant="secondary">
-                            <Swords className="size-3" />
-                            <span className="sm:flex hidden">Challenge</span>
-                          </Button>
-                        }
-                      >
-                        <div className="space-y-3 px-4 md:px-2">
-                          <Select
-                            label="Time control"
-                            value={tcIndex}
-                            onChange={(e) => setTcIndex(Number(e.target.value))}
-                          >
-                            {TIME_CONTROLS.map((tc, i) => (
-                              <option key={tc.label} value={i}>
-                                {tc.label}
-                              </option>
-                            ))}
-                          </Select>
-
-                          <Select
-                            label="Variant"
-                            value={variant}
-                            onChange={(e) =>
-                              setVariant(
-                                e.target.value as "standard" | "chess960",
-                              )
-                            }
-                          >
-                            <option value="standard">Standard</option>
-                            <option value="chess960">
-                              Chess960 (Fischer Random)
-                            </option>
-                          </Select>
-
-                          <Input
-                            label={
-                              <span className="inline-flex items-center gap-1">
-                                <RCoin size={12} /> Coin wager (optional)
-                              </span>
-                            }
-                            type="number"
-                            min={0}
-                            max={MAX_WAGER_TOKENS}
-                            step={1}
-                            value={wagerInput}
-                            onChange={(e) => setWagerInput(e.target.value)}
-                            error={
-                              Number(wagerInput) > 0 &&
-                              Math.floor(Number(wagerInput) || 0) <
-                                MIN_STAKE_TOKENS
-                                ? `Enter 0 for a free game, or at least ${MIN_STAKE_TOKENS} R`
-                                : undefined
-                            }
-                          />
-                          <span className="w-full gap-2 grid grid-cols-2">
-                            <Button
-                              variant="secondary"
-                              onClick={() => handleChallenge(f.id)}
-                              disabled={
-                                !f.online ||
-                                (Math.floor(Number(wagerInput) || 0) > 0 &&
-                                  Math.floor(Number(wagerInput) || 0) <
-                                    MIN_STAKE_TOKENS)
-                              }
-                            >
-                              {f.online ? "Send" : "offline"}
-                            </Button>
-
-                            <Link
-                              to={`/cage/new?challenge=${f.id}`}
-                              onClick={() => setChallengingFriendId(null)}
-                            >
-                              <Button variant="glass" className="w-full">
-                                <Swords className="h-4 w-4" /> Cage
-                              </Button>
-                            </Link>
-                          </span>
-                        </div>
-                      </ResponsiveOverlay>
-                    )}
+                    {renderPlayerAction(f, "friends")}
                   </span>
                 </div>
               ))}

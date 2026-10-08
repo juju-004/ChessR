@@ -28,6 +28,7 @@ import {
 import { clearAdminToken } from "../api/adminAuthStore.js";
 import { AdminWithdrawals } from "../components/admin/AdminWithdrawals.js";
 import { AdminDeposits } from "../components/admin/AdminDeposits.js";
+import { AdminOrganizations } from "../components/admin/AdminOrganizations.js";
 import {
   Card,
   Badge,
@@ -83,7 +84,7 @@ const flagStatusVariant: Record<GameFlagStatus, "warning" | "success" | "error">
 export function AdminDashboard() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<
-    "reports" | "gameCheck" | "revenue" | "naira" | "withdrawals" | "deposits"
+    "reports" | "gameCheck" | "revenue" | "naira" | "withdrawals" | "deposits" | "organizations"
   >("reports");
   const [status, setStatus] = useState<ReportStatus | "all">("pending");
   const [reports, setReports] = useState<AdminReportListItem[]>([]);
@@ -210,6 +211,7 @@ export function AdminDashboard() {
             { value: "naira", label: "Naira tournaments" },
             { value: "withdrawals", label: "Withdrawals" },
             { value: "deposits", label: "Deposits" },
+            { value: "organizations", label: "Organisations" },
           ]}
         />
       </div>
@@ -401,6 +403,8 @@ export function AdminDashboard() {
         <AdminWithdrawals />
       ) : tab === "deposits" ? (
         <AdminDeposits />
+      ) : tab === "organizations" ? (
+        <AdminOrganizations />
       ) : tab === "naira" ? (
         <div className="space-y-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">

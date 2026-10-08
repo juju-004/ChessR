@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { Swords } from "lucide-react";
 import {
   formatLegTimeControl,
@@ -47,7 +47,7 @@ interface LinkInfo {
 }
 
 /** Landing page for a shareable cage match invite link (see
- *  CreateCageMatch.tsx's "Share a link" mode and cageMatchSocket.ts's
+ *  CreateCageMatch.tsx's "Use link invite" option and cageMatchSocket.ts's
  *  cage:create_link/cage:link_lookup/cage:link_accept). Unlike the direct
  *  cage:send flow, this is reachable by anyone with the URL, not just a
  *  pre-chosen friend, so it has to look the invite up itself rather than
@@ -55,6 +55,7 @@ interface LinkInfo {
 export function CageMatchInvite() {
   const { linkId = "" } = useParams<{ linkId: string }>();
   const socket = useSocket();
+  const navigate = useNavigate();
 
   const [info, setInfo] = useState<LinkInfo | null>(null);
   const [error, setError] = useState("");
@@ -72,24 +73,42 @@ export function CageMatchInvite() {
       setInfo(payload);
       setError("");
     }
+    // The link was already accepted, so it's now a match. Go to the game
+    // being played, or the last one played if it's over (the match page if
+    // it never got as far as a game), instead of showing an error.
+    function onResolved(payload: {
+      linkId: string;
+      matchCode: string;
+      gameCode: string | null;
+    }) {
+      if (payload.linkId !== linkId) return;
+      navigate(
+        payload.gameCode
+          ? `/game/${payload.gameCode}`
+          : `/cage/${payload.matchCode}`,
+        { replace: true },
+      );
+    }
     function onError(payload: { message: string }) {
       setAccepting(false);
       setError(payload.message);
     }
     s.on("connect", lookup);
     s.on("cage:link_info", onInfo);
+    s.on("cage:link_resolved", onResolved);
     const release0 = claimToast("cage:error");
     s.on("cage:error", onError);
     if (s.connected) lookup();
     return () => {
       s.off("connect", lookup);
       s.off("cage:link_info", onInfo);
+      s.off("cage:link_resolved", onResolved);
       release0();
       s.off("cage:error", onError);
     };
     // cage:accepted navigation is handled app-wide by GlobalListeners, this
     // page just needs to fire the request and let that redirect happen.
-  }, [socket, linkId]);
+  }, [socket, linkId, navigate]);
 
   function handleAccept() {
     if (!socket) return;

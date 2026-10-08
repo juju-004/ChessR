@@ -387,6 +387,7 @@ export async function startCageMatch(
   targetWins: number | null,
   wagerMode: CageWagerMode,
   wagerTokens: number,
+  inviteLinkId?: string,
 ): Promise<{ match: ICageMatch; firstLeg: ICageLeg }> {
   if (challengerId === opponentId) throw ApiError.badRequest("You can't start a cage match with yourself");
   validateLegPlan(legsInput);
@@ -429,6 +430,7 @@ export async function startCageMatch(
     targetWins: winnerMode === "first_to_n" ? targetWins : null,
     wagerMode,
     wagerTokens,
+    ...(inviteLinkId ? { inviteLinkId } : {}),
   });
 
   try {
@@ -701,6 +703,39 @@ export async function getCageMatchByCode(codeOrId: string) {
     .lean();
   if (!match) throw ApiError.notFound("Cage match not found");
   return match;
+}
+
+export interface ResolvedCageInviteLink {
+  matchCode: string;
+  status: ICageMatch["status"];
+  /** Join code of the game to send someone to, or null when the match has no
+   *  game to show (the caller falls back to the match page). */
+  gameCode: string | null;
+}
+
+/** What an already-accepted invite link turned into (see inviteLinkId on the
+ *  model), or null if no match was ever started from it.
+ *
+ *  Where the link should take you: an active match goes to the game being
+ *  played now, a finished (or cancelled) one to the last game that was
+ *  actually played. */
+export async function resolveCageInviteLink(linkId: string): Promise<ResolvedCageInviteLink | null> {
+  const match = await CageMatch.findOne({ inviteLinkId: linkId })
+    .select("matchCode status currentLegIndex legs")
+    .lean();
+  if (!match) return null;
+
+  const withGame = match.legs.filter((l) => !!l.joinCode);
+  let target: (typeof withGame)[number] | undefined;
+  if (match.status === "active") {
+    // The leg in progress; between legs (the next one not created yet) the
+    // most recent game is the best place to be.
+    target = withGame.find((l) => l.index === match.currentLegIndex) ?? withGame[withGame.length - 1];
+  } else {
+    target = [...withGame].reverse().find((l) => l.status === "finished") ?? withGame[withGame.length - 1];
+  }
+
+  return { matchCode: match.matchCode, status: match.status, gameCode: target?.joinCode ?? null };
 }
 
 /** Page size for the Finished cage matches list (and how many finished

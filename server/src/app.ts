@@ -14,11 +14,13 @@ import teamRoutes from './routes/team.routes.js';
 import gameRoutes from './routes/game.routes.js';
 import cageMatchRoutes from './routes/cageMatch.routes.js';
 import tournamentRoutes from './routes/tournament.routes.js';
+import cumulativeRoutes from './routes/cumulative.routes.js';
 import walletRoutes from './routes/wallet.routes.js';
 import reportRoutes from './routes/report.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import configRoutes from './routes/config.routes.js';
+import organizationRoutes from './routes/organization.routes.js';
 import { handleWebhook } from './controllers/wallet.controller.js';
 
 export function createApp() {
@@ -77,11 +79,13 @@ export function createApp() {
   app.use('/api/games', gameRoutes);
   app.use('/api/cage-matches', cageMatchRoutes);
   app.use('/api/tournaments', tournamentRoutes);
+  app.use('/api/cumulatives', cumulativeRoutes);
   app.use('/api/wallet', walletRoutes);
   app.use('/api/reports', reportRoutes);
   app.use('/api/notifications', notificationRoutes);
   app.use('/api/admin', adminRoutes);
   app.use('/api/config', configRoutes);
+  app.use('/api/organizations', organizationRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

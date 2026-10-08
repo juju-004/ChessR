@@ -11,6 +11,7 @@ import {
   pauseCageLeg,
   resumeCageLeg,
   getCageMatchByCode,
+  resolveCageInviteLink,
   type CageLegInput,
 } from '../services/cageMatch.service.js';
 import { assertUnderActiveGameLimit, countActiveGamesForUser, MAX_ACTIVE_GAMES_PER_USER, activeGameLimitMessage } from '../services/game.service.js';
@@ -33,6 +34,19 @@ const pendingInvitePairKey = (fromId: string, toId: string) => `cageInvite:pendi
 // the same brief window as a live challenge.
 const CAGE_LINK_TTL_SECONDS = 60 * 60 * 24; // 24 hours
 const linkInviteKey = (id: string) => `cageLinkInvite:${id}`;
+
+// A link that's already been accepted no longer has a Redis entry (it's
+// single-use), but opening the URL again shouldn't dead-end on an error: it
+// should land on the match it became. This looks that match up (stored on the
+// match itself, see inviteLinkId in models/CageMatch.ts) and tells the client
+// where to go. Returns false when the link never turned into a match, i.e. it
+// genuinely expired or was cancelled.
+async function emitResolvedLink(socket: Socket, linkId: string): Promise<boolean> {
+  const resolved = await resolveCageInviteLink(linkId);
+  if (!resolved) return false;
+  socket.emit('cage:link_resolved', { linkId, ...resolved });
+  return true;
+}
 
 // Pause/resume requests are short-lived, Redis-backed, and keyed by match, 
 // same pattern as a normal challenge invite, just scoped to a specific match
@@ -125,12 +139,11 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
         return emitError(socket, err instanceof Error ? err.message : "You can't start new games right now");
       }
 
-      const me = await User.findById(userId).select('friends tokenBalance').lean();
-      const isFriend = me?.friends.some((f) => f.toString() === toUserId);
-      if (!isFriend) return emitError(socket, 'You can only start a cage match with a friend');
+      // Any player can be invited to a cage match, friend or not.
+      const me = await User.findById(userId).select('tokenBalance').lean();
 
       const online = await isUserOnline(toUserId);
-      if (!online) return emitError(socket, 'That friend is currently offline');
+      if (!online) return emitError(socket, 'That player is currently offline');
 
       const target = await User.findById(toUserId).select('acceptChallenges').lean();
       if (target && target.acceptChallenges === false) {
@@ -320,7 +333,11 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
       if (!parsed.success) return emitError(socket, 'Invalid invite link');
 
       const stored = await redis.get(linkInviteKey(parsed.data.linkId));
-      if (!stored) return emitError(socket, 'This invite link has expired or already been used');
+      if (!stored) {
+        // Already accepted? Then send them to that match instead of erroring.
+        if (await emitResolvedLink(socket, parsed.data.linkId)) return;
+        return emitError(socket, 'This invite link has expired');
+      }
 
       const { fromId, legs, winnerMode, targetWins, wagerMode, wagerTokens } = JSON.parse(stored) as {
         fromId: string;
@@ -369,7 +386,11 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
       const { linkId } = parsed.data;
 
       const stored = await redis.get(linkInviteKey(linkId));
-      if (!stored) return emitError(socket, 'This invite link has expired or already been used');
+      if (!stored) {
+        // Someone got there first (or you double-clicked): go to the match.
+        if (await emitResolvedLink(socket, linkId)) return;
+        return emitError(socket, 'This invite link has expired');
+      }
 
       const { fromId, legs, winnerMode, targetWins, wagerMode, wagerTokens } = JSON.parse(stored) as {
         fromId: string;
@@ -382,20 +403,35 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
 
       if (fromId === userId) return emitError(socket, "You can't accept your own cage match invite");
 
-      // Delete up front — a link is single-use, and this also prevents two
-      // people racing to accept the same link from both starting a match
-      // with the same creator.
-      await redis.del(linkInviteKey(linkId));
+      // Claim the link up front — it's single-use, and DEL's reply (1 only
+      // for whoever actually removed it) is what stops two people racing to
+      // accept the same link from both starting a match with the same
+      // creator. The remaining TTL is read first so the link can be put
+      // back, with the time it had left, if this attempt fails below.
+      const remainingTtl = await redis.ttl(linkInviteKey(linkId));
+      const claimed = await redis.del(linkInviteKey(linkId));
+      if (claimed !== 1) {
+        if (await emitResolvedLink(socket, linkId)) return;
+        return emitError(socket, 'This invite link has expired');
+      }
+      // A failed accept (not enough R, creator offline, game limit...) must
+      // not burn the creator's link for everyone else.
+      const failAccept = async (message: string) => {
+        await redis
+          .set(linkInviteKey(linkId), stored, 'EX', remainingTtl > 0 ? remainingTtl : CAGE_LINK_TTL_SECONDS)
+          .catch((err) => console.error('could not restore cage invite link:', err));
+        emitError(socket, message);
+      };
 
       try {
         await assertNotRestricted(userId);
       } catch (err) {
-        return emitError(socket, err instanceof Error ? err.message : "You can't accept new games right now");
+        return failAccept(err instanceof Error ? err.message : "You can't accept new games right now");
       }
       try {
         await assertNotRestricted(fromId);
       } catch {
-        return emitError(socket, 'The person who created this invite can no longer start new games');
+        return failAccept('The person who created this invite can no longer start new games');
       }
 
       // Unlike a direct cage:send (checked at send-time, when the sender
@@ -404,32 +440,32 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
       // play" check has to happen here instead.
       const creatorOnline = await isUserOnline(fromId);
       if (!creatorOnline) {
-        return emitError(socket, 'The person who created this invite is currently offline');
+        return failAccept('The person who created this invite is currently offline');
       }
 
       try {
         await assertUnderActiveGameLimit(fromId);
       } catch {
-        return emitError(socket, 'The person who created this invite already has too many active games right now');
+        return failAccept('The person who created this invite already has too many active games right now');
       }
       try {
         await assertUnderActiveGameLimit(userId);
       } catch {
-        return emitError(socket, activeGameLimitMessage('accepting'));
+        return failAccept(activeGameLimitMessage('accepting'));
       }
 
       const me = await User.findById(userId).select('tokenBalance').lean();
       const commitment = estimatedMaxCommitment(wagerMode, wagerTokens, legs.length);
       if (commitment > 0 && (me?.tokenBalance ?? 0) < commitment) {
-        return emitError(socket, "You don't have enough R tokens for that wager");
+        return failAccept("You don't have enough R tokens for that wager");
       }
 
       let result;
       try {
-        result = await startCageMatch(fromId, userId, legs, winnerMode, targetWins, wagerMode, wagerTokens);
+        result = await startCageMatch(fromId, userId, legs, winnerMode, targetWins, wagerMode, wagerTokens, linkId);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Could not start the cage match';
-        return emitError(socket, message);
+        return failAccept(message);
       }
 
       const payload = {

@@ -79,12 +79,11 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
         return emitError(socket, err instanceof Error ? err.message : "You can't start new games right now");
       }
 
-      const me = await User.findById(userId).select('friends tokenBalance').lean();
-      const isFriend = me?.friends.some((f) => f.toString() === toUserId);
-      if (!isFriend) return emitError(socket, 'You can only challenge friends');
+      // Any player can challenge any other player, friend or not.
+      const me = await User.findById(userId).select('tokenBalance').lean();
 
       const online = await isUserOnline(toUserId);
-      if (!online) return emitError(socket, 'That friend is currently offline');
+      if (!online) return emitError(socket, 'That player is currently offline');
 
       const target = await User.findById(toUserId).select('acceptChallenges').lean();
       if (target && target.acceptChallenges === false) {

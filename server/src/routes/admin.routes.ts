@@ -13,6 +13,7 @@ import {
   resolveWithdrawal,
   listDeposits,
 } from '../controllers/admin.controller.js';
+import { adminListOrganizations, adminReviewOrganization } from '../controllers/organization.controller.js';
 import { requireAdmin } from '../middleware/adminAuth.js';
 
 const router = Router();
@@ -29,5 +30,7 @@ router.get('/naira-tournaments', requireAdmin, listNairaTournaments);
 router.get('/withdrawals', requireAdmin, listWithdrawals);
 router.patch('/withdrawals/:id', requireAdmin, resolveWithdrawal);
 router.get('/deposits', requireAdmin, listDeposits);
+router.get('/organizations', requireAdmin, adminListOrganizations);
+router.patch('/organizations/:id', requireAdmin, adminReviewOrganization);
 
 export default router;

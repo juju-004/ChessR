@@ -268,7 +268,7 @@ export function CageMatches() {
     <Page
       title="Cage matches"
       responsiveDescription
-      description="Challenge a friend to an ordered series of games."
+      description="Challenge a player to an ordered series of games."
       actions={
         <Button
           variant="primary"

@@ -4,6 +4,8 @@ import { Crown, Shield, UserMinus } from "lucide-react";
 import { kickTeamMember, listTeamMembers, transferTeam, type TeamMember } from "../../api/teams.js";
 import { errMsg } from "../../lib/errMsg.js";
 import { useConfirm } from "../../contexts/ConfirmContext.js";
+import { useIsDesktop } from "../../hooks/useIsDesktop.js";
+import { TEAM_LIST_PAGE_SIZE } from "./pageSize.js";
 import { Pagination } from "../Pagination.js";
 import { Avatar } from "../ui/Avatar.js";
 import { Card } from "../ui/Card.js";
@@ -22,6 +24,7 @@ export function TeamMembersTab({
   onChanged: () => void;
 }) {
   const confirm = useConfirm();
+  const limit = TEAM_LIST_PAGE_SIZE[useIsDesktop() ? "desktop" : "mobile"];
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [page, setPage] = useState(0);
   const [pageCount, setPageCount] = useState(1);
@@ -30,16 +33,24 @@ export function TeamMembersTab({
 
   const load = useCallback(async () => {
     try {
-      const r = await listTeamMembers(teamId, page + 1);
+      const r = await listTeamMembers(teamId, page + 1, { limit });
       setMembers(r.members);
       setPageCount(r.totalPages);
+      // The list shrank (someone left, or the page size changed): step back.
+      if (r.members.length === 0 && page > 0) setPage(Math.max(0, r.totalPages - 1));
       setError("");
     } catch (err) {
       setError(errMsg(err));
     } finally {
       setLoading(false);
     }
-  }, [teamId, page]);
+  }, [teamId, page, limit]);
+
+  // A different page size (resizing across the phone/desktop breakpoint)
+  // makes the current page number meaningless, so start over.
+  useEffect(() => {
+    setPage(0);
+  }, [limit]);
 
   useEffect(() => {
     load();
@@ -75,12 +86,12 @@ export function TeamMembersTab({
   if (loading) return <div className="flex justify-center py-10"><Spinner /></div>;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {error && <p role="alert" className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-500">{error}</p>}
-      <Card className="divide-y divide-base-300/60 p-1">
+      <Card className="divide-y divide-base-300/60 p-0.5">
         {members.map((m) => (
-          <div key={m.id} className="flex items-center gap-3 px-3 py-2.5">
-            <Avatar username={m.username} src={m.avatarUrl} gradient={m.avatarGradient} size="sm" />
+          <div key={m.id} className="flex items-center gap-2 px-2 py-1.5">
+            <Avatar username={m.username} src={m.avatarUrl} gradient={m.avatarGradient} size="xs" />
             <Link to={`/profile/${m.username}`} className="min-w-0 flex-1 truncate text-sm font-medium hover:underline">
               {m.username}
             </Link>

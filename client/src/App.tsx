@@ -94,6 +94,11 @@ const CreateTournament = lazy(() =>
     default: m.CreateTournament,
   })),
 );
+const LeagueDetail = lazy(() =>
+  import("./pages/LeagueDetail.js").then((m) => ({
+    default: m.LeagueDetail,
+  })),
+);
 const TournamentDetail = lazy(() =>
   import("./pages/TournamentDetail.js").then((m) => ({
     default: m.TournamentDetail,
@@ -109,6 +114,11 @@ const QuickPairing = lazy(() =>
 );
 const NotFound = lazy(() =>
   import("./pages/NotFound.js").then((m) => ({ default: m.NotFound })),
+);
+const OrganizationRequest = lazy(() =>
+  import("./pages/OrganizationRequest.js").then((m) => ({
+    default: m.OrganizationRequest,
+  })),
 );
 const About = lazy(() =>
   import("./pages/About.js").then((m) => ({ default: m.About })),
@@ -272,6 +282,14 @@ function AppBody() {
               />
               {/* Public, reachable pre-login from the signup form, and
                *  linked from the dashboard footer once signed in. */}
+              <Route
+                path="/organization/request"
+                element={
+                  <ProtectedRoute>
+                    <OrganizationRequest />
+                  </ProtectedRoute>
+                }
+              />
               <Route path="/about" element={<About />} />
               <Route path="/terms" element={<Terms />} />
               {/* Old bookmarks/links to /dashboard keep working, / is the dashboard now. */}
@@ -403,6 +421,14 @@ function AppBody() {
                 element={
                   <ProtectedRoute>
                     <CreateTournament />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/leagues/:id"
+                element={
+                  <ProtectedRoute>
+                    <LeagueDetail />
                   </ProtectedRoute>
                 }
               />

@@ -1,6 +1,6 @@
 import { apiFetch } from './http.js';
 
-export type NotificationType = 'welcome' | 'anticheat_freeze' | 'report_freeze' | 'admin_message' | 'tournament_naira_prize';
+export type NotificationType = 'welcome' | 'anticheat_freeze' | 'report_freeze' | 'admin_message' | 'tournament_naira_prize' | 'team_announcement';
 
 export interface AppNotification {
   id: string;

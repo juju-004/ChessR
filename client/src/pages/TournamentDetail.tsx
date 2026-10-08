@@ -50,6 +50,13 @@ import {
 import type { DropdownItem } from "../components/ui/index.js";
 import type { ChatMessage } from "../lib/chatTypes.js";
 import { PrizePoolEditor } from "../components/tournaments/PrizePoolEditor.js";
+import { LeagueStandings } from "../components/tournaments/LeagueStandings.js";
+import {
+  getLeagueStandings,
+  type LeagueStandings as LeagueStandingsData,
+} from "../api/leagues.js";
+import { TeamBattleStandings } from "../components/tournaments/TeamBattleStandings.js";
+import { JoinTeamBattleModal } from "../components/tournaments/JoinTeamBattleModal.js";
 import {
   KnockoutBracket,
   roundLabel,
@@ -257,22 +264,29 @@ function EditTournamentForm({
               Format
             </label>
             <div className="grid grid-cols-2 gap-2">
-              {(Object.keys(FORMAT_LABEL) as TournamentFormat[]).map((f) => (
-                <button
-                  key={f}
-                  onClick={() => handleFormatChange(f)}
-                  className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
-                    format === f
-                      ? "border-(--secondary)/50 bg-(--secondary)/10 text-base-content"
-                      : "border-base-300 bg-base-100/60 text-base-content/70 hover:border-(--secondary)/30"
-                  }`}
-                >
-                  <div className="font-medium">{FORMAT_LABEL[f]}</div>
-                  <div className="text-xs text-base-content/50">
-                    {FORMAT_DESCRIPTION[f]}
-                  </div>
-                </button>
-              ))}
+              {(Object.keys(FORMAT_LABEL) as TournamentFormat[])
+                .filter(
+                  (f) =>
+                    (!tournament.teamBattle && !tournament.cumulative) ||
+                    f === "swiss" ||
+                    f === "arena",
+                )
+                .map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => handleFormatChange(f)}
+                    className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
+                      format === f
+                        ? "border-(--secondary)/50 bg-(--secondary)/10 text-base-content"
+                        : "border-base-300 bg-base-100/60 text-base-content/70 hover:border-(--secondary)/30"
+                    }`}
+                  >
+                    <div className="font-medium">{FORMAT_LABEL[f]}</div>
+                    <div className="text-xs text-base-content/50">
+                      {FORMAT_DESCRIPTION[f]}
+                    </div>
+                  </button>
+                ))}
             </div>
           </div>
 
@@ -595,11 +609,7 @@ function isLateJoinOpen(tournament: Tournament): boolean {
   return false;
 }
 
-function LateJoinRow({
-  tournament,
-}: {
-  tournament: Tournament;
-}) {
+function LateJoinRow({ tournament }: { tournament: Tournament }) {
   if (!isLateJoinOpen(tournament)) return null;
 
   return (
@@ -611,35 +621,94 @@ function LateJoinRow({
   );
 }
 
-/** Client-side mirror of the server's arenaAvailablePlayers pairing pool
- *  (see tournament.service.ts), including the "actually watching the
- *  page" presence check — watchingUserIds comes from the server's
- *  'tournament:watchers' broadcast (presence.service.ts's
- *  getWatchingUserIds), so this only shows players whose own client
- *  currently has this tournament's detail page open, same gate the real
- *  pairing logic uses. Used for the "Pairing pool" section below instead
- *  of a per-round tab list, which didn't make much sense for arena: each
- *  "round" there is really just one ad hoc 1-on-1 match rather than a
- *  shared round everyone plays at once, so a giant scrolling tab list of
- *  them was mostly noise. Showing who's actually free to be paired right
- *  now is the more useful view of "what's happening" for this format. */
+/** The arena "Pairing pool" as seen by ONE player: up to ARENA_POOL_MAX of
+ *  the free players that player could actually be paired with right now,
+ *  closest to them in the standings first (the order the server's matcher
+ *  prefers, matchArenaPairsSmart in tournament.service.ts).
+ *
+ *  A player is listed only if they are: not paused, not mid-game, present
+ *  (on the tournament page or watching a game, `presentUserIds` comes from the
+ *  server's 'tournament:watchers' broadcast), not someone either side just
+ *  played (no immediate rematch), and not a pairing that would hand either
+ *  side a 3rd game in a row as the same color (the server's two hard rules).
+ *  Everyone else is left out, so the list can differ from person to person. */
+const ARENA_POOL_MAX = 6;
+
 function arenaPairingPool(
   tournament: Tournament,
-  watchingUserIds: Set<string>,
+  presentUserIds: Set<string>,
+  myId: string,
 ): TournamentPlayer[] {
   const busy = new Set<string>();
+  const lastOpponent = new Map<string, string>();
+  const colors = new Map<
+    string,
+    { last: "white" | "black" | null; streak: number }
+  >();
   for (const round of tournament.rounds) {
     for (const pairing of round.pairings) {
-      if (pairing.status !== "active") continue;
-      busy.add(pairing.player1);
-      if (pairing.player2) busy.add(pairing.player2);
+      if (pairing.status === "active") {
+        busy.add(pairing.player1);
+        if (pairing.player2) busy.add(pairing.player2);
+      }
+      for (const [id, color] of [
+        [pairing.whiteId, "white"],
+        [pairing.blackId, "black"],
+      ] as const) {
+        if (!id) continue;
+        const c = colors.get(id) ?? { last: null, streak: 0 };
+        c.streak = c.last === color ? c.streak + 1 : 1;
+        c.last = color;
+        colors.set(id, c);
+      }
     }
   }
+  // Newest round first, same as the server's computeLastArenaOpponents.
+  for (let i = tournament.rounds.length - 1; i >= 0; i--) {
+    const pairing = tournament.rounds[i].pairings[0];
+    if (!pairing?.player2) continue;
+    if (!lastOpponent.has(pairing.player1))
+      lastOpponent.set(pairing.player1, pairing.player2);
+    if (!lastOpponent.has(pairing.player2))
+      lastOpponent.set(pairing.player2, pairing.player1);
+  }
+  const threeInARow = (id: string, color: "white" | "black") => {
+    const c = colors.get(id);
+    return !!c && c.last === color && c.streak >= 2;
+  };
+
+  const me = tournament.players.find((p) => p.user === myId);
+  if (!me || me.paused) return [];
+  const ranked = rankTournamentPlayers(tournament);
+  const rankOf = new Map(ranked.map((p, i) => [p.user, i]));
+  const myRank = rankOf.get(myId) ?? 0;
+
   return tournament.players
-    .filter(
-      (p) => !p.paused && !busy.has(p.user) && watchingUserIds.has(p.user),
+    .filter((p) => {
+      if (p.user === myId) return false;
+      if (p.paused || busy.has(p.user) || !presentUserIds.has(p.user))
+        return false;
+      if (
+        lastOpponent.get(myId) === p.user ||
+        lastOpponent.get(p.user) === myId
+      )
+        return false;
+      // Both color assignments would give someone a 3rd same color in a row.
+      const orientation1 =
+        (threeInARow(myId, "white") ? 1 : 0) +
+        (threeInARow(p.user, "black") ? 1 : 0);
+      const orientation2 =
+        (threeInARow(p.user, "white") ? 1 : 0) +
+        (threeInARow(myId, "black") ? 1 : 0);
+      return !(orientation1 > 0 && orientation2 > 0);
+    })
+    .sort(
+      (a, b) =>
+        Math.abs((rankOf.get(a.user) ?? 0) - myRank) -
+          Math.abs((rankOf.get(b.user) ?? 0) - myRank) ||
+        (rankOf.get(a.user) ?? 0) - (rankOf.get(b.user) ?? 0),
     )
-    .sort((a, b) => b.points - a.points || b.tiebreak - a.tiebreak);
+    .slice(0, ARENA_POOL_MAX);
 }
 
 const RANK_MEDAL_CLASSES: Record<number, string> = {
@@ -738,7 +807,13 @@ function PlayerTournamentDetails({
     // points/tiebreak/status change when this player's games finish, which
     // is exactly when an open popup should refresh (the old data stays on
     // screen until the new arrives).
-  }, [tournament.code, player.user, player.points, player.tiebreak, tournament.status]);
+  }, [
+    tournament.code,
+    player.user,
+    player.points,
+    player.tiebreak,
+    tournament.status,
+  ]);
   const fullPlayer = details?.player ?? player;
   const records = (details?.pairings ?? []).map(({ roundIndex, pairing }) => ({
     roundIndex,
@@ -761,7 +836,9 @@ function PlayerTournamentDetails({
   const onStreak =
     isArena &&
     tournament.status === "active" &&
-    isOnArenaStreak(player.currentWinStreak !== undefined ? player : fullPlayer);
+    isOnArenaStreak(
+      player.currentWinStreak !== undefined ? player : fullPlayer,
+    );
   const stats = [
     { label: "Games", value: fullPlayer.gamesPlayed ?? "…" },
     isArena && { label: "Berserk wins", value: fullPlayer.berserkWins ?? "…" },
@@ -786,9 +863,7 @@ function PlayerTournamentDetails({
               {player.username}
             </Link>
             <div className="mt-0.5 flex items-center gap-2">
-              <RatingBadge
-                rating={player.rating}
-              />
+              <RatingBadge rating={player.rating} />
               {player.user === tournament.createdBy && (
                 <p className="text-xs font-medium text-amber-400">
                   ★ Organizer
@@ -814,11 +889,16 @@ function PlayerTournamentDetails({
                       ? "text-orange-400"
                       : "text-secondary"
                     : "text-base-content",
-                  s.label === "Points" && onStreak && "inline-flex items-center justify-center gap-1 w-full",
+                  s.label === "Points" &&
+                    onStreak &&
+                    "inline-flex items-center justify-center gap-1 w-full",
                 )}
               >
                 {s.label === "Points" && onStreak && (
-                  <Flame className="h-4 w-4 shrink-0" aria-label="On a win streak" />
+                  <Flame
+                    className="h-4 w-4 shrink-0"
+                    aria-label="On a win streak"
+                  />
                 )}
                 {s.value}
               </p>
@@ -830,7 +910,9 @@ function PlayerTournamentDetails({
 
       {!details && (
         <p className="w-full px-1 text-center text-xs text-base-content/50">
-          {detailsFailed ? "Couldn't load this player's games." : "Loading games…"}
+          {detailsFailed
+            ? "Couldn't load this player's games."
+            : "Loading games…"}
         </p>
       )}
 
@@ -1086,7 +1168,9 @@ export function TournamentDetail() {
   // Pairings of swiss / round-robin rounds the server only sent a stub for
   // (see TournamentRound.pairingCount), keyed "index:status" so a round that
   // moves from active to finished is fetched again.
-  const [fetchedRounds, setFetchedRounds] = useState<Record<string, TournamentRound>>({});
+  const [fetchedRounds, setFetchedRounds] = useState<
+    Record<string, TournamentRound>
+  >({});
   // Collapsed by default, the tier breakdown is useful detail but not
   // something you need to see every time you land on the page, especially
   // once the header/card title already shows the total.
@@ -1144,7 +1228,12 @@ export function TournamentDetail() {
   // Opening a round tab whose pairings weren't included in the tournament
   // payload loads just that round.
   useEffect(() => {
-    if (!tournament || tournament.format === "arena" || tournament.format === "normal") return;
+    if (
+      !tournament ||
+      tournament.format === "arena" ||
+      tournament.format === "normal"
+    )
+      return;
     const index = manualRoundIndex ?? tournament.currentRoundIndex;
     const stub = tournament.rounds[index];
     if (!stub || stub.pairings.length >= (stub.pairingCount ?? 0)) return;
@@ -1282,6 +1371,36 @@ export function TournamentDetail() {
   // reflects (joined / left, paused / resumed, status flip), on a
   // tournament:error (see onError), or after a safety timeout so a lost
   // reply can never leave it spinning forever.
+  // League table for tournaments that belong to one. Refetched
+  // only when something that changes it does (status flip, roster size, or
+  // the field's total points), not on every tournament:update, which fires
+  // far more often than the table can actually change.
+  const [leagueStandings, setLeagueStandings] =
+    useState<LeagueStandingsData | null>(null);
+  const leagueId = tournament?.cumulative ?? null;
+  const leagueTournamentCode = tournament?.code ?? null;
+  const leagueSignature = tournament
+    ? `${tournament.status}|${tournament.players.length}|${tournament.players.reduce((n, p) => n + p.points, 0)}`
+    : "";
+  useEffect(() => {
+    if (!leagueId || !leagueTournamentCode) {
+      setLeagueStandings(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      getLeagueStandings(leagueId, leagueTournamentCode)
+        .then((r) => {
+          if (!cancelled) setLeagueStandings(r);
+        })
+        .catch(() => undefined);
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [leagueId, leagueTournamentCode, leagueSignature]);
+
   const myPausedFlag = !!tournament?.players.find((p) => p.user === user?.id)
     ?.paused;
   const tournamentStatus = tournament?.status;
@@ -1324,6 +1443,9 @@ export function TournamentDetail() {
   }
 
   const myId = user?.id;
+  const teamNameById = new Map(
+    (tournament.teamBattle?.teams ?? []).map((t) => [t.team, t.name]),
+  );
   const isPlayer = !!myId && tournament.players.some((p) => p.user === myId);
   const myPlayer = tournament.players.find((p) => p.user === myId);
   const isCreator = tournament.createdBy === myId;
@@ -1334,14 +1456,13 @@ export function TournamentDetail() {
   const standings = isPointsFormat
     ? tournament.status === "pending"
       ? [...tournament.players].sort(
-          (a, b) =>
-            b.rating - a.rating || a.joinedAt.localeCompare(b.joinedAt),
+          (a, b) => b.rating - a.rating || a.joinedAt.localeCompare(b.joinedAt),
         )
       : rankTournamentPlayers(tournament)
     : [];
   const pairingPool =
-    tournament.format === "arena"
-      ? arenaPairingPool(tournament, watchingUserIds)
+    tournament.format === "arena" && myId
+      ? arenaPairingPool(tournament, watchingUserIds, myId)
       : [];
   // 10 rows per page rather than the full field, arena/swiss standings can
   // run into the dozens of players, and rendering all of them as one table
@@ -1369,21 +1490,25 @@ export function TournamentDetail() {
     !!selectedRoundStub &&
     selectedRoundStub.pairings.length < (selectedRoundStub.pairingCount ?? 0);
   const selectedRound = selectedRoundLoading
-    ? (fetchedRounds[`${selectedRoundStub?.index}:${selectedRoundStub?.status}`] ?? selectedRoundStub)
+    ? (fetchedRounds[
+        `${selectedRoundStub?.index}:${selectedRoundStub?.status}`
+      ] ?? selectedRoundStub)
     : selectedRoundStub;
 
-  function join(password?: string) {
+  function join(password?: string, teamId?: string) {
     // Once you're a player, the server already knows it, the password is
     // only ever asked for here, at join time, never again on return visits.
     setPrimaryBusy(true);
     socket?.emit("tournament:join", {
       tournamentId: tournament!._id,
       password: password || undefined,
+      teamId: teamId || undefined,
     });
   }
-  /** Join button entry point: a passworded tournament asks in a modal first. */
+  /** Join button entry point: a passworded tournament asks in a modal first,
+   *  and a team battle always does (you pick which team you play for). */
   function requestJoin() {
-    if (tournament!.hasPassword) {
+    if (tournament!.hasPassword || tournament!.teamBattle) {
       setJoinError("");
       setPasswordModalOpen(true);
     } else {
@@ -1476,17 +1601,29 @@ export function TournamentDetail() {
   let dockPrimary: TournamentPrimaryAction | null = null;
   if (tournament.status === "pending") {
     if (!isPlayer) {
-      dockPrimary = { icon: "play", label: "Join tournament", onClick: requestJoin };
+      dockPrimary = {
+        icon: "play",
+        label: "Join tournament",
+        onClick: requestJoin,
+      };
     } else if (!isCreator || tournament.organizerOnly) {
       // A playing creator is the tournament's anchor and can't walk out of
       // it, but an organizer-only creator who tapped play is just an
       // entrant, so the slot flips to pause (leave) for them too.
-      dockPrimary = { icon: "pause", label: "Leave tournament", onClick: confirmLeave };
+      dockPrimary = {
+        icon: "pause",
+        label: "Leave tournament",
+        onClick: confirmLeave,
+      };
     }
   } else if (tournament.status === "active") {
     if (!isPlayer) {
       if (isLateJoinOpen(tournament)) {
-        dockPrimary = { icon: "play", label: "Join tournament", onClick: requestJoin };
+        dockPrimary = {
+          icon: "play",
+          label: "Join tournament",
+          onClick: requestJoin,
+        };
       }
     } else if (tournament.format === "arena" || tournament.format === "swiss") {
       dockPrimary = myPlayer?.paused
@@ -1504,10 +1641,23 @@ export function TournamentDetail() {
     tournament.players.every((p) => p.user === tournament.createdBy);
   const dockMenuItems: DropdownItem[] = [
     ...(canEdit
-      ? [{ label: "Edit tournament", icon: Pencil, onClick: () => setEditing(true) }]
+      ? [
+          {
+            label: "Edit tournament",
+            icon: Pencil,
+            onClick: () => setEditing(true),
+          },
+        ]
       : []),
     ...(isCreator && tournament.status === "pending"
-      ? [{ label: "Cancel tournament", icon: Ban, danger: true, onClick: cancel }]
+      ? [
+          {
+            label: "Cancel tournament",
+            icon: Ban,
+            danger: true,
+            onClick: cancel,
+          },
+        ]
       : []),
   ];
 
@@ -1536,16 +1686,16 @@ export function TournamentDetail() {
           <Button
             variant={dockPrimary.icon === "play" ? "secondary" : "glass"}
             size="sm"
-            loading={dockPrimary.loading}
-            disabled={dockPrimary.disabled}
+            disabled={dockPrimary.disabled || dockPrimary.loading}
             onClick={dockPrimary.onClick}
           >
-            {!dockPrimary.loading &&
-              (dockPrimary.icon === "play" ? (
-                <Play className="h-3.5 w-3.5" />
-              ) : (
-                <Pause className="h-3.5 w-3.5" />
-              ))}{" "}
+            {dockPrimary.loading ? (
+              <Spinner size="sm" />
+            ) : dockPrimary.icon === "play" ? (
+              <Play className="h-3.5 w-3.5" />
+            ) : (
+              <Pause className="h-3.5 w-3.5" />
+            )}{" "}
             {dockPrimary.label}
           </Button>
         )}
@@ -1595,6 +1745,21 @@ export function TournamentDetail() {
               </span>
             </div>
             <div className="mb-4 flex flex-wrap gap-1.5 last:mb-0">
+              {tournament.teamBattle && (
+                <Badge variant="primary">
+                  Team battle
+                  {tournament.organizationName
+                    ? ` · ${tournament.organizationName}`
+                    : ""}
+                </Badge>
+              )}
+              {tournament.cumulative && tournament.cumulativeName && (
+                <Link to={`/leagues/${tournament.cumulative}`}>
+                  <Badge variant="primary">
+                    League · {tournament.cumulativeName}
+                  </Badge>
+                </Link>
+              )}
               {tournament.format === "swiss" && (
                 <Badge variant="neutral">{tournament.swissRounds} rounds</Badge>
               )}
@@ -1703,7 +1868,9 @@ export function TournamentDetail() {
           </Card>
         )}
 
-        {tournament.format === "normal" && tournament.status === "pending" && desktopPrimary}
+        {tournament.format === "normal" &&
+          tournament.status === "pending" &&
+          desktopPrimary}
         {tournament.status === "pending" && tournament.format === "normal" && (
           <Card variant="solid">
             <CardHeader>
@@ -1719,7 +1886,8 @@ export function TournamentDetail() {
                 {[...tournament.players]
                   .sort(
                     (a, b) =>
-                      b.rating - a.rating || a.joinedAt.localeCompare(b.joinedAt),
+                      b.rating - a.rating ||
+                      a.joinedAt.localeCompare(b.joinedAt),
                   )
                   .map((p) => {
                     const isMe = p.user === myId;
@@ -1739,10 +1907,7 @@ export function TournamentDetail() {
                           <span className="text-amber-400">★</span>
                         )}
                         <span className="max-w-32 truncate">{p.username}</span>
-                        <RatingBadge
-                          className="shrink-0"
-                          rating={p.rating}
-                        />
+                        <RatingBadge className="shrink-0" rating={p.rating} />
                       </Badge>
                     );
                   })}
@@ -1844,177 +2009,208 @@ export function TournamentDetail() {
             <ArenaCountdown arenaEndsAt={tournament.arenaEndsAt} />
           )}
 
-        {tournament.format === "normal" && tournament.status !== "pending" && desktopPrimary}
+        {tournament.format === "normal" &&
+          tournament.status !== "pending" &&
+          desktopPrimary}
         {tournament.format === "normal" && (
           <KnockoutBracket tournament={tournament} myId={myId} />
         )}
 
         {isPointsFormat && desktopPrimary}
-        {isPointsFormat && standings.length > 0 && (
-          <Card variant="solid">
-            <CardHeader>
-              <CardTitle>Standings</CardTitle>
-              <div className="flex items-center gap-2">
-                {myStandingsIndex !== -1 && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setStandingsPage(
-                        Math.floor(myStandingsIndex / STANDINGS_PAGE_SIZE),
-                      )
-                    }
-                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-(--secondary) transition-colors hover:bg-(--secondary)/10"
-                  >
-                    <LocateFixed className="h-3.5 w-3.5" /> Me
-                  </button>
-                )}
-                <Pagination
-                  badge
-                  page={safeStandingsPage}
-                  pageCount={standingsPageCount}
-                  onPageChange={setStandingsPage}
-                />
-              </div>
-            </CardHeader>
-            <div className="overflow-hidden rounded-xl border border-base-300">
-              <table className="w-full table-fixed text-sm">
-                <thead>
-                  <tr className="bg-base-300/50 text-left text-[11px] font-semibold uppercase tracking-wide text-base-content/50">
-                    <th className="w-10 px-3 py-2">#</th>
-                    <th className="px-3 py-2">Player</th>
-                    <th className="hidden w-24 px-3 py-2 text-center md:table-cell">
-                      Form
-                    </th>
-                    <th className={cn("px-3 py-2 text-right", tournament.format === "arena" ? "w-20" : "w-14")}>Pts</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pagedStandings.map((p, i) => {
-                    const rank =
-                      safeStandingsPage * STANDINGS_PAGE_SIZE + i + 1;
-                    const isMe = p.user === myId;
-                    return (
-                      <tr
-                        key={p.user}
-                        className={cn(
-                          "border-t border-base-300/60 transition-colors",
-                          isMe
-                            ? "bg-(--secondary)/10"
-                            : i % 2 === 0
-                              ? "bg-base-100/50"
-                              : "bg-base-200/50",
-                        )}
-                      >
-                        <td className="pl-3 py-2">
-                          <RankBadge rank={rank} />
-                        </td>
-                        <td
-                          className={cn(
-                            "max-w-0 px-3 py-2",
-                            isMe && "font-semibold text-(--secondary)",
-                          )}
-                        >
-                          <ResponsiveOverlay
-                            align="start"
-                            trigger={
-                              <button className="flex w-full min-w-0 items-center gap-1.5 text-left hover:scale-95 duration-150">
-                                <Avatar
-                                  username={p.username}
-                                  gradient={p.avatarGradient}
-                                  size="xs"
-                                />
-                                <span className="min-w-0 truncate">
-                                  {p.username}
-                                </span>
-                                <RatingBadge
-                                  className="shrink-0"
-                                  rating={p.rating}
-                                />
-                                {p.paused && (
-                                  <Pause
-                                    className="h-3.5 w-3.5 shrink-0 text-base-content/50"
-                                    aria-label="Paused"
-                                  />
-                                )}
-                              </button>
-                            }
-                          >
-                            <PlayerTournamentDetails
-                              tournament={tournament}
-                              player={p}
-                            />
-                          </ResponsiveOverlay>
-                        </td>
-                        <td className="hidden px-3 py-2 md:table-cell">
-                          <FormBadges form={p.form} />
-                        </td>
-                        <td
-                          className={cn(
-                            isMe ? "text-secondary" : "text-base-content",
-                            "px-3 py-2 text-right font-semibold",
-                          )}
-                        >
-                          {tournament.format === "arena" &&
-                          tournament.status === "active" &&
-                          isOnArenaStreak(p) ? (
-                            <span
-                              className="inline-flex items-center justify-end gap-0.5 text-orange-400"
-                              title="On a win streak: next game is worth double"
-                            >
-                              <Flame
-                                className="h-3.5 w-3.5 shrink-0"
-                                aria-label="On a win streak"
-                              />
-                              {p.points}
-                            </span>
-                          ) : (
-                            p.points
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+        {tournament.teamBattle && (
+          <TeamBattleStandings
+            tournament={tournament}
+            myTeamId={myPlayer?.battleTeam ?? null}
+          />
         )}
 
-        {tournament.format === "arena" && tournament.status === "active" && (
-          <Card variant="solid">
-            {pairingPool.length > 0 ? (
-              <p className="text-center text-sm leading-relaxed text-base-content/80">
-                {pairingPool.map((p, i) => (
-                  <span key={p.user}>
-                    <span
-                      className={
-                        p.user === myId
-                          ? "font-semibold text-secondary"
-                          : "font-medium"
-                      }
-                    >
-                      {p.username}
-                    </span>
-                    {p.user === myId && (
-                      <span className="text-xs font-normal text-base-content/50">
-                        {" "}
-                        (you)
-                      </span>
-                    )}
-                    {i < pairingPool.length - 1 && (
-                      <span className="text-base-content/30">, </span>
-                    )}
-                  </span>
-                ))}
-              </p>
-            ) : (
-              <p className="text-sm text-base-content/50">
-                Nobody's free to be paired right now, everyone's either mid-game
-                or paused.
-              </p>
-            )}
-          </Card>
+        {tournament.cumulative && leagueStandings && (
+          <LeagueStandings
+            rows={leagueStandings.standings}
+            myId={myId}
+            leagueLink={`/leagues/${tournament.cumulative}`}
+          />
         )}
+
+        {/* In a league, this tournament's own standings only show up
+         *  below the league table once it's over (before the start the card
+         *  is just the roster, so it stays). While it's live, the league
+         *  table's "This" column carries each player's points here. */}
+        {isPointsFormat &&
+          standings.length > 0 &&
+          !(tournament.cumulative && tournament.status === "active") && (
+            <Card variant="solid">
+              <CardHeader>
+                <CardTitle>
+                  {tournament.teamBattle
+                    ? "Player standings"
+                    : tournament.cumulative
+                      ? "This tournament's standings"
+                      : "Standings"}
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  {myStandingsIndex !== -1 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setStandingsPage(
+                          Math.floor(myStandingsIndex / STANDINGS_PAGE_SIZE),
+                        )
+                      }
+                      className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-(--secondary) transition-colors hover:bg-(--secondary)/10"
+                    >
+                      <LocateFixed className="h-3.5 w-3.5" /> Me
+                    </button>
+                  )}
+                  <Pagination
+                    badge
+                    page={safeStandingsPage}
+                    pageCount={standingsPageCount}
+                    onPageChange={setStandingsPage}
+                  />
+                </div>
+              </CardHeader>
+              <div className="overflow-hidden rounded-xl border border-base-300">
+                <table className="w-full table-fixed text-sm">
+                  <thead>
+                    <tr className="bg-base-300/50 text-left text-[11px] font-semibold uppercase tracking-wide text-base-content/50">
+                      <th className="w-10 px-3 py-2">#</th>
+                      <th className="px-3 py-2">Player</th>
+                      <th className="hidden w-24 px-3 py-2 text-center md:table-cell">
+                        Form
+                      </th>
+                      <th
+                        className={cn(
+                          "px-3 py-2 text-right",
+                          tournament.format === "arena" ? "w-20" : "w-14",
+                        )}
+                      >
+                        Pts
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedStandings.map((p, i) => {
+                      const rank =
+                        safeStandingsPage * STANDINGS_PAGE_SIZE + i + 1;
+                      const isMe = p.user === myId;
+                      return (
+                        <tr
+                          key={p.user}
+                          className={cn(
+                            "border-t border-base-300/60 transition-colors",
+                            isMe
+                              ? "bg-(--secondary)/10"
+                              : i % 2 === 0
+                                ? "bg-base-100/50"
+                                : "bg-base-200/50",
+                          )}
+                        >
+                          <td className="pl-3 py-2">
+                            <RankBadge rank={rank} />
+                          </td>
+                          <td
+                            className={cn(
+                              "max-w-0 px-3 py-2",
+                              isMe && "font-semibold text-(--secondary)",
+                            )}
+                          >
+                            <ResponsiveOverlay
+                              align="start"
+                              trigger={
+                                <button className="flex w-full min-w-0 items-center gap-1.5 text-left hover:scale-95 duration-150">
+                                  <Avatar
+                                    username={p.username}
+                                    gradient={p.avatarGradient}
+                                    size="xs"
+                                  />
+                                  <span className="min-w-0 truncate">
+                                    {p.username}
+                                  </span>
+                                  {p.battleTeam &&
+                                    teamNameById.get(p.battleTeam) && (
+                                      <span className="hidden max-w-24 shrink-0 truncate rounded bg-base-300/60 px-1.5 py-0.5 text-[10px] font-medium text-base-content/60 sm:inline">
+                                        {teamNameById.get(p.battleTeam)}
+                                      </span>
+                                    )}
+                                  <RatingBadge
+                                    className="shrink-0"
+                                    rating={p.rating}
+                                  />
+                                  {p.paused && (
+                                    <Pause
+                                      className="h-3.5 w-3.5 shrink-0 text-base-content/50"
+                                      aria-label="Paused"
+                                    />
+                                  )}
+                                </button>
+                              }
+                            >
+                              <PlayerTournamentDetails
+                                tournament={tournament}
+                                player={p}
+                              />
+                            </ResponsiveOverlay>
+                          </td>
+                          <td className="hidden px-3 py-2 md:table-cell">
+                            <FormBadges form={p.form} />
+                          </td>
+                          <td
+                            className={cn(
+                              isMe ? "text-secondary" : "text-base-content",
+                              "px-3 py-2 text-right font-semibold",
+                            )}
+                          >
+                            {tournament.format === "arena" &&
+                            tournament.status === "active" &&
+                            isOnArenaStreak(p) ? (
+                              <span
+                                className="inline-flex items-center justify-end gap-0.5 text-orange-400"
+                                title="On a win streak: next game is worth double"
+                              >
+                                <Flame
+                                  className="h-3.5 w-3.5 shrink-0"
+                                  aria-label="On a win streak"
+                                />
+                                {p.points}
+                              </span>
+                            ) : (
+                              p.points
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
+        {tournament.format === "arena" &&
+          tournament.status === "active" &&
+          isPlayer && (
+            <Card variant="solid">
+              {pairingPool.length > 0 ? (
+                <p className="text-center text-sm leading-relaxed text-base-content/80">
+                  {pairingPool.map((p, i) => (
+                    <span key={p.user}>
+                      <span className="font-medium">{p.username}</span>
+                      {i < pairingPool.length - 1 && (
+                        <span className="text-base-content/30">, </span>
+                      )}
+                    </span>
+                  ))}
+                </p>
+              ) : (
+                <p className="text-sm text-base-content/50">
+                  {myPlayer?.paused
+                    ? "You're paused, resume to get paired."
+                    : "Nobody you can be paired with is free right now."}
+                </p>
+              )}
+            </Card>
+          )}
 
         {tournament.format !== "arena" &&
           tournament.rounds.length > 0 &&
@@ -2047,11 +2243,12 @@ export function TournamentDetail() {
                 </CardTitle>
               </CardHeader>
               <div className="space-y-1.5">
-                {selectedRound.pairings.length === 0 && selectedRoundLoading && (
-                  <p className="py-3 text-center text-sm text-base-content/50">
-                    Loading pairings…
-                  </p>
-                )}
+                {selectedRound.pairings.length === 0 &&
+                  selectedRoundLoading && (
+                    <p className="py-3 text-center text-sm text-base-content/50">
+                      Loading pairings…
+                    </p>
+                  )}
                 {selectedRound.pairings.map((pairing) => (
                   <PairingRow
                     key={pairing.index}
@@ -2080,16 +2277,31 @@ export function TournamentDetail() {
         menuItems={dockMenuItems}
       />
 
-      <JoinPasswordModal
-        open={passwordModalOpen}
-        tournamentName={tournament.name}
-        error={joinError}
-        onSubmit={(pw) => {
-          setJoinError("");
-          join(pw);
-        }}
-        onClose={() => setPasswordModalOpen(false)}
-      />
+      {tournament.teamBattle ? (
+        <JoinTeamBattleModal
+          open={passwordModalOpen}
+          tournamentName={tournament.name}
+          battle={tournament.teamBattle}
+          needsPassword={tournament.hasPassword}
+          error={joinError}
+          onSubmit={(teamId, pw) => {
+            setJoinError("");
+            join(pw, teamId);
+          }}
+          onClose={() => setPasswordModalOpen(false)}
+        />
+      ) : (
+        <JoinPasswordModal
+          open={passwordModalOpen}
+          tournamentName={tournament.name}
+          error={joinError}
+          onSubmit={(pw) => {
+            setJoinError("");
+            join(pw);
+          }}
+          onClose={() => setPasswordModalOpen(false)}
+        />
+      )}
 
       {tournament.chatEnabled && (
         <ChatDrawer

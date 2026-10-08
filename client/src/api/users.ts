@@ -1,4 +1,5 @@
 import { apiFetch } from './http.js';
+import type { Friend } from './friends.js';
 
 export interface UserSearchResult {
   _id: string;
@@ -6,6 +7,8 @@ export interface UserSearchResult {
   avatarUrl?: string | null;
   avatarGradient?: string | null;
   rating: number;
+  /** Whether they're connected right now (needed to challenge them). */
+  online: boolean;
 }
 
 export interface UserProfile {
@@ -30,6 +33,8 @@ export interface UserProfile {
   /** Viewer's record against this profile's owner, null if not logged in,
    *  viewing your own profile, or the two of you have never played. */
   h2h: { wins: number; losses: number; draws: number } | null;
+  /** Set when this user owns an approved organisation. */
+  organization?: { name: string } | null;
 }
 
 export interface UserGameHistoryItem {
@@ -55,6 +60,12 @@ export interface UserGameHistoryResponse {
 
 export function searchUsers(q: string) {
   return apiFetch<{ users: UserSearchResult[] }>(`/users/search?q=${encodeURIComponent(q)}`);
+}
+
+/** Top online players by rating (never the caller), same shape as a friends
+ *  list entry. Empty when nobody else is online. */
+export function listOnlinePlayers() {
+  return apiFetch<{ players: Friend[] }>('/users/online/players');
 }
 
 export function getProfile(username: string) {

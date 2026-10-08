@@ -103,6 +103,20 @@ export interface ITournamentPlayer {
   // just became free.
   arenaAvailableSince: Date | null;
   paused: boolean;
+  // Team battles only: which of the battle's teams this player is
+  // representing. Chosen when joining (they must be a member of that team)
+  // and fixed for the rest of the event. null for every ordinary tournament.
+  battleTeam: Types.ObjectId | null;
+}
+
+// Team battle config. Only an approved organisation can create one, and
+// only swiss/arena formats are allowed (enforced in createTournament).
+// Each team's score is the sum of its `leadersPerTeam` best players' points,
+// see computeTeamStandings in tournament.service.ts. Team names are
+// snapshotted here so standings never need a Team lookup.
+export interface ITournamentTeamBattle {
+  teams: { team: Types.ObjectId; name: string }[];
+  leadersPerTeam: number;
 }
 
 export interface ITournamentPairing {
@@ -198,6 +212,19 @@ export interface ITournament extends Document {
   // members can join, and it's never listed publicly (see createTournament /
   // joinTournament in tournament.service.ts). Null for ordinary tournaments.
   team: Types.ObjectId | null;
+  // Set when this is a team battle (see ITournamentTeamBattle). null for
+  // ordinary tournaments. Immutable after creation.
+  teamBattle: ITournamentTeamBattle | null;
+  // The approved organisation that created this tournament (team battles
+  // only), with its name snapshotted for list cards.
+  organization: Types.ObjectId | null;
+  organizationName: string | null;
+  // Set when this tournament is one stage of a cumulative league (see
+  // CumulativeLeague.ts). Swiss/arena only, enforced in createTournament and
+  // updateTournament. Immutable after creation. The league's name is
+  // snapshotted so list cards and the detail header need no lookup.
+  cumulative: Types.ObjectId | null;
+  cumulativeName: string | null;
   // --- Prize pool: creator-funded, paid out by final rank -------------------
   // Entirely separate from the registration fee below. The creator defines a
   // payout schedule at creation time (e.g. 1st gets 200, 2nd gets 100, 3rd
@@ -365,6 +392,7 @@ const playerSchema = new Schema<ITournamentPlayer>(
     hadBye: { type: Boolean, default: false },
     paused: { type: Boolean, default: false },
     arenaAvailableSince: { type: Date, default: null },
+    battleTeam: { type: Schema.Types.ObjectId, ref: "Team", default: null },
   },
   { _id: false },
 );
@@ -408,6 +436,31 @@ const tournamentSchema = new Schema<ITournament>(
     chatEnabled: { type: Boolean, default: false },
     isPublic: { type: Boolean, default: false },
     team: { type: Schema.Types.ObjectId, ref: "Team", default: null },
+    teamBattle: {
+      type: new Schema(
+        {
+          teams: {
+            type: [
+              new Schema(
+                {
+                  team: { type: Schema.Types.ObjectId, ref: "Team", required: true },
+                  name: { type: String, required: true },
+                },
+                { _id: false },
+              ),
+            ],
+            default: [],
+          },
+          leadersPerTeam: { type: Number, default: 5, min: 1, max: 20 },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
+    organization: { type: Schema.Types.ObjectId, ref: "Organization", default: null },
+    organizationName: { type: String, default: null },
+    cumulative: { type: Schema.Types.ObjectId, ref: "CumulativeLeague", default: null, index: true },
+    cumulativeName: { type: String, default: null },
     prizePoolCurrency: { type: String, enum: ["tokens", "naira"], default: "tokens" },
     prizeSchedule: { type: [prizeTierSchema], default: [] },
     prizePoolTokens: { type: Number, default: 0 },

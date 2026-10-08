@@ -37,8 +37,10 @@ export function TournamentRow({ t }: { t: Tournament }) {
           </span>
           <Badge variant={STATUS_VARIANT[t.status]}>{t.status}</Badge>
           {t.team && <Badge variant="primary">In-house</Badge>}
+          {t.teamBattle && <Badge variant="primary">Team battle</Badge>}
         </div>
         <div className="mt-0.5 text-xs text-base-content/50">
+          {t.organizationName ? `${t.organizationName} · ` : ""}
           {FORMAT_LABEL[t.format]} ·{" "}
           <TimeControlIcon
             baseMinutes={t.baseMinutes}

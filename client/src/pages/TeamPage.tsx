@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Crown, Link2, LogOut, Megaphone, MessageSquare, Settings as SettingsIcon, Trophy, UserPlus, Users } from "lucide-react";
+import { Crown, Link2, LogOut, Megaphone, Settings as SettingsIcon, Trophy, UserPlus, Users } from "lucide-react";
 import { getTeam, leaveTeam, type TeamDetail } from "../api/teams.js";
 import { errMsg } from "../lib/errMsg.js";
-import { useAuth } from "../contexts/AuthContext.js";
 import { useConfirm } from "../contexts/ConfirmContext.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { JoinTeamButton } from "../components/teams/JoinTeamButton.js";
 import { TeamAnnouncements } from "../components/teams/TeamAnnouncements.js";
-import { TeamChat } from "../components/teams/TeamChat.js";
 import { TeamLeadersCard } from "../components/teams/TeamLeadersCard.js";
 import { TeamSection } from "../components/teams/TeamSection.js";
 import { TeamMembersTab } from "../components/teams/TeamMembersTab.js";
@@ -21,15 +19,15 @@ import { Button } from "@/components/ui/Button.js";
 import { Badge } from "@/components/ui/Badge.js";
 import { Spinner } from "@/components/ui/Spinner.js";
 
-/** One team's own page, as card sections. On PC: announcements + tournaments
- *  (wider) side by side, chat (wider) beside members/join requests, then
- *  settings standalone and split in two. Phone is a single column. Non-members see a short preview with
- *  the join controls instead. */
+/** One team's own page, as card sections. On PC: announcements (3/5) beside
+ *  members/join requests (2/5), then tournaments standalone full width, then
+ *  settings. On phone it's a single column ordered announcements,
+ *  tournaments, members/requests. Non-members see a short preview with the
+ *  join controls instead. */
 export function TeamPage() {
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const socket = useSocket();
-  const { user } = useAuth();
   const confirm = useConfirm();
 
   const [team, setTeam] = useState<TeamDetail | null>(null);
@@ -56,6 +54,19 @@ export function TeamPage() {
     setLoading(true);
     load();
   }, [load]);
+
+  // Join the team's live-update room (members only) so the page refreshes
+  // when members, requests or announcements change.
+  useEffect(() => {
+    if (!socket) return;
+    const watch = () => socket.emit("team:watch", { teamId: id });
+    watch();
+    socket.on("connect", watch);
+    return () => {
+      socket.off("connect", watch);
+      socket.emit("team:unwatch", { teamId: id });
+    };
+  }, [socket, id]);
 
   useEffect(() => {
     if (!socket) return;
@@ -167,7 +178,7 @@ export function TeamPage() {
             {team.joinMode === "request" && <Badge variant="neutral">Approval needed</Badge>}
           </div>
           <p className="text-sm text-base-content/60">
-            Chat, in-house tournaments and the member list are only visible to members.
+            In-house tournaments, announcements and the member list are only visible to members.
           </p>
           <JoinTeamButton
             team={team}
@@ -178,29 +189,17 @@ export function TeamPage() {
         </Card>
       ) : (
         <div className="space-y-6">
-          {/* Row 1 (PC): announcements + tournaments, tournaments wider. */}
+          {/* One grid so phone can reorder: announcements, tournaments, then
+           *  members/requests. On PC, announcements (3/5) + members/requests
+           *  (2/5) share the first row and tournaments stands alone below. */}
           <div className="grid gap-6 lg:grid-cols-5">
-            <div className="min-w-0 lg:col-span-2">
+            <div className="order-1 min-w-0 lg:col-span-3">
               <TeamSection title="Announcements" icon={<Megaphone className="h-4 w-4" />}>
                 <TeamAnnouncements teamId={team.id} isLeader={team.isLeader} refreshKey={refreshKey} />
               </TeamSection>
             </div>
-            <div className="min-w-0 lg:col-span-3">
-              <TeamSection title="Tournaments" icon={<Trophy className="h-4 w-4" />}>
-                <TeamTournamentsTab teamId={team.id} isOwner={team.isOwner} />
-              </TeamSection>
-            </div>
-          </div>
 
-          {/* Row 2 (PC): chat wider, members + join requests stacked beside it. */}
-          <div className="grid gap-6 lg:grid-cols-5">
-            <div className="min-w-0 lg:col-span-3">
-              <TeamSection title="Chat" icon={<MessageSquare className="h-4 w-4" />}>
-                <TeamChat teamId={team.id} myUsername={user?.username} />
-              </TeamSection>
-            </div>
-
-            <div className="min-w-0 space-y-6 lg:col-span-2">
+            <div className="order-3 min-w-0 space-y-6 lg:order-2 lg:col-span-2">
               <TeamSection
                 title="Members"
                 icon={<Users className="h-4 w-4" />}
@@ -219,9 +218,15 @@ export function TeamPage() {
                 </TeamSection>
               )}
             </div>
+
+            <div className="order-2 min-w-0 lg:order-3 lg:col-span-5">
+              <TeamSection title="Tournaments" icon={<Trophy className="h-4 w-4" />}>
+                <TeamTournamentsTab teamId={team.id} isOwner={team.isOwner} />
+              </TeamSection>
+            </div>
           </div>
 
-          {/* Row 3: settings stand alone, full width, and split in two on PC. */}
+          {/* Settings stand alone, full width, and split in two on PC. */}
           {team.isLeader && (
             <TeamSection title="Settings" icon={<SettingsIcon className="h-4 w-4" />}>
               {team.isOwner ? (

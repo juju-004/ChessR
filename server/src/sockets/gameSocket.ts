@@ -23,6 +23,7 @@ import {
   refundWagerBothSides,
   assertUnderActiveGameLimit,
   activeGameLimitMessage,
+  openGameRoom,
 } from '../services/game.service.js';
 import { advanceCageMatchLeg } from '../services/cageMatch.service.js';
 import { advanceTournamentIfPairing, berserkInTournamentGame } from '../services/tournament.service.js';
@@ -50,6 +51,8 @@ import {
   clearFirstMoveTimer,
   setFirstMoveTimeoutHandler,
 } from '../services/clock.service.js';
+import { markSpectating, clearSpectating } from '../services/presence.service.js';
+import { onSpectatingChanged } from './tournamentSocket.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
 const gameRoom = (gameId: string) => `game:${gameId}`;
@@ -486,6 +489,11 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         // never reaches the players, they don't get a chat UI at all, and
         // this means they never even receive the events for one.
         await socket.join(spectatorRoom(gameId));
+        // Keeps a free tournament player in the arena pairing pool while they
+        // watch (see markSpectating).
+        void markSpectating(socket.id, gameId)
+          .then(() => onSpectatingChanged(io, userId, true))
+          .catch((err) => console.error('markSpectating failed:', err));
       } else {
         // The two participants' own room, so their chat traffic never
         // reaches spectators either — see player_chat:send.
@@ -629,6 +637,11 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       if (!parsed.success) return;
       const { gameId } = parsed.data;
       const wasSpectator = socket.rooms.has(spectatorRoom(gameId));
+      if (wasSpectator) {
+        void clearSpectating(socket.id, gameId)
+          .then((cleared) => (cleared ? onSpectatingChanged(io, userId, false) : undefined))
+          .catch((err) => console.error('clearSpectating failed:', err));
+      }
       await socket.leave(gameRoom(gameId));
       await socket.leave(spectatorRoom(gameId));
       releaseLatencyHeartbeat(socket.id, gameId);
@@ -638,6 +651,26 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       } catch (err) {
         console.error('leaveGamePresence failed:', err);
       }
+    }),
+  );
+
+  // The "Join this game" screen for an open game isn't in the game's room
+  // (that only happens on game:join, which also makes the socket a spectator
+  // of it), so it listens here instead, see openGameRoom.
+  socket.on(
+    'game:watch_open',
+    safeHandler(socket, async (raw: unknown) => {
+      const parsed = joinSchema.safeParse(raw);
+      if (!parsed.success) return;
+      await socket.join(openGameRoom(parsed.data.gameId));
+    }),
+  );
+  socket.on(
+    'game:unwatch_open',
+    safeHandler(socket, async (raw: unknown) => {
+      const parsed = joinSchema.safeParse(raw);
+      if (!parsed.success) return;
+      await socket.leave(openGameRoom(parsed.data.gameId));
     }),
   );
 

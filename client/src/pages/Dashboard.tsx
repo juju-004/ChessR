@@ -612,6 +612,13 @@ export function Dashboard() {
             About us
           </Link>
           <span className="text-base-content/20">·</span>
+          <Link
+            to="/organization/request"
+            className="hover:text-base-content hover:underline"
+          >
+            Organisation request
+          </Link>
+          <span className="text-base-content/20">·</span>
           <Link to="/terms" className="hover:text-base-content hover:underline">
             Terms of Service
           </Link>

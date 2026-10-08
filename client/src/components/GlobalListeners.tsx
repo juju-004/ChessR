@@ -348,11 +348,27 @@ export function GlobalListeners() {
       tournamentId: string;
       code: string;
       joinCode: string;
+      pullFromGame?: boolean;
     }) {
+      // The game icon is set FIRST and independently of any redirect, so if
+      // the redirect below doesn't happen (or throws) the player still has the
+      // icon that takes them to their game.
       setActiveGame(payload.joinCode);
-      const onThisTournamentPage =
-        pathRef.current === `/tournaments/${payload.code}`;
-      if (onThisTournamentPage) navigate(`/game/${payload.joinCode}`);
+      const path = pathRef.current;
+      const onThisTournamentPage = path === `/tournaments/${payload.code}`;
+      // Arena: a free player who went to watch someone else's game is still
+      // in the pool, so being paired pulls them out of that game into theirs.
+      const watchingOtherGame =
+        !!payload.pullFromGame &&
+        path.startsWith("/game/") &&
+        path !== `/game/${payload.joinCode}`;
+      if (onThisTournamentPage || watchingOtherGame) {
+        try {
+          navigate(`/game/${payload.joinCode}`);
+        } catch {
+          /* the game icon above still leads there */
+        }
+      }
     }
 
     // ChessR's own persisted notifications (welcome message, anti-cheat/

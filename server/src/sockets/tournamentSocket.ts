@@ -9,11 +9,12 @@ import {
   updateTournament,
   setTournamentPause,
   retryArenaPairingsForUser,
+  retryArenaPairingsForTournament,
   type CreateTournamentInput,
 } from '../services/tournament.service.js';
 import { User } from '../models/User.js';
 import { Tournament } from '../models/Tournament.js';
-import { watchTournament, unwatchTournament, getWatchingUserIds } from '../services/presence.service.js';
+import { watchTournament, unwatchTournament, getArenaPresentUserIds } from '../services/presence.service.js';
 import { addChatMessage, getChatHistory, isChatRateLimited, isRepeatMessage } from '../services/chat.service.js';
 import { assertNotRestricted } from '../services/suspension.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
@@ -78,9 +79,26 @@ const createSchema = z.object({
   // ISO string, when the event should auto-start.
   scheduledStartAt: z.string().or(z.date()),
   password: z.string().trim().max(100).optional(),
+  // Team battle (organisations only, swiss/arena only, both enforced in
+  // createTournament). Immutable after creation so not in editSchema.
+  teamBattle: z
+    .object({
+      teamIds: z.array(z.string().refine(mongoose.isValidObjectId)).min(2).max(20),
+      leadersPerTeam: z.number().int().min(1).max(10).optional(),
+    })
+    .nullable()
+    .optional(),
+  // Adds this tournament to one of the caller's cumulative leagues (swiss/arena
+  // only, owner-only, max 10 per league, all enforced in createTournament).
+  // Immutable after creation so not in editSchema.
+  cumulativeId: z.string().refine(mongoose.isValidObjectId).nullable().optional(),
 });
 const idSchema = z.object({ tournamentId: z.string().refine(mongoose.isValidObjectId) });
-const joinSchema = idSchema.extend({ password: z.string().optional() });
+const joinSchema = idSchema.extend({
+  password: z.string().optional(),
+  // Team battles: which of the battle's teams this player represents.
+  teamId: z.string().refine(mongoose.isValidObjectId).optional(),
+});
 const pauseSchema = idSchema.extend({ paused: z.boolean() });
 
 // Every field truly optional with no defaults (unlike createSchema), an
@@ -149,13 +167,25 @@ export function broadcastWatchers(io: Server, tournamentId: string): Promise<voi
   if (watcherBroadcastTimers.has(tournamentId)) return Promise.resolve();
   const timer = setTimeout(() => {
     watcherBroadcastTimers.delete(tournamentId);
-    getWatchingUserIds(tournamentId)
+    getArenaPresentUserIds(tournamentId)
       .then((userIds) => io.to(tournamentRoom(tournamentId)).emit('tournament:watchers', { tournamentId, userIds }))
       .catch((err) => console.error('broadcastWatchers failed:', err));
   }, WATCHERS_BROADCAST_DELAY_MS);
   timer.unref?.();
   watcherBroadcastTimers.set(tournamentId, timer);
   return Promise.resolve();
+}
+
+/** A player who is free to be paired went to watch (or stopped watching) a
+ *  game instead of sitting on the tournament page. They stay in the pool while
+ *  spectating, so refresh every active arena they're in: the pool display
+ *  everyone sees, and an immediate pairing attempt on their behalf. */
+export async function onSpectatingChanged(io: Server, userId: string, tryPair: boolean): Promise<void> {
+  const tournaments = await Tournament.find({ status: 'active', format: 'arena', 'players.user': userId })
+    .select('_id')
+    .lean();
+  for (const t of tournaments) await broadcastWatchers(io, String(t._id));
+  if (tryPair) await retryArenaPairingsForUser(userId, { force: true });
 }
 
 export function registerTournamentHandlers(io: Server, socket: Socket) {
@@ -222,6 +252,7 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
         me.avatarGradient ?? null,
         me.rating,
         parsed.data.password,
+        parsed.data.teamId,
       );
       await socket.join(tournamentRoom(tournament.id));
       io.to(tournamentRoom(tournament.id)).emit('tournament:update', { tournamentId: tournament.id, code: tournament.code });
@@ -247,7 +278,10 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
       // Immediate re-check rather than waiting for some unrelated pairing
       // event elsewhere to happen to pick this player up now that they're
       // actually looking at the page, see retryArenaPairingsForUser.
-      await retryArenaPairingsForUser(userId);
+      // Straight to the tournament they just opened rather than a lookup of
+      // every tournament they're in, and never skipped by a cooldown: this is
+      // the one trigger that must not be dropped (see retryArenaPairingsForTournament).
+      await retryArenaPairingsForTournament(watchId, userId);
 
       // Tournament chat only exists when the organiser turned it on (see
       // Tournament.chatEnabled); nothing to load or send otherwise, and

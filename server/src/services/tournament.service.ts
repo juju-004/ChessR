@@ -36,9 +36,15 @@ import {
   recordRake,
 } from "./wallet.service.js";
 import { getIo } from "../sockets/io.js";
-import { getWatchingUserIds } from "./presence.service.js";
+import { getArenaPresentUserIds } from "./presence.service.js";
 import { expireChat } from "./chat.service.js";
 import { createNotification } from "./notification.service.js";
+import { getApprovedOrganization } from "./organization.service.js";
+import {
+  CUMULATIVE_FORMATS,
+  reserveCumulativeSlot,
+  releaseCumulativeSlot,
+} from "./cumulative.service.js";
 
 const generateCode = customAlphabet("ABCDEFGHJKMNPQRSTUVWXYZ23456789", 6);
 
@@ -331,6 +337,7 @@ async function fireAutoStart(tournamentId: string): Promise<void> {
     tournament.cancelledAt = new Date();
     tournament.scheduledStartAt = null;
     await tournament.save();
+    await releaseCumulativeSlot(tournament.cumulative, tournament.id);
     broadcastUpdate(tournament, "tournament:cancelled");
     await expireChat("tournament", tournament.id).catch((err) => console.error("expireChat(tournament) failed:", err));
   }
@@ -463,6 +470,10 @@ export interface CreateTournamentInput {
   // Registration fee: player-funded, the whole pool goes to the creator once
   // the event finishes. 0/omitted = no registration fee.
   regFeeTokens?: number;
+  // Adds this tournament as the next stage of a cumulative league the caller
+  // created (see cumulative.service.ts). Swiss/arena only, and not combinable
+  // with in-house team tournaments or team battles. Immutable after creation.
+  cumulativeId?: string | null;
   // Required (and only meaningful) for format === 'swiss'.
   swissRounds: number | null;
   // Only meaningful for format === 'round_robin', how many laps through
@@ -483,7 +494,19 @@ export interface CreateTournamentInput {
   // Optional gate on joining, anyone with the link can view the page, but
   // becoming a player requires this. Omitted/empty = no password.
   password?: string;
+  // Makes this a TEAM BATTLE: the listed teams compete against each other,
+  // every player joins on behalf of one of them, and the tournament page
+  // ranks the teams (sum of each team's best `leadersPerTeam` players)
+  // above the normal player standings. Only an approved organisation can
+  // create one, and only swiss/arena are allowed. Immutable after creation.
+  teamBattle?: { teamIds: string[]; leadersPerTeam?: number } | null;
 }
+
+export const TEAM_BATTLE_FORMATS: TournamentFormat[] = ["swiss", "arena"];
+export const TEAM_BATTLE_MIN_TEAMS = 2;
+export const TEAM_BATTLE_MAX_TEAMS = 20;
+export const TEAM_BATTLE_DEFAULT_LEADERS = 5;
+export const TEAM_BATTLE_MAX_LEADERS = 10;
 
 const DEFAULT_BREAK_SECONDS = 10;
 const MAX_BREAK_SECONDS = 300;
@@ -549,6 +572,14 @@ export async function createTournament(
 ): Promise<ITournament> {
   const bounds = FORMAT_BOUNDS[input.format];
   if (!bounds) throw ApiError.badRequest("Unknown tournament format");
+  if (input.cumulativeId) {
+    if (!(CUMULATIVE_FORMATS as readonly string[]).includes(input.format)) {
+      throw ApiError.badRequest("Tournaments in a cumulative can only be Swiss or Arena");
+    }
+    if (input.teamBattle || input.teamId) {
+      throw ApiError.badRequest("A team battle or in-house tournament can't be part of a cumulative");
+    }
+  }
   const organizedCount = await Tournament.countDocuments({
     createdBy: creatorId,
     status: { $in: ["pending", "active"] },
@@ -562,6 +593,42 @@ export async function createTournament(
     throw ApiError.badRequest(
       "Give your tournament a name (at least 3 characters)",
     );
+  // --- Team battle gate: organisations only, swiss/arena only ----------------
+  let teamBattle: { teams: { team: mongoose.Types.ObjectId; name: string }[]; leadersPerTeam: number } | null = null;
+  let organization: { _id: mongoose.Types.ObjectId; name: string } | null = null;
+  if (input.teamBattle) {
+    organization = await getApprovedOrganization(creatorId);
+    if (!organization) {
+      throw ApiError.forbidden("Only approved organisations can create team battles. Request organisation status first.");
+    }
+    if (!TEAM_BATTLE_FORMATS.includes(input.format)) {
+      throw ApiError.badRequest("Team battles can only be Swiss or Arena");
+    }
+    if (input.teamId) {
+      throw ApiError.badRequest("A team battle can't also be an in-house team tournament");
+    }
+    const ids = [...new Set(input.teamBattle.teamIds)];
+    if (ids.length < TEAM_BATTLE_MIN_TEAMS || ids.length > TEAM_BATTLE_MAX_TEAMS) {
+      throw ApiError.badRequest(
+        `Pick between ${TEAM_BATTLE_MIN_TEAMS} and ${TEAM_BATTLE_MAX_TEAMS} teams for a team battle`,
+      );
+    }
+    if (!ids.every((id) => mongoose.isValidObjectId(id))) throw ApiError.badRequest("Invalid team");
+    const found = await Team.find({ _id: { $in: ids } }).select("name").lean();
+    if (found.length !== ids.length) throw ApiError.notFound("One of the selected teams no longer exists");
+    const leadersPerTeam = input.teamBattle.leadersPerTeam ?? TEAM_BATTLE_DEFAULT_LEADERS;
+    if (!Number.isInteger(leadersPerTeam) || leadersPerTeam < 1 || leadersPerTeam > TEAM_BATTLE_MAX_LEADERS) {
+      throw ApiError.badRequest(`Scoring players per team must be between 1 and ${TEAM_BATTLE_MAX_LEADERS}`);
+    }
+    // Keep the organiser's chosen order.
+    teamBattle = {
+      teams: ids.map((id) => {
+        const t = found.find((f) => f._id.toString() === id)!;
+        return { team: t._id, name: t.name };
+      }),
+      leadersPerTeam,
+    };
+  }
   let teamId: mongoose.Types.ObjectId | null = null;
   if (input.teamId) {
     if (!mongoose.isValidObjectId(input.teamId)) throw ApiError.badRequest("Invalid team");
@@ -646,7 +713,11 @@ export async function createTournament(
     ? await bcrypt.hash(input.password.trim(), PASSWORD_BCRYPT_ROUNDS)
     : null;
 
-  const organizerOnly = input.organizerOnly ?? false;
+  // A team battle's organiser runs the event rather than playing in it: a
+  // player has to pick which team they represent, and the creator is
+  // auto-added to the roster before any such choice could be made. They can
+  // still hop in afterwards with the play button, choosing a team then.
+  const organizerOnly = teamBattle ? true : (input.organizerOnly ?? false);
   // Only matters if the creator will actually occupy a player slot,
   // organizerOnly creators run the event without ever being paired into
   // a game themselves (see the players: [] branch below), so their own
@@ -661,7 +732,19 @@ export async function createTournament(
   }
 
   const code = await uniqueCode();
-  const tournament = await Tournament.create({
+  // Claim the cumulative slot (owner-only, hard cap of 10) BEFORE creating the
+  // tournament so two simultaneous creations can't both pass the cap. Every
+  // failure path below gives the slot back.
+  const tournamentId = new mongoose.Types.ObjectId();
+  let cumulative: { id: string; name: string } | null = null;
+  if (input.cumulativeId) {
+    const reserved = await reserveCumulativeSlot(input.cumulativeId, creatorId, tournamentId);
+    cumulative = { id: input.cumulativeId, name: reserved.name };
+  }
+  let tournament: ITournament;
+  try {
+    tournament = await Tournament.create({
+    _id: tournamentId,
     code,
     name: input.name.trim(),
     description: input.description?.trim() || null,
@@ -705,6 +788,11 @@ export async function createTournament(
     // In-house tournaments are never listed publicly.
     isPublic: teamId ? false : (input.isPublic ?? false),
     team: teamId,
+    teamBattle,
+    organization: organization?._id ?? null,
+    organizationName: organization?.name ?? null,
+    cumulative: cumulative?.id ?? null,
+    cumulativeName: cumulative?.name ?? null,
     thirdPlaceMatch: input.format === "normal" ? (input.thirdPlaceMatch ?? false) : false,
     prizePoolCurrency,
     prizeSchedule,
@@ -717,7 +805,11 @@ export async function createTournament(
     arenaMinutes: input.format === "arena" ? input.arenaMinutes : null,
     breakSeconds: input.breakSeconds ?? DEFAULT_BREAK_SECONDS,
     scheduledStartAt,
-  });
+    });
+  } catch (err) {
+    await releaseCumulativeSlot(cumulative?.id, tournamentId);
+    throw err;
+  }
 
   // The creator funds the ENTIRE prize pool up front regardless of whether
   // they're playing, and, if they ARE auto-joined as the first player
@@ -733,6 +825,7 @@ export async function createTournament(
     }
   } catch (err) {
     await Tournament.deleteOne({ _id: tournament.id });
+    await releaseCumulativeSlot(cumulative?.id, tournament.id);
     throw err;
   }
 
@@ -777,6 +870,7 @@ export async function joinTournament(
   avatarGradient: string | null,
   rating: number,
   password?: string,
+  battleTeamId?: string,
 ): Promise<ITournament> {
   const tournament = await Tournament.findById(tournamentId);
   if (!tournament) throw ApiError.notFound("Tournament not found");
@@ -795,6 +889,19 @@ export async function joinTournament(
     if (!isTeamMember) {
       throw ApiError.forbidden("This is an in-house tournament, only team members can join");
     }
+  }
+  // Team battle: the player must say which of the battle's teams they are
+  // representing, and actually belong to it.
+  let battleTeam: Types.ObjectId | null = null;
+  if (tournament.teamBattle) {
+    if (!battleTeamId || !mongoose.isValidObjectId(battleTeamId)) {
+      throw ApiError.badRequest("Choose which team you're playing for");
+    }
+    const entry = tournament.teamBattle.teams.find((t) => t.team.toString() === battleTeamId);
+    if (!entry) throw ApiError.badRequest("That team isn't part of this team battle");
+    const isMember = await Team.exists({ _id: entry.team, "members.user": userId });
+    if (!isMember) throw ApiError.forbidden(`You need to be a member of ${entry.name} to play for it`);
+    battleTeam = entry.team;
   }
   if (tournament.passwordHash) {
     const matches = !!password && (await bcrypt.compare(password, tournament.passwordHash));
@@ -848,6 +955,7 @@ export async function joinTournament(
           eliminatedRound: null,
           hadBye: false,
           paused: false,
+          battleTeam,
           joinedAt: dateObject,
           arenaAvailableSince: dateObject,
         },
@@ -945,6 +1053,7 @@ export async function leaveTournament(
   }
   await tournament.save();
   if (tournament.status === "cancelled") {
+    await releaseCumulativeSlot(tournament.cumulative, tournament.id);
     await expireChat("tournament", tournament.id).catch((err) => console.error("expireChat(tournament) failed:", err));
   }
   return tournament;
@@ -998,6 +1107,7 @@ export async function cancelTournament(
   tournament.cancelReason = "Cancelled by the organiser";
   tournament.cancelledAt = new Date();
   await tournament.save();
+  await releaseCumulativeSlot(tournament.cumulative, tournament.id);
   await expireChat("tournament", tournament.id).catch((err) => console.error("expireChat(tournament) failed:", err));
   return tournament;
 }
@@ -1058,6 +1168,12 @@ export async function updateTournament(
   const format = input.format ?? tournament.format;
   const bounds = FORMAT_BOUNDS[format];
   if (!bounds) throw ApiError.badRequest("Unknown tournament format");
+  if (tournament.teamBattle && !TEAM_BATTLE_FORMATS.includes(format)) {
+    throw ApiError.badRequest("Team battles can only be Swiss or Arena");
+  }
+  if (tournament.cumulative && !(CUMULATIVE_FORMATS as readonly string[]).includes(format)) {
+    throw ApiError.badRequest("Tournaments in a cumulative can only be Swiss or Arena");
+  }
 
   const name = input.name !== undefined ? input.name.trim() : tournament.name;
   if (name.length < 3)
@@ -1897,6 +2013,9 @@ function notifyPairingReady(
         tournamentId: tournament.id,
         code: tournament.code,
         joinCode,
+        // Arena players who are free to play can be watching another game
+        // while they wait; the client pulls them out of it into this one.
+        pullFromGame: tournament.format === "arena",
       });
     }
   } catch {
@@ -2252,7 +2371,9 @@ async function arenaAvailablePlayers(
   // user ids). This used to call isUserWatchingTournament per candidate,
   // which made two Redis calls each and re-read the same watcher set every
   // time: ~2N calls per pairing pass for an N-player arena, on every game end.
-  const watching = new Set(await getWatchingUserIds(tournament.id));
+  // "Present" = on the tournament page OR watching some game instead (a free
+  // player who goes to spectate stays in the pool, see markSpectating).
+  const watching = new Set(await getArenaPresentUserIds(tournament.id));
   const watchingCandidates = candidates.filter((p) => watching.has(p.user.toString()));
   if (watchingCandidates.length === 0) return [];
   // Only the players who'd otherwise be paired need the (Mongo) other-games
@@ -2486,7 +2607,13 @@ async function tryArenaPairingsOnce(tournamentId: string): Promise<void> {
   }, ROUND_LOCK_OPTS);
 
   if (result === null) {
-    console.error(`arena pairing lock timed out for tournament ${tournamentId}`);
+    // Used to just log and drop the pairing attempt, leaving everyone waiting
+    // for the next unrelated trigger. Try again shortly instead.
+    console.error(`arena pairing lock timed out for tournament ${tournamentId}, retrying`);
+    const t = setTimeout(() => {
+      tryArenaPairings(tournamentId).catch((err) => console.error("arena pairing retry failed:", err));
+    }, 2000);
+    t.unref?.();
   }
 }
 
@@ -2591,10 +2718,13 @@ export async function setTournamentPause(
 const ARENA_RETRY_COOLDOWN_MS = 3000;
 const lastArenaRetryAt = new Map<string, number>();
 
-export async function retryArenaPairingsForUser(userId: string): Promise<void> {
+export async function retryArenaPairingsForUser(
+  userId: string,
+  opts: { force?: boolean } = {},
+): Promise<void> {
   const nowMs = Date.now();
   const lastAt = lastArenaRetryAt.get(userId);
-  if (lastAt !== undefined && nowMs - lastAt < ARENA_RETRY_COOLDOWN_MS) return;
+  if (!opts.force && lastAt !== undefined && nowMs - lastAt < ARENA_RETRY_COOLDOWN_MS) return;
   lastArenaRetryAt.set(userId, nowMs);
   if (lastArenaRetryAt.size > 5000) {
     for (const [id, at] of lastArenaRetryAt) if (nowMs - at > ARENA_RETRY_COOLDOWN_MS) lastArenaRetryAt.delete(id);
@@ -2615,6 +2745,43 @@ export async function retryArenaPairingsForUser(userId: string): Promise<void> {
       console.error("arena re-pairing on reconnect failed:", err),
     );
   }
+}
+
+/** Safety net for the periodic sweep: gives every active arena a pairing
+ *  pass, so a trigger that was somehow lost can't leave free players waiting
+ *  until someone refreshes. A no-op for arenas with nothing to pair. */
+export async function sweepActiveArenaPairings(): Promise<void> {
+  const arenas = await Tournament.find({ status: "active", format: "arena" })
+    .select("_id")
+    .lean();
+  for (const t of arenas) {
+    await tryArenaPairings(String(t._id)).catch((err) =>
+      console.error("arena sweep pairing failed:", err),
+    );
+  }
+}
+
+/** The tournament:watch trigger. Unlike retryArenaPairingsForUser (socket
+ *  connect, subject to a cooldown), this is never skipped: the cooldown used
+ *  to swallow it whenever the connect-time retry had run in the previous few
+ *  seconds (every page refresh), and a player returning from a game would
+ *  also lose it, which is why pairing only started after a refresh. Bursts
+ *  are still cheap, tryArenaPairings coalesces concurrent calls into one run
+ *  plus one follow-up. */
+export async function retryArenaPairingsForTournament(
+  tournamentId: string,
+  userId: string,
+): Promise<void> {
+  const isArenaPlayer = await Tournament.exists({
+    _id: tournamentId,
+    status: "active",
+    format: "arena",
+    "players.user": userId,
+  });
+  if (!isArenaPlayer) return;
+  await tryArenaPairings(tournamentId).catch((err) =>
+    console.error("arena re-pairing on watch failed:", err),
+  );
 }
 
 // --- Scoring ---------------------------------------------------------------
@@ -2787,6 +2954,50 @@ function applyPairingScore(
   // ties resolved sensibly without needing a second recompute pass.
   if (p1 && p2) p1.tiebreak += p2.points;
   if (p1 && p2) p2.tiebreak += p1.points;
+}
+
+export interface TeamStanding {
+  team: string;
+  name: string;
+  /** Sum of the points of the team's best `leadersPerTeam` players. */
+  score: number;
+  /** Everyone who joined for this team, scoring or not. */
+  playerCount: number;
+  /** The players whose points make up `score`, best first. */
+  leaders: { user: string; username: string; points: number }[];
+}
+
+/** Ranks the teams of a team battle, best first. A team's score is the sum of
+ *  its top `leadersPerTeam` players' points (so a team of 200 can't win just
+ *  by being big, but a team with fewer scorers than that isn't penalised
+ *  beyond having fewer points to add). Ties break on the total points of
+ *  every player on the team, then on name, so the order is stable. Teams
+ *  with nobody on them yet still appear (at 0), so the table is complete
+ *  from the moment the battle is created. Works on both the full docs and
+ *  the slim summary roster, it only reads user/username/points/battleTeam. */
+export function computeTeamStandings(tournament: {
+  teamBattle?: { teams: { team: any; name: string }[]; leadersPerTeam: number } | null;
+  players: { user: any; username: string; points: number; battleTeam?: any }[];
+}): TeamStanding[] {
+  const battle = tournament.teamBattle;
+  if (!battle) return [];
+  const rows = battle.teams.map((t) => {
+    const id = t.team.toString();
+    const members = tournament.players
+      .filter((p) => p.battleTeam && p.battleTeam.toString() === id)
+      .sort((a, b) => b.points - a.points);
+    const leaders = members.slice(0, battle.leadersPerTeam);
+    return {
+      team: id,
+      name: t.name,
+      score: leaders.reduce((sum, p) => sum + p.points, 0),
+      total: members.reduce((sum, p) => sum + p.points, 0),
+      playerCount: members.length,
+      leaders: leaders.map((p) => ({ user: p.user.toString(), username: p.username, points: p.points })),
+    };
+  });
+  rows.sort((a, b) => b.score - a.score || b.total - a.total || a.name.localeCompare(b.name));
+  return rows.map(({ total: _total, ...r }) => r);
 }
 
 export function rankPlayers(tournament: ITournament): ITournamentPlayer[] {
@@ -3537,7 +3748,8 @@ function tournamentMatch(codeOrId: string) {
 export async function getTournamentByCode(codeOrId: string) {
   const tournament = await Tournament.findOne(tournamentMatch(codeOrId)).lean();
   if (!tournament) throw ApiError.notFound("Tournament not found");
-  return sanitizeForClient(await withLiveRatings(tournament));
+  const withRatings = await withLiveRatings(tournament);
+  return { ...sanitizeForClient(withRatings), teamStandings: computeTeamStandings(withRatings) };
 }
 
 // What the standings table, roster and header need from each player. The
@@ -3556,6 +3768,7 @@ const PLAYER_SUMMARY_FIELDS = [
   "form",
   "paused",
   "eliminatedRound",
+  "battleTeam",
 ];
 
 const pairingCountOf = { $size: { $ifNull: ["$$r.pairings", []] } };
@@ -3644,7 +3857,8 @@ export async function getTournamentSummaryByCode(codeOrId: string) {
     },
   ]);
   if (!doc) throw ApiError.notFound("Tournament not found");
-  return sanitizeForClient(await withLiveRatings(doc));
+  const withRatings = await withLiveRatings(doc);
+  return { ...sanitizeForClient(withRatings), teamStandings: computeTeamStandings(withRatings) };
 }
 
 /** One round with all its pairings, for opening a round tab the summary only

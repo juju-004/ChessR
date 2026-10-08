@@ -73,8 +73,9 @@ export function getTeam(id: string) {
   return apiFetch<{ team: TeamDetail }>(`/teams/${id}`);
 }
 
-export function listTeamMembers(id: string, page = 1, opts: { q?: string; leadersOnly?: boolean } = {}) {
+export function listTeamMembers(id: string, page = 1, opts: { q?: string; leadersOnly?: boolean; limit?: number } = {}) {
   const params = new URLSearchParams({ page: String(page) });
+  if (opts.limit) params.set('limit', String(opts.limit));
   if (opts.q) params.set('q', opts.q);
   if (opts.leadersOnly) params.set('leaders', '1');
   return apiFetch<{ members: TeamMember[] } & PageMeta>(`/teams/${id}/members?${params}`);
@@ -145,8 +146,10 @@ export function cancelJoinRequest(id: string) {
   return apiFetch<void>(`/teams/${id}/join`, { method: 'DELETE' });
 }
 
-export function listJoinRequests(id: string) {
-  return apiFetch<{ requests: TeamJoinRequestItem[] }>(`/teams/${id}/requests`);
+export function listJoinRequests(id: string, page = 1, limit?: number) {
+  const params = new URLSearchParams({ page: String(page) });
+  if (limit) params.set('limit', String(limit));
+  return apiFetch<{ requests: TeamJoinRequestItem[] } & PageMeta>(`/teams/${id}/requests?${params}`);
 }
 
 export function respondToJoinRequest(id: string, requestId: string, accept: boolean) {

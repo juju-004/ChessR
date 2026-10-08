@@ -22,6 +22,7 @@ import {
   removeUserFromTeamRoom,
   closeTeamRoom,
 } from '../services/team.service.js';
+import { createNotificationsForMany } from '../services/notification.service.js';
 import type { AuthedRequest } from '../middleware/auth.js';
 
 const objectId = z.string().refine(mongoose.isValidObjectId, 'Invalid id');
@@ -31,7 +32,10 @@ const nameSchema = z
   .trim()
   .min(3, 'Team name must be at least 3 characters')
   .max(24, 'Team name must be at most 24 characters')
-  .regex(/^[A-Za-z0-9 _-]+$/, 'Use letters, numbers, spaces, - and _ only');
+  // Letters, numbers, spaces, - and _, plus emoji (the team name field has an
+  // emoji picker). \u200d/\ufe0f/\u20e3 are the joiners and variation
+  // selectors that compound emoji are built from.
+  .regex(/^[A-Za-z0-9 _\-\p{Extended_Pictographic}\u200d\ufe0f\u20e3]+$/u, 'Use letters, numbers, spaces, emoji, - and _ only');
 const descriptionSchema = z.string().trim().max(160);
 const joinModeSchema = z.enum(['open', 'request']);
 // Empty string means "no code".
@@ -451,12 +455,20 @@ export const cancelJoinRequest = asyncHandler(async (req: AuthedRequest, res) =>
 export const listJoinRequests = asyncHandler(async (req: AuthedRequest, res) => {
   const team = await loadTeam(objectId.parse(req.params.id));
   assertOwner(team, req.user!.id);
-  const requests = await TeamJoinRequest.find({ team: team._id, status: 'pending' })
+  const { page, limit } = pageSchema.parse(req.query);
+  const filter = { team: team._id, status: 'pending' as const };
+  const total = await TeamJoinRequest.countDocuments(filter);
+  const requests = await TeamJoinRequest.find(filter)
     .populate('user', 'username avatarGradient avatarUrl rating')
     .sort({ createdAt: 1 })
-    .limit(100)
+    .skip((page - 1) * limit)
+    .limit(limit)
     .lean();
   res.json({
+    page,
+    limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
     requests: requests
       .filter((r: any) => r.user)
       .map((r: any) => ({
@@ -708,6 +720,21 @@ export const createAnnouncement = asyncHandler(async (req: AuthedRequest, res) =
   if (stale.length) await TeamAnnouncement.deleteMany({ _id: { $in: stale.map((x) => x._id) } });
 
   emitTeamUpdate(team.id);
+
+  // Tell every other member. Best-effort: the announcement is already saved,
+  // a notification hiccup shouldn't fail the post.
+  const authorName = req.user!.username;
+  const preview = (title ? `${title}: ${body}` : body).replace(/\s+/g, ' ');
+  createNotificationsForMany(
+    team.members.map((m) => m.user.toString()).filter((id) => id !== req.user!.id),
+    {
+      type: 'team_announcement',
+      title: `${team.name}: new announcement`,
+      body: `${authorName}: ${preview.length > 180 ? `${preview.slice(0, 177)}...` : preview}`,
+      link: `/teams/${team.id}`,
+    },
+  ).catch((err) => console.error('team announcement notifications failed:', err));
+
   res.status(201).json({ id: doc._id.toString() });
 });
 

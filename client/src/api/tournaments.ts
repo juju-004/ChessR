@@ -37,6 +37,23 @@ export interface TournamentPlayer {
   // Arena-only, see the server's ITournamentPlayer doc comment. Always
   // false for every other format.
   paused: boolean;
+  /** Team battles only: id of the team this player represents. */
+  battleTeam?: string | null;
+}
+
+/** One row of a team battle's team standings (computed server-side). */
+export interface TeamStanding {
+  team: string;
+  name: string;
+  /** Sum of the points of the team's best `leadersPerTeam` players. */
+  score: number;
+  playerCount: number;
+  leaders: { user: string; username: string; points: number }[];
+}
+
+export interface TeamBattleConfig {
+  teams: { team: string; name: string }[];
+  leadersPerTeam: number;
 }
 
 export interface TournamentPairing {
@@ -82,6 +99,16 @@ export interface Tournament {
   /** Set for in-house tournaments (the owning team's id), only that team's
    *  members can join. */
   team?: string | null;
+  /** Set for team battles (created by an approved organisation). */
+  teamBattle?: TeamBattleConfig | null;
+  /** Name of the organisation that created this team battle. */
+  organizationName?: string | null;
+  /** Set when this tournament is one stage of a league (the server calls
+   *  leagues "cumulatives", hence the field names). */
+  cumulative?: string | null;
+  cumulativeName?: string | null;
+  /** Team battles only, on the detail endpoints: teams ranked best first. */
+  teamStandings?: TeamStanding[];
   /** True if the creator set up this tournament purely to run it, they
    *  never occupy a player slot and were never charged the registration
    *  fee. See tournament.service.ts's createTournament for the server-side

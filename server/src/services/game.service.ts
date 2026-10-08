@@ -97,6 +97,20 @@ export async function assertUnderActiveGameLimit(userId: string): Promise<void> 
  *  lobbySocket.ts. */
 export const LOBBY_ROOM = "lobby:open";
 
+/** Room for sockets sitting on an open game's "Join this game" screen (they
+ *  haven't joined the game itself, so they're not in its normal room). Told
+ *  via `game:open_changed` the moment the game stops being open, so the
+ *  screen can move on by itself instead of leaving a dead Join button. */
+export const openGameRoom = (gameId: string) => `gamewait:${gameId}`;
+
+function notifyOpenGameChanged(gameId: string): void {
+  try {
+    getIo().to(openGameRoom(gameId)).emit("game:open_changed");
+  } catch {
+    // Socket.IO not initialized (script/test context), safe to ignore.
+  }
+}
+
 /** Tells everyone watching the lobby the list of open games changed (one was
  *  created, cancelled or accepted), they refetch. Payload-free on purpose:
  *  the HTTP list is the single source of truth. */
@@ -215,6 +229,7 @@ export async function cancelOpenGame(gameId: string, hostUserId: string): Promis
   if (game.wagerTokens > 0) {
     await creditWagerReturn(hostUserId, game.id, game.wagerTokens, "wager_refund");
   }
+  notifyOpenGameChanged(game.id);
   broadcastLobbyChanged();
 }
 
@@ -297,6 +312,7 @@ export async function joinOpenGame(
   } catch {
     // Socket.IO not initialized (e.g. in a script/test context), safe to ignore.
   }
+  notifyOpenGameChanged(game.id);
   broadcastLobbyChanged();
 
   return game;
@@ -939,6 +955,7 @@ export async function sweepStaleWaitingGames(): Promise<{ aborted: number }> {
     // Host may still be sitting on the game page; same payload the idle
     // abort sends so their board flips to "aborted" instead of hanging.
     getIo().to(`game:${gameId}`).emit("game:over", { gameId, result: null, reason: "idle_timeout" });
+    notifyOpenGameChanged(gameId);
     notifyGameEnded(gameId);
     if (!g.isPrivate) publicChanged = true;
     aborted++;

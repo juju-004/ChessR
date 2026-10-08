@@ -623,7 +623,9 @@ export function Game() {
       if (lowTimeWarnedRef.current) return;
       lowTimeWarnedRef.current = true;
       playLowTimeSound();
-      haptics.lowTime();
+      // The sound alone is enough in fast games; the vibration is only for
+      // 5+ minute time controls.
+      if ((gameMeta?.timeControl.baseSeconds ?? 0) >= 300) haptics.lowTime();
     }
 
     function arm(): (() => void) | undefined {
@@ -663,6 +665,7 @@ export function Game() {
     blackRemainingMs,
     turnStartedAtMs,
     lowTimeThresholdMs,
+    gameMeta?.timeControl.baseSeconds,
     chess,
   ]);
 
@@ -696,6 +699,9 @@ export function Game() {
   // this measures the actual box the board sits in and sizes it in JS.
 
   // --- Load game metadata, decide whether to show a "join" gate --------------
+  // Bumped to re-run the load below, used when the "Join this game" screen
+  // finds out the game isn't open anymore (see the need-join effect).
+  const [reloadKey, setReloadKey] = useState(0);
   useEffect(() => {
     let cancelled = false;
     setMode("loading");
@@ -792,7 +798,46 @@ export function Game() {
     return () => {
       cancelled = true;
     };
-  }, [code, user?.id, setActiveGame, clearActiveGame]);
+  }, [code, user?.id, setActiveGame, clearActiveGame, reloadKey]);
+
+  // While someone sits on the "Join this game" screen, the game can stop
+  // being open under them: another player joins first, or the host cancels.
+  // The server tells us (game:open_changed, see openGameRoom in
+  // game.service.ts) and we reload, which lands a bystander on the live game
+  // as a spectator (or on the aborted game) instead of leaving a Join button
+  // that can only fail. Re-checked once on subscribing too, to cover a change
+  // that happened between the page loading and the socket being ready.
+  const openGameId = mode === "need-join" ? gameMeta?._id : undefined;
+  useEffect(() => {
+    if (!socket || !openGameId) return;
+    const s = socket;
+    const gameId = openGameId;
+    let cancelled = false;
+
+    function recheck() {
+      getGameByCode(code)
+        .then(({ game }) => {
+          if (!cancelled && game.status !== "waiting") {
+            setReloadKey((k) => k + 1);
+          }
+        })
+        .catch(() => {});
+    }
+    function watch() {
+      s.emit("game:watch_open", { gameId });
+      recheck();
+    }
+
+    s.on("connect", watch);
+    s.on("game:open_changed", recheck);
+    if (s.connected) watch();
+    return () => {
+      cancelled = true;
+      s.off("connect", watch);
+      s.off("game:open_changed", recheck);
+      s.emit("game:unwatch_open", { gameId });
+    };
+  }, [socket, openGameId, code]);
 
   async function handleJoin() {
     if (!gameMeta) return;
@@ -800,6 +845,13 @@ export function Game() {
       await joinGame(gameMeta._id);
       setMode("board");
     } catch (err) {
+      // 409 = the game isn't open anymore (someone beat you to it, or the
+      // host cancelled): reload to land on the live game rather than leave
+      // a Join button that can't work.
+      if (err instanceof ApiRequestError && err.status === 409) {
+        setReloadKey((k) => k + 1);
+        return;
+      }
       setLoadError(
         err instanceof ApiRequestError ? err.message : "Could not join",
       );

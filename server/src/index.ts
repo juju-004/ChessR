@@ -6,7 +6,7 @@ import { createApp } from './app.js';
 import { initSocketServer } from './sockets/index.js';
 import { getIo } from './sockets/io.js';
 import { reconcileActiveGames, sweepAbortedGames, sweepStaleWaitingGames } from './services/game.service.js';
-import { reconcileActiveTournaments, sweepCancelledTournaments, resolveDesyncedPairings } from './services/tournament.service.js';
+import { reconcileActiveTournaments, sweepCancelledTournaments, resolveDesyncedPairings, sweepActiveArenaPairings } from './services/tournament.service.js';
 import { reconcilePresence } from './services/presence.service.js';
 import {
   runAllQuickPairingPasses,
@@ -161,6 +161,7 @@ async function main() {
     reconcileTick++;
     sweep('reconcileActiveGames', SWEEP_PERIOD_MS, () => reconcileActiveGames());
     sweep('reconcileActiveTournaments', SWEEP_PERIOD_MS, () => reconcileActiveTournaments());
+    sweep('sweepActiveArenaPairings', SWEEP_PERIOD_MS, () => sweepActiveArenaPairings());
     // The tournament repair pass only fixes rare stuck states and is
     // already pre-checked cheaply, so every 3rd tick (3 min) is plenty.
     if (reconcileTick % 3 === 0) {

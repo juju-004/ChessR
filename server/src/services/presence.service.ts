@@ -36,6 +36,63 @@ export async function isUserOnline(userId: string): Promise<boolean> {
   return count > 0;
 }
 
+// --- "Online players" ranking ------------------------------------------------
+//
+// A sorted set of every currently-online user, scored by their rating, so the
+// Players page's "Online players" card can read the top few with one
+// ZREVRANGE instead of scanning every presence key (which is what answering
+// "who's online" otherwise costs as the user base grows). Members are added
+// when a user's FIRST socket connects and removed when their LAST one
+// disconnects (see presenceSocket.ts), and the score is only a ranking hint:
+// readers re-check real presence + the live rating (see getTopOnlineUserIds
+// and listOnlinePlayers), and reconcilePresence below sweeps up anything a
+// missed disconnect left behind.
+const onlineRankedKey = 'presence:online:ranked';
+
+export async function markOnlineRanked(userId: string, rating: number): Promise<void> {
+  await redis.zadd(onlineRankedKey, rating, userId);
+}
+
+export async function unmarkOnlineRanked(userId: string): Promise<void> {
+  await redis.zrem(onlineRankedKey, userId);
+}
+
+/** Refresh an already-online user's score after their rating changed. `XX`
+ *  means "only if already a member", so a game finishing for someone who's
+ *  offline never re-adds them as online. */
+export async function updateOnlineRank(userId: string, rating: number): Promise<void> {
+  await redis.zadd(onlineRankedKey, 'XX', rating, userId);
+}
+
+/** Highest-ranked users who are genuinely online right now, excluding
+ *  `excludeUserId` (the viewer). Candidates are verified against real
+ *  presence before being returned, and any that fail are dropped from the
+ *  set on the spot, so a stale entry heals itself instead of hiding a real
+ *  player behind a ghost. */
+export async function getTopOnlineUserIds(excludeUserId: string, limit: number): Promise<string[]> {
+  const result: string[] = [];
+  const stale: string[] = [];
+  const batchSize = limit * 3 + 1;
+  // A handful of batches at most: stale entries are rare, this just bounds
+  // the worst case.
+  for (let offset = 0, round = 0; round < 4 && result.length < limit; offset += batchSize, round++) {
+    const batch = await redis.zrevrange(onlineRankedKey, offset, offset + batchSize - 1);
+    if (batch.length === 0) break;
+    const candidates = batch.filter((id) => id !== excludeUserId);
+    const online = await getOnlineUserIds(candidates);
+    for (const id of candidates) {
+      if (online.has(id)) {
+        if (result.length < limit) result.push(id);
+      } else {
+        stale.push(id);
+      }
+    }
+    if (batch.length < batchSize) break;
+  }
+  if (stale.length > 0) await redis.zrem(onlineRankedKey, ...stale);
+  return result;
+}
+
 export async function getUserSocketIds(userId: string): Promise<string[]> {
   return redis.smembers(userSocketsKey(userId));
 }
@@ -104,6 +161,19 @@ export async function reconcilePresence(io: Server): Promise<{ prunedSockets: nu
     if (queued > 0) await cleanup.exec();
   }
 
+  // The ranked online set (see markOnlineRanked) has the same failure mode
+  // as the socket sets above: a missed disconnect leaves a user in it. Drop
+  // every member that no longer has a live socket.
+  const rankedStream = redis.zscanStream(onlineRankedKey, { count: 200 });
+  for await (const entries of rankedStream as AsyncIterable<string[]>) {
+    // zscan yields [member, score, member, score, ...]
+    const members = entries.filter((_, i) => i % 2 === 0);
+    if (members.length === 0) continue;
+    const online = await getOnlineUserIds(members);
+    const gone = members.filter((id) => !online.has(id));
+    if (gone.length > 0) await redis.zrem(onlineRankedKey, ...gone);
+  }
+
   // The reverse mapping (socketId -> userId) can end up orphaned
   // independently of the above — e.g. if only one half of registerSocket's
   // Promise.all ever completed — so it's swept on its own terms rather
@@ -115,6 +185,13 @@ export async function reconcilePresence(io: Server): Promise<{ prunedSockets: nu
       const socketId = key.slice('presence:socket:'.length);
       if (!liveIds.has(socketId)) await redis.del(key);
     }
+  }
+
+  // Spectating markers whose socket is gone (a missed disconnect cleanup).
+  const spectatingSockets = await redis.smembers(spectatingSocketsKey);
+  for (const id of spectatingSockets) {
+    if (liveIds.has(id)) continue;
+    await Promise.all([redis.srem(spectatingSocketsKey, id), redis.del(socketSpectatingKey(id))]);
   }
 
   // Game-page presence (see gamePresence.service.ts) is swept with the same
@@ -191,6 +268,55 @@ export async function getWatchingUserIds(tournamentId: string): Promise<string[]
   if (socketIds.length === 0) return [];
   const userIds = await redis.mget(...socketIds.map(socketUserKey));
   return [...new Set(userIds.filter((id): id is string => id !== null))];
+}
+
+// --- Spectating -------------------------------------------------------------
+//
+// A player who isn't paused or mid-game and goes to watch someone else's game
+// must stay in the arena pairing pool (they're still there to play, just
+// killing time). This tracks which sockets are currently spectating a game so
+// the pool can count them alongside people on the tournament page. One key per
+// socket remembers WHICH game, so a late game:leave for game A can't wipe the
+// fresh spectate of game B (same reasoning as unwatchTournament).
+const spectatingSocketsKey = 'presence:spectating:sockets';
+const socketSpectatingKey = (socketId: string) => `presence:spectating:socket:${socketId}`;
+
+export async function markSpectating(socketId: string, gameId: string): Promise<void> {
+  await Promise.all([
+    redis.sadd(spectatingSocketsKey, socketId),
+    redis.set(socketSpectatingKey(socketId), gameId),
+  ]);
+}
+
+/** Returns true if this call actually cleared a spectate. With `onlyGameId`
+ *  it only clears when the socket is still spectating that exact game. */
+export async function clearSpectating(socketId: string, onlyGameId?: string): Promise<boolean> {
+  const current = await redis.get(socketSpectatingKey(socketId));
+  if (!current) return false;
+  if (onlyGameId && current !== onlyGameId) return false;
+  await Promise.all([
+    redis.srem(spectatingSocketsKey, socketId),
+    redis.del(socketSpectatingKey(socketId)),
+  ]);
+  return true;
+}
+
+async function getSpectatingUserIds(): Promise<string[]> {
+  const socketIds = await redis.smembers(spectatingSocketsKey);
+  if (socketIds.length === 0) return [];
+  const userIds = await redis.mget(...socketIds.map(socketUserKey));
+  return [...new Set(userIds.filter((id): id is string => id !== null))];
+}
+
+/** Everyone who is "here to play" for a tournament right now: on its detail
+ *  page, or watching some game instead. This is the presence set both the
+ *  arena pairing pool and the client's pool display are built from. */
+export async function getArenaPresentUserIds(tournamentId: string): Promise<string[]> {
+  const [watching, spectating] = await Promise.all([
+    getWatchingUserIds(tournamentId),
+    getSpectatingUserIds(),
+  ]);
+  return [...new Set([...watching, ...spectating])];
 }
 
 /** True if any of this user's currently-connected sockets (they can have

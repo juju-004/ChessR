@@ -4,8 +4,9 @@ import { User } from '../models/User.js';
 import { Game } from '../models/Game.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { getActiveGameCodeForUser } from '../services/game.service.js';
-import { isUserOnline } from '../services/presence.service.js';
+import { getActiveGameCodeForUser, getActiveGameCodesForUsers } from '../services/game.service.js';
+import { isUserOnline, getOnlineUserIds, getTopOnlineUserIds } from '../services/presence.service.js';
+import { getApprovedOrganizationName } from '../services/organization.service.js';
 import type { AuthedRequest } from '../middleware/auth.js';
 
 const searchSchema = z.object({
@@ -83,6 +84,11 @@ export const searchUsers = asyncHandler(async (req: AuthedRequest, res) => {
     .limit(20)
     .lean();
 
+  // Presence for the whole result set in one pipelined round trip, so the
+  // Players page can offer "Challenge" on anyone it finds (a challenge
+  // needs the target online, see challengeSocket.ts).
+  const onlineIds = await getOnlineUserIds(users.map((u) => u._id.toString()));
+
   res.json({
     users: users.map((u) => ({
       _id: u._id,
@@ -90,8 +96,43 @@ export const searchUsers = asyncHandler(async (req: AuthedRequest, res) => {
       avatarUrl: u.avatarUrl,
       avatarGradient: u.avatarGradient,
       rating: u.rating,
+      online: onlineIds.has(u._id.toString()),
     })),
   });
+});
+
+const ONLINE_PLAYERS_LIMIT = 5;
+
+/** The top few online players by rating (never the caller), for the Players
+ *  page's "Online players" card. Same shape as a friends-list entry so the
+ *  client can render both with the same row. */
+export const listOnlinePlayers = asyncHandler(async (req: AuthedRequest, res) => {
+  const viewerId = req.user!.id;
+  const ids = await getTopOnlineUserIds(viewerId, ONLINE_PLAYERS_LIMIT);
+  if (ids.length === 0) return res.json({ players: [] });
+
+  const [users, gameCodes] = await Promise.all([
+    User.find({ _id: { $in: ids } })
+      .select('username avatarUrl avatarGradient rating')
+      .lean(),
+    getActiveGameCodesForUsers(ids, viewerId),
+  ]);
+
+  // The ranking set's scores can lag a rating change slightly, so order by
+  // the live ratings we just loaded.
+  const players = users
+    .sort((a, b) => b.rating - a.rating)
+    .map((u) => ({
+      id: u._id,
+      username: u.username,
+      avatarUrl: u.avatarUrl,
+      avatarGradient: u.avatarGradient ?? null,
+      rating: u.rating,
+      online: true,
+      activeGameCode: gameCodes.get(u._id.toString()) ?? null,
+    }));
+
+  res.json({ players });
 });
 
 export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
@@ -184,6 +225,8 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
     h2h = total > 0 ? { wins: h2hRow.wins, losses: h2hRow.losses, draws: h2hRow.draws } : null;
   }
 
+  const orgName = await getApprovedOrganizationName(user._id);
+
   res.json({
     id: user._id,
     username: user.username,
@@ -198,6 +241,7 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
     activeGameCode,
     online,
     h2h,
+    organization: orgName ? { name: orgName } : null,
   });
 });
 

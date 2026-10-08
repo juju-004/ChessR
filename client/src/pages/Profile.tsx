@@ -43,6 +43,7 @@ import {
 import { EditProfileModal } from "../components/EditProfileModal.js";
 import { ReportUserModal } from "../components/ReportUserModal.js";
 import { RatingBadge } from "../components/RatingBadge.js";
+import { OrgBadge } from "../components/organizations/OrgBadge.js";
 
 const GAMES_PER_PAGE = 15;
 
@@ -275,6 +276,9 @@ export function Profile() {
                   )}
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
+                  {profile.organization && (
+                    <OrgBadge name={profile.organization.name} />
+                  )}
                   <RatingBadge
                     rating={profile.rating}
                   />

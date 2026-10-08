@@ -86,6 +86,12 @@ export interface ICageMatch extends Document {
   matchWinner: 'p1' | 'p2' | 'draw' | null;
   matchEndReason: CageMatchEndReason;
   forfeitedBy: Types.ObjectId | null;
+  // Set when the match was started by someone accepting a shareable invite
+  // link (see cageMatchSocket.ts's cage:link_accept). The link itself is
+  // single-use and its Redis entry is deleted on accept, so this is what lets
+  // that same URL keep working afterwards: opening it again finds the match
+  // it turned into and goes there, instead of an "expired" error.
+  inviteLinkId?: string;
   createdAt: Date;
   startedAt?: Date;
   endedAt?: Date;
@@ -143,6 +149,7 @@ const cageMatchSchema = new Schema<ICageMatch>(
       default: null,
     },
     forfeitedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    inviteLinkId: { type: String },
     startedAt: { type: Date, default: () => new Date() },
     endedAt: { type: Date },
   },
@@ -150,6 +157,8 @@ const cageMatchSchema = new Schema<ICageMatch>(
 );
 
 cageMatchSchema.index({ status: 1, createdAt: -1 });
+// Only link-started matches carry this; sparse keeps the index to those.
+cageMatchSchema.index({ inviteLinkId: 1 }, { unique: true, sparse: true });
 // "My cage matches" is (player, newest first); the old (player, status)
 // compounds couldn't serve that sort.
 cageMatchSchema.index({ player1: 1, createdAt: -1 });

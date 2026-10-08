@@ -18,9 +18,6 @@ import { redis } from '../config/redis.js';
 //                Tournament.chatEnabled). Deleted 10 minutes after the
 //                tournament finishes or is cancelled (see
 //                tournament.service.ts).
-//  - 'team'      a team's chat room. Key'd by teamId, members only (enforced
-//                in teamSocket.ts). Never expires with an event; see
-//                TEAM_TTL_SECONDS below.
 //  - 'game_players' / 'cage_players'  the two participants' own private
 //                chat for a standalone game / cage match, a SEPARATE log
 //                from 'game'/'cage' above rather than just opening the
@@ -37,7 +34,7 @@ import { redis } from '../config/redis.js';
 // indefinitely until whatever's driving it wraps up. expireChat below is
 // what puts the 10-minute clock on it, callers are responsible for calling
 // it exactly once, right when that happens.
-export type ChatScope = 'game' | 'cage' | 'tournament' | 'game_players' | 'cage_players' | 'team';
+export type ChatScope = 'game' | 'cage' | 'tournament' | 'game_players' | 'cage_players';
 
 const MAX_MESSAGES = 200;
 const POST_COMPLETION_TTL_SECONDS = 10 * 60;
@@ -47,9 +44,6 @@ const POST_COMPLETION_TTL_SECONDS = 10 * 60;
 // forever. Refreshed on every write; harmless once expireChat overwrites it
 // with the real, much shorter post-completion TTL.
 const SAFETY_TTL_SECONDS = 24 * 60 * 60;
-// A team's chat room is long-lived (no game/tournament wrapping up to expire
-// it), so it keeps its last MAX_MESSAGES for a month after the last message.
-const TEAM_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 export interface ChatMessageInput {
   username: string;
@@ -82,7 +76,7 @@ export async function addChatMessage(
     .multi()
     .rpush(key, JSON.stringify(message))
     .ltrim(key, -MAX_MESSAGES, -1)
-    .expire(key, scope === 'team' ? TEAM_TTL_SECONDS : SAFETY_TTL_SECONDS)
+    .expire(key, SAFETY_TTL_SECONDS)
     .exec();
   return message;
 }

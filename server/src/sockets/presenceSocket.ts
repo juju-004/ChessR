@@ -1,8 +1,15 @@
 import type { Server, Socket } from 'socket.io';
 import { User } from '../models/User.js';
-import { registerSocket, unregisterSocket, unwatchTournament } from '../services/presence.service.js';
+import {
+  registerSocket,
+  unregisterSocket,
+  unwatchTournament,
+  clearSpectating,
+  markOnlineRanked,
+  unmarkOnlineRanked,
+} from '../services/presence.service.js';
 import { retryArenaPairingsForUser } from '../services/tournament.service.js';
-import { broadcastWatchers } from './tournamentSocket.js';
+import { broadcastWatchers, onSpectatingChanged } from './tournamentSocket.js';
 import { broadcastLobbyCounts } from './quickPairingSocket.js';
 import { leaveQuickPairingQueue } from '../services/quickPairing.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
@@ -20,7 +27,12 @@ export function registerPresenceHandlers(io: Server, socket: Socket) {
     await socket.join(`user:${userId}`);
     // Only the first socket is news to friends. Extra tabs/devices used to
     // each cost a friends lookup plus one emit per friend for nothing.
-    if (cameOnline) await notifyFriends(io, userId, 'friend:presence', { userId, online: true });
+    if (cameOnline) {
+      // Feeds the Players page's "Online players" card (see markOnlineRanked).
+      const me = await User.findById(userId).select('rating').lean();
+      await markOnlineRanked(userId, me?.rating ?? 1500);
+      await notifyFriends(io, userId, 'friend:presence', { userId, online: true });
+    }
     // Smart pairing (see arenaAvailablePlayers) skips offline players
     // entirely rather than pairing them against someone who isn't there, 
     // this is what picks them back up the instant they're actually back,
@@ -40,11 +52,15 @@ export function registerPresenceHandlers(io: Server, socket: Socket) {
       if (unwatchedTournamentId) {
         await broadcastWatchers(io, unwatchedTournamentId);
       }
+      if (await clearSpectating(socket.id)) {
+        await onSpectatingChanged(io, userId, false);
+      }
       if (wasLast) {
         // Nobody's left to be matched: drop them from any quick-pairing lobby
         // so they can't be paired into a game they'll never see.
         const left = await leaveQuickPairingQueue(userId);
         if (left) await broadcastLobbyCounts(io);
+        await unmarkOnlineRanked(userId);
         await notifyFriends(io, userId, 'friend:presence', { userId, online: false });
       }
     })().catch((err) => console.error('presence teardown failed:', err));

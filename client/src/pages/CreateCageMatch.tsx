@@ -21,7 +21,7 @@ import {
   Select,
   Button,
   RCoin,
-  Tabs,
+  Switch,
 } from "../components/ui/index.js";
 import { claimToast } from "../lib/toastClaims.js";
 
@@ -39,13 +39,20 @@ export function CreateCageMatch() {
   } | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // "friend" mirrors the original direct-challenge flow below; "link"
-  // is the new shareable-invite alternative (David: "cage matches are
-  // challenge only, make it possible through links too") for inviting
-  // someone who isn't online right now, or isn't added as a friend yet.
-  const [mode, setMode] = useState<"friend" | "link">("friend");
+  // Off (the default) is the direct challenge flow: pick a player and
+  // they get the invite live. On swaps that for a shareable invite link,
+  // for someone who isn't online right now or isn't known to you yet, so
+  // the opponent picker is hidden (there's nobody to pick).
+  const [useLinkInvite, setUseLinkInvite] = useState(false);
   const [friends, setFriends] = useState<Friend[]>([]);
   const [selectedFriend, setSelectedFriend] = useState("");
+  // A player picked from the Players page who isn't one of your friends
+  // (anyone can be challenged now), so they have no entry in `friends` to
+  // be found in. Carried over in the URL by the "Cage" button there.
+  const [challengedPlayer, setChallengedPlayer] = useState<{
+    id: string;
+    username: string;
+  } | null>(null);
   const [createdLinkId, setCreatedLinkId] = useState<string | null>(null);
   const [legs, setLegs] = useState<CageLegPlan[]>([]);
   const [winnerMode, setWinnerMode] = useState<CageWinnerMode>("total_score");
@@ -53,16 +60,23 @@ export function CreateCageMatch() {
   const [wagerMode, setWagerMode] = useState<CageWagerMode>("winner_takes_all");
   const [wagerInput, setWagerInput] = useState("20");
 
-  // ?challenge= carries a friend id over from the Players page's "Cage
-  // match instead" button, so the opponent is picked automatically instead
-  // of making them find the name again in the dropdown. Only resolvable
-  // once `friends` has actually loaded (the id has to match someone in
-  // that list).
+  // ?challenge= (+ &name=) carries a player over from the Players page's
+  // "Cage" button, so the opponent is picked automatically instead of making
+  // them find the name again in the dropdown. A friend is matched against
+  // the loaded friends list; anyone else is added to the dropdown from the
+  // name in the URL.
   useEffect(() => {
     listFriends().then((res) => {
       setFriends(res.friends);
       const challengeId = searchParams.get("challenge");
-      if (challengeId && res.friends.some((f) => f.id === challengeId)) {
+      if (!challengeId) return;
+      if (res.friends.some((f) => f.id === challengeId)) {
+        setSelectedFriend(challengeId);
+        return;
+      }
+      const name = searchParams.get("name");
+      if (name) {
+        setChallengedPlayer({ id: challengeId, username: name });
         setSelectedFriend(challengeId);
       }
     });
@@ -102,9 +116,9 @@ export function CreateCageMatch() {
 
   function handleCreate() {
     if (!socket) return;
-    if (mode === "friend" && !selectedFriend) {
+    if (!useLinkInvite && !selectedFriend) {
       return setStatus({
-        message: "Pick a friend to challenge.",
+        message: "Pick a player to challenge.",
         isError: true,
       });
     }
@@ -140,10 +154,10 @@ export function CreateCageMatch() {
       wagerMode,
       wagerTokens,
     };
-    if (mode === "friend") {
-      socket.emit("cage:send", { toUserId: selectedFriend, ...payload });
-    } else {
+    if (useLinkInvite) {
       socket.emit("cage:create_link", payload);
+    } else {
+      socket.emit("cage:send", { toUserId: selectedFriend, ...payload });
     }
   }
 
@@ -215,25 +229,27 @@ export function CreateCageMatch() {
         ) : (
           <Card variant="solid">
             <CardContent className="space-y-5">
-              {/* Mode */}
-              <Tabs
-                items={[
-                  { value: "friend", label: "Challenge a friend" },
-                  { value: "link", label: "Share a link" },
-                ]}
-                value={mode}
-                onChange={(v) => setMode(v as "friend" | "link")}
+              {/* Opponent: a live challenge, or (toggle on) a shareable link */}
+              <Switch
+                checked={useLinkInvite}
+                onChange={setUseLinkInvite}
+                label="Use link invite"
+                description="Get a link to send to anyone, they don't need to be online or a friend."
               />
-
-              {/* Opponent */}
-              {mode === "friend" ? (
+              {!useLinkInvite && (
                 <section className="space-y-3">
                   <Select
                     label="Opponent"
                     value={selectedFriend}
                     onChange={(e) => setSelectedFriend(e.target.value)}
                   >
-                    <option value="">Select a friend…</option>
+                    <option value="">Select a player…</option>
+                    {challengedPlayer &&
+                      !friends.some((f) => f.id === challengedPlayer.id) && (
+                        <option value={challengedPlayer.id}>
+                          {challengedPlayer.username}
+                        </option>
+                      )}
                     {friends.map((f) => (
                       <option key={f.id} value={f.id} disabled={!f.online}>
                         {f.username} {f.online ? "" : "(offline)"}
@@ -241,8 +257,6 @@ export function CreateCageMatch() {
                     ))}
                   </Select>
                 </section>
-              ) : (
-                <p className="text-sm text-base-content/60"></p>
               )}
 
               {/* Game plan */}
@@ -345,24 +359,24 @@ export function CreateCageMatch() {
               <Button
                 fullWidth
                 disabled={
-                  (mode === "friend" && !selectedFriend) ||
+                  (!useLinkInvite && !selectedFriend) ||
                   legs.length < 2 ||
                   submitting
                 }
                 onClick={handleCreate}
               >
-                {mode === "friend" ? (
-                  <Swords className="h-4 w-4" />
-                ) : (
+                {useLinkInvite ? (
                   <Link2 className="h-4 w-4" />
+                ) : (
+                  <Swords className="h-4 w-4" />
                 )}
                 {submitting
-                  ? mode === "friend"
-                    ? "Sending…"
-                    : "Creating…"
-                  : mode === "friend"
-                    ? "Send cage match invite"
-                    : "Create invite link"}
+                  ? useLinkInvite
+                    ? "Creating…"
+                    : "Sending…"
+                  : useLinkInvite
+                    ? "Create invite link"
+                    : "Send cage match invite"}
               </Button>
             </CardContent>
           </Card>

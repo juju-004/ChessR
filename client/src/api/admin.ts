@@ -329,3 +329,33 @@ export function listDeposits(status?: TxStatus | 'all', q?: string, page = 1, li
   if (q) params.set('q', q);
   return adminFetch<DepositListResponse>(`/deposits?${params.toString()}`);
 }
+
+// --- Organisations -------------------------------------------------------------
+
+export type AdminOrgStatus = 'pending' | 'approved' | 'rejected';
+
+export interface AdminOrganization {
+  id: string;
+  name: string;
+  whatsapp: string;
+  status: AdminOrgStatus;
+  reviewNote: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+  owner: { id: string; username: string } | null;
+}
+
+export function listOrganizations(status?: AdminOrgStatus) {
+  const qs = status ? `?status=${status}` : '';
+  return adminFetch<{ organizations: AdminOrganization[] }>(`/organizations${qs}`);
+}
+
+export function reviewOrganization(
+  id: string,
+  body: { action: 'approve' | 'reject' | 'revoke'; note?: string | null },
+) {
+  return adminFetch<{ organization: AdminOrganization }>(`/organizations/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}

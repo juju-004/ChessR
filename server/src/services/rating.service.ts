@@ -1,5 +1,6 @@
 import { Game } from "../models/Game.js";
 import { User } from "../models/User.js";
+import { updateOnlineRank } from "./presence.service.js";
 
 // --- Rating ------------------------------------------------------------------
 // Deliberately NOT the lichess/chess.com model of a separate rating per time
@@ -128,6 +129,11 @@ export async function applyRatingForGame(
       .select("rating ratedGamesPlayed")
       .lean(),
   ]);
+
+  // Keep the "Online players" ranking (see presence.service.ts) in step with
+  // the new ratings. Best-effort: it's only a ranking hint.
+  if (updatedWhite) void updateOnlineRank(whiteId, updatedWhite.rating).catch(() => {});
+  if (updatedBlack) void updateOnlineRank(blackId, updatedBlack.rating).catch(() => {});
 
   return {
     white: {

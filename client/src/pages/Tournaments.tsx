@@ -1,12 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Plus, Layers } from "lucide-react";
 import {
   listOpenTournaments,
   listMyTournaments,
   listMyFinishedTournaments,
   type Tournament,
 } from "../api/tournaments.js";
+import {
+  getMyOrganization,
+  type MyOrganization,
+} from "../api/organizations.js";
+import {
+  listLeagues,
+  createLeague,
+  MIN_LEAGUE_TOURNAMENTS,
+  MAX_LEAGUE_TOURNAMENTS,
+  type LeagueSummary,
+} from "../api/leagues.js";
+import { errMsg } from "../lib/errMsg.js";
+import { MAX_EVENT_NAME_LENGTH } from "../lib/limits.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import { Pagination } from "../components/Pagination.js";
@@ -19,6 +32,11 @@ import {
   CardTitle,
   CardContent,
   Button,
+  Badge,
+  EmojiInput,
+  Input,
+  Textarea,
+  Modal,
   Spinner,
 } from "../components/ui/index.js";
 
@@ -150,6 +168,170 @@ function ServerPagedTournamentCard({
   );
 }
 
+/** Leagues. Every league stays listed here; opening
+ *  one shows its running league table and its stages. Approved organisations
+ *  get a "New" button to start a league. */
+function LeagueCard({
+  leagues,
+  loading,
+  canCreate,
+  onCreate,
+}: {
+  leagues: LeagueSummary[];
+  loading: boolean;
+  canCreate: boolean;
+  onCreate: () => void;
+}) {
+  const [page, setPage] = useState(0);
+  const pageCount = Math.max(1, Math.ceil(leagues.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const items = leagues.slice(
+    safePage * PAGE_SIZE,
+    safePage * PAGE_SIZE + PAGE_SIZE,
+  );
+  return (
+    <Card variant="solid">
+      <CardHeader>
+        <CardTitle>Leagues</CardTitle>
+        {canCreate && (
+          <Button variant="secondary" size="sm" onClick={onCreate}>
+            <Plus className="h-4 w-4" />
+            New
+          </Button>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {loading ? (
+          <div className="flex justify-center py-6">
+            <Spinner className="text-base-content/40" />
+          </div>
+        ) : (
+          <>
+            {leagues.length === 0 && (
+              <p className="text-sm text-base-content/50">
+                No leagues yet. A league is a series of tournaments whose points
+                add up into one table.
+              </p>
+            )}
+            {items.map((c) => (
+              <Link
+                key={c.id}
+                to={`/leagues/${c.id}`}
+                className="flex items-center justify-between gap-3 rounded-xl border border-base-300 bg-base-100/60 px-3 py-2.5 transition-colors hover:border-(--primary)/40"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Layers className="h-4 w-4 shrink-0 text-(--primary)" />
+                    <span className="min-w-0 font-medium wrap-break-word text-base-content">
+                      {c.name}
+                    </span>
+                    {c.mine && <Badge variant="primary">Yours</Badge>}
+                  </div>
+                  <div className="mt-0.5 text-xs text-base-content/50">
+                    {c.organizationName} · {c.tournamentCount} of{" "}
+                    {c.maxTournaments}{" "}
+                    {c.tournamentCount === 1 ? "tournament" : "tournaments"}
+                  </div>
+                </div>
+              </Link>
+            ))}
+            <Pagination
+              page={safePage}
+              pageCount={pageCount}
+              onPageChange={setPage}
+            />
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function CreateLeagueModal({
+  open,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [limitInput, setLimitInput] = useState(String(MAX_LEAGUE_TOURNAMENTS));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit() {
+    if (name.trim().length < 3)
+      return setError("Give it a name (3+ characters).");
+    const maxTournaments = Math.floor(Number(limitInput));
+    if (
+      !Number.isFinite(maxTournaments) ||
+      maxTournaments < MIN_LEAGUE_TOURNAMENTS ||
+      maxTournaments > MAX_LEAGUE_TOURNAMENTS
+    )
+      return setError(
+        `Choose between ${MIN_LEAGUE_TOURNAMENTS} and ${MAX_LEAGUE_TOURNAMENTS} tournaments.`,
+      );
+    setBusy(true);
+    setError("");
+    try {
+      await createLeague({
+        name: name.trim(),
+        description: description.trim() || null,
+        maxTournaments,
+      });
+      setName("");
+      setDescription("");
+      onCreated();
+      onClose();
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="New league">
+      <div className="space-y-3">
+        <p className="text-xs text-base-content/60">
+          A series of Swiss or Arena tournaments. Players join each tournament
+          separately and their points carry forward into one league table.
+        </p>
+        <EmojiInput
+          label="Name"
+          value={name}
+          onChange={setName}
+          maxLength={MAX_EVENT_NAME_LENGTH}
+          placeholder="Season 1 League"
+        />
+        <Input
+          label="Number of tournaments"
+          type="number"
+          min={MIN_LEAGUE_TOURNAMENTS}
+          max={MAX_LEAGUE_TOURNAMENTS}
+          value={limitInput}
+          onChange={(e) => setLimitInput(e.target.value)}
+          hint={`How many tournaments this league will have (${MIN_LEAGUE_TOURNAMENTS}-${MAX_LEAGUE_TOURNAMENTS}). It can't be changed later.`}
+        />
+        <Textarea
+          label="Description (optional)"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          maxLength={500}
+          rows={3}
+        />
+        {error && <p className="text-sm text-red-400">{error}</p>}
+        <Button variant="secondary" fullWidth onClick={submit} disabled={busy}>
+          {busy ? "Creating…" : "Create league"}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
 export function Tournaments() {
   const socket = useSocket();
   const { user } = useAuth();
@@ -161,6 +343,18 @@ export function Tournaments() {
   // background refreshes from socket events never flip these back, so an
   // already-loaded list doesn't flash a spinner every time it updates.
   const [openLoading, setOpenLoading] = useState(true);
+  const [leagues, setLeagues] = useState<LeagueSummary[]>([]);
+  const [leaguesLoading, setLeaguesLoading] = useState(true);
+  const [createLeagueOpen, setCreateLeagueOpen] = useState(false);
+  // Team battles are for approved organisations only: the button below only
+  // shows for them, everyone else gets a pointer to the request form.
+  const [org, setOrg] = useState<MyOrganization | null>(null);
+  useEffect(() => {
+    if (!user) return;
+    getMyOrganization()
+      .then((r) => setOrg(r.organization))
+      .catch(() => setOrg(null));
+  }, [user]);
   // Finished list: one server page at a time (0-based page for <Pagination>).
   const [finished, setFinished] = useState<Tournament[]>([]);
   const [finishedPage, setFinishedPage] = useState(0);
@@ -187,6 +381,10 @@ export function Tournaments() {
       listOpenTournaments()
         .then((res) => setOpen(res.tournaments))
         .finally(() => setOpenLoading(false)),
+      listLeagues()
+        .then((res) => setLeagues(res.leagues))
+        .catch(() => undefined)
+        .finally(() => setLeaguesLoading(false)),
     ];
     if (user) {
       tasks.push(listMyTournaments().then((res) => setMine(res.tournaments)));
@@ -250,15 +448,17 @@ export function Tournaments() {
       responsiveDescription
       description="Run a knockout bracket, a swiss or arena event, or a round-robin."
       actions={
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => navigate("/tournaments/new")}
-        >
-          <Plus className="h-4 w-4" />
-          <span className="hidden sm:inline">Create tournament</span>
-          <span className="sm:hidden">New</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => navigate("/tournaments/new")}
+          >
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">Create tournament</span>
+            <span className="sm:hidden">New</span>
+          </Button>
+        </div>
       }
     >
       <div className="mx-auto space-y-4">
@@ -269,6 +469,13 @@ export function Tournaments() {
           onRefresh={handleManualRefresh}
           refreshing={refreshing}
           loading={openLoading}
+        />
+
+        <LeagueCard
+          leagues={leagues}
+          loading={leaguesLoading}
+          canCreate={org?.status === "approved"}
+          onCreate={() => setCreateLeagueOpen(true)}
         />
 
         {mineActive.length > 0 && (
@@ -315,6 +522,15 @@ export function Tournaments() {
           loading={finishedLoading}
         />
       </div>
+      <CreateLeagueModal
+        open={createLeagueOpen}
+        onClose={() => setCreateLeagueOpen(false)}
+        onCreated={() => {
+          listLeagues()
+            .then((res) => setLeagues(res.leagues))
+            .catch(() => undefined);
+        }}
+      />
     </Page>
   );
 }

@@ -33,7 +33,9 @@ export const Navbar = memo(function Navbar() {
 
       <NavGameOrBell />
       <ConnectionStatus className="hidden md:flex" />
-      <InstallAppButton compact />
+      <div className="hidden md:block">
+        <InstallAppButton compact />
+      </div>
       <ThemeToggle />
       <AccountMenu />
     </nav>

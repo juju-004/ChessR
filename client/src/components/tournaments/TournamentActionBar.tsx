@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeftCircle,
-  Loader2,
   Lock,
   MessageSquare,
   Pause,
@@ -11,7 +10,7 @@ import {
   Settings,
   Share2,
 } from "lucide-react";
-import { Button, Dropdown, Input, Modal } from "../ui/index.js";
+import { Button, Dropdown, Input, Modal, Spinner } from "../ui/index.js";
 import type { DropdownItem } from "../ui/index.js";
 
 /** The one big state-dependent button on the tournament dock. Play and Pause
@@ -127,7 +126,7 @@ export function TournamentActionBarMobile({
           onClick={primary.onClick}
         >
           {primary.loading ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
+            <Spinner size="sm" />
           ) : (
             <PrimaryIcon className="h-5 w-5" />
           )}
