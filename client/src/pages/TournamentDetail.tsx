@@ -9,7 +9,6 @@ import {
   ChevronDown,
   Pause,
   Play,
-  Medal,
   LocateFixed,
   Ban,
   Flame,
@@ -50,7 +49,12 @@ import {
 import type { DropdownItem } from "../components/ui/index.js";
 import type { ChatMessage } from "../lib/chatTypes.js";
 import { PrizePoolEditor } from "../components/tournaments/PrizePoolEditor.js";
-import { LeagueStandings } from "../components/tournaments/LeagueStandings.js";
+import { Movement } from "../components/tournaments/Movement.js";
+import {
+  RankBadge,
+  STANDINGS_RANK_TD,
+  STANDINGS_RANK_TH,
+} from "../components/tournaments/RankBadge.js";
 import {
   getLeagueStandings,
   type LeagueStandings as LeagueStandingsData,
@@ -709,37 +713,6 @@ function arenaPairingPool(
         (rankOf.get(a.user) ?? 0) - (rankOf.get(b.user) ?? 0),
     )
     .slice(0, ARENA_POOL_MAX);
-}
-
-const RANK_MEDAL_CLASSES: Record<number, string> = {
-  1: "bg-amber-400/15 text-amber-500",
-  2: "bg-slate-300/25 text-slate-400",
-  3: "bg-orange-400/15 text-orange-500",
-};
-
-/** Standings row-number cell, a plain rank for 4th and below, a small
- *  colored medal icon for the top 3 so the podium reads at a glance
- *  without needing to actually count down the column. */
-function RankBadge({ rank }: { rank: number }) {
-  const medalClass = RANK_MEDAL_CLASSES[rank];
-  if (!medalClass) {
-    return (
-      <span className="flex h-6 w-6 items-center justify-center text-sm font-medium text-base-content/50">
-        {rank}
-      </span>
-    );
-  }
-  return (
-    <span
-      className={cn(
-        "flex h-6 w-6 items-center justify-center rounded-full",
-        medalClass,
-      )}
-      title={`${rank}${ordinalSuffix(rank)} place`}
-    >
-      <Medal className="h-3.5 w-3.5" />
-    </span>
-  );
 }
 
 /** The full "player tournament details" content, shared verbatim between
@@ -1460,6 +1433,30 @@ export function TournamentDetail() {
         )
       : rankTournamentPlayers(tournament)
     : [];
+  // In a league, the table carries on from the previous tournaments: each
+  // player's points are their league total through this tournament, the order
+  // follows it, and a movement arrow shows places gained/lost since the table
+  // before this tournament. The player panel still reads the tournament's own
+  // player record, so its stats stay this tournament's.
+  const leagueRowByUser = new Map(
+    (leagueStandings?.standings ?? []).map((r) => [r.user, r]),
+  );
+  const standingRows = standings.map((p, idx) => {
+    const lr = tournament.cumulative ? leagueRowByUser.get(p.user) : undefined;
+    return {
+      p,
+      idx,
+      points: lr ? lr.points : p.points,
+      leagueRank: lr ? lr.rank : Number.POSITIVE_INFINITY,
+      movement: lr ? lr.movement : null,
+    };
+  });
+  if (tournament.cumulative && leagueRowByUser.size > 0) {
+    standingRows.sort(
+      (a, b) =>
+        b.points - a.points || a.leagueRank - b.leagueRank || a.idx - b.idx,
+    );
+  }
   const pairingPool =
     tournament.format === "arena" && myId
       ? arenaPairingPool(tournament, watchingUserIds, myId)
@@ -1473,8 +1470,8 @@ export function TournamentDetail() {
     Math.ceil(standings.length / STANDINGS_PAGE_SIZE),
   );
   const safeStandingsPage = Math.min(standingsPage, standingsPageCount - 1);
-  const myStandingsIndex = standings.findIndex((p) => p.user === myId);
-  const pagedStandings = standings.slice(
+  const myStandingsIndex = standingRows.findIndex((r) => r.p.user === myId);
+  const pagedStandings = standingRows.slice(
     safeStandingsPage * STANDINGS_PAGE_SIZE,
     safeStandingsPage * STANDINGS_PAGE_SIZE + STANDINGS_PAGE_SIZE,
   );
@@ -2024,29 +2021,11 @@ export function TournamentDetail() {
           />
         )}
 
-        {tournament.cumulative && leagueStandings && (
-          <LeagueStandings
-            rows={leagueStandings.standings}
-            myId={myId}
-            leagueLink={`/leagues/${tournament.cumulative}`}
-          />
-        )}
-
-        {/* In a league, this tournament's own standings only show up
-         *  below the league table once it's over (before the start the card
-         *  is just the roster, so it stays). While it's live, the league
-         *  table's "This" column carries each player's points here. */}
-        {isPointsFormat &&
-          standings.length > 0 &&
-          !(tournament.cumulative && tournament.status === "active") && (
+        {isPointsFormat && standings.length > 0 && (
             <Card variant="solid">
               <CardHeader>
                 <CardTitle>
-                  {tournament.teamBattle
-                    ? "Player standings"
-                    : tournament.cumulative
-                      ? "This tournament's standings"
-                      : "Standings"}
+                  {tournament.teamBattle ? "Player standings" : "Standings"}
                 </CardTitle>
                 <div className="flex items-center gap-2">
                   {myStandingsIndex !== -1 && (
@@ -2074,8 +2053,8 @@ export function TournamentDetail() {
                 <table className="w-full table-fixed text-sm">
                   <thead>
                     <tr className="bg-base-300/50 text-left text-[11px] font-semibold uppercase tracking-wide text-base-content/50">
-                      <th className="w-10 px-3 py-2">#</th>
-                      <th className="px-3 py-2">Player</th>
+                      <th className={STANDINGS_RANK_TH}>#</th>
+                      <th className="px-2 py-2 md:px-3">Player</th>
                       <th className="hidden w-24 px-3 py-2 text-center md:table-cell">
                         Form
                       </th>
@@ -2090,7 +2069,8 @@ export function TournamentDetail() {
                     </tr>
                   </thead>
                   <tbody>
-                    {pagedStandings.map((p, i) => {
+                    {pagedStandings.map((row, i) => {
+                      const p = row.p;
                       const rank =
                         safeStandingsPage * STANDINGS_PAGE_SIZE + i + 1;
                       const isMe = p.user === myId;
@@ -2106,12 +2086,12 @@ export function TournamentDetail() {
                                 : "bg-base-200/50",
                           )}
                         >
-                          <td className="pl-3 py-2">
+                          <td className={STANDINGS_RANK_TD}>
                             <RankBadge rank={rank} />
                           </td>
                           <td
                             className={cn(
-                              "max-w-0 px-3 py-2",
+                              "max-w-0 px-2 py-2 md:px-3",
                               isMe && "font-semibold text-(--secondary)",
                             )}
                           >
@@ -2143,6 +2123,11 @@ export function TournamentDetail() {
                                       aria-label="Paused"
                                     />
                                   )}
+                                  {tournament.cumulative && (
+                                    <span className="shrink-0">
+                                      <Movement movement={row.movement} />
+                                    </span>
+                                  )}
                                 </button>
                               }
                             >
@@ -2172,10 +2157,10 @@ export function TournamentDetail() {
                                   className="h-3.5 w-3.5 shrink-0"
                                   aria-label="On a win streak"
                                 />
-                                {p.points}
+                                {row.points}
                               </span>
                             ) : (
-                              p.points
+                              row.points
                             )}
                           </td>
                         </tr>
@@ -2203,11 +2188,7 @@ export function TournamentDetail() {
                   ))}
                 </p>
               ) : (
-                <p className="text-sm text-base-content/50">
-                  {myPlayer?.paused
-                    ? "You're paused, resume to get paired."
-                    : "Nobody you can be paired with is free right now."}
-                </p>
+                <p className="text-sm text-base-content/50">{"-"}</p>
               )}
             </Card>
           )}

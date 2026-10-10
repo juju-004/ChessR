@@ -5,6 +5,7 @@ import {
   listOpenTournaments,
   listMyTournaments,
   listMyFinishedTournaments,
+  FINISHED_PAGE_SIZE,
   type Tournament,
 } from "../api/tournaments.js";
 import {
@@ -43,8 +44,8 @@ import {
 // Client-side page size for the Open tournaments list, which already
 // returns its (small, capped) set in one request, so this just slices the
 // array that's already in memory. The Finished list is different: it grows
-// forever, so it's paged by the server, 5 at a time (see
-// listMyFinishedTournaments and ServerPagedTournamentCard below).
+// forever, so it's fetched from the server 5 at a time behind a "Load more"
+// button (see listMyFinishedTournaments and FinishedTournamentCard below).
 const PAGE_SIZE = 8;
 
 /** A card of tournament rows with its own local page state, used for the
@@ -115,27 +116,26 @@ function PaginatedTournamentCard({
   );
 }
 
-/** Finished tournaments card. Unlike the client-sliced Open list, each page
- *  is its own request (5 tournaments), so only a handful of rows ever travel
+/** Finished tournaments card. No pager: it shows the newest few and a
+ *  "Load more" button appends the next batch underneath. Each batch is its
+ *  own request (5 tournaments), so only what you've scrolled to ever travels
  *  over the wire however many you've finished. */
-function ServerPagedTournamentCard({
+function FinishedTournamentCard({
   title,
   tournaments,
-  page,
-  pageCount,
-  onPageChange,
+  hasMore,
+  loadingMore,
+  onLoadMore,
   emptyMessage,
   loading,
 }: {
   title: string;
   tournaments: Tournament[];
-  /** 0-based, same as <Pagination>. */
-  page: number;
-  pageCount: number;
-  onPageChange: (page: number) => void;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore: () => void;
   emptyMessage: string;
-  /** True only until the first page arrives. Later page changes keep the
-   *  current rows on screen until the next page lands, no spinner flash. */
+  /** True only until the first batch arrives. */
   loading: boolean;
 }) {
   return (
@@ -154,13 +154,19 @@ function ServerPagedTournamentCard({
               <p className="text-sm text-base-content/50">{emptyMessage}</p>
             )}
             {tournaments.map((t) => (
-              <TournamentRow key={t._id} t={t} />
+              <TournamentRow key={t._id} t={t} hideFinishedBadgeOnMobile />
             ))}
-            <Pagination
-              page={page}
-              pageCount={pageCount}
-              onPageChange={onPageChange}
-            />
+            {hasMore && (
+              <Button
+                variant="ghost"
+                size="sm"
+                fullWidth
+                loading={loadingMore}
+                onClick={onLoadMore}
+              >
+                Load more
+              </Button>
+            )}
           </>
         )}
       </CardContent>
@@ -355,26 +361,52 @@ export function Tournaments() {
       .then((r) => setOrg(r.organization))
       .catch(() => setOrg(null));
   }, [user]);
-  // Finished list: one server page at a time (0-based page for <Pagination>).
+  // Finished list: newest first, loaded 5 at a time and appended by "Load
+  // more". `finishedTotal` is the server's full count, so the button shows
+  // only while there's more to fetch.
   const [finished, setFinished] = useState<Tournament[]>([]);
-  const [finishedPage, setFinishedPage] = useState(0);
-  const [finishedPageCount, setFinishedPageCount] = useState(1);
+  const [finishedTotal, setFinishedTotal] = useState(0);
   const [finishedLoading, setFinishedLoading] = useState(true);
-  // Latest page number for refresh() to re-fetch without it having to be a
-  // dependency (which would re-subscribe the socket listeners on every flip).
-  const finishedPageRef = useRef(0);
+  const [finishedLoadingMore, setFinishedLoadingMore] = useState(false);
+  // Latest length for loadMore to read without it being a dependency.
+  const finishedLenRef = useRef(0);
 
-  const loadFinished = useCallback((page: number) => {
-    return listMyFinishedTournaments(page + 1)
+  // Merges a freshly fetched batch into what's already loaded: the batch
+  // goes first (it's the newest data for those rows), then anything loaded
+  // earlier that the batch doesn't repeat, keeping its order.
+  const mergeFinished = useCallback((batch: Tournament[]) => {
+    setFinished((prev) => {
+      const seen = new Set(batch.map((t) => t._id));
+      const next = [...batch, ...prev.filter((t) => !seen.has(t._id))];
+      finishedLenRef.current = next.length;
+      return next;
+    });
+  }, []);
+
+  // Refresh path: re-reads the first batch only, so a tournament that just
+  // finished shows up on top without reloading everything you've scrolled.
+  const loadFinished = useCallback(() => {
+    return listMyFinishedTournaments(1)
       .then((res) => {
-        setFinished(res.tournaments);
-        setFinishedPageCount(res.totalPages);
-        // The server clamps a stale page (list shrank) to the last real one.
-        finishedPageRef.current = res.page - 1;
-        setFinishedPage(res.page - 1);
+        mergeFinished(res.tournaments);
+        setFinishedTotal(res.total);
       })
       .finally(() => setFinishedLoading(false));
-  }, []);
+  }, [mergeFinished]);
+
+  const handleLoadMoreFinished = useCallback(() => {
+    // floor(len / size) + 1 never skips a row even if the list shifted by a
+    // newly finished tournament since the last fetch (an overlap is deduped).
+    const nextPage = Math.floor(finishedLenRef.current / FINISHED_PAGE_SIZE) + 1;
+    setFinishedLoadingMore(true);
+    listMyFinishedTournaments(nextPage)
+      .then((res) => {
+        mergeFinished(res.tournaments);
+        setFinishedTotal(res.total);
+      })
+      .catch(() => undefined)
+      .finally(() => setFinishedLoadingMore(false));
+  }, [mergeFinished]);
 
   const refresh = useCallback(() => {
     const tasks: Promise<unknown>[] = [
@@ -388,21 +420,12 @@ export function Tournaments() {
     ];
     if (user) {
       tasks.push(listMyTournaments().then((res) => setMine(res.tournaments)));
-      tasks.push(loadFinished(finishedPageRef.current));
+      tasks.push(loadFinished());
     } else {
       setFinishedLoading(false);
     }
     return Promise.all(tasks);
   }, [user, loadFinished]);
-
-  const handleFinishedPageChange = useCallback(
-    (page: number) => {
-      finishedPageRef.current = page;
-      setFinishedPage(page);
-      loadFinished(page);
-    },
-    [loadFinished],
-  );
 
   const handleManualRefresh = useCallback(() => {
     setRefreshing(true);
@@ -512,12 +535,12 @@ export function Tournaments() {
           </Card>
         )}
 
-        <ServerPagedTournamentCard
+        <FinishedTournamentCard
           title="Finished"
           tournaments={finished}
-          page={finishedPage}
-          pageCount={finishedPageCount}
-          onPageChange={handleFinishedPageChange}
+          hasMore={finished.length < finishedTotal}
+          loadingMore={finishedLoadingMore}
+          onLoadMore={handleLoadMoreFinished}
           emptyMessage="Nothing finished yet."
           loading={finishedLoading}
         />

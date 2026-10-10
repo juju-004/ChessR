@@ -138,9 +138,10 @@ export function CreateCageMatch() {
       MAX_WAGER_TOKENS,
       Math.max(0, Math.floor(Number(wagerInput) || 0)),
     );
-    if (wagerTokens < MIN_STAKE_TOKENS) {
+    // 0 is a free match; anything else must clear the stake floor.
+    if (wagerTokens !== 0 && wagerTokens < MIN_STAKE_TOKENS) {
       return setStatus({
-        message: `Enter a wager of at least ${MIN_STAKE_TOKENS} R.`,
+        message: `Enter 0 for a free match, or a wager of at least ${MIN_STAKE_TOKENS} R.`,
         isError: true,
       });
     }
@@ -151,7 +152,7 @@ export function CreateCageMatch() {
       legs,
       winnerMode,
       targetWins: winnerMode === "first_to_n" ? targetWins : null,
-      wagerMode,
+      wagerMode: wagerTokens === 0 ? "none" : wagerMode,
       wagerTokens,
     };
     if (useLinkInvite) {
@@ -310,7 +311,8 @@ export function CreateCageMatch() {
                         Winner takes all stakes the full amount once for the
                         whole match. Per game stakes and settles the same amount
                         as each game finishes. Split evenly divides the total
-                        across every game up front.
+                        across every game up front. Enter 0 for a free
+                        match with nothing at stake.
                         {rakePercent !== null &&
                           ` A ${rakePercent}% platform fee is deducted from the payout either way.`}
                       </HelpTip>
@@ -340,11 +342,16 @@ export function CreateCageMatch() {
                     </span>
                   }
                   type="number"
-                  min={MIN_STAKE_TOKENS}
+                  min={0}
                   max={MAX_WAGER_TOKENS}
                   step={1}
                   value={wagerInput}
                   onChange={(e) => setWagerInput(e.target.value)}
+                  hint={
+                    Math.floor(Number(wagerInput) || 0) === 0
+                      ? "Free match: no R Coins at stake."
+                      : `Enter 0 for a free match. Minimum wager is ${MIN_STAKE_TOKENS} R.`
+                  }
                 />
               </section>
 

@@ -120,6 +120,20 @@ export async function reserveCumulativeSlot(
   tournamentId: mongoose.Types.ObjectId,
 ): Promise<{ name: string }> {
   assertValidId(cumulativeId);
+  // One stage at a time: the next one can only be added once the previous
+  // one has started (or been cancelled, which removes it from the league).
+  const existing = await CumulativeLeague.findById(cumulativeId).select("createdBy tournaments").lean();
+  if (existing && String(existing.createdBy) === userId && existing.tournaments.length > 0) {
+    const pending = await Tournament.exists({
+      _id: { $in: existing.tournaments },
+      status: "pending",
+    });
+    if (pending) {
+      throw ApiError.conflict(
+        "This league already has a tournament waiting to start. Start or cancel it before adding another.",
+      );
+    }
+  }
   const updated = await CumulativeLeague.findOneAndUpdate(
     {
       _id: cumulativeId,
@@ -172,6 +186,13 @@ export interface CumulativeStandingRow {
   lastPoints: number;
   /** How many of the league's tournaments this player has entered. */
   played: number;
+  /** Latest rating snapshot from the player's most recent league tournament. */
+  rating: number | null;
+  /** Finished games across the league's started tournaments (byes don't
+   *  count) and how many of them this player won. Only filled in for the
+   *  league page, which asks for the full record; 0 otherwise. */
+  games: number;
+  wins: number;
   /** Places gained (+) or lost (-) versus the table before the target
    *  tournament. 0 = same place. null = no comparison (first tournament, or a
    *  player who's new this tournament). */
@@ -186,6 +207,9 @@ interface Acc {
   tiebreak: number;
   played: number;
   lastPoints: number;
+  rating: number | null;
+  games: number;
+  wins: number;
 }
 
 function totalsFor(docs: any[], lastDoc?: any): Acc[] {
@@ -195,15 +219,39 @@ function totalsFor(docs: any[], lastDoc?: any): Acc[] {
       const id = String(p.user);
       const row =
         map.get(id) ??
-        { user: id, username: p.username, avatarGradient: p.avatarGradient ?? null, points: 0, tiebreak: 0, played: 0, lastPoints: 0 };
+        {
+          user: id,
+          username: p.username,
+          avatarGradient: p.avatarGradient ?? null,
+          points: 0,
+          tiebreak: 0,
+          played: 0,
+          lastPoints: 0,
+          rating: null,
+          games: 0,
+          wins: 0,
+        };
       row.points += p.points ?? 0;
       row.tiebreak += p.tiebreak ?? 0;
       row.played += 1;
-      // Latest name/avatar wins, same snapshot tradeoff a tournament makes.
+      // Latest name/avatar/rating wins, same snapshot tradeoff a tournament makes.
       row.username = p.username;
       row.avatarGradient = p.avatarGradient ?? null;
+      if (typeof p.rating === "number") row.rating = p.rating;
       if (lastDoc && doc === lastDoc) row.lastPoints = p.points ?? 0;
       map.set(id, row);
+    }
+    // Win record, only when the caller loaded the pairings (league page).
+    for (const round of doc.rounds ?? []) {
+      for (const pr of round.pairings ?? []) {
+        if (pr.status !== "finished" || !pr.player2 || !pr.result) continue;
+        const a = map.get(String(pr.player1));
+        const b = map.get(String(pr.player2));
+        if (a) a.games += 1;
+        if (b) b.games += 1;
+        if (pr.result === "p1" && a) a.wins += 1;
+        if (pr.result === "p2" && b) b.wins += 1;
+      }
     }
   }
   return [...map.values()].sort(
@@ -242,6 +290,9 @@ export function computeCumulativeStandings(ordered: any[], targetIdx: number): C
       points: r.points,
       lastPoints: r.lastPoints,
       played: r.played,
+      rating: r.rating,
+      games: r.games,
+      wins: r.wins,
       movement: hasPrev && before !== undefined ? before - rank : null,
     };
   });
@@ -250,9 +301,19 @@ export function computeCumulativeStandings(ordered: any[], targetIdx: number): C
 /** The league's non-cancelled tournaments in league order, with just the
  *  fields standings need. A cancelled one has already given its slot back,
  *  this filter only covers the short window before that lands. */
-async function loadOrderedForStandings(league: Pick<ICumulativeLeague, "tournaments">): Promise<any[]> {
+async function loadOrderedForStandings(
+  league: Pick<ICumulativeLeague, "tournaments">,
+  withRecord = false,
+): Promise<any[]> {
+  // The win record needs every finished pairing, which is far heavier than
+  // the points columns, so only the league page asks for it.
+  const fields =
+    "code status players.user players.username players.avatarGradient players.rating players.points players.tiebreak" +
+    (withRecord
+      ? " rounds.pairings.player1 rounds.pairings.player2 rounds.pairings.result rounds.pairings.status"
+      : "");
   const docs = await Tournament.find({ _id: { $in: league.tournaments }, status: { $ne: "cancelled" } })
-    .select("code status players.user players.username players.avatarGradient players.points players.tiebreak")
+    .select(fields)
     .lean();
   const byId = new Map(docs.map((d: any) => [String(d._id), d]));
   return league.tournaments.map((id) => byId.get(String(id))).filter(Boolean);
@@ -294,7 +355,7 @@ export async function getCumulative(cumulativeId: string, userId?: string) {
   if (!league) throw ApiError.notFound("League not found");
 
   const [ordered, cards] = await Promise.all([
-    loadOrderedForStandings(league),
+    loadOrderedForStandings(league, true),
     Tournament.aggregate<any>([
       { $match: { _id: { $in: league.tournaments }, status: { $ne: "cancelled" } } },
       {

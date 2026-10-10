@@ -20,6 +20,7 @@ import {
   CardTitle,
   CardContent,
   Button,
+  Badge,
   Spinner,
 } from "../components/ui/index.js";
 
@@ -98,41 +99,29 @@ export function LeagueDetail() {
     }
   }
   const full = league.tournamentCount >= league.maxTournaments;
+  // One stage at a time: the next can't be added while one is still waiting
+  // to start (the server enforces this too).
+  const hasPending = tournaments.some((t) => t.status === "pending");
+  const addDisabled = full || hasPending;
+  const addDisabledReason = full
+    ? `This league already has its ${league.maxTournaments} tournaments`
+    : hasPending
+      ? "Start or cancel the pending tournament before adding another"
+      : undefined;
+  // Latest first, but each row keeps its place in the league's order, so the
+  // newest stage carries the highest number.
+  const numbered = tournaments.map((t, i) => ({ t, n: i + 1 })).reverse();
 
   return (
-    <Page
-      title={league.name}
-      back="/tournaments"
-      description={`${league.organizationName} · ${tournaments.length} of ${league.maxTournaments} tournaments`}
-      actions={
-        league.mine ? (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="danger"
-              size="sm"
-              loading={deleting}
-              onClick={handleDelete}
-              aria-label="Delete league"
-            >
-              <Trash2 className="h-4 w-4" />
-              <span className="hidden sm:inline">Delete</span>
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={full}
-              title={full ? `This league already has its ${league.maxTournaments} tournaments` : undefined}
-              onClick={() => navigate(`/tournaments/new?league=${league.id}`)}
-            >
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">Add tournament</span>
-              <span className="sm:hidden">Add</span>
-            </Button>
-          </div>
-        ) : undefined
-      }
-    >
+    <Page title={league.name} back="/tournaments">
       <div className="mx-auto space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="neutral">{league.organizationName}</Badge>
+          <Badge variant="primary">
+            {tournaments.length} of {league.maxTournaments}{" "}
+            {tournaments.length === 1 ? "tournament" : "tournaments"}
+          </Badge>
+        </div>
         {error && <p className="text-sm text-red-400">{error}</p>}
         {league.description && (
           <Card variant="solid">
@@ -156,25 +145,47 @@ export function LeagueDetail() {
         <Card variant="solid">
           <CardHeader>
             <CardTitle>Tournaments</CardTitle>
-            <RefreshButton
-              onRefresh={() => {
-                setRefreshing(true);
-                load().finally(() => setRefreshing(false));
-              }}
-              refreshing={refreshing}
-            />
+            <div className="flex items-center gap-2">
+              <RefreshButton
+                onRefresh={() => {
+                  setRefreshing(true);
+                  load().finally(() => setRefreshing(false));
+                }}
+                refreshing={refreshing}
+              />
+              {league.mine && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={addDisabled}
+                  title={addDisabledReason}
+                  onClick={() =>
+                    navigate(`/tournaments/new?league=${league.id}`)
+                  }
+                >
+                  <Plus className="h-4 w-4" />
+                  <span className="hidden sm:inline">Add tournament</span>
+                  <span className="sm:hidden">Add</span>
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="space-y-2">
+            {league.mine && hasPending && !full && (
+              <p className="text-xs text-base-content/50">
+                {addDisabledReason}.
+              </p>
+            )}
             {tournaments.length === 0 && (
               <p className="text-sm text-base-content/50">
                 No tournaments added yet.
                 {league.mine && " Use “Add tournament” to create the first one."}
               </p>
             )}
-            {tournaments.map((t, i) => (
+            {numbered.map(({ t, n }) => (
               <div key={t._id} className="flex items-center gap-2">
                 <span className="w-6 shrink-0 text-center text-xs font-semibold text-base-content/40">
-                  {i + 1}
+                  {n}
                 </span>
                 <div className="min-w-0 flex-1">
                   <TournamentRow t={t} />
@@ -183,6 +194,32 @@ export function LeagueDetail() {
             ))}
           </CardContent>
         </Card>
+
+        {league.mine && (
+          <Card variant="solid" className="border-red-500/30!">
+            <CardHeader>
+              <CardTitle className="text-red-400">Danger zone</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-base-content/60">
+                  Deleting the league removes its table. Its tournaments are
+                  kept as normal standalone tournaments.
+                </p>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  className="shrink-0"
+                  loading={deleting}
+                  onClick={handleDelete}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete league
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </Page>
   );

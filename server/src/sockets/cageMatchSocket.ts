@@ -71,9 +71,29 @@ const sendSchema = z.object({
   legs: z.array(legSchema).min(2).max(30),
   winnerMode: z.enum(['total_score', 'most_categories', 'first_to_n']).default('total_score'),
   targetWins: z.number().int().min(1).max(30).nullable().optional().default(null),
-  wagerMode: z.enum(['winner_takes_all', 'per_leg', 'split_even']).default('winner_takes_all'),
-  wagerTokens: z.number().int().min(MIN_STAKE_TOKENS, `A wager of at least ${MIN_STAKE_TOKENS} R is required for every cage match`).max(MAX_WAGER_TOKENS),
+  wagerMode: z.enum(['none', 'winner_takes_all', 'per_leg', 'split_even']).default('winner_takes_all'),
+  // 0 = a free match (no tokens at stake); anything else must clear the
+  // usual stake floor.
+  wagerTokens: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_WAGER_TOKENS)
+    .refine((n) => n === 0 || n >= MIN_STAKE_TOKENS, {
+      message: `A wager is either 0 (free) or at least ${MIN_STAKE_TOKENS} R`,
+    }),
 });
+
+/** A wager of 0 is a free match, whatever mode was picked, and a 'none' mode
+ *  carries no tokens. Applied right after parsing so everything downstream
+ *  (balance checks, stored invites/links, startCageMatch) sees one shape. */
+function normalizeWager(
+  wagerMode: 'none' | 'winner_takes_all' | 'per_leg' | 'split_even',
+  wagerTokens: number,
+): { wagerMode: 'none' | 'winner_takes_all' | 'per_leg' | 'split_even'; wagerTokens: number } {
+  if (wagerMode === 'none' || wagerTokens === 0) return { wagerMode: 'none', wagerTokens: 0 };
+  return { wagerMode, wagerTokens };
+}
 const respondSchema = z.object({ inviteId: z.string(), accept: z.boolean() });
 const cancelSchema = z.object({ inviteId: z.string() });
 const createLinkSchema = sendSchema.omit({ toUserId: true });
@@ -123,16 +143,13 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
     safeHandler(socket, async (raw) => {
       const parsed = sendSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid cage match payload');
-      const { toUserId, legs, winnerMode, targetWins, wagerMode, wagerTokens } = parsed.data;
+      const { toUserId, legs, winnerMode, targetWins } = parsed.data;
+      const { wagerMode, wagerTokens } = normalizeWager(parsed.data.wagerMode, parsed.data.wagerTokens);
 
       if (toUserId === userId) return emitError(socket, "You can't start a cage match with yourself");
       if (winnerMode === 'first_to_n' && (!targetWins || targetWins < 1)) {
         return emitError(socket, 'Choose a target win count for a first-to-N match');
       }
-      if (wagerTokens <= 0) {
-        return emitError(socket, 'Enter a valid wager amount');
-      }
-
       try {
         await assertNotRestricted(userId);
       } catch (err) {
@@ -287,7 +304,8 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
     safeHandler(socket, async (raw) => {
       const parsed = createLinkSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid cage match payload');
-      const { legs, winnerMode, targetWins, wagerMode, wagerTokens } = parsed.data;
+      const { legs, winnerMode, targetWins } = parsed.data;
+      const { wagerMode, wagerTokens } = normalizeWager(parsed.data.wagerMode, parsed.data.wagerTokens);
 
       if (winnerMode === 'first_to_n' && (!targetWins || targetWins < 1)) {
         return emitError(socket, 'Choose a target win count for a first-to-N match');

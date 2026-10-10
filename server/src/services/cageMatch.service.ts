@@ -394,11 +394,12 @@ export async function startCageMatch(
   if (winnerMode === "first_to_n" && (!targetWins || targetWins < 1)) {
     throw ApiError.badRequest("Choose a target win count for a first-to-N match");
   }
-  // Wagers are compulsory, 'none' is no longer a selectable mode (see
-  // cageMatchSocket.ts's sendSchema), but this is checked here too as a
-  // defense-in-depth guard against anything that calls this service
-  // directly.
-  if (wagerMode === "none" || wagerTokens < MIN_STAKE_TOKENS || wagerTokens > MAX_WAGER_TOKENS) {
+  // A free match ('none', 0 tokens) is allowed; anything wagered must be
+  // within the stake floor/ceiling. cageMatchSocket.ts normalizes a 0 wager
+  // to 'none' before it gets here, this is the defense-in-depth guard for
+  // anything that calls the service directly.
+  const isFree = wagerMode === "none";
+  if (isFree ? wagerTokens !== 0 : wagerTokens < MIN_STAKE_TOKENS || wagerTokens > MAX_WAGER_TOKENS) {
     throw ApiError.badRequest("Enter a valid wager amount");
   }
   if (wagerMode === "split_even" && Math.floor(wagerTokens / legsInput.length) <= 0) {

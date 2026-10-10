@@ -12,7 +12,16 @@ const STATUS_VARIANT: Record<
   cancelled: "error",
 };
 
-export function TournamentRow({ t }: { t: Tournament }) {
+export function TournamentRow({
+  t,
+  hideFinishedBadgeOnMobile = false,
+}: {
+  t: Tournament;
+  /** Drops the "finished" badge below sm. For lists that are already
+   *  entirely finished tournaments, where the badge is just noise on a
+   *  narrow row. */
+  hideFinishedBadgeOnMobile?: boolean;
+}) {
   // prizePoolTokens is always 0 for naira tournaments (nothing is ever
   // actually debited for one, see the ITournament doc comment server-side),
   // so the total has to be computed from the schedule itself here rather
@@ -35,7 +44,16 @@ export function TournamentRow({ t }: { t: Tournament }) {
           <span className="w-full min-w-0 font-medium text-base-content [overflow-wrap:anywhere] sm:w-auto">
             {t.name}
           </span>
-          <Badge variant={STATUS_VARIANT[t.status]}>{t.status}</Badge>
+          <Badge
+            variant={STATUS_VARIANT[t.status]}
+            className={
+              hideFinishedBadgeOnMobile && t.status === "finished"
+                ? "hidden! sm:inline-flex!"
+                : undefined
+            }
+          >
+            {t.status}
+          </Badge>
           {t.team && <Badge variant="primary">In-house</Badge>}
           {t.teamBattle && <Badge variant="primary">Team battle</Badge>}
         </div>

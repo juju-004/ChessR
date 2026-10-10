@@ -164,10 +164,19 @@ export function CageMatchInvite() {
                 ))}
               </div>
               <p className="mt-2 text-base-content/60">
-                {WAGER_MODE_LABEL[info.wagerMode]} ·{" "}
-                <span className="font-medium text-base-content">
-                  {info.wagerTokens} <RCoin size={11} className="inline align-[-1px]" />
-                </span>
+                {info.wagerMode === "none" || info.wagerTokens === 0 ? (
+                  <span className="font-medium text-base-content">
+                    Free match
+                  </span>
+                ) : (
+                  <>
+                    {WAGER_MODE_LABEL[info.wagerMode]} ·{" "}
+                    <span className="font-medium text-base-content">
+                      {info.wagerTokens}{" "}
+                      <RCoin size={11} className="inline align-[-1px]" />
+                    </span>
+                  </>
+                )}
               </p>
             </div>
 
