@@ -154,6 +154,7 @@ function playImpact(layers: ImpactLayer[]) {
 const SOUND_FILES = {
   move: "/sounds/move-self.mp3",
   capture: "/sounds/capture.mp3",
+  check: "/sounds/move-check.mp3",
 } as const;
 
 const bufferCache = new Map<string, Promise<AudioBuffer>>();
@@ -218,35 +219,13 @@ export function playCaptureSound() {
   playSoundFile(SOUND_FILES.capture, 0.95);
 }
 
-/** Check: a rising two-note "alert sting" instead of the old flat
- *  square-wave double-beep. That old cue was a single pitch repeated twice,
- *  which sat uncomfortably close to the low-time warning (also a flat
- *  square double-beep), so the two could be mistaken for each other. This
- *  one is built differently on purpose: a short wooden tap for the piece
- *  landing, then two triangle-wave notes climbing a fifth (A5 -> E6) with a
- *  tiny upward glide on the second, plus a faint octave shimmer on top.
- *  Rising reads as "danger, look at the board" while staying softer and
- *  rounder than the clipped low-time beeps. Quiet enough to layer over the
- *  move/capture file that plays at the same moment. */
+/** Check: the real move-check.mp3 file (client/public/sounds/move-check.mp3),
+ *  the same file-based path as move/capture above. It plays instead of the
+ *  plain move/capture file for a move that gives check (see
+ *  playSoundForMove in components/game/types.ts), so it doubles as that
+ *  move's sound. Kept at the capture's volume since it's the bigger event. */
 export function playCheckSound() {
-  playImpact([
-    { startOffset: 0, duration: 0.02, gain: 0.22, freq: 2400, q: 3, attack: 0.001 },
-    { startOffset: 0, duration: 0.09, gain: 0.22, freq: 260, q: 2, attack: 0.002 },
-  ]);
-  playTones([
-    { freq: 880, startOffset: 0.03, duration: 0.11, type: "triangle", gain: 0.2 },
-    {
-      freq: 1319,
-      freqEnd: 1480,
-      startOffset: 0.12,
-      duration: 0.22,
-      type: "triangle",
-      gain: 0.22,
-    },
-    // Octave shimmer on the second note only, adds the "ring" without
-    // making the whole cue louder.
-    { freq: 2638, startOffset: 0.12, duration: 0.16, type: "sine", gain: 0.05 },
-  ]);
+  playSoundFile(SOUND_FILES.check, 0.95);
 }
 
 /** A gentle ascending chime when a game starts. */
