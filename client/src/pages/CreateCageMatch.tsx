@@ -57,7 +57,7 @@ export function CreateCageMatch() {
   const [legs, setLegs] = useState<CageLegPlan[]>([]);
   const [winnerMode, setWinnerMode] = useState<CageWinnerMode>("total_score");
   const [targetWins, setTargetWins] = useState(3);
-  const [wagerMode, setWagerMode] = useState<CageWagerMode>("winner_takes_all");
+  const [wagerMode, setWagerMode] = useState<CageWagerMode>("none");
   const [wagerInput, setWagerInput] = useState("20");
 
   // ?challenge= (+ &name=) carries a player over from the Players page's
@@ -134,14 +134,19 @@ export function CreateCageMatch() {
         isError: true,
       });
     }
-    const wagerTokens = Math.min(
-      MAX_WAGER_TOKENS,
-      Math.max(0, Math.floor(Number(wagerInput) || 0)),
-    );
-    // 0 is a free match; anything else must clear the stake floor.
-    if (wagerTokens !== 0 && wagerTokens < MIN_STAKE_TOKENS) {
+    // "None" is the free match: no coins field, nothing at stake. Any other
+    // mode is a real wager and must clear the stake floor (0 is no longer a
+    // way to make a free match, pick "None" for that).
+    const isFree = wagerMode === "none";
+    const wagerTokens = isFree
+      ? 0
+      : Math.min(
+          MAX_WAGER_TOKENS,
+          Math.max(0, Math.floor(Number(wagerInput) || 0)),
+        );
+    if (!isFree && wagerTokens < MIN_STAKE_TOKENS) {
       return setStatus({
-        message: `Enter 0 for a free match, or a wager of at least ${MIN_STAKE_TOKENS} R.`,
+        message: `Enter a wager of at least ${MIN_STAKE_TOKENS} R, or choose "None" for a free match.`,
         isError: true,
       });
     }
@@ -152,7 +157,7 @@ export function CreateCageMatch() {
       legs,
       winnerMode,
       targetWins: winnerMode === "first_to_n" ? targetWins : null,
-      wagerMode: wagerTokens === 0 ? "none" : wagerMode,
+      wagerMode,
       wagerTokens,
     };
     if (useLinkInvite) {
@@ -308,11 +313,11 @@ export function CreateCageMatch() {
                     <span className="inline-flex items-center gap-1">
                       Wager
                       <HelpTip>
-                        Winner takes all stakes the full amount once for the
-                        whole match. Per game stakes and settles the same amount
-                        as each game finishes. Split evenly divides the total
-                        across every game up front. Enter 0 for a free
-                        match with nothing at stake.
+                        None is a free match with nothing at stake. Winner
+                        takes all stakes the full amount once for the whole
+                        match. Per game stakes and settles the same amount as
+                        each game finishes. Split evenly divides the total
+                        across every game up front.
                         {rakePercent !== null &&
                           ` A ${rakePercent}% platform fee is deducted from the payout either way.`}
                       </HelpTip>
@@ -323,36 +328,35 @@ export function CreateCageMatch() {
                     setWagerMode(e.target.value as CageWagerMode)
                   }
                 >
+                  <option value="none">None (free match)</option>
                   <option value="winner_takes_all">Winner takes all</option>
                   <option value="per_leg">Per game</option>
                   <option value="split_even">Split evenly</option>
                 </Select>
-                <Input
-                  label={
-                    <span className="inline-flex items-center gap-1">
-                      {wagerMode === "per_leg" ? (
-                        <>
-                          <RCoin size={12} /> Coins per game
-                        </>
-                      ) : (
-                        <>
-                          Total <RCoin size={12} /> Coins for the whole match
-                        </>
-                      )}
-                    </span>
-                  }
-                  type="number"
-                  min={0}
-                  max={MAX_WAGER_TOKENS}
-                  step={1}
-                  value={wagerInput}
-                  onChange={(e) => setWagerInput(e.target.value)}
-                  hint={
-                    Math.floor(Number(wagerInput) || 0) === 0
-                      ? "Free match: no R Coins at stake."
-                      : `Enter 0 for a free match. Minimum wager is ${MIN_STAKE_TOKENS} R.`
-                  }
-                />
+                {wagerMode !== "none" && (
+                  <Input
+                    label={
+                      <span className="inline-flex items-center gap-1">
+                        {wagerMode === "per_leg" ? (
+                          <>
+                            <RCoin size={12} /> Coins per game
+                          </>
+                        ) : (
+                          <>
+                            Total <RCoin size={12} /> Coins for the whole match
+                          </>
+                        )}
+                      </span>
+                    }
+                    type="number"
+                    min={MIN_STAKE_TOKENS}
+                    max={MAX_WAGER_TOKENS}
+                    step={1}
+                    value={wagerInput}
+                    onChange={(e) => setWagerInput(e.target.value)}
+                    hint={`Minimum wager is ${MIN_STAKE_TOKENS} R.`}
+                  />
+                )}
               </section>
 
               {status && (

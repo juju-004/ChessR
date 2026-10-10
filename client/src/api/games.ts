@@ -87,6 +87,17 @@ export function getGameByCode(code: string) {
   return apiFetch<{ game: any }>(`/games/code/${encodeURIComponent(code)}`);
 }
 
+export interface DailyScore {
+  show: boolean;
+  whiteScore: number;
+  blackScore: number;
+  games: number;
+}
+
+export function getGameScore(code: string) {
+  return apiFetch<{ score: DailyScore }>(`/games/code/${encodeURIComponent(code)}/score`);
+}
+
 export function listFriendsActiveGames() {
   return apiFetch<{ games: ActiveFriendGame[] }>('/games/active/friends');
 }

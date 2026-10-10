@@ -275,22 +275,31 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
         await watchTournament(watchId, socket.id);
         await broadcastWatchers(io, watchId);
       });
+      // Tournament chat only exists when the organiser turned it on (see
+      // Tournament.chatEnabled); nothing to load or send otherwise, and
+      // the client won't render a chat UI at all in that case.
+      //
+      // Loaded BEFORE the pairing re-check below, and the re-check is no longer
+      // awaited. It used to come first, so a player landing back on the page
+      // after a game had their chat history held up for as long as the arena
+      // pairing pass took (it queues behind the tournament lock, and a failure
+      // there skipped the history entirely): the page's chat looked empty or
+      // gone right when someone returned from playing.
+      const tournament = await Tournament.findById(parsed.data.tournamentId).select('chatEnabled').lean();
+      if (tournament?.chatEnabled) {
+        const history = await getChatHistory('tournament', parsed.data.tournamentId);
+        socket.emit('tournament:chat_history', { tournamentId: parsed.data.tournamentId, history });
+      }
+
       // Immediate re-check rather than waiting for some unrelated pairing
       // event elsewhere to happen to pick this player up now that they're
       // actually looking at the page, see retryArenaPairingsForUser.
       // Straight to the tournament they just opened rather than a lookup of
       // every tournament they're in, and never skipped by a cooldown: this is
       // the one trigger that must not be dropped (see retryArenaPairingsForTournament).
-      await retryArenaPairingsForTournament(watchId, userId);
-
-      // Tournament chat only exists when the organiser turned it on (see
-      // Tournament.chatEnabled); nothing to load or send otherwise, and
-      // the client won't render a chat UI at all in that case.
-      const tournament = await Tournament.findById(parsed.data.tournamentId).select('chatEnabled').lean();
-      if (tournament?.chatEnabled) {
-        const history = await getChatHistory('tournament', parsed.data.tournamentId);
-        socket.emit('tournament:chat_history', { tournamentId: parsed.data.tournamentId, history });
-      }
+      void retryArenaPairingsForTournament(watchId, userId).catch((err) =>
+        console.error('arena re-pairing on watch failed:', err),
+      );
     }),
   );
 

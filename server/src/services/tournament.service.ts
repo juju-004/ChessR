@@ -2612,7 +2612,7 @@ async function tryArenaPairingsOnce(tournamentId: string): Promise<void> {
     console.error(`arena pairing lock timed out for tournament ${tournamentId}, retrying`);
     const t = setTimeout(() => {
       tryArenaPairings(tournamentId).catch((err) => console.error("arena pairing retry failed:", err));
-    }, 2000);
+    }, 500);
     t.unref?.();
   }
 }
@@ -2647,6 +2647,18 @@ function tryArenaPairings(tournamentId: string): Promise<void> {
   })();
   arenaPairingRuns.set(tournamentId, run);
   return run.promise;
+}
+
+/** Requests a pairing pass from code that is currently holding the
+ *  tournament mutation lock. Fires on the next tick so the caller can return
+ *  and release first; see the comment in advanceAfterRound. */
+function deferArenaPairings(tournamentId: string): void {
+  const t = setTimeout(() => {
+    tryArenaPairings(tournamentId).catch((err) =>
+      console.error("deferred arena pairing failed:", err),
+    );
+  }, 0);
+  t.unref?.();
 }
 
 /** Toggles a player's pause state, see the ITournamentPlayer.paused doc
@@ -3055,6 +3067,31 @@ async function hasLiveTournamentGames(tournament: ITournament): Promise<boolean>
   return liveStragglerGameExists(tournament);
 }
 
+// A round that is finished but could not be advanced because something from
+// the tournament still looked live used to wait for the next 60s sweep. The
+// straggler is usually gone within a second or two (a Game document flipping
+// to "finished" a beat after its pairing was recorded), so recheck on a short
+// backoff first; the sweep stays as the final safety net.
+const ROUND_RECHECK_DELAYS_MS = [2_000, 5_000, 10_000, 20_000];
+const roundRechecks = new Map<string, number>();
+
+function scheduleRoundRecheck(tournamentId: string): void {
+  const attempt = roundRechecks.get(tournamentId) ?? 0;
+  if (attempt >= ROUND_RECHECK_DELAYS_MS.length) {
+    roundRechecks.delete(tournamentId);
+    return;
+  }
+  roundRechecks.set(tournamentId, attempt + 1);
+  const t = setTimeout(() => {
+    healTournament(tournamentId)
+      .then((healed) => {
+        if (healed > 0) roundRechecks.delete(tournamentId);
+      })
+      .catch((err) => console.error("round recheck failed:", err));
+  }, ROUND_RECHECK_DELAYS_MS[attempt]);
+  t.unref?.();
+}
+
 async function advanceAfterRound(
   tournament: ITournament,
   roundIndex: number,
@@ -3091,7 +3128,16 @@ async function advanceAfterRound(
       if (!hasActivePairing(tournament)) await finishTournament(tournament);
       return;
     }
-    await tryArenaPairings(tournament.id);
+    // NOT awaited, and NOT called inline: advanceAfterRound runs while the
+    // caller holds the tournament mutation lock (advanceTournamentIfPairing,
+    // healTournament, ...), and tryArenaPairings takes that same
+    // NON-reentrant lock. Calling it inline made every game end wait out the
+    // full lock timeout on its own caller (8s), then fall back to a 2s retry:
+    // ~10s before anyone was re-paired, and every other result in the
+    // tournament queued behind the held lock (the "hanging results"). Deferring
+    // lets this call finish and release first; the pairing pass then picks the
+    // lock up within a poll tick (40-100ms).
+    deferArenaPairings(tournament.id);
     return;
   }
 
@@ -3102,7 +3148,8 @@ async function advanceAfterRound(
   // here, the round stays "finished" and healTournamentLocked (60s sweep)
   // builds the next one the moment the straggler is gone.
   if (await hasLiveTournamentGames(tournament)) {
-    console.warn(`advanceAfterRound: tournament ${tournament.id} still has live games, deferring next round to the sweep`);
+    console.warn(`advanceAfterRound: tournament ${tournament.id} still has live games, rechecking shortly`);
+    scheduleRoundRecheck(tournament.id);
     return;
   }
 
@@ -3512,7 +3559,41 @@ export async function advanceTournamentIfPairing(
   console.error(
     `advanceTournamentIfPairing: gave up recording tournament ${tournamentId} round ${roundIndex} pairing ${pairingIndex} after repeated lock contention`,
   );
+  // Don't leave a finished game's result waiting for the desync sweep
+  // (minutes): keep retrying in the background on a short backoff. Each retry
+  // is idempotent (a pairing that is no longer active is skipped).
+  scheduleResultRetry(tournamentId, roundIndex, pairingIndex, gameResult, endReason, 0);
   return null;
+}
+
+const RESULT_RETRY_DELAYS_MS = [3_000, 10_000, 30_000, 60_000];
+
+function scheduleResultRetry(
+  tournamentId: string,
+  roundIndex: number,
+  pairingIndex: number,
+  gameResult: "white" | "black" | "draw",
+  endReason: string,
+  attempt: number,
+): void {
+  if (attempt >= RESULT_RETRY_DELAYS_MS.length) return;
+  const t = setTimeout(() => {
+    withLock(
+      tournamentMutationLockKey(tournamentId),
+      () => advanceTournamentIfPairingLocked(tournamentId, roundIndex, pairingIndex, gameResult, endReason),
+      ROUND_LOCK_OPTS,
+    )
+      .then((result) => {
+        if (result === null) {
+          scheduleResultRetry(tournamentId, roundIndex, pairingIndex, gameResult, endReason, attempt + 1);
+        }
+      })
+      .catch((err) => {
+        console.error("background result retry failed:", err);
+        scheduleResultRetry(tournamentId, roundIndex, pairingIndex, gameResult, endReason, attempt + 1);
+      });
+  }, RESULT_RETRY_DELAYS_MS[attempt]);
+  t.unref?.();
 }
 
 /** Repair helper for resolveStuckTournament.ts: finishes any round that is

@@ -8,7 +8,13 @@ import {
 } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { Chess } from "chess.js";
-import { getGameByCode, joinGame, cancelGame } from "../api/games.js";
+import {
+  getGameByCode,
+  getGameScore,
+  joinGame,
+  cancelGame,
+  type DailyScore,
+} from "../api/games.js";
 import { ApiRequestError } from "../api/http.js";
 import { serverNow } from "../lib/clockSync.js";
 import { useAuth } from "../contexts/AuthContext.js";
@@ -210,6 +216,9 @@ export function Game() {
     null,
   );
   const [rematchState, setRematchState] = useState<"idle" | "offered">("idle");
+  // Today's head-to-head score between the two players, null (hidden) until
+  // they've met more than once that day. Refetched whenever a game ends.
+  const [dailyScore, setDailyScore] = useState<DailyScore | null>(null);
   const [pausedLeg, setPausedLeg] = useState(false);
   const [whiteBerserk, setWhiteBerserk] = useState(false);
   const [blackBerserk, setBlackBerserk] = useState(false);
@@ -511,6 +520,7 @@ export function Game() {
         ? `/profile/${gameMeta.white.username}`
         : null,
       rating: gameMeta?.white?.rating ?? null,
+      score: dailyScore?.show ? dailyScore.whiteScore : null,
       zenMode: settings.zenMode,
       ...whiteMaterial,
     }),
@@ -518,6 +528,7 @@ export function Game() {
       gameMeta?.white?.username,
       gameMeta?.white?.avatarGradient,
       gameMeta?.white?.rating,
+      dailyScore,
       isActiveGame,
       sideToMove,
       whiteConnected,
@@ -552,6 +563,7 @@ export function Game() {
         ? `/profile/${gameMeta.black.username}`
         : null,
       rating: gameMeta?.black?.rating ?? null,
+      score: dailyScore?.show ? dailyScore.blackScore : null,
       zenMode: settings.zenMode,
       ...blackMaterial,
     }),
@@ -559,6 +571,7 @@ export function Game() {
       gameMeta?.black?.username,
       gameMeta?.black?.avatarGradient,
       gameMeta?.black?.rating,
+      dailyScore,
       isActiveGame,
       sideToMove,
       blackConnected,
@@ -697,6 +710,26 @@ export function Game() {
   // and CSS aspect-ratio + max-width/max-height alone can't reliably pick
   // "whichever is smaller" and re-derive the other dimension from it, so
   // this measures the actual box the board sits in and sizes it in JS.
+
+  // Daily head-to-head score. Refetched when the opponent seat fills or the
+  // game ends (the finished game changes the tally).
+  const scoreBlackId = gameMeta?.black?._id;
+  const scoreGameOver = !!gameOver;
+  useEffect(() => {
+    if (!scoreBlackId) {
+      setDailyScore(null);
+      return;
+    }
+    let cancelled = false;
+    getGameScore(code)
+      .then(({ score }) => {
+        if (!cancelled) setDailyScore(score);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [code, scoreBlackId, scoreGameOver]);
 
   // --- Load game metadata, decide whether to show a "join" gate --------------
   // Bumped to re-run the load below, used when the "Join this game" screen
@@ -1067,7 +1100,11 @@ export function Game() {
     }
 
     function onError(payload: { message: string }) {
-      setMoveError(payload.message);
+      // "Game is not active" just means the game already ended; the board
+      // already shows that, so it isn't worth a banner over the board.
+      if (!/game is not active/i.test(payload.message)) {
+        setMoveError(payload.message);
+      }
       // Only revert if a move is actually the thing awaiting confirmation
       // right now — see pendingOptimisticMoveRef's doc comment, this is a
       // shared error channel for more than just moves.
@@ -1915,16 +1952,23 @@ export function Game() {
   // its own next-leg/forfeit flow, and a tournament bracket is fixed by the
   // pairing schedule, not something either player gets to spin up again.
   const isIdlePhase = moves.length < 2;
+  // An aborted game (0 or 1 move played) can be rematched too, as long as
+  // it had two players, and there the action item shows straight away
+  // rather than waiting for the game-over modal to be dismissed.
+  const wasAborted =
+    gameOver?.result === null &&
+    (gameOver.reason === "aborted_no_moves" ||
+      gameOver.reason === "idle_timeout" ||
+      gameOver.reason === "first_move_timeout");
   const canReopenRematch =
     !!gameOver &&
-    gameOverModalDismissed &&
+    (gameOverModalDismissed || wasAborted) &&
     isPlayer &&
+    !!gameMeta?.black &&
     !gameMeta?.cageMatchId &&
     !gameMeta?.tournamentId &&
-    gameOver.reason !== "aborted_no_moves" &&
-    gameOver.reason !== "idle_timeout" &&
-    gameOver.reason !== "first_move_timeout" &&
-    gameOver.reason !== "cage_forfeit";
+    gameOver.reason !== "cage_forfeit" &&
+    gameOver.reason !== "cancelled";
   const canBerserk =
     isPlayer &&
     status === "active" &&
@@ -2250,12 +2294,11 @@ export function Game() {
           isPlayer={isPlayer}
           canRematch={
             isPlayer &&
+            !!gameMeta?.black &&
             !gameMeta?.cageMatchId &&
             !gameMeta?.tournamentId &&
-            gameOver.reason !== "aborted_no_moves" &&
-            gameOver.reason !== "idle_timeout" &&
-            gameOver.reason !== "first_move_timeout" &&
-            gameOver.reason !== "cage_forfeit"
+            gameOver.reason !== "cage_forfeit" &&
+            gameOver.reason !== "cancelled"
           }
           rematchState={rematchState}
           wagerSettlement={gameOver.wagerSettlement}

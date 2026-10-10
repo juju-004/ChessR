@@ -194,17 +194,35 @@ function cageWagerLabel(wagerMode: string, wagerTokens: number): string {
   return `${wagerTokens} R, winner takes all`;
 }
 
-// Same shape as the game/tournament cards above, but for a cage match invite
-// link. An invite that's still open describes the challenge; one that's
-// already been accepted describes the match it turned into (the same URL
-// takes you to that match, see cage:link_lookup), so a link pasted into a
-// chat later doesn't keep advertising a challenge nobody can take anymore.
-async function describeCageInvite(linkId: string): Promise<string> {
+// Time controls of a cage match's games, written the way a game card writes
+// its time control ("10+0"), distinct ones only so a 6-game match of mixed
+// 5+0 / 10+0 reads "5+0, 10+0" rather than six entries.
+function describeCageTimeControls(
+  legs: { baseMinutes: number | null; incrementSeconds: number }[],
+): string {
+  const seen: string[] = [];
+  for (const leg of legs) {
+    const label =
+      leg.baseMinutes === null ? "Unlimited" : `${leg.baseMinutes}+${leg.incrementSeconds}`;
+    if (!seen.includes(label)) seen.push(label);
+  }
+  if (seen.length <= 3) return seen.join(", ");
+  return `${seen.slice(0, 3).join(", ")} +${seen.length - 3} more`;
+}
+
+// Same shape as the game card above ("<name> is looking for an opponent ·
+// <time control> · waiting for an opponent" / "<white> vs <black> · <status>"),
+// but for a cage match invite link. An invite that's still open reads like an
+// open game waiting for someone to join; one that's already been accepted
+// describes the match it turned into (the same URL takes you to that match,
+// see cage:link_lookup), so a link pasted into a chat later doesn't keep
+// advertising a challenge nobody can take anymore.
+async function describeCageInvite(linkId: string): Promise<{ title: string; description: string }> {
   const stored = await redis.get(`cageLinkInvite:${linkId}`);
   if (stored) {
     const invite = JSON.parse(stored) as {
       fromId: string;
-      legs: unknown[];
+      legs: { baseMinutes: number | null; incrementSeconds: number }[];
       winnerMode: string;
       targetWins: number | null;
       wagerMode: string;
@@ -216,7 +234,11 @@ async function describeCageInvite(linkId: string): Promise<string> {
       invite.winnerMode === "first_to_n" && invite.targetWins
         ? `first to ${invite.targetWins} wins`
         : (CAGE_WINNER_MODE_LABEL[invite.winnerMode] ?? invite.winnerMode);
-    return `${who} challenged you to a cage match · ${invite.legs.length} games · ${winnerMode} · ${cageWagerLabel(invite.wagerMode, invite.wagerTokens)}`;
+    const games = `${invite.legs.length}-game cage match`;
+    return {
+      title: "Chessr · Cage match invite",
+      description: `${who} is looking for an opponent · ${games} · ${describeCageTimeControls(invite.legs)} · ${winnerMode} · ${cageWagerLabel(invite.wagerMode, invite.wagerTokens)} · waiting for an opponent`,
+    };
   }
 
   const resolved = await resolveCageInviteLink(linkId);
@@ -225,6 +247,7 @@ async function describeCageInvite(linkId: string): Promise<string> {
     const p1 = (match.player1 as any)?.username ?? "Player 1";
     const p2 = (match.player2 as any)?.username ?? "Player 2";
     const total = match.legs.length;
+    const tcs = describeCageTimeControls(match.legs as any);
     let status: string;
     if (match.status === "active") {
       status = `live now, game ${match.currentLegIndex + 1} of ${total}`;
@@ -237,24 +260,28 @@ async function describeCageInvite(linkId: string): Promise<string> {
     } else {
       status = "finished";
     }
-    return `${p1} vs ${p2} · cage match · ${total} games · ${status}`;
+    return {
+      title: `Chessr · Cage match ${String(resolved.matchCode).toUpperCase()}`,
+      description: `${p1} vs ${p2} · ${total}-game cage match · ${tcs} · ${status}`,
+    };
   }
 
-  return "This cage match invite has expired.";
+  return { title: "Chessr · Cage match invite", description: "This cage match invite has expired." };
 }
 
 export const getCageInviteOgCard = asyncHandler(async (req, res) => {
   const { linkId } = linkIdParamSchema.parse(req.params);
 
+  let title = "Chessr · Cage match invite";
   let description = "A cage match invite on Chessr.";
   try {
-    description = await describeCageInvite(linkId);
+    ({ title, description } = await describeCageInvite(linkId));
   } catch {
     // Fall back to the generic copy above, same as the other cards.
   }
 
   const html = renderPreviewPage({
-    title: "Chessr · Cage match",
+    title,
     description,
     url: `${CLIENT_URL}/cage/invite/${encodeURIComponent(linkId)}`,
   });

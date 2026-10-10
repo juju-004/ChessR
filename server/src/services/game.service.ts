@@ -20,6 +20,7 @@ import {
   hasFirstMoveTimer,
 } from "./clock.service.js";
 import { getIo } from "../sockets/io.js";
+import { redis } from "../config/redis.js";
 import { generateChess960Fen } from "./chess960.service.js";
 import { debitWagerStake, creditWagerReturn, computeRake, recordRake } from "./wallet.service.js";
 import { expireChat } from "./chat.service.js";
@@ -589,8 +590,13 @@ export async function finalizeGame(
         ...(liveMoves.length > 0 && liveMoves[0].moveNumber === 1 ? { moves: liveMoves } : {}),
       },
     },
-    { select: 'cageMatchId' },
+    { select: 'cageMatchId white black' },
   ).lean();
+
+  // A finished game changes the pair's daily score; drop the cached tally.
+  if (status === 'finished' && updated?.black) {
+    invalidateHeadToHead(updated.white.toString(), updated.black.toString()).catch(() => {});
+  }
 
   // Only now that Mongo has them (an error above leaves the list in Redis
   // for a retry).
@@ -1008,4 +1014,125 @@ export async function sweepAbortedGames(): Promise<{ deleted: number }> {
     $or: [{ endedAt: { $lte: cutoff } }, { endedAt: null }],
   });
   return { deleted: result.deletedCount ?? 0 };
+}
+
+
+// --- Daily head-to-head score ------------------------------------------------
+// Running tally between the two players of a game for "today" (resets at
+// local midnight in SCORE_TIMEZONE, default Africa/Lagos). Counts every game
+// the pair has played that day, normal, rematch, tournament or cage, win = 1,
+// draw = 0.5 each. Aborted games never count.
+const SCORE_TIMEZONE = process.env.SCORE_TIMEZONE || "Africa/Lagos";
+
+function startOfTodayInTimezone(tz: string, now = new Date()): Date {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(now).map((p) => [p.type, p.value]));
+  const asUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour),
+    Number(parts.minute),
+    Number(parts.second),
+  );
+  // Offset of the timezone from UTC right now; midnight-local in UTC terms.
+  const offsetMs = asUtc - Math.floor(now.getTime() / 1000) * 1000;
+  const localMidnightAsUtc = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day));
+  return new Date(localMidnightAsUtc - offsetMs);
+}
+
+// Finished-game tally for a pair, cached in Redis so spectators and repeat
+// page loads don't each hit Mongo. Keyed by the pair (sorted ids) and the
+// local day, and cleared whenever a game between them finishes. The TTL is
+// only a safety net. The in-progress game is deliberately NOT part of the
+// cached value (it's derived from the viewed game below), so a freshly
+// started rematch is never hidden by a stale cache entry.
+const H2H_CACHE_TTL_SECONDS = 300;
+
+function h2hCacheKey(a: string, b: string, since: Date): string {
+  const [lo, hi] = a < b ? [a, b] : [b, a];
+  return `h2h:${lo}:${hi}:${since.getTime()}`;
+}
+
+async function invalidateHeadToHead(whiteId: string, blackId: string): Promise<void> {
+  const since = startOfTodayInTimezone(SCORE_TIMEZONE);
+  await redis.del(h2hCacheKey(whiteId, blackId, since));
+}
+
+interface H2HTally {
+  finished: number;
+  scores: Record<string, number>;
+}
+
+async function loadFinishedTally(
+  whiteId: string,
+  blackId: string,
+  since: Date,
+): Promise<H2HTally> {
+  const key = h2hCacheKey(whiteId, blackId, since);
+  try {
+    const hit = await redis.get(key);
+    if (hit) return JSON.parse(hit) as H2HTally;
+  } catch {
+    // Cache trouble just means we fall through to Mongo.
+  }
+
+  // endedAt (not createdAt) so the existing {white|black, status, endedAt}
+  // indexes cover both the pair and the date filter.
+  const games = await Game.find({
+    status: "finished",
+    endedAt: { $gte: since },
+    $or: [
+      { white: whiteId, black: blackId },
+      { white: blackId, black: whiteId },
+    ],
+  })
+    .select("white black result")
+    .lean();
+
+  const tally: H2HTally = { finished: games.length, scores: { [whiteId]: 0, [blackId]: 0 } };
+  for (const g of games) {
+    if (g.result === "draw") {
+      tally.scores[whiteId] += 0.5;
+      tally.scores[blackId] += 0.5;
+    } else if (g.result === "white" || g.result === "black") {
+      const winner = g.result === "white" ? g.white : g.black;
+      if (winner) tally.scores[winner.toString()] += 1;
+    }
+  }
+
+  redis.set(key, JSON.stringify(tally), "EX", H2H_CACHE_TTL_SECONDS).catch(() => {});
+  return tally;
+}
+
+export async function getDailyHeadToHead(code: string) {
+  const game = await Game.findOne({ joinCode: code.toUpperCase() })
+    .select("white black status")
+    .lean();
+  if (!game) throw ApiError.notFound("No game found with that code");
+  if (!game.black) return { show: false, whiteScore: 0, blackScore: 0, games: 0 };
+
+  const whiteId = game.white.toString();
+  const blackId = game.black.toString();
+  const since = startOfTodayInTimezone(SCORE_TIMEZONE);
+
+  const tally = await loadFinishedTally(whiteId, blackId, since);
+  // The viewed game counts toward "have they met more than once today" while
+  // it's live; once finished it's already inside the tally.
+  const games = tally.finished + (game.status === "active" ? 1 : 0);
+  return {
+    show: games >= 2,
+    whiteScore: tally.scores[whiteId] ?? 0,
+    blackScore: tally.scores[blackId] ?? 0,
+    games,
+  };
 }

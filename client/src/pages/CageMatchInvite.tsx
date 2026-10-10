@@ -112,11 +112,17 @@ export function CageMatchInvite() {
 
   function handleAccept() {
     if (!socket) return;
+    setError("");
     setAccepting(true);
     socket.emit("cage:link_accept", { linkId });
   }
 
-  if (error) {
+  // Only a failed LOOKUP (expired / invalid link) is a dead end. A failed
+  // ACCEPT (creator momentarily offline, not enough R, game limit...) used to
+  // replace the whole page with this error too, even though the server puts
+  // the link back for exactly that case, so the link looked broken with no way
+  // to try again. Once the invite has loaded, errors show inline instead.
+  if (error && !info) {
     return <PageError message={error} className="px-4" />;
   }
   if (!info) {
@@ -186,10 +192,13 @@ export function CageMatchInvite() {
                 get them to accept it.
               </p>
             ) : (
-              <Button fullWidth disabled={accepting} onClick={handleAccept}>
-                <Swords className="h-4 w-4" />
-                {accepting ? "Starting…" : "Accept & start"}
-              </Button>
+              <>
+                {error && <p className="text-sm text-red-400">{error}</p>}
+                <Button fullWidth disabled={accepting} onClick={handleAccept}>
+                  <Swords className="h-4 w-4" />
+                  {accepting ? "Starting…" : "Accept & start"}
+                </Button>
+              </>
             )}
           </CardContent>
         </Card>

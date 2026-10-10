@@ -71,7 +71,7 @@ const sendSchema = z.object({
   legs: z.array(legSchema).min(2).max(30),
   winnerMode: z.enum(['total_score', 'most_categories', 'first_to_n']).default('total_score'),
   targetWins: z.number().int().min(1).max(30).nullable().optional().default(null),
-  wagerMode: z.enum(['none', 'winner_takes_all', 'per_leg', 'split_even']).default('winner_takes_all'),
+  wagerMode: z.enum(['none', 'winner_takes_all', 'per_leg', 'split_even']).default('none'),
   // 0 = a free match (no tokens at stake); anything else must clear the
   // usual stake floor.
   wagerTokens: z

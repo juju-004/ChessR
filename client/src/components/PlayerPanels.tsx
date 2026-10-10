@@ -82,6 +82,24 @@ export interface PanelData {
     expiresAt: number;
     onClaim: (claim: "win" | "draw") => void;
   } | null;
+  /** Today's running score against this opponent (win 1, draw 0.5).
+   *  null/undefined hides the badge, it only appears once the same two
+   *  players have met more than once that day. */
+  score?: number | null;
+}
+
+function ScoreBadge({ score, className }: { score: number; className?: string }) {
+  return (
+    <span
+      title="Today's score"
+      className={cn(
+        "inline-flex min-w-5 shrink-0 items-center justify-center rounded-md bg-base-300/70 px-1.5 py-0.5 text-xs font-bold tabular-nums text-base-content/80",
+        className,
+      )}
+    >
+      {Number.isInteger(score) ? score : score.toFixed(1)}
+    </span>
+  );
 }
 
 /** Builds the display props one side's panel needs out of the raw material
@@ -452,9 +470,11 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
   rating,
   zenMode,
   disconnect,
+  score,
 }: PanelData) {
   return (
     <div className="flex h-13.5 items-center gap-3 rounded-xl bg-base-200/70 px-3 py-2 text-base-content">
+      {score != null && <ScoreBadge score={score} className="-mr-1" />}
       {zenMode ? (
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-base-300/70 text-base-content/40">
           <UserRound className="h-4 w-4" />
@@ -558,15 +578,19 @@ export const PlayerPanelFlank = memo(function PlayerPanelFlank({
   berserked,
   profileHref,
   disconnect,
+  score,
   className,
 }: PanelData & { className?: string }) {
   return (
     <div
       className={cn(
-        "flex w-14 shrink-0 flex-col items-center gap-1.5 rounded-xl bg-base-200/70 px-1 py-2 text-center text-base-content sm:w-16",
+        "relative flex w-14 shrink-0 flex-col items-center gap-1.5 rounded-xl bg-base-200/70 px-1 py-2 text-center text-base-content sm:w-16",
         className,
       )}
     >
+      {score != null && (
+        <ScoreBadge score={score} className="absolute left-0.5 top-0.5 z-10 text-[10px]" />
+      )}
       {profileHref ? (
         <Link to={profileHref}>
           <Avatar

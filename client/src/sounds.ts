@@ -218,22 +218,34 @@ export function playCaptureSound() {
   playSoundFile(SOUND_FILES.capture, 0.95);
 }
 
-/** Check: chess.com's check cue is a short, flat double-tap alert rather
- *  than lichess's bell/chime — closer to a UI notification "ping-ping"
- *  than a musical note. Built from square-wave tones (a harder, less
- *  "musical" timbre than the old sine-bell version) at a single pitch
- *  repeated twice, quiet and quick so it reads as an alert layered over
- *  the move/capture sound rather than a separate melody. */
+/** Check: a rising two-note "alert sting" instead of the old flat
+ *  square-wave double-beep. That old cue was a single pitch repeated twice,
+ *  which sat uncomfortably close to the low-time warning (also a flat
+ *  square double-beep), so the two could be mistaken for each other. This
+ *  one is built differently on purpose: a short wooden tap for the piece
+ *  landing, then two triangle-wave notes climbing a fifth (A5 -> E6) with a
+ *  tiny upward glide on the second, plus a faint octave shimmer on top.
+ *  Rising reads as "danger, look at the board" while staying softer and
+ *  rounder than the clipped low-time beeps. Quiet enough to layer over the
+ *  move/capture file that plays at the same moment. */
 export function playCheckSound() {
+  playImpact([
+    { startOffset: 0, duration: 0.02, gain: 0.22, freq: 2400, q: 3, attack: 0.001 },
+    { startOffset: 0, duration: 0.09, gain: 0.22, freq: 260, q: 2, attack: 0.002 },
+  ]);
   playTones([
-    { freq: 1175, startOffset: 0, duration: 0.07, type: "square", gain: 0.12 },
+    { freq: 880, startOffset: 0.03, duration: 0.11, type: "triangle", gain: 0.2 },
     {
-      freq: 1175,
-      startOffset: 0.1,
-      duration: 0.09,
-      type: "square",
-      gain: 0.12,
+      freq: 1319,
+      freqEnd: 1480,
+      startOffset: 0.12,
+      duration: 0.22,
+      type: "triangle",
+      gain: 0.22,
     },
+    // Octave shimmer on the second note only, adds the "ring" without
+    // making the whole cue louder.
+    { freq: 2638, startOffset: 0.12, duration: 0.16, type: "sine", gain: 0.05 },
   ]);
 }
 

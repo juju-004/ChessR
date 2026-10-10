@@ -10,6 +10,7 @@ import {
   listOpenGames,
   listMyActiveGames,
   getGameByCode,
+  getDailyHeadToHead,
   listFriendsActiveGames,
 } from "../services/game.service.js";
 import type { AuthedRequest } from "../middleware/auth.js";
@@ -118,4 +119,9 @@ export const getGameByCodeHandler = asyncHandler(async (req, res) => {
   const { code } = codeParamSchema.parse(req.params);
   const game = await getGameByCode(code);
   res.json({ game });
+});
+
+export const getGameScoreHandler = asyncHandler(async (req, res) => {
+  const { code } = codeParamSchema.parse(req.params);
+  res.json({ score: await getDailyHeadToHead(code) });
 });

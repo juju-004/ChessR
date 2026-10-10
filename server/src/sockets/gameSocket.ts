@@ -241,8 +241,15 @@ async function endGameAndBroadcast(
     console.error(`finalizeGame(${gameId}) failed after retries; live state kept:`, err);
   }
 
-  await advanceCageMatchIfLeg(gameId, result, endReason);
-  await advanceTournamentIfPairingLeg(gameId, result, endReason);
+  // Isolated from each other: a throw while advancing a cage leg must never
+  // skip recording the tournament pairing (or vice versa), a skipped result
+  // leaves the pairing "active" until a sweep notices.
+  await advanceCageMatchIfLeg(gameId, result, endReason).catch((err) =>
+    console.error('advanceCageMatchIfLeg failed:', err),
+  );
+  await advanceTournamentIfPairingLeg(gameId, result, endReason).catch((err) =>
+    console.error('advanceTournamentIfPairingLeg failed:', err),
+  );
   forgetGameSeriesMeta(gameId);
 }
 
@@ -876,10 +883,17 @@ export function registerGameHandlers(io: Server, socket: Socket) {
 
       // Only the fields used below; a bare .lean() would also pull the whole
       // `moves` array.
-      const game = await Game.findById(gameId).select('status cageMatchId white black').lean();
+      const game = await Game.findById(gameId)
+        .select('status cageMatchId tournamentId white black')
+        .lean();
       if (!game) return emitError(socket, 'Game not found');
-      if (game.status !== 'finished') return emitError(socket, 'Game has not finished yet');
+      // An aborted game (no moves / a single move played) can be rematched
+      // too, as long as it actually had two players.
+      if (game.status !== 'finished' && game.status !== 'aborted') {
+        return emitError(socket, 'Game has not finished yet');
+      }
       if (game.cageMatchId) return emitError(socket, 'Cage match games cannot be rematched');
+      if (game.tournamentId) return emitError(socket, 'Tournament games cannot be rematched');
 
       const isWhite = game.white.toString() === userId;
       const isBlack = game.black?.toString() === userId;

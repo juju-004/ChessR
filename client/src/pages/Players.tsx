@@ -405,25 +405,29 @@ export function Players() {
                 <div
                   key={u._id}
                   onClick={() => navigate(`/profile/${u.username}`)}
-                  className="-mx-2 flex cursor-pointer flex-wrap items-center justify-between gap-2 rounded-lg border-b border-base-300 px-2 py-2 transition-colors last:border-none hover:bg-base-100/60"
+                  className="-mx-2 flex cursor-pointer items-center justify-between gap-2 rounded-lg border-b border-base-300 px-2 py-2 transition-colors last:border-none hover:bg-base-100/60"
                 >
-                  <span className="flex min-w-0 items-center gap-2.5 text-sm text-base-content">
+                  {/* Same layout as the friends list: no flex-wrap, the name
+                   *  block flexes/shrinks (min-w-0 flex-1) and the name itself
+                   *  truncates, so a long username never pushes the action
+                   *  button onto its own line. Challenging lives on the
+                   *  player's profile, not in this list. */}
+                  <span className="flex min-w-0 flex-1 items-center gap-2.5 text-sm text-base-content">
                     <Avatar
                       username={u.username}
                       size="sm"
                       gradient={u.avatarGradient}
+                      className="shrink-0"
                     />
-                    <span className="truncate">{u.username}</span>
-                    <RatingBadge rating={u.rating} />
+                    <span className="min-w-0 truncate">{u.username}</span>
+                    <span className="shrink-0">
+                      <RatingBadge rating={u.rating} />
+                    </span>
                   </span>
                   <span
-                    className="flex flex-wrap items-center gap-2"
+                    className="flex shrink-0 items-center gap-2"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {renderPlayerAction(
-                      { id: u._id, username: u.username, online: u.online },
-                      "search",
-                    )}
                     {!alreadyFriend && (
                       <Button
                         variant="secondary"

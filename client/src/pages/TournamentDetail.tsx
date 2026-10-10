@@ -861,7 +861,9 @@ function PlayerTournamentDetails({
                     ? onStreak
                       ? "text-orange-400"
                       : "text-secondary"
-                    : "text-base-content",
+                    : s.label === "Streak wins"
+                      ? "text-orange-400"
+                      : "text-base-content",
                   s.label === "Points" &&
                     onStreak &&
                     "inline-flex items-center justify-center gap-1 w-full",
