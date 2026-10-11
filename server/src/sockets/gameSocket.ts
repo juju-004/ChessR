@@ -25,7 +25,7 @@ import {
   activeGameLimitMessage,
   openGameRoom,
 } from '../services/game.service.js';
-import { advanceCageMatchLeg } from '../services/cageMatch.service.js';
+import { advanceCageMatchLeg, cancelCageMatchForAbortedFirstLeg } from '../services/cageMatch.service.js';
 import { advanceTournamentIfPairing, berserkInTournamentGame } from '../services/tournament.service.js';
 import { applyRatingForGame } from '../services/rating.service.js';
 import {
@@ -305,6 +305,32 @@ export function registerFirstMoveTimeoutHandler(io: Server) {
   setFirstMoveTimeoutHandler(async (gameId, expiredSide) => {
     const seriesMeta = await getGameSeriesMeta(gameId);
     const isSeriesGame = !!(seriesMeta?.cageMatchId || seriesMeta?.tournamentId);
+    // The first game of a cage match that nobody got going (e.g. a link
+    // invite whose creator never showed up) is treated as an abort, same as
+    // a plain game: refund the stakes and call the whole match off, instead
+    // of handing the opponent a leg win and dragging on into game 2.
+    const isCageFirstLeg = !!seriesMeta?.cageMatchId && seriesMeta.legIndex === 0;
+
+    if (isCageFirstLeg) {
+      const state = await getLiveState(gameId);
+      if (!state) return;
+
+      clearGameTimer(gameId);
+      clearAllPendingDisconnects(gameId);
+      await finalizeGame(gameId, state.fen, 'aborted', null, 'first_move_timeout', {
+        whiteRemainingMs: state.whiteRemainingMs,
+        blackRemainingMs: state.blackRemainingMs,
+      });
+      await refundWagerBothSides(gameId, state.whiteId, state.blackId, state.wagerTokens).catch((err) =>
+        console.error('refundWagerBothSides failed during cage first-move timeout:', err),
+      );
+      await deleteLiveState(gameId);
+
+      io.to(gameRoom(gameId)).emit('game:over', { gameId, result: null, reason: 'first_move_timeout' });
+      notifyGameEnded(gameId);
+      await cancelCageMatchForAbortedFirstLeg(seriesMeta!.cageMatchId!.toString(), 0, 'first_move_timeout');
+      return;
+    }
 
     if (isSeriesGame) {
       const winner = expiredSide === 'white' ? 'black' : 'white';
@@ -1025,7 +1051,12 @@ export function registerGameHandlers(io: Server, socket: Socket) {
 
       const game = await getGameSeriesMeta(gameId);
       if (!game) return emitError(socket, 'Game not found');
-      if (game.cageMatchId) return emitError(socket, 'Cage match legs can only be paused, not aborted');
+      // Only the FIRST game of a cage match can be aborted (it calls the whole
+      // match off, see below). Later legs can only be paused.
+      const isCageFirstLeg = !!game.cageMatchId && game.legIndex === 0;
+      if (game.cageMatchId && !isCageFirstLeg) {
+        return emitError(socket, 'Only the first game of a cage match can be aborted. Later games can only be paused');
+      }
       if (game.tournamentId) return emitError(socket, 'Tournament games cannot be aborted');
 
       const state = await getLiveState(gameId);
@@ -1051,6 +1082,9 @@ export function registerGameHandlers(io: Server, socket: Socket) {
 
       io.to(gameRoom(gameId)).emit('game:over', { gameId, result: null, reason: 'aborted_no_moves' });
       notifyGameEnded(gameId);
+      if (isCageFirstLeg) {
+        await cancelCageMatchForAbortedFirstLeg(game.cageMatchId!.toString(), 0, 'aborted_no_moves');
+      }
     }),
   );
 

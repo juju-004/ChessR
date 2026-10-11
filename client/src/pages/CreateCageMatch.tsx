@@ -200,12 +200,11 @@ export function CreateCageMatch() {
                   Invite link ready
                 </p>
                 <p className="text-sm text-base-content/60">
-                  Send this to whoever you want to play — they don't need to be
-                  a friend or online yet. It expires in 24 hours or once someone
-                  accepts it.
+                  Send this to whoever you want to play. It expires in 15 minutes
+                  or once someone accepts it.
                 </p>
               </div>
-              <div className="rounded-lg bg-base-200 px-3 py-2 text-left text-xs break-all text-base-content/70">
+              <div className="rounded-lg bg-base-200 px-3 py-2 text-center text-xs break-all text-base-content/70">
                 {inviteLink}
               </div>
               {status && (
@@ -215,19 +214,9 @@ export function CreateCageMatch() {
                   {status.message}
                 </p>
               )}
-              <div className="flex gap-2">
-                <Button fullWidth onClick={handleShareLink}>
+              <div className="flex justify-center items-center gap-2">
+                <Button onClick={handleShareLink}>
                   <Share2 className="h-4 w-4" /> Share link
-                </Button>
-                <Button
-                  variant="glass"
-                  fullWidth
-                  onClick={() => {
-                    setCreatedLinkId(null);
-                    setStatus(null);
-                  }}
-                >
-                  Create another
                 </Button>
               </div>
             </CardContent>
@@ -313,11 +302,11 @@ export function CreateCageMatch() {
                     <span className="inline-flex items-center gap-1">
                       Wager
                       <HelpTip>
-                        None is a free match with nothing at stake. Winner
-                        takes all stakes the full amount once for the whole
-                        match. Per game stakes and settles the same amount as
-                        each game finishes. Split evenly divides the total
-                        across every game up front.
+                        None is a free match with nothing at stake. Winner takes
+                        all stakes the full amount once for the whole match. Per
+                        game stakes and settles the same amount as each game
+                        finishes. Split evenly divides the total across every
+                        game up front.
                         {rakePercent !== null &&
                           ` A ${rakePercent}% platform fee is deducted from the payout either way.`}
                       </HelpTip>

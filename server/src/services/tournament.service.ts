@@ -641,10 +641,10 @@ export async function createTournament(
   }
   if (
     input.baseMinutes !== null &&
-    (input.baseMinutes < 1 || input.baseMinutes > 180)
+    (input.baseMinutes < 0.5 || input.baseMinutes > 180)
   ) {
     throw ApiError.badRequest(
-      "Base time must be between 1 and 180 minutes (or unlimited)",
+      "Base time must be between 30 seconds and 180 minutes (or unlimited)",
     );
   }
   if (input.incrementSeconds < 0 || input.incrementSeconds > 60) {
@@ -1182,8 +1182,8 @@ export async function updateTournament(
   const maxPlayers = MAX_TOURNAMENT_PLAYERS;
 
   const baseMinutes = input.baseMinutes !== undefined ? input.baseMinutes : tournament.baseMinutes;
-  if (baseMinutes !== null && (baseMinutes < 1 || baseMinutes > 180)) {
-    throw ApiError.badRequest("Base time must be between 1 and 180 minutes (or unlimited)");
+  if (baseMinutes !== null && (baseMinutes < 0.5 || baseMinutes > 180)) {
+    throw ApiError.badRequest("Base time must be between 30 seconds and 180 minutes (or unlimited)");
   }
   const incrementSeconds = input.incrementSeconds ?? tournament.incrementSeconds;
   if (incrementSeconds < 0 || incrementSeconds > 60) {

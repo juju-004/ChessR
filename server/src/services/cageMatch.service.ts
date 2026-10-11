@@ -49,8 +49,8 @@ export function validateLegPlan(legs: CageLegInput[]) {
   if (legs.length < MIN_LEGS) throw ApiError.badRequest(`A cage match needs at least ${MIN_LEGS} legs`);
   if (legs.length > MAX_LEGS) throw ApiError.badRequest(`A cage match can have at most ${MAX_LEGS} legs`);
   for (const leg of legs) {
-    if (leg.baseMinutes !== null && (leg.baseMinutes < 1 || leg.baseMinutes > 180)) {
-      throw ApiError.badRequest("Each game's base time must be between 1 and 180 minutes (or unlimited)");
+    if (leg.baseMinutes !== null && (leg.baseMinutes < 0.5 || leg.baseMinutes > 180)) {
+      throw ApiError.badRequest("Each game's base time must be between 30 seconds and 180 minutes (or unlimited)");
     }
     if (leg.incrementSeconds < 0 || leg.incrementSeconds > 60) {
       throw ApiError.badRequest("Each game's increment must be between 0 and 60 seconds");
@@ -560,6 +560,77 @@ export async function onLegFinished(
   await startNextLeg(match);
   const nextLeg = match.legs[match.currentLegIndex];
   return { match, standings: computeStandings(match), matchStatus: "leg_advanced", nextLeg, matchWinner: null };
+}
+
+/** Calls the whole cage match off because its FIRST game was aborted (both
+ *  players vanished, or nobody made a first move), so the series never really
+ *  started. Atomically claims the match (active -> cancelled, only if leg 0 is
+ *  still the live leg) so a duplicate/concurrent call is a no-op, marks every
+ *  leg skipped, refunds an escrowed winner-takes-all pot, and tells both
+ *  players with a cage:match_over (matchEndReason "cancelled", no winner).
+ *
+ *  Per-leg / split-even stakes for the aborted game itself are refunded by
+ *  whoever aborted it (refundWagerBothSides), same as any aborted game, so this
+ *  only has to deal with the match-level escrow.
+ *
+ *  Returns false when nothing was cancelled (not leg 0, or already settled). */
+export async function cancelCageMatchForAbortedFirstLeg(
+  cageMatchId: string,
+  legIndex: number,
+  legEndReason: string,
+): Promise<boolean> {
+  if (legIndex !== 0) return false;
+  try {
+    const claimed = await CageMatch.findOneAndUpdate(
+      { _id: cageMatchId, status: "active", currentLegIndex: 0, "legs.0.status": { $in: ["active", "paused"] } },
+      {
+        $set: {
+          status: "cancelled",
+          matchEndReason: "cancelled",
+          matchWinner: null,
+          endedAt: new Date(),
+          "legs.0.status": "skipped",
+          "legs.0.result": null,
+          "legs.0.endReason": legEndReason,
+        },
+      },
+      { new: true },
+    );
+    if (!claimed) return false;
+
+    let dirty = false;
+    for (const l of claimed.legs) {
+      if (l.status === "pending") {
+        l.status = "skipped";
+        dirty = true;
+      }
+    }
+    if (dirty) await claimed.save();
+
+    await refundWinnerTakesAll(claimed).catch((err) => console.error("refundWinnerTakesAll failed on cancel:", err));
+    await expireChat("cage", claimed.id).catch((err) => console.error("expireChat(cage) failed:", err));
+    await expireChat("cage_players", claimed.id).catch((err) => console.error("expireChat(cage_players) failed:", err));
+
+    try {
+      const io = getIo();
+      const payload = {
+        matchId: claimed.id,
+        matchCode: claimed.matchCode,
+        standings: computeStandings(claimed),
+        matchWinner: null,
+        matchEndReason: "cancelled" as const,
+      };
+      io.to(`user:${claimed.player1.toString()}`).emit("cage:match_over", payload);
+      io.to(`user:${claimed.player2.toString()}`).emit("cage:match_over", payload);
+    } catch {
+      // Socket.IO not initialized (script/test context): state is persisted,
+      // clients pick it up the next time they fetch.
+    }
+    return true;
+  } catch (err) {
+    console.error("cage match cancel failed:", err);
+    return false;
+  }
 }
 
 /** Runs onLegFinished and emits the resulting cage:next_leg / cage:match_over

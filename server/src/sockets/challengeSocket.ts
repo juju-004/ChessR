@@ -27,7 +27,8 @@ const MIN_STAKE_TOKENS = 20;
 
 const sendSchema = z.object({
   toUserId: z.string().refine(mongoose.isValidObjectId),
-  baseMinutes: z.number().min(1).max(180).nullable().optional().default(10),
+  // 0.5 = Hyper Bullet (30s), same floor as game.controller.ts's createSchema.
+  baseMinutes: z.number().min(0.5).max(180).nullable().optional().default(10),
   incrementSeconds: z.number().min(0).max(60).optional().default(0),
   variant: z.enum(['standard', 'chess960']).optional().default('standard'),
   wagerTokens: z

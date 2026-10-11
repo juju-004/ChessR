@@ -31,6 +31,10 @@ export function formatTimeControl(tc: {
   incrementSeconds: number;
 }): string {
   if (tc.baseSeconds === null) return "Unlimited";
+  // Under a minute (Hyper Bullet is 30s): Math.round(0.5) would print it as
+  // "1+0", so show the half-minute / seconds form instead.
+  if (tc.baseSeconds === 30) return `½+${tc.incrementSeconds}`;
+  if (tc.baseSeconds < 60) return `${tc.baseSeconds}s+${tc.incrementSeconds}`;
   return `${Math.round(tc.baseSeconds / 60)}+${tc.incrementSeconds}`;
 }
 

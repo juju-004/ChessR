@@ -14,6 +14,8 @@ function formatTimeControl(tc: {
   incrementSeconds: number;
 }): string {
   if (tc.baseSeconds === null) return "Unlimited";
+  if (tc.baseSeconds === 30) return `½+${tc.incrementSeconds}`;
+  if (tc.baseSeconds < 60) return `${tc.baseSeconds}s+${tc.incrementSeconds}`;
   return `${Math.round(tc.baseSeconds / 60)}+${tc.incrementSeconds}`;
 }
 

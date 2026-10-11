@@ -154,7 +154,10 @@ export function CageMatchDetail() {
   const isMe = (id: string) => isParticipant && id === user?.id;
 
   let outcomeLine = "";
-  if (match.status === "finished") {
+  if (match.status === "cancelled") {
+    outcomeLine =
+      "Cancelled: the first game was aborted. Any wager was refunded.";
+  } else if (match.status === "finished") {
     if (match.matchWinner === "draw") outcomeLine = "Match drawn";
     else {
       const winnerId =

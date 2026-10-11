@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
-  Swords,
   Trophy,
   Plus,
   Hash,
@@ -19,11 +18,13 @@ import {
   createGame,
   listFriendsActiveGames,
   listMyActiveGames,
+  listOpenGames,
   type ActiveFriendGame,
   type MyActiveGame,
 } from "../api/games.js";
 import { ApiRequestError } from "../api/http.js";
 import { useAuth } from "../contexts/AuthContext.js";
+import { useSocket } from "../contexts/SocketContext.js";
 import { RestrictionBanner } from "../components/RestrictionBanner.js";
 import { TIME_CONTROLS, formatTimeControl } from "../timeControls.js";
 import { extractGameCode } from "../lib/utils.js";
@@ -36,7 +37,6 @@ import {
   formatTimeControl as formatTournamentTimeControl,
   type Tournament,
 } from "../api/tournaments.js";
-import { listMyCageMatches, type CageMatch } from "../api/cageMatches.js";
 import {
   Page,
   Card,
@@ -60,12 +60,15 @@ function QuickLink({
   icon: Icon,
   label,
   accent,
+  badge,
   className = "",
 }: {
   to: string;
   icon: LucideIcon;
   label: string;
   accent: string;
+  /** Small count pill on the icon's corner; hidden when 0/undefined. */
+  badge?: number;
   className?: string;
 }) {
   return (
@@ -76,9 +79,17 @@ function QuickLink({
         className="flex h-full flex-col items-center gap-2 py-5 text-center"
       >
         <span
-          className={`flex h-10 w-10 items-center justify-center rounded-full ${accent}`}
+          className={`relative flex h-10 w-10 items-center justify-center rounded-full ${accent}`}
         >
           <Icon className="h-5 w-5" />
+          {badge !== undefined && badge > 0 && (
+            <span
+              aria-label={`${badge} open ${badge === 1 ? "game" : "games"}`}
+              className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold leading-none text-white tabular-nums ring-2 ring-base-100"
+            >
+              {badge > 99 ? "99+" : badge}
+            </span>
+          )}
         </span>
         <span className="text-sm font-semibold text-base-content">{label}</span>
       </Card>
@@ -113,7 +124,51 @@ export function Dashboard() {
   const [openTournaments, setOpenTournaments] = useState<Tournament[] | null>(
     null,
   );
-  const [cageMatches, setCageMatches] = useState<CageMatch[] | null>(null);
+
+  // Number of open games in the lobby that someone else posted (the ones
+  // you could actually join), shown as a badge on the Lobby tile. Pushed
+  // live via lobby:changed, same signal the Lobby page itself uses.
+  const socket = useSocket();
+  const [lobbyCount, setLobbyCount] = useState(0);
+  const lobbyInFlight = useRef(false);
+  const lobbyQueued = useRef(false);
+  const loadLobbyCount = useCallback(async () => {
+    if (lobbyInFlight.current) {
+      lobbyQueued.current = true;
+      return;
+    }
+    lobbyInFlight.current = true;
+    try {
+      const { games } = await listOpenGames();
+      setLobbyCount(games.filter((g) => g.white._id !== user?.id).length);
+    } catch {
+      // Badge is decorative; keep the last known count.
+    } finally {
+      lobbyInFlight.current = false;
+      if (lobbyQueued.current) {
+        lobbyQueued.current = false;
+        void loadLobbyCount();
+      }
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    void loadLobbyCount();
+    if (!socket) return;
+    const s = socket;
+    const watch = () => {
+      s.emit("lobby:watch");
+      void loadLobbyCount();
+    };
+    s.on("connect", watch);
+    s.on("lobby:changed", loadLobbyCount);
+    if (s.connected) s.emit("lobby:watch");
+    return () => {
+      s.off("connect", watch);
+      s.off("lobby:changed", loadLobbyCount);
+      s.emit("lobby:unwatch");
+    };
+  }, [socket, loadLobbyCount]);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,9 +181,7 @@ export function Dashboard() {
     listOpenTournaments("pending")
       .then((res) => !cancelled && setOpenTournaments(res.tournaments))
       .catch(() => !cancelled && setOpenTournaments([]));
-    listMyCageMatches()
-      .then((res) => !cancelled && setCageMatches(res.matches))
-      .catch(() => !cancelled && setCageMatches([]));
+
     return () => {
       cancelled = true;
     };
@@ -173,11 +226,6 @@ export function Dashboard() {
     const code = extractGameCode(joinCodeInput);
     if (code) navigate(`/game/${code}`);
   }
-
-  const activeCageMatches =
-    cageMatches?.filter((m) => m.status === "active") ?? [];
-  const recentCageMatches =
-    cageMatches?.filter((m) => m.status === "finished").slice(0, 3) ?? [];
 
   return (
     <Page title={`Welcome, ${user?.username ?? ""}`}>
@@ -253,6 +301,7 @@ export function Dashboard() {
             icon={Gamepad2}
             label="Lobby"
             accent="bg-blue-600/15 text-blue-500"
+            badge={lobbyCount}
           />
           <QuickLink
             to="/play"
@@ -544,10 +593,11 @@ export function Dashboard() {
                       {t.name}
                     </p>
                     <p className="text-xs text-base-content/50">
-                      {formatTournamentTimeControl(t)}
-                      {" "}
-                      · {t.playerCount ?? t.players.length}{" "}
-                      {(t.playerCount ?? t.players.length) === 1 ? "player" : "players"}
+                      {formatTournamentTimeControl(t)} ·{" "}
+                      {t.playerCount ?? t.players.length}{" "}
+                      {(t.playerCount ?? t.players.length) === 1
+                        ? "player"
+                        : "players"}
                     </p>
                   </div>
                   <ArrowRight className="h-4 w-4 shrink-0 text-base-content/40" />
@@ -556,70 +606,25 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card variant="solid">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Swords className="h-4 w-4 text-rose-400" /> Cage matches
-            </CardTitle>
-            <Link
-              to="/cage"
-              className="text-sm text-(--primary) hover:underline"
-            >
-              View all
-            </Link>
-          </CardHeader>
-          <CardContent>
-            {cageMatches === null && (
-              <p className="text-sm text-base-content/60">Loading…</p>
-            )}
-            {cageMatches &&
-              activeCageMatches.length === 0 &&
-              recentCageMatches.length === 0 && (
-                <p className="text-sm text-base-content/60">
-                  No cage matches yet.
-                </p>
-              )}
-            {[...activeCageMatches, ...recentCageMatches].map((m) => {
-              const opponent =
-                m.player1._id === user?.id ? m.player2 : m.player1;
-              return (
-                <Link
-                  key={m._id}
-                  to={`/cage/${m.matchCode}`}
-                  className="flex items-center justify-between gap-2 border-b border-base-300 py-2 last:border-none hover:text-(--primary)"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-base-content">
-                      vs {opponent.username}
-                    </p>
-                    <p className="text-xs text-base-content/50">
-                      Leg {m.currentLegIndex + 1}/{m.legs.length}
-                    </p>
-                  </div>
-                  <Badge
-                    variant={m.status === "active" ? "success" : "neutral"}
-                  >
-                    {m.status === "active" ? "Active" : "Finished"}
-                  </Badge>
-                </Link>
-              );
-            })}
-          </CardContent>
-        </Card>
-
         <footer className="flex flex-col items-center gap-y-1 pt-2 pb-2 text-xs text-base-content/50">
           <div className="flex items-center justify-center gap-x-4">
-            <Link to="/about" className="hover:text-base-content hover:underline">
+            <Link
+              to="/about"
+              className="hover:text-base-content hover:underline"
+            >
               About us
             </Link>
             <span className="text-base-content/20">·</span>
-            <Link to="/terms" className="hover:text-base-content hover:underline">
+            <Link
+              to="/terms"
+              className="hover:text-base-content hover:underline"
+            >
               Terms of Service
             </Link>
           </div>
           <Link
             to="/organization/request"
-            className="hover:text-base-content hover:underline"
+            className="hover:text-base-content mt-1.5 hover:underline"
           >
             Organisation request
           </Link>

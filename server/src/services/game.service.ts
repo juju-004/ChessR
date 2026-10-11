@@ -32,7 +32,7 @@ import { runAutoCheatCheck } from "./anticheat.service.js";
 // sides is a hoisted `function` export only ever called at runtime (inside
 // request/reconciliation handlers), never evaluated at module-load time, 
 // so there's no temporal-dead-zone issue either direction.
-import { advanceCageMatchLeg } from "./cageMatch.service.js";
+import { advanceCageMatchLeg, cancelCageMatchForAbortedFirstLeg } from "./cageMatch.service.js";
 // Same deliberate circular-import pattern as advanceCageMatchLeg above.
 import { advanceTournamentIfPairing } from "./tournament.service.js";
 import { notifyGameEnded } from "./latency.service.js";
@@ -820,10 +820,13 @@ export async function reconcileActiveGames(opts: { rearmAll?: boolean } = {}): P
         // board for a game that no longer exists.
         getIo().to(`game:${gameId}`).emit("game:over", { gameId, result: null, reason: "abandoned" });
         if (g.cageMatchId && g.legIndex !== undefined) {
-          // Same treatment as a live no-moves abort: no real winner to report,
-          // so it's scored as a draw for this leg rather than stalling the
-          // whole cage match indefinitely.
-          await advanceCageMatchLeg(g.cageMatchId.toString(), g.legIndex, "draw", "abandoned", gameId);
+          // The FIRST game of a cage match being aborted calls the whole
+          // match off (stakes refunded). Any later leg is scored as a draw
+          // instead, so a series that's actually underway isn't stalled.
+          const cancelled = await cancelCageMatchForAbortedFirstLeg(g.cageMatchId.toString(), g.legIndex, "abandoned");
+          if (!cancelled) {
+            await advanceCageMatchLeg(g.cageMatchId.toString(), g.legIndex, "draw", "abandoned", gameId);
+          }
         }
         if (g.tournamentId && g.roundIndex !== undefined && g.pairingIndex !== undefined) {
           await advanceTournamentIfPairing(

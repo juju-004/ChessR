@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Sparkles } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext.js";
 import { updateMyProfile } from "../api/users.js";
@@ -7,6 +7,7 @@ import { updateAuthUser } from "../api/authStore.js";
 import { ApiRequestError } from "../api/http.js";
 import { Input, Button } from "../components/ui/index.js";
 import { AuthLayout } from "../components/AuthLayout.js";
+import { postAuthPath } from "../lib/authRedirect.js";
 
 const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/;
 
@@ -25,6 +26,8 @@ const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/;
 export function ChooseUsername() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const destination = postAuthPath(location);
   const [username, setUsername] = useState(user?.username ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -39,7 +42,7 @@ export function ChooseUsername() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!isValid || isUnchanged) {
-      navigate("/", { replace: true });
+      navigate(destination, { replace: true });
       return;
     }
     setSaving(true);
@@ -47,7 +50,7 @@ export function ChooseUsername() {
     try {
       const result = await updateMyProfile({ username: trimmed });
       updateAuthUser({ username: result.username });
-      navigate("/", { replace: true });
+      navigate(destination, { replace: true });
     } catch (err) {
       setError(
         err instanceof ApiRequestError
@@ -93,7 +96,7 @@ export function ChooseUsername() {
         {!isUnchanged && (
           <button
             type="button"
-            onClick={() => navigate("/", { replace: true })}
+            onClick={() => navigate(destination, { replace: true })}
             className="text-center text-sm text-base-content/50 hover:text-base-content/70"
           >
             Skip for now, keep "{user?.username}" instead

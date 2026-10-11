@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Trophy, Frown, Handshake } from 'lucide-react';
+import { Trophy, Frown, Handshake, Ban } from 'lucide-react';
 import { Card, Button } from './ui/index.js';
 import { computeCageStandings, type CageMatch } from '../api/cageMatches.js';
 
@@ -13,6 +13,7 @@ interface CageMatchOverModalProps {
 function reasonText(reason: CageMatch['matchEndReason']): string {
   if (reason === 'no_show_forfeit') return "Ended: someone didn't move in time at the start of a game.";
   if (reason === 'forfeit') return 'Ended by forfeit.';
+  if (reason === 'cancelled') return 'The first game was aborted, so the match was cancelled. Any wager was refunded.';
   return 'All games complete.';
 }
 
@@ -24,11 +25,18 @@ export const CageMatchOverModal = memo(function CageMatchOverModal({ match, myUs
   const myScore = iAmP1 ? standings.p1Score : standings.p2Score;
   const oppScore = iAmP1 ? standings.p2Score : standings.p1Score;
 
+  const isCancelled = match.status === 'cancelled' || match.matchEndReason === 'cancelled';
   const isDraw = match.matchWinner === 'draw';
   const winnerIsMe = (match.matchWinner === 'p1' && iAmP1) || (match.matchWinner === 'p2' && !iAmP1);
 
-  const title = isDraw ? 'Match Drawn' : winnerIsMe ? 'You Won the Match!' : 'You Lost the Match';
-  const Icon = isDraw ? Handshake : winnerIsMe ? Trophy : Frown;
+  const title = isCancelled
+    ? 'Match Cancelled'
+    : isDraw
+      ? 'Match Drawn'
+      : winnerIsMe
+        ? 'You Won the Match!'
+        : 'You Lost the Match';
+  const Icon = isCancelled ? Ban : isDraw ? Handshake : winnerIsMe ? Trophy : Frown;
 
   let outcomeLine = '';
   if (!isDraw) {
@@ -57,11 +65,13 @@ export const CageMatchOverModal = memo(function CageMatchOverModal({ match, myUs
 
         <div
           className={`mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full ${
-            isDraw
-              ? 'gradient-brand text-white'
-              : winnerIsMe
-                ? 'bg-green-500/15 text-green-400'
-                : 'bg-red-500/15 text-red-400'
+            isCancelled
+              ? 'bg-base-300/60 text-base-content/70'
+              : isDraw
+                ? 'gradient-brand text-white'
+                : winnerIsMe
+                  ? 'bg-green-500/15 text-green-400'
+                  : 'bg-red-500/15 text-red-400'
           }`}
         >
           <Icon className="h-7 w-7" />
@@ -69,7 +79,7 @@ export const CageMatchOverModal = memo(function CageMatchOverModal({ match, myUs
 
         <h2
           className={`mb-1 text-2xl font-bold ${
-            isDraw ? 'text-base-content' : winnerIsMe ? 'text-green-400' : 'text-red-400'
+            isCancelled || isDraw ? 'text-base-content' : winnerIsMe ? 'text-green-400' : 'text-red-400'
           }`}
         >
           {title}

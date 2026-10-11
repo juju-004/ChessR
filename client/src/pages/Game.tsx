@@ -1472,8 +1472,10 @@ export function Game() {
   async function handleAbort() {
     if (!socket || !gameMeta) return;
     const ok = await confirmDialog({
-      title: "Abort this game?",
-      description: "No result will be recorded for either player.",
+      title: gameMeta.cageMatchId ? "Abort and cancel the cage match?" : "Abort this game?",
+      description: gameMeta.cageMatchId
+        ? "This is the first game, so aborting cancels the whole match. Any wager is refunded to both players."
+        : "No result will be recorded for either player.",
       variant: "danger",
       confirmLabel: "Abort",
     });
@@ -2036,9 +2038,16 @@ export function Game() {
     ...(isPlayer &&
     status === "active" &&
     isIdlePhase &&
-    !gameMeta?.cageMatchId &&
+    (!gameMeta?.cageMatchId || (gameMeta.legIndex ?? 0) === 0) &&
     !gameMeta?.tournamentId
-      ? [{ label: "Abort", icon: Ban, onClick: handleAbort, danger: true }]
+      ? [
+          {
+            label: gameMeta?.cageMatchId ? "Abort and cancel match" : "Abort",
+            icon: Ban,
+            onClick: handleAbort,
+            danger: true,
+          },
+        ]
       : []),
     ...(isPlayer &&
     gameMeta?.cageMatchId &&

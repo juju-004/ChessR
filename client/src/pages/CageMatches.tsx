@@ -30,6 +30,7 @@ function opponentOf(match: CageMatch, myId: string | undefined) {
 }
 
 function matchOutcomeLabel(match: CageMatch, myId: string | undefined): string {
+  if (match.status === "cancelled") return "Cancelled";
   if (match.status !== "finished") return "In progress";
   if (match.matchWinner === "draw") return "Drawn";
   const iAmP1 = match.player1._id === myId;

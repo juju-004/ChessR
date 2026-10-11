@@ -43,7 +43,9 @@ export type LegResult = 'p1' | 'p2' | 'draw' | null;
 //    clock.service.ts), the same as any other timeout, the match continues
 //    on score as usual, exactly like 'forfeit' below never applied to it.
 //  - 'forfeit': a player explicitly forfeited the whole match.
-export type CageMatchEndReason = 'completed' | 'no_show_forfeit' | 'forfeit' | null;
+//  - 'cancelled': the very first game was aborted/never got going, so the
+//    whole match was called off (stakes refunded, no winner).
+export type CageMatchEndReason = 'completed' | 'no_show_forfeit' | 'forfeit' | 'cancelled' | null;
 
 export interface ICageLeg {
   index: number;
@@ -142,7 +144,7 @@ const cageMatchSchema = new Schema<ICageMatch>(
     matchWinner: { type: String, enum: ['p1', 'p2', 'draw', null], default: null },
     matchEndReason: {
       type: String,
-      enum: ['completed', 'no_show_forfeit', 'forfeit', null],
+      enum: ['completed', 'no_show_forfeit', 'forfeit', 'cancelled', null],
       default: null,
     },
     forfeitedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },

@@ -1,20 +1,23 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate, Navigate, Link } from "react-router-dom";
+import { useNavigate, useLocation, Navigate, Link } from "react-router-dom";
 import { signup, googleSignin } from "../api/auth.js";
 import { isLoggedIn } from "../api/authStore.js";
 import { ApiRequestError } from "../api/http.js";
 import { Input, Button } from "../components/ui/index.js";
 import { AuthLayout } from "../components/AuthLayout.js";
 import { GoogleSignInButton } from "../components/GoogleSignInButton.js";
+import { postAuthPath, forwardAuthState } from "../lib/authRedirect.js";
 import { LockOpen, Mail, User2, Eye, EyeOff, AlertCircle } from "lucide-react";
 
 export function SignUp() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const destination = postAuthPath(location);
 
   // Already signed in? There's nothing for this page to do, bounce straight
   // to the dashboard instead of showing a signup form to someone who doesn't
   // need one.
-  if (isLoggedIn()) return <Navigate to="/" replace />;
+  if (isLoggedIn()) return <Navigate to={destination} replace />;
 
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -29,7 +32,7 @@ export function SignUp() {
     setLoading(true);
     try {
       await signup(username, email, password);
-      navigate("/");
+      navigate(destination, { replace: true });
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Sign up failed");
     } finally {
@@ -43,7 +46,10 @@ export function SignUp() {
     try {
       const { isNewUser } = await googleSignin(credential);
       // See SignIn.tsx's identical handler for why this branches.
-      navigate(isNewUser ? "/choose-username" : "/");
+      navigate(isNewUser ? "/choose-username" : destination, {
+        replace: true,
+        state: isNewUser ? forwardAuthState(location) : undefined,
+      });
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Google sign up failed");
     } finally {
@@ -57,7 +63,7 @@ export function SignUp() {
       footer={
         <>
           Already have an account?{" "}
-          <Link to="/signin" className="font-medium text-(--primary) hover:underline">
+          <Link to="/signin" state={forwardAuthState(location)} className="font-medium text-(--primary) hover:underline">
             Sign in
           </Link>
         </>

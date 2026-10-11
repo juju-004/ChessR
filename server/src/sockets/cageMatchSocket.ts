@@ -29,10 +29,11 @@ const pendingInvitePairKey = (fromId: string, toId: string) => `cageInvite:pendi
 // this isn't addressed to anyone in particular at creation time, so it
 // can't require the recipient to already be a friend or online — those
 // checks move to accept-time instead, once we actually know who's
-// accepting. A much longer TTL than a direct invite reflects that this is
-// meant to be pasted into a chat and opened whenever, not answered within
-// the same brief window as a live challenge.
-const CAGE_LINK_TTL_SECONDS = 60 * 60 * 24; // 24 hours
+// accepting. Longer than a direct invite (90s) because it's pasted into a
+// chat and opened a bit later, but short enough that a stale link doesn't
+// linger: 15 minutes. Accepting works whether or not the creator is still
+// online, see cage:link_accept.
+const CAGE_LINK_TTL_SECONDS = 60 * 15; // 15 minutes
 const linkInviteKey = (id: string) => `cageLinkInvite:${id}`;
 
 // A link that's already been accepted no longer has a Redis entry (it's
@@ -62,7 +63,7 @@ const MIN_STAKE_TOKENS = 20;
 
 const legSchema = z.object({
   variant: z.enum(['standard', 'chess960']).default('standard'),
-  baseMinutes: z.number().min(1).max(180).nullable(),
+  baseMinutes: z.number().min(0.5).max(180).nullable(),
   incrementSeconds: z.number().min(0).max(60).default(0),
 });
 
@@ -452,14 +453,11 @@ export function registerCageMatchHandlers(io: Server, socket: Socket) {
         return failAccept('The person who created this invite can no longer start new games');
       }
 
-      // Unlike a direct cage:send (checked at send-time, when the sender
-      // already knows who they're inviting), we only find out who's
-      // accepting right now, so the "is the other side actually here to
-      // play" check has to happen here instead.
-      const creatorOnline = await isUserOnline(fromId);
-      if (!creatorOnline) {
-        return failAccept('The person who created this invite is currently offline');
-      }
+      // The creator does NOT have to be online any more: the link stays
+      // valid for its 15 minutes even if they've closed the app. If they
+      // never show up for the first move, the first-move timer ends that
+      // game and the match is cancelled with stakes refunded (see
+      // cancelCageMatchForAbortedFirstLeg).
 
       try {
         await assertUnderActiveGameLimit(fromId);

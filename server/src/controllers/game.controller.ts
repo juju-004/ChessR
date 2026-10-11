@@ -27,8 +27,9 @@ const MIN_STAKE_TOKENS = 20;
 const createSchema = z.object({
   isPrivate: z.boolean().optional().default(false),
   variant: z.enum(["standard", "chess960"]).optional().default("standard"),
-  // null/omitted baseMinutes = unlimited time.
-  baseMinutes: z.number().min(1).max(180).nullable().optional().default(10),
+  // null/omitted baseMinutes = unlimited time. The floor is 0.5 (30s) so the
+  // "Hyper Bullet · ½+0" preset the client offers is actually accepted.
+  baseMinutes: z.number().min(0.5).max(180).nullable().optional().default(10),
   incrementSeconds: z.number().min(0).max(60).optional().default(0),
   wagerTokens: z
     .number()

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Share2, Trash2 } from "lucide-react";
 import {
   deleteLeague,
   getLeague,
@@ -9,6 +9,8 @@ import {
 import { useConfirm } from "../contexts/ConfirmContext.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useAuth } from "../contexts/AuthContext.js";
+import { useNotify } from "../contexts/NotificationContext.js";
+import { copyToClipboard } from "../lib/utils.js";
 import { LeagueStandings } from "../components/tournaments/LeagueStandings.js";
 import { TournamentRow } from "../components/tournaments/TournamentRow.js";
 import { RefreshButton } from "../components/RefreshButton.js";
@@ -24,12 +26,15 @@ import {
   Spinner,
 } from "../components/ui/index.js";
 
+const CLIENT_URL = import.meta.env.VITE_CLIENT_URL ?? "http://localhost:5173";
+
 export function LeagueDetail() {
   const { id = "" } = useParams<{ id: string }>();
   const socket = useSocket();
   const { user } = useAuth();
   const navigate = useNavigate();
   const confirm = useConfirm();
+  const { notify, dismiss } = useNotify();
   const [deleting, setDeleting] = useState(false);
   const [data, setData] = useState<LeagueDetailResponse | null>(null);
   const [error, setError] = useState("");
@@ -64,6 +69,27 @@ export function LeagueDetail() {
     };
   }, [socket, load]);
 
+  // Native share sheet where there is one (phones), otherwise copy the link.
+  const handleShare = useCallback(async () => {
+    const url = `${CLIENT_URL}/leagues/${id}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: data ? `${data.league.name} on Chessr` : "League on Chessr",
+          url,
+        });
+        return;
+      } catch (err) {
+        // Closing the share sheet is not a failure; anything else falls
+        // back to a plain clipboard copy so the button still does something.
+        if ((err as Error)?.name === "AbortError") return;
+      }
+    }
+    await copyToClipboard(url);
+    const n = notify("Copied league link");
+    setTimeout(() => dismiss(n), 2000);
+  }, [id, data, notify, dismiss]);
+
   if (!data) {
     return (
       <Page title="League" back="/tournaments">
@@ -78,7 +104,7 @@ export function LeagueDetail() {
     );
   }
 
-  const { league, tournaments, standings, throughTournament } = data;
+  const { league, tournaments, standings } = data;
 
   async function handleDelete() {
     const ok = await confirm({
@@ -113,7 +139,16 @@ export function LeagueDetail() {
   const numbered = tournaments.map((t, i) => ({ t, n: i + 1 })).reverse();
 
   return (
-    <Page title={league.name} back="/tournaments">
+    <Page
+      title={league.name}
+      back="/tournaments"
+      actions={
+        <Button variant="glass" size="sm" onClick={handleShare}>
+          <Share2 className="h-3.5 w-3.5" />{" "}
+          <span className="hidden sm:inline">Share</span>
+        </Button>
+      }
+    >
       <div className="mx-auto space-y-4">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="neutral">{league.organizationName}</Badge>
@@ -131,16 +166,7 @@ export function LeagueDetail() {
           </Card>
         )}
 
-        <LeagueStandings
-          rows={standings}
-          myId={user?.id}
-          pageSize={20}
-          subtitle={
-            throughTournament > 0
-              ? `After tournament ${throughTournament} of ${tournaments.length}. Points from every tournament add up here.`
-              : undefined
-          }
-        />
+        <LeagueStandings rows={standings} myId={user?.id} pageSize={15} />
 
         <Card variant="solid">
           <CardHeader>
@@ -179,7 +205,8 @@ export function LeagueDetail() {
             {tournaments.length === 0 && (
               <p className="text-sm text-base-content/50">
                 No tournaments added yet.
-                {league.mine && " Use “Add tournament” to create the first one."}
+                {league.mine &&
+                  " Use “Add tournament” to create the first one."}
               </p>
             )}
             {numbered.map(({ t, n }) => (

@@ -10,15 +10,11 @@ import {
 import { HelpTip } from "../HelpTip.js";
 import { Select, Input, Button, Badge, CategoryIcon } from "../ui/index.js";
 // Shared with every other time-control select in the app (see
-// ../../timeControls.js) instead of keeping its own list, a cage leg's
-// base time must be 1-180 minutes (or unlimited) server-side, so Hyper
-// Bullet's ½-minute preset is filtered out here since it isn't a valid
-// leg length, everything else from the shared list is fair game.
+// ../../timeControls.js) instead of keeping its own list. A cage leg's base
+// time may be 30s (Hyper Bullet) to 180 minutes, or unlimited.
 import { TIME_CONTROLS } from "../../timeControls.js";
 
-const QUICK_ADD_PRESETS = TIME_CONTROLS.filter(
-  (tc) => tc.baseMinutes === null || tc.baseMinutes >= 1,
-);
+const QUICK_ADD_PRESETS = TIME_CONTROLS;
 
 interface CageGamePlanEditorProps {
   legs: CageLegPlan[];
