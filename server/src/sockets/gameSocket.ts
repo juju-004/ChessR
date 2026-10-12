@@ -26,6 +26,7 @@ import {
   openGameRoom,
 } from '../services/game.service.js';
 import { advanceCageMatchLeg, cancelCageMatchForAbortedFirstLeg } from '../services/cageMatch.service.js';
+import { withGameCategoryRating } from '../services/ratingCategory.js';
 import { advanceTournamentIfPairing, berserkInTournamentGame } from '../services/tournament.service.js';
 import { applyRatingForGame } from '../services/rating.service.js';
 import {
@@ -491,13 +492,16 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       if (!rawGame) return emitError(socket, 'Game not found');
       const playerIds = [rawGame.white, rawGame.black].filter((v): v is NonNullable<typeof v> => !!v);
       const playerDocs = await User.find({ _id: { $in: playerIds } })
-        .select('username avatarGradient rating')
+        .select('username avatarGradient rating ratings')
         .lean();
       const playerById = new Map(playerDocs.map((u) => [String(u._id), u]));
       const game = {
         ...rawGame,
-        white: playerById.get(String(rawGame.white)) ?? rawGame.white,
-        black: rawGame.black ? (playerById.get(String(rawGame.black)) ?? rawGame.black) : rawGame.black,
+        // Ratings shown in-game are the ones on this game's own ladder.
+        white: withGameCategoryRating(playerById.get(String(rawGame.white)) ?? rawGame.white, rawGame.timeControl?.baseSeconds ?? null),
+        black: rawGame.black
+          ? withGameCategoryRating(playerById.get(String(rawGame.black)) ?? rawGame.black, rawGame.timeControl?.baseSeconds ?? null)
+          : rawGame.black,
       };
       // Already loaded here, so the timers/chat/abort/end-of-game code never
       // needs its own query for the cage/tournament tags.

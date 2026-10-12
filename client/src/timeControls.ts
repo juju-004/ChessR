@@ -78,9 +78,13 @@ export function timeControlCategory(
   baseMinutes: number | null,
 ): TimeControlCategory {
   if (baseMinutes === null) return "unlimited";
+  // Base minutes only (the increment is ignored). Same lines the rating
+  // ladders use (see ratingCategoryForSeconds below), so a game's icon color
+  // always matches the rating it moves. Rated as rapid from 8 minutes up;
+  // 20+ shows as classical here but still counts on the rapid ladder.
   if (baseMinutes < 3) return "bullet";
-  if (baseMinutes < 10) return "blitz";
-  if (baseMinutes < 30) return "rapid";
+  if (baseMinutes < 8) return "blitz";
+  if (baseMinutes < 20) return "rapid";
   return "classical";
 }
 
@@ -92,3 +96,35 @@ export function timeControlCategoryFromSeconds(
 ): TimeControlCategory {
   return timeControlCategory(baseSeconds === null ? null : baseSeconds / 60);
 }
+
+// --- Rating ladders ----------------------------------------------------------
+// Three ratings per player. Which one a game moves depends on its base time
+// only (never the increment): bullet < 3 min, blitz < 8 min, rapid 8 min and
+// up (classical and untimed included). Mirrors server/src/services/ratingCategory.ts.
+export type RatingCategory = "bullet" | "blitz" | "rapid";
+
+export const RATING_CATEGORIES: RatingCategory[] = ["bullet", "blitz", "rapid"];
+
+export function ratingCategoryForSeconds(baseSeconds: number | null | undefined): RatingCategory {
+  if (baseSeconds === null || baseSeconds === undefined) return "rapid";
+  if (baseSeconds < 3 * 60) return "bullet";
+  if (baseSeconds < 8 * 60) return "blitz";
+  return "rapid";
+}
+
+export function ratingCategoryForMinutes(baseMinutes: number | null | undefined): RatingCategory {
+  return ratingCategoryForSeconds(baseMinutes === null || baseMinutes === undefined ? null : baseMinutes * 60);
+}
+
+/** Per-ladder styling, the same red / orange / blue the time-control icons
+ *  use (see components/ui/TimeControlIcon.tsx). Full class names so Tailwind
+ *  can see them. */
+export const RATING_CATEGORY_META: Record<
+  RatingCategory,
+  { label: string; badge: string; text: string }
+> = {
+  bullet: { label: "Bullet", badge: "bg-red-500/15 text-red-500", text: "text-red-500" },
+  blitz: { label: "Blitz", badge: "bg-orange-500/15 text-orange-500", text: "text-orange-500" },
+  rapid: { label: "Rapid", badge: "bg-blue-500/15 text-blue-500", text: "text-blue-500" },
+};
+

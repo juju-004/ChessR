@@ -17,6 +17,7 @@ import {
 import { verifyGoogleCredential } from "../services/googleAuth.service.js";
 import { createNotification } from "../services/notification.service.js";
 import type { AuthedRequest } from "../middleware/auth.js";
+import { resolveRatings } from '../services/ratingCategory.js';
 
 const BCRYPT_ROUNDS = 12;
 const REFRESH_COOKIE = "refresh_token";
@@ -83,8 +84,18 @@ function setRefreshCookie(res: Response, token: string) {
   });
 }
 
-function ratingFields(user: { rating: number }) {
-  return { rating: user.rating };
+function ratingFields(user: {
+  rating: number;
+  ratingCategory?: 'bullet' | 'blitz' | 'rapid';
+  ratings?: { bullet: number; blitz: number; rapid: number };
+}) {
+  return {
+    // Best of the three ladders (what lists show), which ladder that is,
+    // and all three.
+    rating: user.rating,
+    ratingCategory: user.ratingCategory ?? 'blitz',
+    ratings: resolveRatings(user),
+  };
 }
 
 function userFields(user: IUser) {

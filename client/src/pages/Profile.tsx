@@ -21,7 +21,12 @@ import { sendFriendRequest, removeFriend } from "../api/friends.js";
 import { updateAuthUser } from "../api/authStore.js";
 import { ApiRequestError } from "../api/http.js";
 import { PageError } from "../components/PageError.js";
-import { formatTimeControl, TIME_CONTROLS } from "../timeControls.js";
+import {
+  formatTimeControl,
+  TIME_CONTROLS,
+  RATING_CATEGORIES,
+  RATING_CATEGORY_META,
+} from "../timeControls.js";
 import { MAX_WAGER_TOKENS, MIN_STAKE_TOKENS } from "../lib/limits.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useConfirm } from "../contexts/ConfirmContext.js";
@@ -275,14 +280,11 @@ export function Profile() {
                     </button>
                   )}
                 </div>
-                <div className="mt-1 flex flex-wrap items-center gap-2">
-                  {profile.organization && (
+                {profile.organization && (
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
                     <OrgBadge name={profile.organization.name} />
-                  )}
-                  <RatingBadge
-                    rating={profile.rating}
-                  />
-                </div>
+                  </div>
+                )}
                 <p className="mt-1 text-sm text-base-content/50">
                   Member since{" "}
                   {new Date(profile.memberSince).toLocaleDateString()}
@@ -450,6 +452,25 @@ export function Profile() {
               </div>
             )}
           </div>
+
+          {/* Ratings, one per ladder, in their own strip between the main
+              details and the win/loss record. Only the badge is colored. */}
+          {profile.ratings && (
+            <div className="mt-4 grid grid-cols-3 gap-2 border-t border-base-300 pt-4 text-center">
+              {RATING_CATEGORIES.map((c) => (
+                <div key={c}>
+                  <RatingBadge
+                    rating={profile.ratings![c]}
+                    category={c}
+                    className="px-3 py-0.5 text-base"
+                  />
+                  <p className="mt-1 text-xs text-base-content/50">
+                    {RATING_CATEGORY_META[c].label}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="mt-4 grid grid-cols-4 gap-2 border-t border-base-300 pt-4 text-center">
             <div>

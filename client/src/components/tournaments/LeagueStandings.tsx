@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { LocateFixed } from "lucide-react";
 import type { LeagueStandingRow } from "../../api/leagues.js";
 import { Pagination } from "../Pagination.js";
-import { RatingBadge } from "../RatingBadge.js";
 import {
   Avatar,
   Card,
@@ -54,9 +53,6 @@ function LeaguePlayerPanel({ row }: { row: LeagueStandingRow }) {
             >
               {row.username}
             </Link>
-            <div className="mt-0.5 flex items-center gap-2">
-              <RatingBadge rating={row.rating} />
-            </div>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2 border-t-2 border-base-300/35 md:border-none">
@@ -78,7 +74,7 @@ function LeaguePlayerPanel({ row }: { row: LeagueStandingRow }) {
 }
 
 /** The league table, built the same way as a tournament's standings table
- *  (medal rank badges, tap a player for their panel, rating badge, "Me"
+ *  (medal rank badges, tap a player for their panel, "Me"
  *  jump, badge pager) with league-specific columns: win percentage and
  *  average points per tournament (APPT) on desktop, folded into the player
  *  panel on phones, then the running total. */
@@ -188,10 +184,6 @@ export function LeagueStandings({
                             <span className="min-w-0 truncate">
                               {r.username}
                             </span>
-                            <RatingBadge
-                              className="shrink-0"
-                              rating={r.rating}
-                            />
                             <span className="shrink-0">
                               <Movement movement={r.movement} />
                             </span>

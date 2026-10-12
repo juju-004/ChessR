@@ -270,18 +270,18 @@ export function formatTimeControl(
   return t.variant === "chess960" ? `${base} · 960` : base;
 }
 
-/** Standard chess speed category (estimated game length = base + 40 moves'
- *  worth of increment, the same convention lichess uses), null for
- *  Unlimited since "Bullet"/etc doesn't mean anything without a clock. */
+/** Speed category from the BASE minutes only (the increment is ignored, so
+ *  1+5 is still Bullet), the same lines the rating ladders use. Under a
+ *  minute is split out as Hyper Bullet. null for Unlimited since
+ *  "Bullet"/etc doesn't mean anything without a clock. */
 export function timeControlSpeed(
   t: Pick<Tournament, "baseMinutes" | "incrementSeconds">,
 ): string | null {
   if (t.baseMinutes === null) return null;
-  const estimatedSeconds = t.baseMinutes * 60 + 40 * t.incrementSeconds;
-  if (estimatedSeconds < 60) return "Hyper Bullet";
-  if (estimatedSeconds < 180) return "Bullet";
-  if (estimatedSeconds < 480) return "Blitz";
-  if (estimatedSeconds < 1500) return "Rapid";
+  if (t.baseMinutes < 1) return "Hyper Bullet";
+  if (t.baseMinutes < 3) return "Bullet";
+  if (t.baseMinutes < 8) return "Blitz";
+  if (t.baseMinutes < 20) return "Rapid";
   return "Classical";
 }
 

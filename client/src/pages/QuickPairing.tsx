@@ -1,3 +1,4 @@
+import { ratingCategoryForMinutes } from "../timeControls.js";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Users, X } from "lucide-react";
@@ -145,10 +146,13 @@ export function QuickPairing() {
                 <p className="mt-1 text-sm text-base-content/60">
                   Looking for a {searching.label}
                   {searching.variant === "chess960" ? " Chess960" : ""} opponent
-                  {typeof user?.rating === "number" && (
+                  {user?.ratings && (
                     <>
                       {" "}
-                      near <RatingBadge rating={user.rating} />
+                      near{" "}
+                      <RatingBadge
+                        rating={user.ratings[ratingCategoryForMinutes(searching.baseMinutes)]}
+                      />
                     </>
                   )}
                   . {waitedSeconds}s

@@ -1,12 +1,22 @@
 import { Game } from "../models/Game.js";
 import { User } from "../models/User.js";
 import { updateOnlineRank } from "./presence.service.js";
+import {
+  ratingCategoryForSeconds,
+  resolveRatings,
+  bestOfRatings,
+  type RatingCategory,
+} from "./ratingCategory.js";
+
+export { ratingCategoryForSeconds, type RatingCategory } from "./ratingCategory.js";
 
 // --- Rating ------------------------------------------------------------------
-// Deliberately NOT the lichess/chess.com model of a separate rating per time
-// control + variant. Every decisive/drawn game, bullet, blitz, rapid,
-// classical, standard, Chess960, a standalone game, a cage-match leg, a
-// tournament pairing, feeds into ONE number per player, shown as-is.
+// Three ladders per player: bullet (base time under 3 min), blitz (under 8
+// min) and rapid (8 min and up, plus untimed), see ratingCategory.ts. Every
+// decisive/drawn game, standalone, cage-match leg or tournament pairing,
+// feeds the ladder its time control belongs to. Chess960 shares the ladder
+// of its time control. `User.rating` is the player's best of the three,
+// kept in step here so lists/sorts that show "their rating" keep working.
 
 export const RATING_START = 1500;
 
@@ -46,6 +56,9 @@ function expectedScore(myRating: number, opponentRating: number): number {
 }
 
 export interface RatingSideUpdate {
+  /** Which ladder this game moved. */
+  category: RatingCategory;
+  /** Rated games played in that category, after this game. */
   ratedGamesPlayed: number;
   /** How many rating points this game moved this player, positive or
    *  negative. */
@@ -95,58 +108,80 @@ export async function applyRatingForGame(
   );
   if (!claimed) return null;
 
+  const category = ratingCategoryForSeconds(claimed.timeControl?.baseSeconds ?? null);
+  const fields = "rating ratings ratedGames ratedGamesPlayed";
   const [white, black] = await Promise.all([
-    User.findById(whiteId).select("rating ratedGamesPlayed").lean(),
-    User.findById(blackId).select("rating ratedGamesPlayed").lean(),
+    User.findById(whiteId).select(fields).lean(),
+    User.findById(blackId).select(fields).lean(),
   ]);
   if (!white || !black) return null;
 
-  const whiteExpected = expectedScore(white.rating, black.rating);
+  const whiteBase = resolveRatings(white);
+  const blackBase = resolveRatings(black);
+  // Games per category. A pre-split account has no per-category counts yet,
+  // so fall back to its old total, which keeps its K-factor unchanged
+  // instead of suddenly treating an established player as a newcomer.
+  const gamesIn = (u: typeof white, c: RatingCategory) => u.ratedGames?.[c] ?? u.ratedGamesPlayed ?? 0;
+
+  const whiteExpected = expectedScore(whiteBase[category], blackBase[category]);
   const blackExpected = 1 - whiteExpected;
   const whiteActual = result === "white" ? 1 : result === "draw" ? 0.5 : 0;
   const blackActual = 1 - whiteActual;
 
-  const whiteDelta = Math.round(
-    getKFactor(white.ratedGamesPlayed) * (whiteActual - whiteExpected),
-  );
-  const blackDelta = Math.round(
-    getKFactor(black.ratedGamesPlayed) * (blackActual - blackExpected),
-  );
+  const whiteDelta = Math.round(getKFactor(gamesIn(white, category)) * (whiteActual - whiteExpected));
+  const blackDelta = Math.round(getKFactor(gamesIn(black, category)) * (blackActual - blackExpected));
+
+  const applySide = async (
+    id: string,
+    u: typeof white,
+    base: ReturnType<typeof resolveRatings>,
+    delta: number,
+  ) => {
+    const seeded = !!u.ratings && !!u.ratedGames;
+    const update = seeded
+      ? { $inc: { [`ratings.${category}`]: delta, [`ratedGames.${category}`]: 1, ratedGamesPlayed: 1 } }
+      : {
+          // First rated game since the split: persist all three ladders
+          // (seeded from the old single rating) in one go, with this
+          // game's category already advanced.
+          $set: {
+            ratings: { ...base, [category]: base[category] + delta },
+            ratedGames: {
+              bullet: gamesIn(u, "bullet") + (category === "bullet" ? 1 : 0),
+              blitz: gamesIn(u, "blitz") + (category === "blitz" ? 1 : 0),
+              rapid: gamesIn(u, "rapid") + (category === "rapid" ? 1 : 0),
+            },
+          },
+          $inc: { ratedGamesPlayed: 1 },
+        };
+    const updated = await User.findByIdAndUpdate(id, update, { new: true })
+      .select("rating ratings ratedGames ratedGamesPlayed")
+      .lean();
+    if (!updated) return null;
+    // Keep the denormalized best-of-three in step.
+    const best = bestOfRatings(resolveRatings(updated));
+    await User.updateOne({ _id: id }, { $set: { rating: best.rating, ratingCategory: best.category } });
+    void updateOnlineRank(id, best.rating).catch(() => {});
+    return updated;
+  };
 
   const [updatedWhite, updatedBlack] = await Promise.all([
-    User.findByIdAndUpdate(
-      whiteId,
-      { $inc: { rating: whiteDelta, ratedGamesPlayed: 1 } },
-      { new: true },
-    )
-      .select("rating ratedGamesPlayed")
-      .lean(),
-    User.findByIdAndUpdate(
-      blackId,
-      { $inc: { rating: blackDelta, ratedGamesPlayed: 1 } },
-      { new: true },
-    )
-      .select("rating ratedGamesPlayed")
-      .lean(),
+    applySide(whiteId, white, whiteBase, whiteDelta),
+    applySide(blackId, black, blackBase, blackDelta),
   ]);
-
-  // Keep the "Online players" ranking (see presence.service.ts) in step with
-  // the new ratings. Best-effort: it's only a ranking hint.
-  if (updatedWhite) void updateOnlineRank(whiteId, updatedWhite.rating).catch(() => {});
-  if (updatedBlack) void updateOnlineRank(blackId, updatedBlack.rating).catch(() => {});
 
   return {
     white: {
-      ratedGamesPlayed:
-        updatedWhite?.ratedGamesPlayed ?? white.ratedGamesPlayed + 1,
+      category,
+      ratedGamesPlayed: updatedWhite?.ratedGames?.[category] ?? gamesIn(white, category) + 1,
       delta: whiteDelta,
-      newRating: updatedWhite?.rating ?? white.rating + whiteDelta,
+      newRating: updatedWhite ? resolveRatings(updatedWhite)[category] : whiteBase[category] + whiteDelta,
     },
     black: {
-      ratedGamesPlayed:
-        updatedBlack?.ratedGamesPlayed ?? black.ratedGamesPlayed + 1,
+      category,
+      ratedGamesPlayed: updatedBlack?.ratedGames?.[category] ?? gamesIn(black, category) + 1,
       delta: blackDelta,
-      newRating: updatedBlack?.rating ?? black.rating + blackDelta,
+      newRating: updatedBlack ? resolveRatings(updatedBlack)[category] : blackBase[category] + blackDelta,
     },
   };
 }

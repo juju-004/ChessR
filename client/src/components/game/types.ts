@@ -1,3 +1,4 @@
+import type { RatingCategory } from "../../timeControls.js";
 import {
   playMoveSound,
   playCaptureSound,
@@ -9,8 +10,8 @@ export interface GameMeta {
   joinCode: string;
   variant: "standard" | "chess960";
   initialFen: string;
-  white: { _id: string; username: string; avatarGradient?: any; rating?: number | null } | null;
-  black: { _id: string; username: string; avatarGradient?: any; rating?: number | null } | null;
+  white: { _id: string; username: string; avatarGradient?: any; rating?: number | null; ratingCategory?: RatingCategory | null } | null;
+  black: { _id: string; username: string; avatarGradient?: any; rating?: number | null; ratingCategory?: RatingCategory | null } | null;
   status: "waiting" | "active" | "finished" | "aborted";
   timeControl: { baseSeconds: number | null; incrementSeconds: number };
   wagerTokens?: number;
@@ -68,6 +69,8 @@ export interface MoveLogEntry {
 export type Role = "white" | "black" | "spectator";
 
 export interface RatingSideUpdate {
+  /** Which ladder (bullet / blitz / rapid) this game moved. */
+  category?: RatingCategory;
   ratedGamesPlayed: number;
   /** Rating points gained/lost this game, positive or negative. */
   delta: number;

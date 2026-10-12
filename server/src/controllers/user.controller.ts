@@ -6,6 +6,7 @@ import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { getActiveGameCodeForUser, getActiveGameCodesForUsers } from '../services/game.service.js';
 import { isUserOnline, getOnlineUserIds, getTopOnlineUserIds } from '../services/presence.service.js';
+import { resolveRatings } from '../services/ratingCategory.js';
 import { getApprovedOrganizationName } from '../services/organization.service.js';
 import type { AuthedRequest } from '../middleware/auth.js';
 
@@ -80,7 +81,7 @@ export const searchUsers = asyncHandler(async (req: AuthedRequest, res) => {
     // exclude.
     ...(req.user ? { _id: { $ne: req.user.id } } : {}),
   })
-    .select('username avatarUrl avatarGradient rating')
+    .select('username avatarUrl avatarGradient rating ratingCategory')
     .limit(20)
     .lean();
 
@@ -96,6 +97,7 @@ export const searchUsers = asyncHandler(async (req: AuthedRequest, res) => {
       avatarUrl: u.avatarUrl,
       avatarGradient: u.avatarGradient,
       rating: u.rating,
+      ratingCategory: u.ratingCategory,
       online: onlineIds.has(u._id.toString()),
     })),
   });
@@ -116,7 +118,7 @@ export const listOnlinePlayers = asyncHandler(async (req: AuthedRequest, res) =>
 
   const [users, gameCodes] = await Promise.all([
     User.find({ _id: { $in: ids } })
-      .select('username avatarUrl avatarGradient rating')
+      .select('username avatarUrl avatarGradient rating ratingCategory')
       .lean(),
     getActiveGameCodesForUsers(ids, viewerId),
   ]);
@@ -131,6 +133,7 @@ export const listOnlinePlayers = asyncHandler(async (req: AuthedRequest, res) =>
       avatarUrl: u.avatarUrl,
       avatarGradient: u.avatarGradient ?? null,
       rating: u.rating,
+      ratingCategory: u.ratingCategory,
       online: true,
       activeGameCode: gameCodes.get(u._id.toString()) ?? null,
     }));
@@ -141,7 +144,7 @@ export const listOnlinePlayers = asyncHandler(async (req: AuthedRequest, res) =>
 export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
   const { username } = req.params;
   const user = await User.findOne({ usernameLower: username.toLowerCase() })
-    .select('username avatarUrl avatarGradient bio friends createdAt rating')
+    .select('username avatarUrl avatarGradient bio friends createdAt rating ratingCategory ratings')
     .lean();
 
   if (!user) throw ApiError.notFound('User not found');
@@ -238,6 +241,9 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
     bio: user.bio,
     memberSince: user.createdAt,
     rating: user.rating,
+    ratingCategory: user.ratingCategory,
+    // All three ladders (bullet / blitz / rapid) for the profile page.
+    ratings: resolveRatings(user),
     stats: { wins, losses, draws, gamesPlayed: wins + losses + draws },
     isFriend,
     isSelf,

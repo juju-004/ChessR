@@ -1,3 +1,4 @@
+import type { RatingCategory } from '../timeControls.js';
 import { apiFetch } from './http.js';
 
 export interface TimeControlChoice {
@@ -22,7 +23,7 @@ export interface ActiveFriendGame {
 export interface OpenGame {
   _id: string;
   joinCode: string;
-  white: { _id: string; username: string; avatarGradient?: string | null; rating?: number };
+  white: { _id: string; username: string; avatarGradient?: string | null; rating?: number; ratingCategory?: RatingCategory };
   timeControl: { baseSeconds: number | null; incrementSeconds: number };
   wagerTokens: number;
   variant: GameVariant;

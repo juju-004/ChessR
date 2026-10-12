@@ -421,7 +421,7 @@ export function Players() {
                     />
                     <span className="min-w-0 truncate">{u.username}</span>
                     <span className="shrink-0">
-                      <RatingBadge rating={u.rating} />
+                      <RatingBadge rating={u.rating} category={u.ratingCategory} />
                     </span>
                   </span>
                   <span
@@ -517,7 +517,7 @@ export function Players() {
                   />
                   <span className="min-w-0 truncate">{p.username}</span>
                   <span className="shrink-0">
-                    <RatingBadge rating={p.rating} />
+                    <RatingBadge rating={p.rating} category={p.ratingCategory} />
                   </span>
                 </span>
                 <span
@@ -589,7 +589,7 @@ export function Players() {
                     />
                     <span className="min-w-0 truncate">{f.username}</span>
                     <span className="shrink-0">
-                      <RatingBadge rating={f.rating} />
+                      <RatingBadge rating={f.rating} category={f.ratingCategory} />
                     </span>
                   </span>
                   <span

@@ -38,7 +38,7 @@ export const TOKEN_PLANS: TokenPlan[] = [
 ];
 
 export const WITHDRAWAL_NAIRA_PER_TOKEN = 5;
-export const MIN_WITHDRAWAL_TOKENS = 20;
+export const MIN_WITHDRAWAL_TOKENS = 200;
 
 // --- Purchases ----------------------------------------------------------------
 

@@ -39,8 +39,6 @@ export interface LeagueStandingRow {
   lastPoints: number;
   /** How many of the league's tournaments this player has entered. */
   played: number;
-  /** Rating snapshot from their latest league tournament. */
-  rating: number | null;
   /** Finished games (byes excluded) and wins across the league. Only the
    *  league page's response carries the real record, others send 0. */
   games: number;

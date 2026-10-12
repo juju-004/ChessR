@@ -8,6 +8,7 @@ import {
 } from "./game.service.js";
 import { assertNotRestricted } from "./suspension.service.js";
 import { ApiError } from "../utils/ApiError.js";
+import { ratingFor, ratingCategoryForMinutes } from "./ratingCategory.js";
 
 export interface QuickPairingSegment {
   id: string;
@@ -118,14 +119,16 @@ export async function joinQuickPairingQueue(
   await assertNotRestricted(userId);
   await assertUnderActiveGameLimit(userId);
 
-  const user = await User.findById(userId).select("rating").lean();
+  const user = await User.findById(userId).select("rating ratings").lean();
   if (!user) throw ApiError.notFound("User not found");
+  // Matched on the rating of THIS lobby's ladder (bullet/blitz/rapid).
+  const queueRating = ratingFor(user, ratingCategoryForMinutes(segment.baseMinutes));
 
   await leaveQuickPairingQueue(userId);
 
   const now = Date.now();
   await Promise.all([
-    redis.zadd(queueKey(segmentId), user.rating, userId),
+    redis.zadd(queueKey(segmentId), queueRating, userId),
     redis.hset(queuedAtKey(segmentId), userId, String(now)),
     redis.set(userSegmentKey(userId), segmentId, "EX", USER_SEGMENT_TTL_SECONDS),
   ]);

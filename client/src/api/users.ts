@@ -1,3 +1,4 @@
+import type { RatingCategory } from '../timeControls.js';
 import { apiFetch } from './http.js';
 import type { Friend } from './friends.js';
 
@@ -7,6 +8,8 @@ export interface UserSearchResult {
   avatarUrl?: string | null;
   avatarGradient?: string | null;
   rating: number;
+  /** Which ladder `rating` (their best) is on, drives the badge color. */
+  ratingCategory?: RatingCategory | null;
   /** Whether they're connected right now (needed to challenge them). */
   online: boolean;
 }
@@ -19,6 +22,10 @@ export interface UserProfile {
   bio?: string | null;
   memberSince: string;
   rating: number;
+  /** Which ladder `rating` (their best) is on, drives the badge color. */
+  ratingCategory?: RatingCategory | null;
+  /** All three ladders. */
+  ratings?: Record<RatingCategory, number>;
   stats: { wins: number; losses: number; draws: number; gamesPlayed: number };
   isFriend: boolean;
   isSelf: boolean;

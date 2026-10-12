@@ -30,7 +30,7 @@ export const sendFriendRequest = asyncHandler(async (req: AuthedRequest, res) =>
 
   const [toUser, fromUser] = await Promise.all([
     User.findById(toUserId).select('username friends'),
-    User.findById(fromUserId).select('username friends avatarGradient rating'),
+    User.findById(fromUserId).select('username friends avatarGradient rating ratingCategory'),
   ]);
   if (!toUser) throw ApiError.notFound('User not found');
 
@@ -69,6 +69,7 @@ export const sendFriendRequest = asyncHandler(async (req: AuthedRequest, res) =>
       username: fromUser!.username,
       avatarGradient: fromUser!.avatarGradient ?? null,
       rating: fromUser!.rating,
+      ratingCategory: fromUser!.ratingCategory,
     },
   });
 
@@ -105,7 +106,7 @@ export const respondToFriendRequest = asyncHandler(async (req: AuthedRequest, re
 
 export const listFriends = asyncHandler(async (req: AuthedRequest, res) => {
   const user = await User.findById(req.user!.id)
-    .populate('friends', 'username avatarUrl avatarGradient rating')
+    .populate('friends', 'username avatarUrl avatarGradient rating ratingCategory')
     .lean();
   if (!user) throw ApiError.notFound('User not found');
 
@@ -126,6 +127,7 @@ export const listFriends = asyncHandler(async (req: AuthedRequest, res) => {
       avatarUrl: f.avatarUrl,
       avatarGradient: f.avatarGradient ?? null,
       rating: f.rating,
+      ratingCategory: f.ratingCategory,
       online: onlineIds.has(id),
       activeGameCode: gameCodes.get(id) ?? null,
     };
@@ -140,7 +142,7 @@ export const listIncomingRequests = asyncHandler(async (req: AuthedRequest, res)
   const requests = await FriendRequest.find({ to: req.user!.id, status: 'pending' })
     .sort({ createdAt: -1 })
     .limit(100)
-    .populate('from', 'username avatarUrl avatarGradient rating')
+    .populate('from', 'username avatarUrl avatarGradient rating ratingCategory')
     .lean();
   res.json({ requests });
 });

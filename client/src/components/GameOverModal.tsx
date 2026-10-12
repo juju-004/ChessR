@@ -1,9 +1,11 @@
 import { memo, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Trophy, Frown, Handshake, Ban } from "lucide-react";
-import { Card, Button, Badge } from "./ui/index.js";
+import { Card, Button } from "./ui/index.js";
 import { RCoin } from "./ui/RCoin.js";
 import type { RatingSideUpdate } from "./game/types.js";
+import { RatingBadge } from "./RatingBadge.js";
+import { RATING_CATEGORY_META } from "../timeControls.js";
 
 interface GameOverModalProps {
   result: string | null;
@@ -161,18 +163,16 @@ export const GameOverModal = memo(function GameOverModal({
 
         {ratingUpdate && (
           <div className="mb-2 flex items-center justify-center gap-2 text-sm font-semibold">
-            <Badge
-              variant={
-                ratingUpdate.delta > 0
-                  ? "success"
-                  : ratingUpdate.delta < 0
-                    ? "error"
-                    : "neutral"
-              }
-              className="tabular-nums"
-            >
-              {ratingUpdate.newRating}
-            </Badge>
+            {ratingUpdate.category && (
+              <span className="text-xs font-semibold uppercase tracking-wide text-base-content/60">
+                {RATING_CATEGORY_META[ratingUpdate.category].label}
+              </span>
+            )}
+            <RatingBadge
+              rating={ratingUpdate.newRating}
+              category={ratingUpdate.category}
+              className="text-sm"
+            />
             <span
               className={
                 ratingUpdate.delta > 0

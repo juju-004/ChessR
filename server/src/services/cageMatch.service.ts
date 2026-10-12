@@ -40,8 +40,8 @@ export interface CageLegInput {
 function classifyCategory(baseMinutes: number | null): LegCategory {
   if (baseMinutes === null) return "classical";
   if (baseMinutes < 3) return "bullet";
-  if (baseMinutes < 10) return "blitz";
-  if (baseMinutes < 30) return "rapid";
+  if (baseMinutes < 8) return "blitz";
+  if (baseMinutes < 20) return "rapid";
   return "classical";
 }
 

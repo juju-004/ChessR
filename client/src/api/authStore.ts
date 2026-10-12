@@ -1,10 +1,15 @@
+import type { RatingCategory } from '../timeControls.js';
 export interface CurrentUser {
   id: string;
   username: string;
   email: string;
   avatarGradient?: string | null;
-  /** The player's numeric rating. */
+  /** The player's best rating (across bullet / blitz / rapid). */
   rating?: number;
+  /** Which ladder `rating` is on. */
+  ratingCategory?: RatingCategory;
+  /** All three ladders. */
+  ratings?: Record<RatingCategory, number>;
   /** Whether `email` has been confirmed yet, see the "verify your email"
    *  banner in App.tsx and the /verify-email page. Always true for a
    *  Google sign-in account. */

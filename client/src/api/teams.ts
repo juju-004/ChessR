@@ -1,3 +1,4 @@
+import type { RatingCategory } from '../timeControls.js';
 import { apiFetch } from './http.js';
 import type { Tournament } from './tournaments.js';
 
@@ -38,6 +39,8 @@ export interface TeamMember {
   avatarUrl: string | null;
   avatarGradient: string | null;
   rating: number;
+  /** Which ladder `rating` (their best) is on, drives the badge color. */
+  ratingCategory?: RatingCategory | null;
   role: TeamRole;
   joinedAt: string;
 }
@@ -51,6 +54,7 @@ export interface TeamJoinRequestItem {
     avatarUrl: string | null;
     avatarGradient: string | null;
     rating: number;
+    ratingCategory?: RatingCategory | null;
   };
 }
 

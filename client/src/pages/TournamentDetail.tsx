@@ -79,11 +79,8 @@ import {
 import { FORMAT_DESCRIPTION, robinRoundsLabel } from "../api/tournaments.js";
 import type { TimeControlCategory } from "../timeControls.js";
 
-// Maps timeControlSpeed()'s lichess-style estimated-length string (which
-// already accounts for increment, not just base minutes, and has its own
-// "Hyper Bullet" bucket) onto the shared bullet/blitz/rapid/classical icon
-// set, rather than re-deriving a category from tournament.baseMinutes
-// alone and risking the two disagreeing on a borderline time control.
+// Maps timeControlSpeed()'s label (base minutes only, with its own "Hyper
+// Bullet" bucket) onto the shared bullet/blitz/rapid/classical icon set.
 const SPEED_CATEGORY: Record<string, TimeControlCategory> = {
   "Hyper Bullet": "bullet",
   Bullet: "bullet",

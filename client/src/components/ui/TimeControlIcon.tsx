@@ -29,8 +29,8 @@ const CATEGORY_ICON: Record<TimeControlCategory, LucideIcon> = {
 const CATEGORY_COLOR: Record<TimeControlCategory, string> = {
   bullet: "text-red-500",
   blitz: "text-orange-500",
-  rapid: "text-green-500",
-  classical: "text-blue-500",
+  rapid: "text-blue-500",
+  classical: "text-amber-500",
   unlimited: "text-purple-400",
 };
 

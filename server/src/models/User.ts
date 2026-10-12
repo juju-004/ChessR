@@ -82,12 +82,24 @@ export interface IUser extends Document {
    *  its own user object to show a countdown on Dashboard. */
   suspendedUntil?: Date;
   tokenVersion: number;
-  /** Skill rating. Elo-like, starts at 1500, shared across every time
-   *  control and variant (deliberately NOT split per-TC/variant like
-   *  lichess/chess.com). Shown to clients as a plain number. */
+  /** The player's BEST rating across the three ladders (bullet / blitz /
+   *  rapid, see ratingCategory.ts), kept denormalized so every list, sort,
+   *  matchmaking hint and "show their rating" spot keeps working off one
+   *  number. Recomputed whenever a category rating changes. Elo-like,
+   *  starts at 1500. */
   rating: number;
-  /** Count of decisive/drawn games that have fed into `rating`. Drives the
-   *  K-factor in rating.service.ts: the fewer games, the bigger the swing. */
+  /** Which ladder `rating` came from, so the badge can be colored to match. */
+  ratingCategory: 'bullet' | 'blitz' | 'rapid';
+  /** The three per-category ratings. Deliberately has NO schema defaults:
+   *  missing means "not split yet" (a pre-split account), and rating.service
+   *  seeds all three from the old single `rating` the first time it's needed
+   *  (or scripts/splitRatings.ts does it up front). Read via
+   *  ratingCategory.ts's resolveRatings, never directly. */
+  ratings?: { bullet: number; blitz: number; rapid: number };
+  /** Rated games played per category, drives that category's K-factor. */
+  ratedGames?: { bullet: number; blitz: number; rapid: number };
+  /** Total rated games across all categories (the pre-split counter, kept
+   *  as a running total). */
   ratedGamesPlayed: number;
   /** Bank payout details for manual (WhatsApp-disbursed) naira tournament
    *  prizes, see AccountDetails.tsx / wallet.controller.ts. Deliberately
@@ -151,6 +163,16 @@ const userSchema = new Schema<IUser>(
     // outstanding refresh tokens without needing a server-side blacklist.
     tokenVersion: { type: Number, default: 0 },
     rating: { type: Number, default: 1500 },
+    ratingCategory: { type: String, enum: ['bullet', 'blitz', 'rapid'], default: 'blitz' },
+    // No defaults on purpose, see the IUser doc comment on `ratings`.
+    ratings: {
+      type: new Schema({ bullet: Number, blitz: Number, rapid: Number }, { _id: false }),
+      default: undefined,
+    },
+    ratedGames: {
+      type: new Schema({ bullet: Number, blitz: Number, rapid: Number }, { _id: false }),
+      default: undefined,
+    },
     ratedGamesPlayed: { type: Number, default: 0, min: 0 },
     payoutAccount: {
       type: new Schema(

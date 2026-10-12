@@ -1,5 +1,6 @@
 import { customAlphabet } from "nanoid";
 import bcrypt from "bcrypt";
+import { ratingFor, ratingCategoryForMinutes } from "./ratingCategory.js";
 import mongoose, { type Types } from "mongoose";
 import {
   Tournament,
@@ -563,6 +564,22 @@ function validatePrizeSchedule(
 // or juggling more concurrent events than they can reasonably run.
 const MAX_ORGANIZED_TOURNAMENTS = 2;
 
+/** A user's rating on the ladder (bullet/blitz/rapid) a tournament's time
+ *  control belongs to, falling back to the number the caller already had if
+ *  the lookup fails. Tournaments seed and rank on the ladder they're played at. */
+async function tournamentLadderRating(
+  userId: string,
+  baseMinutes: number | null | undefined,
+  fallback: number,
+): Promise<number> {
+  try {
+    const u = await User.findById(userId).select("rating ratings").lean();
+    return u ? ratingFor(u, ratingCategoryForMinutes(baseMinutes)) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export async function createTournament(
   creatorId: string,
   creatorUsername: string,
@@ -570,6 +587,7 @@ export async function createTournament(
   creatorRating: number,
   input: CreateTournamentInput,
 ): Promise<ITournament> {
+  creatorRating = await tournamentLadderRating(creatorId, input.baseMinutes, creatorRating);
   const bounds = FORMAT_BOUNDS[input.format];
   if (!bounds) throw ApiError.badRequest("Unknown tournament format");
   if (input.cumulativeId) {
@@ -874,6 +892,7 @@ export async function joinTournament(
 ): Promise<ITournament> {
   const tournament = await Tournament.findById(tournamentId);
   if (!tournament) throw ApiError.notFound("Tournament not found");
+  rating = await tournamentLadderRating(userId, tournament.baseMinutes, rating);
   if (!acceptingJoins(tournament))
     throw ApiError.conflict(
       tournament.status === "pending"
@@ -3425,11 +3444,12 @@ async function syncPlayerRatings(
   if (ids.length === 0) return;
   try {
     const users = await User.find({ _id: { $in: ids } })
-      .select("rating")
+      .select("rating ratings")
       .lean();
+    const category = ratingCategoryForMinutes(tournament.baseMinutes);
     for (const u of users) {
       const player = findPlayer(tournament, u._id);
-      if (player && typeof u.rating === "number") player.rating = u.rating;
+      if (player && typeof u.rating === "number") player.rating = ratingFor(u, category);
     }
   } catch (err) {
     console.error("tournament rating sync failed:", err);
@@ -3442,7 +3462,11 @@ async function syncPlayerRatings(
  *  shows a stale join-time number. Finished tournaments keep their stored
  *  snapshot. */
 async function withLiveRatings<
-  T extends { status: string; players: { user: unknown; rating: number }[] },
+  T extends {
+    status: string;
+    baseMinutes?: number | null;
+    players: { user: unknown; rating: number }[];
+  },
 >(tournament: T): Promise<T> {
   if (tournament.status !== "pending" && tournament.status !== "active") {
     return tournament;
@@ -3452,9 +3476,10 @@ async function withLiveRatings<
     const users = await User.find({
       _id: { $in: tournament.players.map((p) => String(p.user)) },
     })
-      .select("rating")
+      .select("rating ratings")
       .lean();
-    const ratingById = new Map(users.map((u) => [String(u._id), u.rating]));
+    const category = ratingCategoryForMinutes(tournament.baseMinutes);
+    const ratingById = new Map(users.map((u) => [String(u._id), ratingFor(u, category)]));
     for (const p of tournament.players) {
       const live = ratingById.get(String(p.user));
       if (typeof live === "number") p.rating = live;

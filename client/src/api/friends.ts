@@ -1,3 +1,4 @@
+import type { RatingCategory } from '../timeControls.js';
 import { apiFetch } from './http.js';
 
 export interface Friend {
@@ -6,6 +7,8 @@ export interface Friend {
   avatarUrl?: string | null;
   avatarGradient?: string | null;
   rating: number;
+  /** Which ladder `rating` (their best) is on, drives the badge color. */
+  ratingCategory?: RatingCategory | null;
   online: boolean;
   activeGameCode: string | null;
 }
@@ -17,6 +20,7 @@ export interface IncomingRequest {
     username: string;
     avatarGradient?: string | null;
     rating: number;
+    ratingCategory?: RatingCategory | null;
   };
 }
 

@@ -310,7 +310,7 @@ export const listMembers = asyncHandler(async (req: AuthedRequest, res) => {
   });
   const slice = sorted.slice((page - 1) * limit, page * limit);
   const users = await User.find({ _id: { $in: slice.map((m) => m.user) } })
-    .select('username avatarUrl avatarGradient rating')
+    .select('username avatarUrl avatarGradient rating ratingCategory')
     .lean();
   const byId = new Map(users.map((u) => [u._id.toString(), u]));
 
@@ -325,6 +325,7 @@ export const listMembers = asyncHandler(async (req: AuthedRequest, res) => {
           avatarUrl: u.avatarUrl ?? null,
           avatarGradient: u.avatarGradient ?? null,
           rating: u.rating,
+          ratingCategory: u.ratingCategory,
           role: m.role,
           joinedAt: m.joinedAt,
         };
@@ -460,7 +461,7 @@ export const listJoinRequests = asyncHandler(async (req: AuthedRequest, res) => 
   const filter = { team: team._id, status: 'pending' as const };
   const total = await TeamJoinRequest.countDocuments(filter);
   const requests = await TeamJoinRequest.find(filter)
-    .populate('user', 'username avatarGradient avatarUrl rating')
+    .populate('user', 'username avatarGradient avatarUrl rating ratingCategory')
     .sort({ createdAt: 1 })
     .skip((page - 1) * limit)
     .limit(limit)
@@ -481,6 +482,7 @@ export const listJoinRequests = asyncHandler(async (req: AuthedRequest, res) => 
           avatarUrl: r.user.avatarUrl ?? null,
           avatarGradient: r.user.avatarGradient ?? null,
           rating: r.user.rating,
+          ratingCategory: r.user.ratingCategory,
         },
       })),
   });

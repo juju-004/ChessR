@@ -33,6 +33,7 @@ import { runAutoCheatCheck } from "./anticheat.service.js";
 // request/reconciliation handlers), never evaluated at module-load time, 
 // so there's no temporal-dead-zone issue either direction.
 import { advanceCageMatchLeg, cancelCageMatchForAbortedFirstLeg } from "./cageMatch.service.js";
+import { withGameCategoryRating } from "./ratingCategory.js";
 // Same deliberate circular-import pattern as advanceCageMatchLeg above.
 import { advanceTournamentIfPairing } from "./tournament.service.js";
 import { notifyGameEnded } from "./latency.service.js";
@@ -496,12 +497,19 @@ function queryOpenGames(excludeUserId?: string) {
   })
     .sort({ createdAt: -1 })
     .limit(50)
-    .populate("white", "username avatarGradient rating")
+    .populate("white", "username avatarGradient rating ratings")
     .lean()
     // .exec() returns a real Promise. Without it this returns a Mongoose Query
     // (a thenable), and every .then/.catch/await on it re-runs the query, so
     // the cache below hit "Query was already executed" and /games/open 500'd.
-    .exec();
+    .exec()
+    // Show each poster's rating on THIS game's ladder (bullet/blitz/rapid).
+    .then((games) =>
+      games.map((g) => ({
+        ...g,
+        white: withGameCategoryRating(g.white, g.timeControl?.baseSeconds ?? null),
+      })),
+    );
 }
 
 export async function listOpenGames(excludeUserId?: string) {
@@ -522,8 +530,8 @@ export async function listOpenGames(excludeUserId?: string) {
 
 export async function getGameByCode(code: string) {
   const game = await Game.findOne({ joinCode: code.toUpperCase() })
-    .populate("white", "username avatarGradient rating")
-    .populate("black", "username avatarGradient rating")
+    .populate("white", "username avatarGradient rating ratings")
+    .populate("black", "username avatarGradient rating ratings")
     // Just enough of the tournament for the "Back to tournament" link
     // (code), the in-game badge label (name), and — for formats that have
     // one — the live countdown badge (format + arenaEndsAt; arenaMinutes
@@ -537,6 +545,10 @@ export async function getGameByCode(code: string) {
     .populate("tournamentId", "code name format status arenaMinutes arenaEndsAt berserkAllowed")
     .lean();
   if (!game) throw ApiError.notFound("No game found with that code");
+  // Players' ratings as shown in this game are the ones on its own ladder.
+  const gameBaseSeconds = game.timeControl?.baseSeconds ?? null;
+  game.white = withGameCategoryRating(game.white, gameBaseSeconds);
+  game.black = withGameCategoryRating(game.black, gameBaseSeconds);
   // A game in progress keeps its moves and current position in Redis, not
   // Mongo, until it ends (see finalizeGame).
   if (game.status === "active") {
