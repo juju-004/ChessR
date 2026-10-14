@@ -7,6 +7,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { env } from "../config/env.js";
 import { verifyTransaction } from "./paystack.service.js";
 import { createNotification } from "./notification.service.js";
+import { notifyWithdrawalRequested } from "./whatsapp.service.js";
 
 // --- Token economy constants -------------------------------------------------
 // Deliberately a spread between buy and withdraw rates (standard practice),
@@ -234,7 +235,7 @@ export async function initiateWithdrawal(
   const reference = `WD-${nanoid(20)}`;
 
   try {
-    return await Transaction.create({
+    const transaction = await Transaction.create({
       user: userId,
       type: "withdrawal",
       status: "pending",
@@ -246,6 +247,18 @@ export async function initiateWithdrawal(
       bankName,
       accountName,
     });
+    // Fire-and-forget WhatsApp alert to the admin; never delays or fails the
+    // request (sendWhatsAppMessage swallows its own errors).
+    void notifyWithdrawalRequested({
+      username: debited.username,
+      tokens,
+      amountKobo,
+      reference,
+      bankName,
+      bankAccountNumber: accountNumber,
+      accountName,
+    });
+    return transaction;
   } catch (err) {
     // Couldn't record the request, give the tokens straight back rather than
     // leaving them taken with nothing queued.

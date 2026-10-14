@@ -352,8 +352,7 @@ export function Tournaments() {
   const [leagues, setLeagues] = useState<LeagueSummary[]>([]);
   const [leaguesLoading, setLeaguesLoading] = useState(true);
   const [createLeagueOpen, setCreateLeagueOpen] = useState(false);
-  // Team battles are for approved organisations only: the button below only
-  // shows for them, everyone else gets a pointer to the request form.
+  // Approved organisations only: gates creating a league below.
   const [org, setOrg] = useState<MyOrganization | null>(null);
   useEffect(() => {
     if (!user) return;

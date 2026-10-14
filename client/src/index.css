@@ -362,7 +362,7 @@ body {
 }
 
 /* Site-nav dock: Dashboard is pinned at the left, the other items live in a
-   horizontally scrollable strip so extra tabs (Teams etc.) still fit on small
+   horizontally scrollable strip so extra tabs still fit on small
    phones. Only the strip scrolls, the pinned item and the pill stay put. */
 .docker-item-pinned {
   flex: 0 0 auto;

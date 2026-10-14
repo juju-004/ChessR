@@ -35,7 +35,6 @@ const SYSTEM_TYPE_ICON: Record<NotificationType, typeof Megaphone> = {
   report_freeze: Flag,
   admin_message: Megaphone,
   tournament_naira_prize: Wallet,
-  team_announcement: Megaphone,
 };
 
 function timeControlLabel(tc: {

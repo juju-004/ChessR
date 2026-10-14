@@ -51,8 +51,6 @@ const createSchema = z.object({
   berserkAllowed: z.boolean().default(true),
   chatEnabled: z.boolean().default(false),
   isPublic: z.boolean().default(false),
-  // In-house tournament for a team the caller owns (checked in createTournament).
-  teamId: z.string().refine(mongoose.isValidObjectId).nullable().optional(),
   organizerOnly: z.boolean().default(false),
   // Knockout-only, see CreateTournamentInput's doc comment. Immutable
   // after creation, same as organizerOnly, so this isn't in editSchema
@@ -79,15 +77,6 @@ const createSchema = z.object({
   // ISO string, when the event should auto-start.
   scheduledStartAt: z.string().or(z.date()),
   password: z.string().trim().max(100).optional(),
-  // Team battle (organisations only, swiss/arena only, both enforced in
-  // createTournament). Immutable after creation so not in editSchema.
-  teamBattle: z
-    .object({
-      teamIds: z.array(z.string().refine(mongoose.isValidObjectId)).min(2).max(20),
-      leadersPerTeam: z.number().int().min(1).max(10).optional(),
-    })
-    .nullable()
-    .optional(),
   // Adds this tournament to one of the caller's cumulative leagues (swiss/arena
   // only, owner-only, max 10 per league, all enforced in createTournament).
   // Immutable after creation so not in editSchema.
@@ -96,8 +85,6 @@ const createSchema = z.object({
 const idSchema = z.object({ tournamentId: z.string().refine(mongoose.isValidObjectId) });
 const joinSchema = idSchema.extend({
   password: z.string().optional(),
-  // Team battles: which of the battle's teams this player represents.
-  teamId: z.string().refine(mongoose.isValidObjectId).optional(),
 });
 const pauseSchema = idSchema.extend({ paused: z.boolean() });
 
@@ -252,7 +239,6 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
         me.avatarGradient ?? null,
         me.rating,
         parsed.data.password,
-        parsed.data.teamId,
       );
       await socket.join(tournamentRoom(tournament.id));
       io.to(tournamentRoom(tournament.id)).emit('tournament:update', { tournamentId: tournament.id, code: tournament.code });

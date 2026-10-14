@@ -34,7 +34,7 @@ export async function getMyOrganization(userId: string) {
 }
 
 /** Whether this user owns an APPROVED organisation. The single gate behind
- *  creating team battle tournaments. Returns the org doc (lean) or null. */
+ *  approved-organisation features. Returns the org doc (lean) or null. */
 export async function getApprovedOrganization(userId: string) {
   return Organization.findOne({ owner: userId, status: "approved" }).lean();
 }

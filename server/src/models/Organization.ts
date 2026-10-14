@@ -1,7 +1,7 @@
 import mongoose, { Schema, type Document, type Types } from 'mongoose';
 
-// An "organisation" is a verified account that is allowed to run team battle
-// tournaments. A user files a request (name + WhatsApp number), an admin
+// An "organisation" is a verified account. A user files a request (name +
+// WhatsApp number), an admin
 // reviews it from the admin console, and once APPROVED the organisation gets
 // a fixed organisation badge (same icon and colour for every organisation)
 // that is shown on its owner's profile.

@@ -183,39 +183,56 @@ function renderPreviewPage({ title, description, url }: PreviewCardInput): strin
 
 const linkIdParamSchema = z.object({ linkId: z.string().min(1).max(64) });
 
-const CAGE_WINNER_MODE_LABEL: Record<string, string> = {
-  total_score: "total score",
-  most_categories: "most categories won",
-  first_to_n: "first to N wins",
-};
-
-function cageWagerLabel(wagerMode: string, wagerTokens: number): string {
-  if (!wagerTokens) return "no wager";
-  if (wagerMode === "per_leg") return `${wagerTokens} R per game`;
-  if (wagerMode === "split_even") return `${wagerTokens} R split across the games`;
-  return `${wagerTokens} R, winner takes all`;
+interface CageLegLike {
+  baseMinutes: number | null;
+  incrementSeconds: number;
+  variant?: string;
+  result?: "p1" | "p2" | "draw" | null;
 }
 
-// Time controls of a cage match's games, written the way a game card writes
-// its time control ("10+0"), distinct ones only so a 6-game match of mixed
-// 5+0 / 10+0 reads "5+0, 10+0" rather than six entries.
-function describeCageTimeControls(
-  legs: { baseMinutes: number | null; incrementSeconds: number }[],
-): string {
-  const seen: string[] = [];
-  for (const leg of legs) {
-    const label =
-      leg.baseMinutes === null ? "Unlimited" : `${leg.baseMinutes}+${leg.incrementSeconds}`;
-    if (!seen.includes(label)) seen.push(label);
+function cageLegLabel(leg: CageLegLike): string {
+  const tc =
+    leg.baseMinutes === null ? "Unlimited" : `${leg.baseMinutes}+${leg.incrementSeconds}`;
+  return leg.variant === "chess960" ? `${tc} Chess960` : tc;
+}
+
+// The games in play order, written the way a game card writes a time control
+// ("10+0 → 5+3 → 3+2"). A long series is cut short so the card stays readable.
+function describeCageGames(legs: CageLegLike[]): string {
+  const labels = legs.map(cageLegLabel);
+  if (labels.length <= 6) return labels.join(" → ");
+  return `${labels.slice(0, 5).join(" → ")} → +${labels.length - 5} more`;
+}
+
+// Plain-language "how is the match won", so someone seeing the link cold
+// knows what they're agreeing to.
+function cageWinRule(winnerMode: string, targetWins: number | null): string {
+  if (winnerMode === "first_to_n" && targetWins) {
+    return `first to ${targetWins} game wins takes the match`;
   }
-  if (seen.length <= 3) return seen.join(", ");
-  return `${seen.slice(0, 3).join(", ")} +${seen.length - 3} more`;
+  if (winnerMode === "most_categories") {
+    return "win the most time categories (bullet, blitz, rapid, classical)";
+  }
+  return "highest total score across all the games wins";
 }
 
-// Same shape as the game card above ("<name> is looking for an opponent ·
-// <time control> · waiting for an opponent" / "<white> vs <black> · <status>"),
-// but for a cage match invite link. An invite that's still open reads like an
-// open game waiting for someone to join; one that's already been accepted
+// Plain-language stakes.
+function cageStakes(wagerMode: string, wagerTokens: number): string {
+  if (!wagerTokens || wagerMode === "none") return "free match, no R Coins at stake";
+  if (wagerMode === "per_leg") return `${wagerTokens} R Coins staked on every game`;
+  if (wagerMode === "split_even") {
+    return `${wagerTokens} R Coins at risk in total, split evenly across the games`;
+  }
+  return `${wagerTokens} R Coins each, winner takes the whole pot`;
+}
+
+// What a cage match IS, in one clause, for people who've never seen one.
+const CAGE_EXPLAINER = "a series of games back to back against the same opponent";
+
+// Same idea as the game and tournament cards, but spelled out: who's
+// challenging, how many games and at what time controls, how the match is
+// won, and what's at stake. An invite that's still open reads as a
+// challenge waiting for someone to accept; one that's already been accepted
 // describes the match it turned into (the same URL takes you to that match,
 // see cage:link_lookup), so a link pasted into a chat later doesn't keep
 // advertising a challenge nobody can take anymore.
@@ -224,7 +241,7 @@ async function describeCageInvite(linkId: string): Promise<{ title: string; desc
   if (stored) {
     const invite = JSON.parse(stored) as {
       fromId: string;
-      legs: { baseMinutes: number | null; incrementSeconds: number }[];
+      legs: CageLegLike[];
       winnerMode: string;
       targetWins: number | null;
       wagerMode: string;
@@ -232,50 +249,68 @@ async function describeCageInvite(linkId: string): Promise<{ title: string; desc
     };
     const from = await User.findById(invite.fromId).select("username").lean();
     const who = from?.username ?? "Someone";
-    const winnerMode =
-      invite.winnerMode === "first_to_n" && invite.targetWins
-        ? `first to ${invite.targetWins} wins`
-        : (CAGE_WINNER_MODE_LABEL[invite.winnerMode] ?? invite.winnerMode);
-    const games = `${invite.legs.length}-game cage match`;
     return {
-      title: "Chessr · Cage match invite",
-      description: `${who} is looking for an opponent · ${games} · ${describeCageTimeControls(invite.legs)} · ${winnerMode} · ${cageWagerLabel(invite.wagerMode, invite.wagerTokens)} · waiting for an opponent`,
+      title: `Chessr · ${who} challenges you to a cage match`,
+      description:
+        `${who} is looking for an opponent · ${invite.legs.length}-game cage match (${CAGE_EXPLAINER}) · ` +
+        `Games: ${describeCageGames(invite.legs)} · ` +
+        `How to win: ${cageWinRule(invite.winnerMode, invite.targetWins)} · ` +
+        `Stakes: ${cageStakes(invite.wagerMode, invite.wagerTokens)} · Open the link to accept.`,
     };
   }
 
   const resolved = await resolveCageInviteLink(linkId);
   if (resolved) {
-    const match = await getCageMatchByCode(resolved.matchCode);
-    const p1 = (match.player1 as any)?.username ?? "Player 1";
-    const p2 = (match.player2 as any)?.username ?? "Player 2";
-    const total = match.legs.length;
-    const tcs = describeCageTimeControls(match.legs as any);
-    let status: string;
-    if (match.status === "active") {
-      status = `live now, game ${match.currentLegIndex + 1} of ${total}`;
-    } else if (match.matchWinner === "p1") {
-      status = `${p1} won`;
-    } else if (match.matchWinner === "p2") {
-      status = `${p2} won`;
-    } else if (match.matchWinner === "draw") {
-      status = "ended in a draw";
-    } else {
-      status = "finished";
-    }
-    return {
-      title: `Chessr · Cage match ${String(resolved.matchCode).toUpperCase()}`,
-      description: `${p1} vs ${p2} · ${total}-game cage match · ${tcs} · ${status}`,
-    };
+    return describeCageMatch(resolved.matchCode);
   }
 
   return { title: "Chessr · Cage match invite", description: "This cage match invite has expired." };
+}
+
+// A cage match that exists (accepted invite, or a /cage/:code link): the
+// players, the score so far, and the same rules/stakes lines as the invite.
+async function describeCageMatch(matchCode: string): Promise<{ title: string; description: string }> {
+  const match = await getCageMatchByCode(matchCode);
+  const p1 = (match.player1 as any)?.username ?? "Player 1";
+  const p2 = (match.player2 as any)?.username ?? "Player 2";
+  const legs = match.legs as unknown as CageLegLike[];
+  const total = legs.length;
+  const p1Wins = legs.filter((l) => l.result === "p1").length;
+  const p2Wins = legs.filter((l) => l.result === "p2").length;
+  const draws = legs.filter((l) => l.result === "draw").length;
+  const score = `${p1Wins}–${p2Wins}${draws ? ` (${draws} drawn)` : ""}`;
+
+  let status: string;
+  if (match.status === "active") {
+    status = `live now, game ${match.currentLegIndex + 1} of ${total}, score ${score}`;
+  } else if (match.status === "cancelled") {
+    status = "cancelled, stakes refunded";
+  } else if (match.matchWinner === "p1") {
+    status = `${p1} won ${score}`;
+  } else if (match.matchWinner === "p2") {
+    status = `${p2} won ${score}`;
+  } else if (match.matchWinner === "draw") {
+    status = `ended in a draw ${score}`;
+  } else {
+    status = "finished";
+  }
+
+  return {
+    title: `Chessr · Cage match ${String(match.matchCode).toUpperCase()}`,
+    description:
+      `${p1} vs ${p2} · ${total}-game cage match (${CAGE_EXPLAINER}) · ${status} · ` +
+      `Games: ${describeCageGames(legs)} · ` +
+      `How to win: ${cageWinRule(match.winnerMode, match.targetWins)} · ` +
+      `Stakes: ${cageStakes(match.wagerMode, match.wagerTokens)}`,
+  };
 }
 
 export const getCageInviteOgCard = asyncHandler(async (req, res) => {
   const { linkId } = linkIdParamSchema.parse(req.params);
 
   let title = "Chessr · Cage match invite";
-  let description = "A cage match invite on Chessr.";
+  let description =
+    "A cage match invite on Chessr: a series of games back to back against the same opponent.";
   try {
     ({ title, description } = await describeCageInvite(linkId));
   } catch {
@@ -286,6 +321,30 @@ export const getCageInviteOgCard = asyncHandler(async (req, res) => {
     title,
     description,
     url: `${CLIENT_URL}/cage/invite/${encodeURIComponent(linkId)}`,
+  });
+
+  res.set("Content-Type", "text/html; charset=utf-8");
+  res.send(html);
+});
+
+// Card for a /cage/:code match link (the invite card above only covers
+// /cage/invite/:linkId links).
+export const getCageMatchOgCard = asyncHandler(async (req, res) => {
+  const { code } = codeParamSchema.parse(req.params);
+
+  let title = `Chessr · Cage match ${code.toUpperCase()}`;
+  let description =
+    "A cage match on Chessr: a series of games back to back against the same opponent.";
+  try {
+    ({ title, description } = await describeCageMatch(code));
+  } catch {
+    // Unknown/deleted code: still a valid (if generic) preview.
+  }
+
+  const html = renderPreviewPage({
+    title,
+    description,
+    url: `${CLIENT_URL}/cage/${encodeURIComponent(code)}`,
   });
 
   res.set("Content-Type", "text/html; charset=utf-8");

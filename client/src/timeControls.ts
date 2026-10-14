@@ -116,15 +116,11 @@ export function ratingCategoryForMinutes(baseMinutes: number | null | undefined)
   return ratingCategoryForSeconds(baseMinutes === null || baseMinutes === undefined ? null : baseMinutes * 60);
 }
 
-/** Per-ladder styling, the same red / orange / blue the time-control icons
- *  use (see components/ui/TimeControlIcon.tsx). Full class names so Tailwind
- *  can see them. */
-export const RATING_CATEGORY_META: Record<
-  RatingCategory,
-  { label: string; badge: string; text: string }
-> = {
-  bullet: { label: "Bullet", badge: "bg-red-500/15 text-red-500", text: "text-red-500" },
-  blitz: { label: "Blitz", badge: "bg-orange-500/15 text-orange-500", text: "text-orange-500" },
-  rapid: { label: "Rapid", badge: "bg-blue-500/15 text-blue-500", text: "text-blue-500" },
+/** Per-ladder labels. Ladders are told apart by their time-control icon
+ *  (see components/ui/TimeControlIcon.tsx), not by color. */
+export const RATING_CATEGORY_META: Record<RatingCategory, { label: string }> = {
+  bullet: { label: "Bullet" },
+  blitz: { label: "Blitz" },
+  rapid: { label: "Rapid" },
 };
 

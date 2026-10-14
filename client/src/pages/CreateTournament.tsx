@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Trophy, Users, X } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Trophy } from "lucide-react";
 import {
   FORMAT_LABEL,
   FORMAT_DESCRIPTION,
@@ -10,8 +10,6 @@ import {
   type TournamentPrizeTier,
 } from "../api/tournaments.js";
 import { useSocket } from "../contexts/SocketContext.js";
-import { getTeam, searchTeams, type TeamSummary } from "../api/teams.js";
-import { getMyOrganization, type MyOrganization } from "../api/organizations.js";
 import {
   listMyLeagues,
   LEAGUE_FORMATS,
@@ -31,7 +29,6 @@ import {
   Button,
   Switch,
   RCoin,
-  Tabs,
 } from "../components/ui/index.js";
 // The global time-control list (../timeControls.js) is now the single
 // source of truth, this page used to keep its own near-duplicate list,
@@ -58,40 +55,6 @@ export function CreateTournament() {
   const socket = useSocket();
   const navigate = useNavigate();
   const rakePercent = useRakePercent();
-  // /tournaments/new?team=<id> creates an in-house tournament for a team
-  // the caller owns: only its members can join, and it's never listed
-  // publicly. The server re-checks ownership, this is just the UI side.
-  const teamId = useSearchParams()[0].get("team");
-  const [teamName, setTeamName] = useState<string | null>(null);
-  useEffect(() => {
-    if (!teamId) return;
-    getTeam(teamId)
-      .then((r) => setTeamName(r.team.name))
-      .catch(() => setTeamName(null));
-  }, [teamId]);
-
-  // /tournaments/new?battle=1 creates a TEAM BATTLE: only an approved
-  // organisation may (the server enforces it, this is the UI side), and only
-  // swiss/arena are offered.
-  const initialBattle = useSearchParams()[0].get("battle") === "1";
-  // Normal tournament vs team battle, switched with the tabs below (the tabs
-  // only show for approved organisations).
-  const [mode, setMode] = useState<"normal" | "battle">(
-    initialBattle ? "battle" : "normal",
-  );
-  const battleMode = mode === "battle";
-  const [org, setOrg] = useState<MyOrganization | null>(null);
-  const [orgLoading, setOrgLoading] = useState(true);
-  const [battleTeams, setBattleTeams] = useState<TeamSummary[]>([]);
-  const [leadersPerTeam, setLeadersPerTeam] = useState(5);
-  const [teamQuery, setTeamQuery] = useState("");
-  const [teamResults, setTeamResults] = useState<TeamSummary[]>([]);
-  useEffect(() => {
-    getMyOrganization()
-      .then((r) => setOrg(r.organization))
-      .catch(() => setOrg(null))
-      .finally(() => setOrgLoading(false));
-  }, []);
   // --- League ---
   // /tournaments/new?league=<id> (from a league page's "Add tournament")
   // preselects that league. Only approved organisations have any leagues, so
@@ -106,28 +69,6 @@ export function CreateTournament() {
   }, []);
   const selectedLeague =
     myLeagues.find((c) => c.id === leagueId) ?? null;
-
-  function handleModeChange(next: "normal" | "battle") {
-    setMode(next);
-    // Team battles are swiss/arena only.
-    if (next === "battle" && format !== "swiss" && format !== "arena") {
-      setFormat("swiss");
-    }
-  }
-  useEffect(() => {
-    if (!battleMode) return;
-    const t = setTimeout(() => {
-      searchTeams(teamQuery.trim())
-        .then((r) => setTeamResults(r.teams))
-        .catch(() => setTeamResults([]));
-    }, 250);
-    return () => clearTimeout(t);
-  }, [battleMode, teamQuery]);
-  function addBattleTeam(t: TeamSummary) {
-    setBattleTeams((prev) =>
-      prev.some((x) => x.id === t.id) || prev.length >= 20 ? prev : [...prev, t],
-    );
-  }
 
   const [status, setStatus] = useState<{
     message: string;
@@ -209,17 +150,7 @@ export function CreateTournament() {
           message: `This league already has its ${selectedLeague.maxTournaments} tournaments, which is its limit.`,
           isError: true,
         });
-      if (battleMode || teamId)
-        return setStatus({
-          message: "A team battle or in-house tournament can't be part of a league.",
-          isError: true,
-        });
     }
-    if (battleMode && battleTeams.length < 2)
-      return setStatus({
-        message: "Pick at least 2 teams for the battle.",
-        isError: true,
-      });
     if (name.trim().length < 3)
       return setStatus({
         message: "Give it a name (3+ characters).",
@@ -268,17 +199,8 @@ export function CreateTournament() {
       incrementSeconds: preset.incrementSeconds,
       berserkAllowed: format === "arena" && berserkAllowed,
       chatEnabled,
-      isPublic: teamId ? false : isPublic,
-      ...(teamId ? { teamId } : {}),
-      organizerOnly: battleMode ? true : organizerOnly,
-      ...(battleMode
-        ? {
-            teamBattle: {
-              teamIds: battleTeams.map((t) => t.id),
-              leadersPerTeam,
-            },
-          }
-        : {}),
+      isPublic,
+      organizerOnly,
       ...(selectedLeague ? { cumulativeId: selectedLeague.id } : {}),
       thirdPlaceMatch: format === "normal" ? thirdPlaceMatch : false,
       prizeSchedule: prizeTiers,
@@ -293,117 +215,9 @@ export function CreateTournament() {
     });
   }
 
-  if (battleMode && !orgLoading && org?.status !== "approved") {
-    return (
-      <Page title="Create a team battle" back="/tournaments">
-        <Card variant="solid" className="mx-auto max-w-xl space-y-3">
-          <p className="text-sm text-base-content/70">
-            Team battles can only be created by approved organisations.
-            {org?.status === "pending"
-              ? " Your organisation request is still under review."
-              : " Send a request with your organisation's name and WhatsApp number and we'll get back to you."}
-          </p>
-          <Link to="/organization/request">
-            <Button variant="secondary" size="sm">
-              {org?.status === "pending" ? "View request" : "Request organisation status"}
-            </Button>
-          </Link>
-        </Card>
-      </Page>
-    );
-  }
-
   return (
-    <Page
-      title={teamId ? "Create an in-house tournament" : "Create a tournament"}
-      back={teamId ? `/teams/${teamId}` : "/tournaments"}
-    >
+    <Page title="Create a tournament" back="/tournaments">
       <div className="mx-auto space-y-4">
-        {!teamId && org?.status === "approved" && (
-          <Tabs
-            value={mode}
-            onChange={(v) => handleModeChange(v as "normal" | "battle")}
-            items={[
-              { value: "normal", label: "Tournament" },
-              { value: "battle", label: "Team battle" },
-            ]}
-          />
-        )}
-        {battleMode && (
-          <Card variant="solid" className="space-y-3">
-            <div className="flex items-center gap-2 font-semibold text-base-content">
-              <Users className="h-4 w-4" /> Teams in this battle
-            </div>
-            <p className="text-xs text-base-content/60">
-              Players join on behalf of one of these teams. Each team's score is
-              the sum of its best players' points, and the team standings are
-              shown above the player standings.
-            </p>
-            {battleTeams.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {battleTeams.map((t) => (
-                  <span
-                    key={t.id}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-(--primary)/10 px-3 py-1 text-xs font-medium text-base-content"
-                  >
-                    {t.name}
-                    <button
-                      type="button"
-                      aria-label={`Remove ${t.name}`}
-                      onClick={() =>
-                        setBattleTeams((prev) => prev.filter((x) => x.id !== t.id))
-                      }
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-            <Input
-              label="Search teams"
-              value={teamQuery}
-              onChange={(e) => setTeamQuery(e.target.value)}
-              placeholder="Team name…"
-            />
-            <div className="max-h-48 space-y-1 overflow-y-auto">
-              {teamResults
-                .filter((t) => !battleTeams.some((x) => x.id === t.id))
-                .map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => addBattleTeam(t)}
-                    className="flex w-full items-center justify-between rounded-lg border border-base-300 bg-base-100/60 px-3 py-2 text-left text-sm hover:border-(--primary)/40"
-                  >
-                    <span className="truncate">{t.name}</span>
-                    <span className="shrink-0 text-xs text-base-content/50">
-                      {t.memberCount} members
-                    </span>
-                  </button>
-                ))}
-            </div>
-            <Input
-              label="Scoring players per team"
-              type="number"
-              min={1}
-              max={10}
-              value={leadersPerTeam}
-              onChange={(e) =>
-                setLeadersPerTeam(
-                  Math.min(10, Math.max(1, Number(e.target.value) || 1)),
-                )
-              }
-              hint="Only each team's best this-many players count towards its score."
-            />
-          </Card>
-        )}
-        {teamId && (
-          <p className="rounded-xl bg-(--primary)/10 px-3 py-2 text-sm text-base-content/80">
-            In-house tournament for <strong>{teamName ?? "your team"}</strong>.
-            Only team members can join, and it won't appear in the public list.
-          </p>
-        )}
         <Card variant="solid">
           <CardContent className="space-y-5">
             {/* Basics */}
@@ -431,7 +245,6 @@ export function CreateTournament() {
                 </label>
                 <div className="grid grid-cols-2 mb-7 gap-2">
                   {(Object.keys(FORMAT_LABEL) as TournamentFormat[])
-                    .filter((f) => !battleMode || f === "swiss" || f === "arena")
                     .map((f) => (
                       <button
                         key={f}
@@ -602,7 +415,7 @@ export function CreateTournament() {
             </section>
 
             {/* League */}
-            {!battleMode && !teamId && myLeagues.length > 0 && (
+            {myLeagues.length > 0 && (
               <section className="space-y-3 border-t border-base-300 pt-4">
                 <Select
                   label={
@@ -643,14 +456,12 @@ export function CreateTournament() {
             )}
 
             <section className="space-y-3 border-t border-base-300 pt-4">
-              {!teamId && (
-                <Switch
-                  checked={isPublic}
-                  onChange={setIsPublic}
-                  label="List publicly"
-                  description="Visible in the Open tournaments list for anyone to find."
-                />
-              )}
+              <Switch
+                checked={isPublic}
+                onChange={setIsPublic}
+                label="List publicly"
+                description="Visible in the Open tournaments list for anyone to find."
+              />
               {format === "arena" && (
                 <Switch
                   checked={berserkAllowed}
@@ -666,14 +477,12 @@ export function CreateTournament() {
                 description="A chat visible to players and spectators on the tournament page."
               />
 
-              {!battleMode && (
               <Switch
                 checked={organizerOnly}
                 onChange={setOrganizerOnly}
                 label="I'm organizing only"
                 description="You run the tournament but don't play in it. You won't take a player slot or pay the registration fee."
               />
-              )}
 
               {format === "normal" && (
                 <Switch
@@ -700,11 +509,7 @@ export function CreateTournament() {
               disabled={submitting}
             >
               <Trophy className="h-4 w-4" />
-              {submitting
-                ? "Creating…"
-                : battleMode
-                  ? "Create team battle"
-                  : "Create tournament"}
+              {submitting ? "Creating…" : "Create tournament"}
             </Button>
           </CardContent>
         </Card>

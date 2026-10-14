@@ -39,6 +39,7 @@ import {
   Badge,
   Spinner,
   TimeControlIcon,
+  CategoryIcon,
   Select,
   Input,
   ResponsiveOverlay,
@@ -454,17 +455,22 @@ export function Profile() {
           </div>
 
           {/* Ratings, one per ladder, in their own strip between the main
-              details and the win/loss record. Only the badge is colored. */}
+              details and the win/loss record. Each ladder shows its icon above the badge. */}
           {profile.ratings && (
             <div className="mt-4 grid grid-cols-3 gap-2 border-t border-base-300 pt-4 text-center">
               {RATING_CATEGORIES.map((c) => (
                 <div key={c}>
+                  <CategoryIcon
+                    category={c}
+                    size={30}
+                    className="mx-auto mb-1.5 text-base-content"
+                  />
                   <RatingBadge
                     rating={profile.ratings![c]}
                     category={c}
                     className="px-3 py-0.5 text-base"
                   />
-                  <p className="mt-1 text-xs text-base-content/50">
+                  <p className="mt-1 hidden text-xs text-base-content/50 sm:block">
                     {RATING_CATEGORY_META[c].label}
                   </p>
                 </div>

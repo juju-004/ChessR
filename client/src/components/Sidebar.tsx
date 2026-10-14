@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import {
   LayoutDashboard,
   Users,
-  UsersRound,
+  LineChart,
   Swords,
   Trophy,
   Settings,
@@ -27,7 +27,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/players", label: "Players", icon: Users },
-  { to: "/teams", label: "Teams", icon: UsersRound },
+  { to: "/analysis", label: "Analysis", icon: LineChart },
   { to: "/cage", label: "Cage", icon: Swords },
   { to: "/tournaments", label: "Tournaments", icon: Trophy },
   { to: "/settings", label: "Settings", icon: Settings },

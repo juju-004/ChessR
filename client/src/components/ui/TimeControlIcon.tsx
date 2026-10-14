@@ -1,50 +1,38 @@
-import {
-  Zap,
-  Flame,
-  Rabbit,
-  Hourglass,
-  Infinity as InfinityIcon,
-  type LucideIcon,
-} from "lucide-react";
+import type { ComponentType } from "react";
+import { Hourglass, Infinity as InfinityIcon } from "lucide-react";
 import { cn } from "@/lib/cn.js";
+import { BulletGlyph, BlitzGlyph, RapidGlyph } from "./TimeControlGlyphs.js";
 import {
   timeControlCategory,
   timeControlCategoryFromSeconds,
   type TimeControlCategory,
 } from "../../timeControls.js";
 
-// Bullet's actual "fast" glyph, blitz's literal flame, and rapid's literal
-// rabbit are all the icons requested; classical/unlimited get a sensible
-// matching pair (hourglass for a long game, infinity for no clock at all)
-// so every bucket in TimeControlCategory has one, not just the three named
-// ones.
-const CATEGORY_ICON: Record<TimeControlCategory, LucideIcon> = {
-  bullet: Zap,
-  blitz: Flame,
-  rapid: Rabbit,
+// Bullet, blitz and rapid use the custom glyphs in TimeControlGlyphs.tsx;
+// classical/unlimited keep a sensible matching pair (hourglass for a long
+// game, infinity for no clock at all) so every bucket in TimeControlCategory
+// has one.
+type CategoryIconComponent = ComponentType<{
+  size?: number;
+  className?: string;
+  "aria-hidden"?: boolean | "true" | "false";
+}>;
+
+const CATEGORY_ICON: Record<TimeControlCategory, CategoryIconComponent> = {
+  bullet: BulletGlyph,
+  blitz: BlitzGlyph,
+  rapid: RapidGlyph,
   classical: Hourglass,
   unlimited: InfinityIcon,
-};
-
-const CATEGORY_COLOR: Record<TimeControlCategory, string> = {
-  bullet: "text-red-500",
-  blitz: "text-orange-500",
-  rapid: "text-blue-500",
-  classical: "text-amber-500",
-  unlimited: "text-purple-400",
 };
 
 export interface CategoryIconProps {
   category: TimeControlCategory;
   size?: number;
   className?: string;
-  /** Overrides the default per-category text color entirely (instead of
-   *  appending a second text-color class alongside it, which is a real
-   *  conflict here since cn() is a plain join with no Tailwind-aware
-   *  merging — whichever class happens to land later in the compiled
-   *  stylesheet would silently win). Pass this on a colored background
-   *  (e.g. the tournament headline pill) where the category color
-   *  wouldn't read well. */
+  /** Optional text-color class. The icon has no color of its own: it
+   *  inherits the surrounding text color. Pass this on a colored
+   *  background (e.g. the tournament headline pill) to force one. */
   monochrome?: string;
 }
 
@@ -62,7 +50,7 @@ export function CategoryIcon({
   return (
     <Icon
       size={size}
-      className={cn(monochrome ?? CATEGORY_COLOR[category], "shrink-0", className)}
+      className={cn(monochrome, "shrink-0", className)}
       aria-hidden="true"
     />
   );
@@ -83,7 +71,7 @@ export interface TimeControlIconProps {
   monochrome?: string;
 }
 
-/** Bullet/blitz/rapid/classical/unlimited icon, colored per category. */
+/** Bullet/blitz/rapid/classical/unlimited icon, in the surrounding text color. */
 export function TimeControlIcon({
   baseMinutes,
   baseSeconds,

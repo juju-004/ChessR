@@ -3,7 +3,8 @@
  * normal static/SPA response, for every request matching `config.matcher`
  * below. This is what makes a shared /game/:code, /replay/:code, or
  * /tournaments/:code link show a real title/description in WhatsApp,
- * Facebook, Twitter/X, Discord, iMessage, etc.
+ * Facebook, Twitter/X, Discord, iMessage, etc. (cage match invite and match
+ * links included).
  *
  * Why this exists at all: those crawlers fetch the URL and read whatever
  * HTML comes back *without* running any JavaScript — so a plain Vite SPA,
@@ -39,7 +40,13 @@ const CRAWLER_UA_PATTERN =
   /facebookexternalhit|WhatsApp|Twitterbot|Slackbot|Discordbot|LinkedInBot|TelegramBot|Pinterest|redditbot|vkShare|Applebot|SkypeUriPreview/i;
 
 export const config = {
-  matcher: ["/game/:code", "/replay/:code", "/tournaments/:code"],
+  matcher: [
+    "/game/:code",
+    "/replay/:code",
+    "/tournaments/:code",
+    "/cage/invite/:linkId",
+    "/cage/:code",
+  ],
 };
 
 export default async function middleware(request: Request): Promise<Response | undefined> {
@@ -56,14 +63,28 @@ export default async function middleware(request: Request): Promise<Response | u
   // different resource, hence its own capture group / endpoint below.
   const gameMatch = url.pathname.match(/^\/(?:game|replay)\/([^/]+)/);
   const tournamentMatch = url.pathname.match(/^\/tournaments\/([^/]+)/);
-  if (!gameMatch && !tournamentMatch) return undefined;
+  // Cage match links: /cage/invite/:linkId is a shareable challenge,
+  // /cage/:code is a match. "new" and "invite" are app pages, not codes, so
+  // they pass through to the SPA untouched.
+  const cageInviteMatch = url.pathname.match(/^\/cage\/invite\/([^/]+)/);
+  const cageMatch = url.pathname.match(/^\/cage\/([^/]+)\/?$/);
+  const cageCode =
+    cageMatch && cageMatch[1] !== "new" && cageMatch[1] !== "invite" ? cageMatch[1] : null;
+  if (!gameMatch && !tournamentMatch && !cageInviteMatch && !cageCode) return undefined;
 
   const apiBase = process.env.API_BASE_URL;
   if (!apiBase) return undefined; // not configured — fail open to the normal SPA
 
-  const cardPath = gameMatch
-    ? `/games/code/${encodeURIComponent(gameMatch[1])}/card`
-    : `/tournaments/code/${encodeURIComponent(tournamentMatch![1])}/card`;
+  let cardPath: string;
+  if (gameMatch) {
+    cardPath = `/games/code/${encodeURIComponent(gameMatch[1])}/card`;
+  } else if (tournamentMatch) {
+    cardPath = `/tournaments/code/${encodeURIComponent(tournamentMatch[1])}/card`;
+  } else if (cageInviteMatch) {
+    cardPath = `/cage-matches/invite/${encodeURIComponent(cageInviteMatch[1])}/card`;
+  } else {
+    cardPath = `/cage-matches/code/${encodeURIComponent(cageCode!)}/card`;
+  }
 
   try {
     const cardRes = await fetch(`${apiBase}${cardPath}`);

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Swords } from "lucide-react";
+import { Swords, Trophy, Coins } from "lucide-react";
 import {
   formatLegTimeControl,
   legCategory,
@@ -13,26 +13,31 @@ import { useSocket } from "../contexts/SocketContext.js";
 import { PageError } from "../components/PageError.js";
 import {
   Page,
-  Card,
-  CardContent,
-  Avatar,
   Button,
   RCoin,
   Spinner,
+  CategoryIcon,
 } from "../components/ui/index.js";
+import { InviteCard, InviteTerm } from "../components/InviteLanding.js";
 import { claimToast } from "../lib/toastClaims.js";
 
 const WINNER_MODE_LABEL: Record<CageWinnerMode, string> = {
-  total_score: "Total score (win = 1, draw = 0.5)",
+  total_score: "Highest total score",
   most_categories: "Most categories won",
   first_to_n: "First to N wins",
 };
 
-const WAGER_MODE_LABEL: Record<CageWagerMode, string> = {
-  none: "No wager",
-  winner_takes_all: "Winner takes all",
-  per_leg: "Per game",
-  split_even: "Split evenly across games",
+const WINNER_MODE_DETAIL: Record<CageWinnerMode, string> = {
+  total_score: "A win is 1 point, a draw is half",
+  most_categories: "Win more of bullet, blitz, rapid and classical",
+  first_to_n: "Ends as soon as someone gets there",
+};
+
+const WAGER_MODE_DETAIL: Record<CageWagerMode, string> = {
+  none: "",
+  winner_takes_all: "Winner takes the whole pot",
+  per_leg: "Staked on every game",
+  split_even: "Total at risk, split evenly across the games",
 };
 
 interface LinkInfo {
@@ -133,75 +138,84 @@ export function CageMatchInvite() {
     );
   }
 
+  const wagered = info.wagerMode !== "none" && info.wagerTokens > 0;
+
   return (
     <Page title="Cage match invite" back="/cage">
-      <div className="mx-auto max-w-md space-y-4">
-        <Card variant="solid">
-          <CardContent className="space-y-4 text-center">
-            <Avatar
-              username={info.from.username}
-              gradient={info.from.avatarGradient}
-              size="lg"
-              className="mx-auto"
-            />
-            <div>
-              <p className="font-semibold text-base-content">
-                {info.from.username} invited you to a cage match
-              </p>
+      <div className="mx-auto max-w-md">
+        <InviteCard
+          from={info.from}
+          headline="invited you to a cage match"
+          subline={`${info.legs.length} ${info.legs.length === 1 ? "game" : "games"} against the same opponent, played back to back`}
+          footer={
+            info.isOwnLink ? (
               <p className="text-sm text-base-content/60">
-                {info.legs.length} games ·{" "}
-                {WINNER_MODE_LABEL[info.winnerMode]}
-                {info.winnerMode === "first_to_n" &&
-                  info.targetWins &&
-                  ` (first to ${info.targetWins})`}
-              </p>
-            </div>
-
-            <div className="rounded-lg bg-base-200 p-3 text-left text-sm">
-              <div className="flex flex-wrap gap-1.5">
-                {info.legs.map((leg, i) => (
-                  <span
-                    key={i}
-                    className="rounded-full bg-base-300 px-2 py-0.5 text-xs text-base-content/70"
-                  >
-                    {CATEGORY_LABEL[legCategory(leg)]}{" "}
-                    {formatLegTimeControl(leg)}
-                  </span>
-                ))}
-              </div>
-              <p className="mt-2 text-base-content/60">
-                {info.wagerMode === "none" || info.wagerTokens === 0 ? (
-                  <span className="font-medium text-base-content">
-                    Free match
-                  </span>
-                ) : (
-                  <>
-                    {WAGER_MODE_LABEL[info.wagerMode]} ·{" "}
-                    <span className="font-medium text-base-content">
-                      {info.wagerTokens}{" "}
-                      <RCoin size={11} className="inline align-[-1px]" />
-                    </span>
-                  </>
-                )}
-              </p>
-            </div>
-
-            {info.isOwnLink ? (
-              <p className="text-sm text-base-content/50">
-                This is your own invite link — share it with someone else to
-                get them to accept it.
+                This is your own invite link. Send it to someone else so they
+                can accept it.
               </p>
             ) : (
               <>
                 {error && <p className="text-sm text-red-400">{error}</p>}
                 <Button fullWidth disabled={accepting} onClick={handleAccept}>
                   <Swords className="h-4 w-4" />
-                  {accepting ? "Starting…" : "Accept & start"}
+                  {accepting ? "Starting…" : "Accept and start"}
                 </Button>
               </>
-            )}
-          </CardContent>
-        </Card>
+            )
+          }
+        >
+          <ol className="border-b border-base-content/10 px-5 py-3">
+            {info.legs.map((leg, i) => (
+              <li
+                key={i}
+                className="flex items-center gap-3 py-1.5 text-sm"
+              >
+                <span className="w-5 text-right text-xs tabular-nums text-base-content/40">
+                  {i + 1}
+                </span>
+                <span className="grid h-7 w-7 place-items-center rounded-lg bg-base-300 text-base-content/70">
+                  <CategoryIcon category={legCategory(leg)} size={14} />
+                </span>
+                <span className="font-semibold text-base-content">
+                  {formatLegTimeControl(leg)}
+                </span>
+                <span className="text-base-content/50">
+                  {CATEGORY_LABEL[legCategory(leg)]}
+                </span>
+              </li>
+            ))}
+          </ol>
+          <InviteTerm
+            icon={<Trophy className="h-4 w-4" />}
+            label="How it's decided"
+            detail={WINNER_MODE_DETAIL[info.winnerMode]}
+          >
+            {WINNER_MODE_LABEL[info.winnerMode]}
+            {info.winnerMode === "first_to_n" &&
+              info.targetWins &&
+              ` (${info.targetWins})`}
+          </InviteTerm>
+          {wagered ? (
+            <InviteTerm
+              icon={<Coins className="h-4 w-4" />}
+              label="Stake"
+              detail={WAGER_MODE_DETAIL[info.wagerMode]}
+              emphasis
+            >
+              <span className="inline-flex items-center gap-1">
+                {info.wagerTokens} <RCoin size={13} />
+              </span>
+            </InviteTerm>
+          ) : (
+            <InviteTerm
+              icon={<Coins className="h-4 w-4" />}
+              label="Stake"
+              detail="Nothing is taken from your balance"
+            >
+              Free match
+            </InviteTerm>
+          )}
+        </InviteCard>
       </div>
     </Page>
   );

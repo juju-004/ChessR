@@ -56,11 +56,8 @@ const Players = lazy(() =>
     default: m.Players,
   })),
 );
-const Teams = lazy(() =>
-  import("./pages/Teams.js").then((m) => ({ default: m.Teams })),
-);
-const TeamPage = lazy(() =>
-  import("./pages/TeamPage.js").then((m) => ({ default: m.TeamPage })),
+const Analysis = lazy(() =>
+  import("./pages/Analysis.js").then((m) => ({ default: m.Analysis })),
 );
 const Profile = lazy(() =>
   import("./pages/Profile.js").then((m) => ({ default: m.Profile })),
@@ -311,18 +308,10 @@ function AppBody() {
                 }
               />
               <Route
-                path="/teams"
+                path="/analysis"
                 element={
                   <ProtectedRoute>
-                    <Teams />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/teams/:id"
-                element={
-                  <ProtectedRoute>
-                    <TeamPage />
+                    <Analysis />
                   </ProtectedRoute>
                 }
               />

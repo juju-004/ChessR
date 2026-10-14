@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import {
   BadgeCheck,
   Building2,
   Check,
   Clock,
   Phone,
-  Swords,
   Layers,
   XCircle,
 } from "lucide-react";
@@ -25,11 +23,6 @@ const PERKS = [
     icon: BadgeCheck,
     title: "Verified badge",
     body: "A badge with your organisation's name on your profile.",
-  },
-  {
-    icon: Swords,
-    title: "Team battles",
-    body: "Create team battle tournaments, Swiss or Arena.",
   },
   {
     icon: Layers,
@@ -192,11 +185,6 @@ export function OrganizationRequest() {
                       Shown on your profile.
                     </p>
                   </div>
-                  <Link to="/tournaments/new?battle=1">
-                    <Button variant="secondary" size="sm">
-                      <Swords className="h-4 w-4" /> Create a team battle
-                    </Button>
-                  </Link>
                 </div>
               </Card>
             )}

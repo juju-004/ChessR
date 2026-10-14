@@ -13,7 +13,6 @@ import {
 } from "../models/Tournament.js";
 import { Game } from "../models/Game.js";
 import { User } from "../models/User.js";
-import { Team } from "../models/Team.js";
 import { ApiError } from "../utils/ApiError.js";
 import { withLock } from "../utils/distributedLock.js";
 import { assertNotRestricted } from "./suspension.service.js";
@@ -40,7 +39,6 @@ import { getIo } from "../sockets/io.js";
 import { getArenaPresentUserIds } from "./presence.service.js";
 import { expireChat } from "./chat.service.js";
 import { createNotification } from "./notification.service.js";
-import { getApprovedOrganization } from "./organization.service.js";
 import {
   CUMULATIVE_FORMATS,
   reserveCumulativeSlot,
@@ -444,9 +442,6 @@ export interface CreateTournamentInput {
   // Show up in the public "Open tournaments" browse list? Defaults to false
   // (link/code-only) if omitted.
   isPublic?: boolean;
-  // Makes this an in-house tournament for the given team (creator must own
-  // it). Forces isPublic off. Immutable after creation.
-  teamId?: string | null;
   // If true, the creator runs the event without playing in it, they're
   // never added to `players` and never charged regFeeTokens (they still
   // fund the prize pool, if any, same as any other creator). Defaults to
@@ -473,7 +468,7 @@ export interface CreateTournamentInput {
   regFeeTokens?: number;
   // Adds this tournament as the next stage of a cumulative league the caller
   // created (see cumulative.service.ts). Swiss/arena only, and not combinable
-  // with in-house team tournaments or team battles. Immutable after creation.
+  // Immutable after creation.
   cumulativeId?: string | null;
   // Required (and only meaningful) for format === 'swiss'.
   swissRounds: number | null;
@@ -495,19 +490,7 @@ export interface CreateTournamentInput {
   // Optional gate on joining, anyone with the link can view the page, but
   // becoming a player requires this. Omitted/empty = no password.
   password?: string;
-  // Makes this a TEAM BATTLE: the listed teams compete against each other,
-  // every player joins on behalf of one of them, and the tournament page
-  // ranks the teams (sum of each team's best `leadersPerTeam` players)
-  // above the normal player standings. Only an approved organisation can
-  // create one, and only swiss/arena are allowed. Immutable after creation.
-  teamBattle?: { teamIds: string[]; leadersPerTeam?: number } | null;
 }
-
-export const TEAM_BATTLE_FORMATS: TournamentFormat[] = ["swiss", "arena"];
-export const TEAM_BATTLE_MIN_TEAMS = 2;
-export const TEAM_BATTLE_MAX_TEAMS = 20;
-export const TEAM_BATTLE_DEFAULT_LEADERS = 5;
-export const TEAM_BATTLE_MAX_LEADERS = 10;
 
 const DEFAULT_BREAK_SECONDS = 10;
 const MAX_BREAK_SECONDS = 300;
@@ -594,9 +577,6 @@ export async function createTournament(
     if (!(CUMULATIVE_FORMATS as readonly string[]).includes(input.format)) {
       throw ApiError.badRequest("Tournaments in a cumulative can only be Swiss or Arena");
     }
-    if (input.teamBattle || input.teamId) {
-      throw ApiError.badRequest("A team battle or in-house tournament can't be part of a cumulative");
-    }
   }
   const organizedCount = await Tournament.countDocuments({
     createdBy: creatorId,
@@ -611,52 +591,6 @@ export async function createTournament(
     throw ApiError.badRequest(
       "Give your tournament a name (at least 3 characters)",
     );
-  // --- Team battle gate: organisations only, swiss/arena only ----------------
-  let teamBattle: { teams: { team: mongoose.Types.ObjectId; name: string }[]; leadersPerTeam: number } | null = null;
-  let organization: { _id: mongoose.Types.ObjectId; name: string } | null = null;
-  if (input.teamBattle) {
-    organization = await getApprovedOrganization(creatorId);
-    if (!organization) {
-      throw ApiError.forbidden("Only approved organisations can create team battles. Request organisation status first.");
-    }
-    if (!TEAM_BATTLE_FORMATS.includes(input.format)) {
-      throw ApiError.badRequest("Team battles can only be Swiss or Arena");
-    }
-    if (input.teamId) {
-      throw ApiError.badRequest("A team battle can't also be an in-house team tournament");
-    }
-    const ids = [...new Set(input.teamBattle.teamIds)];
-    if (ids.length < TEAM_BATTLE_MIN_TEAMS || ids.length > TEAM_BATTLE_MAX_TEAMS) {
-      throw ApiError.badRequest(
-        `Pick between ${TEAM_BATTLE_MIN_TEAMS} and ${TEAM_BATTLE_MAX_TEAMS} teams for a team battle`,
-      );
-    }
-    if (!ids.every((id) => mongoose.isValidObjectId(id))) throw ApiError.badRequest("Invalid team");
-    const found = await Team.find({ _id: { $in: ids } }).select("name").lean();
-    if (found.length !== ids.length) throw ApiError.notFound("One of the selected teams no longer exists");
-    const leadersPerTeam = input.teamBattle.leadersPerTeam ?? TEAM_BATTLE_DEFAULT_LEADERS;
-    if (!Number.isInteger(leadersPerTeam) || leadersPerTeam < 1 || leadersPerTeam > TEAM_BATTLE_MAX_LEADERS) {
-      throw ApiError.badRequest(`Scoring players per team must be between 1 and ${TEAM_BATTLE_MAX_LEADERS}`);
-    }
-    // Keep the organiser's chosen order.
-    teamBattle = {
-      teams: ids.map((id) => {
-        const t = found.find((f) => f._id.toString() === id)!;
-        return { team: t._id, name: t.name };
-      }),
-      leadersPerTeam,
-    };
-  }
-  let teamId: mongoose.Types.ObjectId | null = null;
-  if (input.teamId) {
-    if (!mongoose.isValidObjectId(input.teamId)) throw ApiError.badRequest("Invalid team");
-    const team = await Team.findById(input.teamId).select("owner").lean();
-    if (!team) throw ApiError.notFound("Team not found");
-    if (team.owner.toString() !== creatorId) {
-      throw ApiError.forbidden("Only the team owner can organise in-house tournaments");
-    }
-    teamId = team._id;
-  }
   if (
     input.baseMinutes !== null &&
     (input.baseMinutes < 0.5 || input.baseMinutes > 180)
@@ -731,11 +665,7 @@ export async function createTournament(
     ? await bcrypt.hash(input.password.trim(), PASSWORD_BCRYPT_ROUNDS)
     : null;
 
-  // A team battle's organiser runs the event rather than playing in it: a
-  // player has to pick which team they represent, and the creator is
-  // auto-added to the roster before any such choice could be made. They can
-  // still hop in afterwards with the play button, choosing a team then.
-  const organizerOnly = teamBattle ? true : (input.organizerOnly ?? false);
+  const organizerOnly = input.organizerOnly ?? false;
   // Only matters if the creator will actually occupy a player slot,
   // organizerOnly creators run the event without ever being paired into
   // a game themselves (see the players: [] branch below), so their own
@@ -803,12 +733,7 @@ export async function createTournament(
     // to have hidden/disabled its own toggle correctly.
     berserkAllowed: input.format === "arena" ? input.berserkAllowed : false,
     chatEnabled: input.chatEnabled ?? false,
-    // In-house tournaments are never listed publicly.
-    isPublic: teamId ? false : (input.isPublic ?? false),
-    team: teamId,
-    teamBattle,
-    organization: organization?._id ?? null,
-    organizationName: organization?.name ?? null,
+    isPublic: input.isPublic ?? false,
     cumulative: cumulative?.id ?? null,
     cumulativeName: cumulative?.name ?? null,
     thirdPlaceMatch: input.format === "normal" ? (input.thirdPlaceMatch ?? false) : false,
@@ -888,7 +813,6 @@ export async function joinTournament(
   avatarGradient: string | null,
   rating: number,
   password?: string,
-  battleTeamId?: string,
 ): Promise<ITournament> {
   const tournament = await Tournament.findById(tournamentId);
   if (!tournament) throw ApiError.notFound("Tournament not found");
@@ -903,25 +827,6 @@ export async function joinTournament(
     throw ApiError.badRequest("You've already joined this tournament");
   if (tournament.players.length >= MAX_TOURNAMENT_PLAYERS)
     throw ApiError.conflict("This tournament is full");
-  if (tournament.team) {
-    const isTeamMember = await Team.exists({ _id: tournament.team, "members.user": userId });
-    if (!isTeamMember) {
-      throw ApiError.forbidden("This is an in-house tournament, only team members can join");
-    }
-  }
-  // Team battle: the player must say which of the battle's teams they are
-  // representing, and actually belong to it.
-  let battleTeam: Types.ObjectId | null = null;
-  if (tournament.teamBattle) {
-    if (!battleTeamId || !mongoose.isValidObjectId(battleTeamId)) {
-      throw ApiError.badRequest("Choose which team you're playing for");
-    }
-    const entry = tournament.teamBattle.teams.find((t) => t.team.toString() === battleTeamId);
-    if (!entry) throw ApiError.badRequest("That team isn't part of this team battle");
-    const isMember = await Team.exists({ _id: entry.team, "members.user": userId });
-    if (!isMember) throw ApiError.forbidden(`You need to be a member of ${entry.name} to play for it`);
-    battleTeam = entry.team;
-  }
   if (tournament.passwordHash) {
     const matches = !!password && (await bcrypt.compare(password, tournament.passwordHash));
     if (!matches) throw ApiError.forbidden("Incorrect tournament password");
@@ -974,7 +879,6 @@ export async function joinTournament(
           eliminatedRound: null,
           hadBye: false,
           paused: false,
-          battleTeam,
           joinedAt: dateObject,
           arenaAvailableSince: dateObject,
         },
@@ -1187,9 +1091,6 @@ export async function updateTournament(
   const format = input.format ?? tournament.format;
   const bounds = FORMAT_BOUNDS[format];
   if (!bounds) throw ApiError.badRequest("Unknown tournament format");
-  if (tournament.teamBattle && !TEAM_BATTLE_FORMATS.includes(format)) {
-    throw ApiError.badRequest("Team battles can only be Swiss or Arena");
-  }
   if (tournament.cumulative && !(CUMULATIVE_FORMATS as readonly string[]).includes(format)) {
     throw ApiError.badRequest("Tournaments in a cumulative can only be Swiss or Arena");
   }
@@ -1295,7 +1196,7 @@ export async function updateTournament(
   tournament.berserkAllowed =
     format === "arena" ? (input.berserkAllowed ?? tournament.berserkAllowed) : false;
   tournament.chatEnabled = input.chatEnabled ?? tournament.chatEnabled;
-  tournament.isPublic = tournament.team ? false : (input.isPublic ?? tournament.isPublic);
+  tournament.isPublic = input.isPublic ?? tournament.isPublic;
   tournament.prizeSchedule = prizeSchedule;
   tournament.prizePoolTokens = committedPrizePoolTokens;
   tournament.regFeeTokens = regFeeTokens;
@@ -2987,50 +2888,6 @@ function applyPairingScore(
   if (p1 && p2) p2.tiebreak += p1.points;
 }
 
-export interface TeamStanding {
-  team: string;
-  name: string;
-  /** Sum of the points of the team's best `leadersPerTeam` players. */
-  score: number;
-  /** Everyone who joined for this team, scoring or not. */
-  playerCount: number;
-  /** The players whose points make up `score`, best first. */
-  leaders: { user: string; username: string; points: number }[];
-}
-
-/** Ranks the teams of a team battle, best first. A team's score is the sum of
- *  its top `leadersPerTeam` players' points (so a team of 200 can't win just
- *  by being big, but a team with fewer scorers than that isn't penalised
- *  beyond having fewer points to add). Ties break on the total points of
- *  every player on the team, then on name, so the order is stable. Teams
- *  with nobody on them yet still appear (at 0), so the table is complete
- *  from the moment the battle is created. Works on both the full docs and
- *  the slim summary roster, it only reads user/username/points/battleTeam. */
-export function computeTeamStandings(tournament: {
-  teamBattle?: { teams: { team: any; name: string }[]; leadersPerTeam: number } | null;
-  players: { user: any; username: string; points: number; battleTeam?: any }[];
-}): TeamStanding[] {
-  const battle = tournament.teamBattle;
-  if (!battle) return [];
-  const rows = battle.teams.map((t) => {
-    const id = t.team.toString();
-    const members = tournament.players
-      .filter((p) => p.battleTeam && p.battleTeam.toString() === id)
-      .sort((a, b) => b.points - a.points);
-    const leaders = members.slice(0, battle.leadersPerTeam);
-    return {
-      team: id,
-      name: t.name,
-      score: leaders.reduce((sum, p) => sum + p.points, 0),
-      total: members.reduce((sum, p) => sum + p.points, 0),
-      playerCount: members.length,
-      leaders: leaders.map((p) => ({ user: p.user.toString(), username: p.username, points: p.points })),
-    };
-  });
-  rows.sort((a, b) => b.score - a.score || b.total - a.total || a.name.localeCompare(b.name));
-  return rows.map(({ total: _total, ...r }) => r);
-}
-
 export function rankPlayers(tournament: ITournament): ITournamentPlayer[] {
   return [...tournament.players].sort(
     (a, b) => b.points - a.points || b.tiebreak - a.tiebreak,
@@ -3855,7 +3712,7 @@ export async function getTournamentByCode(codeOrId: string) {
   const tournament = await Tournament.findOne(tournamentMatch(codeOrId)).lean();
   if (!tournament) throw ApiError.notFound("Tournament not found");
   const withRatings = await withLiveRatings(tournament);
-  return { ...sanitizeForClient(withRatings), teamStandings: computeTeamStandings(withRatings) };
+  return sanitizeForClient(withRatings);
 }
 
 // What the standings table, roster and header need from each player. The
@@ -3874,7 +3731,6 @@ const PLAYER_SUMMARY_FIELDS = [
   "form",
   "paused",
   "eliminatedRound",
-  "battleTeam",
 ];
 
 const pairingCountOf = { $size: { $ifNull: ["$$r.pairings", []] } };
@@ -3964,7 +3820,7 @@ export async function getTournamentSummaryByCode(codeOrId: string) {
   ]);
   if (!doc) throw ApiError.notFound("Tournament not found");
   const withRatings = await withLiveRatings(doc);
-  return { ...sanitizeForClient(withRatings), teamStandings: computeTeamStandings(withRatings) };
+  return sanitizeForClient(withRatings);
 }
 
 /** One round with all its pairings, for opening a round tab the summary only
@@ -4042,30 +3898,6 @@ export async function listTournaments(
   query.status = status ?? { $in: ["pending", "active"] };
   const tournaments = await findTournamentCards(query, { limit: 50 });
   return tournaments.map(withEmptyRounds);
-}
-
-/** A team's in-house tournaments. 'upcoming' = pending + active (soonest
- *  start first isn't needed, newest first matches every other list), and
- *  'finished' is paged like the personal Finished list. */
-export async function listTeamTournaments(
-  teamId: string,
-  opts: { scope: "upcoming" | "finished"; page?: number; limit?: number },
-) {
-  const team = new mongoose.Types.ObjectId(teamId);
-  if (opts.scope === "upcoming") {
-    const tournaments = await findTournamentCards(
-      { team, status: { $in: ["pending", "active"] } },
-      { limit: 50 },
-    );
-    return { tournaments: tournaments.map(withEmptyRounds) };
-  }
-  const limit = opts.limit ?? FINISHED_TOURNAMENTS_PAGE_SIZE;
-  const filter = { team, status: "finished" };
-  const total = await Tournament.countDocuments(filter);
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-  const page = Math.min(Math.max(1, opts.page ?? 1), totalPages);
-  const tournaments = await findTournamentCards(filter, { skip: (page - 1) * limit, limit });
-  return { tournaments: tournaments.map(withEmptyRounds), page, limit, total, totalPages };
 }
 
 /** Page size for the Finished tournaments list. Finished tournaments pile up

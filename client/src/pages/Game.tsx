@@ -35,6 +35,8 @@ import {
   Trophy,
   FlipVertical,
   Settings,
+  Shuffle,
+  Coins,
 } from "lucide-react";
 import { MoveList, MoveStrip } from "../components/MoveLog.js";
 import { PlayerPanelRow, panelMaterial } from "../components/PlayerPanels.js";
@@ -105,7 +107,18 @@ import { copyToClipboard } from "@/lib/utils.js";
 import {
   formatTimeControl,
   animationDurationForTimeControl,
+  timeControlCategoryFromSeconds,
+  type TimeControlCategory,
 } from "../timeControls.js";
+import { InviteCard, InviteTerm } from "../components/InviteLanding.js";
+
+const JOIN_CATEGORY_LABEL: Record<TimeControlCategory, string> = {
+  bullet: "Bullet",
+  blitz: "Blitz",
+  rapid: "Rapid",
+  classical: "Classical",
+  unlimited: "No clock",
+};
 
 export function Game() {
   const { code = "" } = useParams<{ code: string }>();
@@ -1884,41 +1897,79 @@ export function Game() {
   }
 
   if (mode === "need-join" && gameMeta) {
+    const joinCategory = timeControlCategoryFromSeconds(
+      gameMeta.timeControl.baseSeconds,
+    );
     return (
       <div className="mx-auto mt-6 max-w-md px-4">
-        <Card variant="strong" className="text-center">
-          <h1 className="mb-1 text-xl font-bold text-base-content">
-            Game{" "}
-            <span className="font-normal text-base-content/50">· {code}</span>
-          </h1>
-          {gameMeta.variant === "chess960" && (
-            <Badge variant="secondary" className="mb-2">
-              Chess960
-            </Badge>
-          )}
-          <p className="mb-4 text-sm text-base-content/60">
-            {gameMeta.white?.username} is waiting for an opponent.
-          </p>
-          {!!gameMeta.wagerTokens && (
-            <Card
-              variant="solid"
-              className="mb-4 border-amber-900/40 bg-amber-950/20 text-left text-sm text-amber-300"
+        <InviteCard
+          from={{
+            username: gameMeta.white?.username ?? "Someone",
+            avatarGradient: gameMeta.white?.avatarGradient,
+          }}
+          headline="is waiting for an opponent"
+          subline={`Game ${code.toUpperCase()}`}
+          footer={
+            <>
+              {loadError && (
+                <p className="text-sm text-red-400">{loadError}</p>
+              )}
+              <Button onClick={handleJoin} fullWidth>
+                <Swords className="h-4 w-4" />
+                Join this game
+              </Button>
+            </>
+          }
+        >
+          <InviteTerm
+            icon={
+              <TimeControlIcon
+                baseSeconds={gameMeta.timeControl.baseSeconds}
+                size={16}
+              />
+            }
+            label="Time control"
+            detail={JOIN_CATEGORY_LABEL[joinCategory]}
+          >
+            {formatTimeControl(gameMeta.timeControl)}
+          </InviteTerm>
+          <InviteTerm
+            icon={<Shuffle className="h-4 w-4" />}
+            label="Starting position"
+            detail={
+              gameMeta.variant === "chess960"
+                ? "Back rank is shuffled"
+                : undefined
+            }
+          >
+            {gameMeta.variant === "chess960" ? "Chess960" : "Standard"}
+          </InviteTerm>
+          {gameMeta.wagerTokens ? (
+            <InviteTerm
+              icon={<Coins className="h-4 w-4" />}
+              label="Your stake"
+              detail={
+                <span className="inline-flex items-center gap-1">
+                  Winner takes {gameMeta.wagerTokens * 2}{" "}
+                  <RCoin size={11} />
+                </span>
+              }
+              emphasis
             >
-              This is a wagered game. Joining will stake{" "}
-              <strong className="inline-flex items-center gap-1">
+              <span className="inline-flex items-center gap-1">
                 {gameMeta.wagerTokens} <RCoin size={13} />
-              </strong>{" "}
-              from your balance. The winner takes the full{" "}
-              {gameMeta.wagerTokens * 2}.
-            </Card>
+              </span>
+            </InviteTerm>
+          ) : (
+            <InviteTerm
+              icon={<Coins className="h-4 w-4" />}
+              label="Stake"
+              detail="Nothing is taken from your balance"
+            >
+              Free game
+            </InviteTerm>
           )}
-          {loadError && (
-            <p className="mb-3 text-sm text-red-400">{loadError}</p>
-          )}
-          <Button onClick={handleJoin} fullWidth>
-            Join this game
-          </Button>
-        </Card>
+        </InviteCard>
       </div>
     );
   }

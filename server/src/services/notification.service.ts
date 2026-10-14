@@ -1,6 +1,5 @@
 import { Notification, type INotification, type NotificationType } from '../models/Notification.js';
 import { getIo } from '../sockets/io.js';
-import { Types } from 'mongoose';
 
 export interface CreateNotificationParams {
   recipientId: string;
@@ -46,32 +45,6 @@ export async function createNotification(params: CreateNotificationParams): Prom
   }
 
   return notification;
-}
-
-/** Sends the same notification to many users at once (e.g. a team
- *  announcement): one bulk insert, then a live push to each recipient's own
- *  socket room. Best-effort like createNotification's push, never throws for
- *  a failed push. */
-export async function createNotificationsForMany(
-  recipientIds: string[],
-  params: Omit<CreateNotificationParams, 'recipientId'>,
-): Promise<void> {
-  if (recipientIds.length === 0) return;
-  const docs = await Notification.insertMany(
-    recipientIds.map((recipient) => ({
-      recipient: new Types.ObjectId(recipient),
-      type: params.type,
-      title: params.title,
-      body: params.body,
-      link: params.link,
-    })),
-  );
-  try {
-    const io = getIo();
-    for (const n of docs) io.to(`user:${n.recipient.toString()}`).emit('notification:new', serialize(n));
-  } catch (err) {
-    console.error('notification socket push failed:', err);
-  }
 }
 
 export interface ListNotificationsResult {

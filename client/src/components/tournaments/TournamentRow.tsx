@@ -54,11 +54,8 @@ export function TournamentRow({
           >
             {t.status}
           </Badge>
-          {t.team && <Badge variant="primary">In-house</Badge>}
-          {t.teamBattle && <Badge variant="primary">Team battle</Badge>}
         </div>
         <div className="mt-1 text-xs leading-relaxed text-base-content/50 [overflow-wrap:anywhere]">
-          {t.organizationName ? `${t.organizationName} · ` : ""}
           {FORMAT_LABEL[t.format]} ·{" "}
           <TimeControlIcon
             baseMinutes={t.baseMinutes}

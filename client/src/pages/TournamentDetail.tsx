@@ -59,8 +59,6 @@ import {
   getLeagueStandings,
   type LeagueStandings as LeagueStandingsData,
 } from "../api/leagues.js";
-import { TeamBattleStandings } from "../components/tournaments/TeamBattleStandings.js";
-import { JoinTeamBattleModal } from "../components/tournaments/JoinTeamBattleModal.js";
 import {
   KnockoutBracket,
   roundLabel,
@@ -268,7 +266,7 @@ function EditTournamentForm({
               {(Object.keys(FORMAT_LABEL) as TournamentFormat[])
                 .filter(
                   (f) =>
-                    (!tournament.teamBattle && !tournament.cumulative) ||
+                    !tournament.cumulative ||
                     f === "swiss" ||
                     f === "arena",
                 )
@@ -1415,9 +1413,6 @@ export function TournamentDetail() {
   }
 
   const myId = user?.id;
-  const teamNameById = new Map(
-    (tournament.teamBattle?.teams ?? []).map((t) => [t.team, t.name]),
-  );
   const isPlayer = !!myId && tournament.players.some((p) => p.user === myId);
   const myPlayer = tournament.players.find((p) => p.user === myId);
   const isCreator = tournament.createdBy === myId;
@@ -1491,20 +1486,18 @@ export function TournamentDetail() {
       ] ?? selectedRoundStub)
     : selectedRoundStub;
 
-  function join(password?: string, teamId?: string) {
+  function join(password?: string) {
     // Once you're a player, the server already knows it, the password is
     // only ever asked for here, at join time, never again on return visits.
     setPrimaryBusy(true);
     socket?.emit("tournament:join", {
       tournamentId: tournament!._id,
       password: password || undefined,
-      teamId: teamId || undefined,
     });
   }
-  /** Join button entry point: a passworded tournament asks in a modal first,
-   *  and a team battle always does (you pick which team you play for). */
+  /** Join button entry point: a passworded tournament asks in a modal first. */
   function requestJoin() {
-    if (tournament!.hasPassword || tournament!.teamBattle) {
+    if (tournament!.hasPassword) {
       setJoinError("");
       setPasswordModalOpen(true);
     } else {
@@ -1741,14 +1734,6 @@ export function TournamentDetail() {
               </span>
             </div>
             <div className="mb-4 flex flex-wrap gap-1.5 last:mb-0">
-              {tournament.teamBattle && (
-                <Badge variant="primary">
-                  Team battle
-                  {tournament.organizationName
-                    ? ` · ${tournament.organizationName}`
-                    : ""}
-                </Badge>
-              )}
               {tournament.cumulative && tournament.cumulativeName && (
                 <Link to={`/leagues/${tournament.cumulative}`}>
                   <Badge variant="primary">
@@ -2013,19 +1998,11 @@ export function TournamentDetail() {
         )}
 
         {isPointsFormat && desktopPrimary}
-        {tournament.teamBattle && (
-          <TeamBattleStandings
-            tournament={tournament}
-            myTeamId={myPlayer?.battleTeam ?? null}
-          />
-        )}
 
         {isPointsFormat && standings.length > 0 && (
             <Card variant="solid">
               <CardHeader>
-                <CardTitle>
-                  {tournament.teamBattle ? "Player standings" : "Standings"}
-                </CardTitle>
+                <CardTitle>Standings</CardTitle>
                 <div className="flex items-center gap-2">
                   {myStandingsIndex !== -1 && (
                     <button
@@ -2106,12 +2083,6 @@ export function TournamentDetail() {
                                   <span className="min-w-0 truncate">
                                     {p.username}
                                   </span>
-                                  {p.battleTeam &&
-                                    teamNameById.get(p.battleTeam) && (
-                                      <span className="hidden max-w-24 shrink-0 truncate rounded bg-base-300/60 px-1.5 py-0.5 text-[10px] font-medium text-base-content/60 sm:inline">
-                                        {teamNameById.get(p.battleTeam)}
-                                      </span>
-                                    )}
                                   <RatingBadge
                                     className="shrink-0"
                                     rating={p.rating}
@@ -2257,31 +2228,16 @@ export function TournamentDetail() {
         menuItems={dockMenuItems}
       />
 
-      {tournament.teamBattle ? (
-        <JoinTeamBattleModal
-          open={passwordModalOpen}
-          tournamentName={tournament.name}
-          battle={tournament.teamBattle}
-          needsPassword={tournament.hasPassword}
-          error={joinError}
-          onSubmit={(teamId, pw) => {
-            setJoinError("");
-            join(pw, teamId);
-          }}
-          onClose={() => setPasswordModalOpen(false)}
-        />
-      ) : (
-        <JoinPasswordModal
-          open={passwordModalOpen}
-          tournamentName={tournament.name}
-          error={joinError}
-          onSubmit={(pw) => {
-            setJoinError("");
-            join(pw);
-          }}
-          onClose={() => setPasswordModalOpen(false)}
-        />
-      )}
+      <JoinPasswordModal
+        open={passwordModalOpen}
+        tournamentName={tournament.name}
+        error={joinError}
+        onSubmit={(pw) => {
+          setJoinError("");
+          join(pw);
+        }}
+        onClose={() => setPasswordModalOpen(false)}
+      />
 
       {tournament.chatEnabled && (
         <ChatDrawer
