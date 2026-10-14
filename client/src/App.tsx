@@ -56,6 +56,9 @@ const Players = lazy(() =>
     default: m.Players,
   })),
 );
+const AnalysisGame = lazy(() =>
+  import("./pages/AnalysisGame.js").then((m) => ({ default: m.AnalysisGame })),
+);
 const Analysis = lazy(() =>
   import("./pages/Analysis.js").then((m) => ({ default: m.Analysis })),
 );
@@ -312,6 +315,14 @@ function AppBody() {
                 element={
                   <ProtectedRoute>
                     <Analysis />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/analysis/:code"
+                element={
+                  <ProtectedRoute>
+                    <AnalysisGame />
                   </ProtectedRoute>
                 }
               />

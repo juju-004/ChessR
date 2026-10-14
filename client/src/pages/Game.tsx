@@ -2207,7 +2207,7 @@ export function Game() {
          *  (Spectator chat's trigger now lives in the action button row.)
          *  Left column on desktop; a full-width strip above the board/panel
          *  row on tablet and phone. */}
-        <div className="game-area-leftinfo md:px-0 px-5 flex shrink-0 flex-col justify-center gap-3 lg:h-full lg:min-h-0">
+        <div className="game-area-leftinfo md:px-0 px-4 flex shrink-0 flex-col justify-center gap-3 lg:h-full lg:min-h-0">
           <GameDetailsCard
             badges={badges}
             code={code}

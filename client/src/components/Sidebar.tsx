@@ -27,9 +27,9 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/players", label: "Players", icon: Users },
-  { to: "/analysis", label: "Analysis", icon: LineChart },
   { to: "/cage", label: "Cage", icon: Swords },
   { to: "/tournaments", label: "Tournaments", icon: Trophy },
+  { to: "/analysis", label: "Analysis", icon: LineChart },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -96,6 +96,8 @@ export function MobileDock() {
   // Same hand-over for a single tournament's page (TournamentActionBarMobile),
   // but not the list or the create form, which keep the normal nav.
   if (/^\/tournaments\/(?!new$)[^/]+\/?$/.test(pathname)) return null;
+  // Same for a single game's analysis (AnalysisActionBarMobile).
+  if (/^\/analysis\/[^/]+\/?$/.test(pathname)) return null;
 
   const renderItem = (item: NavItem, extra: string) => {
     const isActive = item.end ? pathname === item.to : pathname.startsWith(item.to);

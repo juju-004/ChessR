@@ -294,7 +294,7 @@ function isDarkSquare(fileIndex: number, rank: number): boolean {
  * square's own light/dark color for contrast, the same way theirs does,
  * rather than one fixed color that would wash out on a same-toned square.
  */
-const BoardCoordinates = memo(function BoardCoordinates({
+export const BoardCoordinates = memo(function BoardCoordinates({
   orientation,
   boardSize,
   className,
