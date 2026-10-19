@@ -6,8 +6,6 @@ import {
   Flag,
   Megaphone,
   Wallet,
-  ChevronLeft,
-  ChevronRight,
   CheckCheck,
   type LucideIcon,
 } from "lucide-react";
@@ -21,11 +19,13 @@ import {
 import { useNotificationCenter } from "../contexts/NotificationCenterContext.js";
 import { formatRelativeTime } from "../lib/utils.js";
 import { cn } from "../lib/cn.js";
+import { Pagination } from "../components/Pagination.js";
 import {
   Page,
   Card,
+  EmptyState,
   Button,
-  Spinner,
+  CenteredSpinner,
   Stagger,
   StaggerItem,
 } from "@/components/ui/index.js";
@@ -100,20 +100,15 @@ export function Notifications() {
       }
     >
       {loading && (
-        <div className="flex justify-center py-16">
-          <Spinner />
-        </div>
+        <CenteredSpinner className="py-16" />
       )}
 
       {!loading && items.length === 0 && (
         <Card variant="solid">
-          <div className="flex flex-col items-center gap-2 py-8 text-center">
-            {/* <Inbox className="h-8 w-8 text-base-content/30" /> */}
-            <p className="text-sm text-base-content/60">
-              Nothing here yet. This is where Chessr will let you know about
-              anything that needs your attention.
-            </p>
-          </div>
+          <EmptyState>
+            Nothing here yet. This is where Chessr will let you know about
+            anything that needs your attention.
+          </EmptyState>
         </Card>
       )}
 
@@ -175,29 +170,13 @@ export function Notifications() {
         </Stagger>
       )}
 
-      {totalPages > 1 && (
-        <div className="mt-5 flex items-center justify-center gap-3">
-          <Button
-            variant="glass"
-            size="sm"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => p - 1)}
-          >
-            <ChevronLeft className="h-4 w-4" /> Prev
-          </Button>
-          <span className="text-sm text-base-content/60">
-            Page {page} of {totalPages}
-          </span>
-          <Button
-            variant="glass"
-            size="sm"
-            disabled={page >= totalPages}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Next <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
+      <div className="mt-5">
+        <Pagination
+          page={page - 1}
+          pageCount={totalPages}
+          onPageChange={(p) => setPage(p + 1)}
+        />
+      </div>
     </Page>
   );
 }

@@ -1,10 +1,8 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import {
   Bell,
-  Check,
-  X,
   Swords,
   Shield,
   Maximize2,
@@ -17,6 +15,7 @@ import {
 import { pressable } from "@/lib/motion.js";
 import { cn } from "@/lib/cn.js";
 import { Popover } from "./ui/Popover.js";
+import { AcceptDeclineButtons } from "./AcceptDeclineButtons.js";
 import { Avatar, RCoin, TimeControlIcon } from "./ui/index.js";
 import {
   useNotificationCenter,
@@ -36,6 +35,77 @@ const SYSTEM_TYPE_ICON: Record<NotificationType, typeof Megaphone> = {
   admin_message: Megaphone,
   tournament_naira_prize: Wallet,
 };
+
+const ICON_TONES = {
+  primary: "bg-(--primary)/15 text-(--primary)",
+  purple: "bg-purple-500/15 text-purple-400",
+  muted: "bg-base-300 text-base-content/70",
+} as const;
+
+function IconBadge({
+  icon: Icon,
+  tone,
+}: {
+  icon: typeof Megaphone;
+  tone: keyof typeof ICON_TONES;
+}) {
+  return (
+    <div
+      className={cn(
+        "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+        ICON_TONES[tone],
+      )}
+    >
+      <Icon className="h-3.5 w-3.5" />
+    </div>
+  );
+}
+
+/** ", 50 R" suffix for a staked challenge; nothing for a free one. */
+function WagerNote({ tokens }: { tokens?: number | null }) {
+  if (!tokens) return null;
+  return (
+    <>
+      ,{" "}
+      <span className="inline-flex gap-0.5">
+        {tokens} <RCoin className="translate-y-0.75" size={14} />
+      </span>
+    </>
+  );
+}
+
+/** One row in the dropdown: leading icon/avatar + content. Tappable (a
+ *  button) when `onClick` is given, otherwise a plain row. */
+function MenuRow({
+  leading,
+  onClick,
+  children,
+}: {
+  leading: ReactNode;
+  onClick?: () => void;
+  children: ReactNode;
+}) {
+  const classes =
+    "flex w-full items-start gap-2.5 border-b border-base-300/60 px-3 py-2.5 text-left last:border-b-0";
+  const body = (
+    <>
+      {leading}
+      <div className="min-w-0 flex-1">{children}</div>
+    </>
+  );
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(classes, "hover:bg-base-200")}
+      >
+        {body}
+      </button>
+    );
+  }
+  return <div className={classes}>{body}</div>;
+}
 
 function timeControlLabel(tc: {
   baseMinutes: number | null;
@@ -112,167 +182,94 @@ export function NotificationsMenu({ className }: NotificationsMenuProps) {
           {visibleItems.map((item) => {
             if (item.kind === "friend_request") {
               return (
-                <div
+                <MenuRow
                   key={`fr-${item.id}`}
-                  className="flex items-center gap-2.5 border-b border-base-300/60 px-3 py-2.5 last:border-b-0"
+                  leading={
+                    <Avatar
+                      username={item.from.username}
+                      gradient={item.from.avatarGradient}
+                      size="sm"
+                    />
+                  }
                 >
-                  <Avatar
-                    username={item.from.username}
-                    gradient={item.from.avatarGradient}
-                    size="sm"
+                  <p className="truncate text-sm text-base-content">
+                    <span className="font-semibold">{item.from.username}</span>{" "}
+                    wants to be friends
+                  </p>
+                  <AcceptDeclineButtons
+                    variant="pill"
+                    onAccept={() => respondToFriendRequestItem(item.id, true)}
+                    onDecline={() => respondToFriendRequestItem(item.id, false)}
                   />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm text-base-content">
-                      <span className="font-semibold">
-                        {item.from.username}
-                      </span>{" "}
-                      wants to be friends
-                    </p>
-                    <div className="mt-1.5 flex gap-1.5">
-                      <button
-                        onClick={() =>
-                          respondToFriendRequestItem(item.id, true)
-                        }
-                        className="flex items-center gap-1 rounded-full bg-(--primary) px-2.5 py-1 text-xs font-medium text-white hover:brightness-110"
-                      >
-                        <Check className="h-3 w-3" /> Accept
-                      </button>
-                      <button
-                        onClick={() =>
-                          respondToFriendRequestItem(item.id, false)
-                        }
-                        className="flex items-center gap-1 rounded-full bg-base-300 px-2.5 py-1 text-xs font-medium text-base-content/70 hover:bg-base-300/70"
-                      >
-                        <X className="h-3 w-3" /> Decline
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                </MenuRow>
               );
             }
 
             if (item.kind === "challenge") {
-              const wagerNote = item.wagerTokens ? (
-                <>
-                  ,{" "}
-                  <span className="inline-flex gap-0.5">
-                    {item.wagerTokens}{" "}
-                    <RCoin className="translate-y-0.75" size={14} />
-                  </span>
-                </>
-              ) : (
-                ""
-              );
               return (
-                <div
+                <MenuRow
                   key={`ch-${item.id}`}
-                  className="flex items-start gap-2.5 border-b border-base-300/60 px-3 py-2.5 last:border-b-0"
+                  leading={<IconBadge tone="primary" icon={Swords} />}
                 >
-                  <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-(--primary)/15 text-(--primary)">
-                    <Swords className="h-3.5 w-3.5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm text-base-content">
-                      <span className="font-semibold">
-                        {item.from.username}
-                      </span>{" "}
-                      challenged you to a game (
-                      <span className="inline-flex items-center gap-0.5">
-                        <TimeControlIcon
-                          baseMinutes={item.timeControl.baseMinutes}
-                          size={11}
-                        />
-                        {timeControlLabel(item.timeControl)}
-                      </span>
-                      {wagerNote})
-                    </p>
-                    <div className="mt-1.5 flex gap-1.5">
-                      <button
-                        onClick={() => respondToChallengeItem(item.id, true)}
-                        className="flex items-center gap-1 rounded-full bg-(--primary) px-2.5 py-1 text-xs font-medium text-white hover:brightness-110"
-                      >
-                        <Check className="h-3 w-3" /> Accept
-                      </button>
-                      <button
-                        onClick={() => respondToChallengeItem(item.id, false)}
-                        className="flex items-center gap-1 rounded-full bg-base-300 px-2.5 py-1 text-xs font-medium text-base-content/70 hover:bg-base-300/70"
-                      >
-                        <X className="h-3 w-3" /> Decline
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                  <p className="text-sm text-base-content">
+                    <span className="font-semibold">{item.from.username}</span>{" "}
+                    challenged you to a game (
+                    <span className="inline-flex items-center gap-0.5">
+                      <TimeControlIcon
+                        baseMinutes={item.timeControl.baseMinutes}
+                        size={11}
+                      />
+                      {timeControlLabel(item.timeControl)}
+                    </span>
+                    <WagerNote tokens={item.wagerTokens} />)
+                  </p>
+                  <AcceptDeclineButtons
+                    variant="pill"
+                    onAccept={() => respondToChallengeItem(item.id, true)}
+                    onDecline={() => respondToChallengeItem(item.id, false)}
+                  />
+                </MenuRow>
               );
             }
 
             if (item.kind === "system") {
               const Icon = SYSTEM_TYPE_ICON[item.type] ?? Megaphone;
               return (
-                <button
+                <MenuRow
                   key={`sys-${item.id}`}
-                  type="button"
                   onClick={() => handleSystemItemClick(item)}
-                  className="flex w-full items-start gap-2.5 border-b border-base-300/60 px-3 py-2.5 text-left last:border-b-0 hover:bg-base-200"
+                  leading={<IconBadge tone="muted" icon={Icon} />}
                 >
-                  <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-base-300 text-base-content/70">
-                    <Icon className="h-3.5 w-3.5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-base-content">
-                      {item.title}
-                    </p>
-                    <p className="mt-0.5 line-clamp-2 text-xs text-base-content/60">
-                      {item.body}
-                    </p>
-                  </div>
-                </button>
+                  <p className="truncate text-sm font-semibold text-base-content">
+                    {item.title}
+                  </p>
+                  <p className="mt-0.5 line-clamp-2 text-xs text-base-content/60">
+                    {item.body}
+                  </p>
+                </MenuRow>
               );
             }
 
-            const wagerNote =
-              item.wagerMode !== "none" && item.wagerTokens ? (
-                <>
-                  ,{" "}
-                  <span className="inline-flex gap-0.5">
-                    {item.wagerTokens}{" "}
-                    <RCoin className="translate-y-0.75" size={14} />
-                  </span>
-                </>
-              ) : (
-                ""
-              );
             return (
-              <div
+              <MenuRow
                 key={`cage-${item.id}`}
-                className="flex items-start gap-2.5 border-b border-base-300/60 px-3 py-2.5 last:border-b-0"
+                leading={<IconBadge tone="purple" icon={Shield} />}
               >
-                <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-purple-500/15 text-purple-400">
-                  <Shield className="h-3.5 w-3.5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm text-base-content">
-                    <span className="font-semibold">{item.from.username}</span>{" "}
-                    <span>
-                      challenged you to a {item.legCount}-game cage match
-                      {wagerNote}
-                    </span>
-                  </p>
-                  <div className="mt-1.5 flex gap-1.5">
-                    <button
-                      onClick={() => respondToCageInviteItem(item.id, true)}
-                      className="flex items-center gap-1 rounded-full bg-(--primary) px-2.5 py-1 text-xs font-medium text-white hover:brightness-110"
-                    >
-                      <Check className="h-3 w-3" /> Accept
-                    </button>
-                    <button
-                      onClick={() => respondToCageInviteItem(item.id, false)}
-                      className="flex items-center gap-1 rounded-full bg-base-300 px-2.5 py-1 text-xs font-medium text-base-content/70 hover:bg-base-300/70"
-                    >
-                      <X className="h-3 w-3" /> Decline
-                    </button>
-                  </div>
-                </div>
-              </div>
+                <p className="text-sm text-base-content">
+                  <span className="font-semibold">{item.from.username}</span>{" "}
+                  <span>
+                    challenged you to a {item.legCount}-game cage match
+                    {item.wagerMode !== "none" && (
+                      <WagerNote tokens={item.wagerTokens} />
+                    )}
+                  </span>
+                </p>
+                <AcceptDeclineButtons
+                  variant="pill"
+                  onAccept={() => respondToCageInviteItem(item.id, true)}
+                  onDecline={() => respondToCageInviteItem(item.id, false)}
+                />
+              </MenuRow>
             );
           })}
         </div>

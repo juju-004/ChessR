@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Plus, Layers } from "lucide-react";
 import {
   listOpenTournaments,
@@ -28,17 +28,15 @@ import { TournamentRow } from "../components/tournaments/TournamentRow.js";
 import { RefreshButton } from "../components/RefreshButton.js";
 import {
   Page,
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
   Button,
+  CardRow,
+  ListCard,
+  LoadMoreButton,
   Badge,
   EmojiInput,
   Input,
   Textarea,
   Modal,
-  Spinner,
 } from "../components/ui/index.js";
 
 // Client-side page size for the Open tournaments list, which already
@@ -84,35 +82,28 @@ function PaginatedTournamentCard({
   );
 
   return (
-    <Card variant="solid">
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        {onRefresh && (
+    <ListCard
+      title={title}
+      actions={
+        onRefresh && (
           <RefreshButton onRefresh={onRefresh} refreshing={!!refreshing} />
-        )}
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {loading ? (
-          <div className="flex justify-center py-6">
-            <Spinner className="text-base-content/40" />
-          </div>
-        ) : (
-          <>
-            {tournaments.length === 0 && (
-              <p className="text-sm text-base-content/50">{emptyMessage}</p>
-            )}
-            {pageItems.map((t) => (
-              <TournamentRow key={t._id} t={t} />
-            ))}
-            <Pagination
-              page={safePage}
-              pageCount={pageCount}
-              onPageChange={setPage}
-            />
-          </>
-        )}
-      </CardContent>
-    </Card>
+        )
+      }
+      loading={loading}
+      empty={tournaments.length === 0}
+      emptyMessage={emptyMessage}
+      footer={
+        <Pagination
+          page={safePage}
+          pageCount={pageCount}
+          onPageChange={setPage}
+        />
+      }
+    >
+      {pageItems.map((t) => (
+        <TournamentRow key={t._id} t={t} />
+      ))}
+    </ListCard>
   );
 }
 
@@ -139,38 +130,23 @@ function FinishedTournamentCard({
   loading: boolean;
 }) {
   return (
-    <Card variant="solid">
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {loading ? (
-          <div className="flex justify-center py-6">
-            <Spinner className="text-base-content/40" />
-          </div>
-        ) : (
-          <>
-            {tournaments.length === 0 && (
-              <p className="text-sm text-base-content/50">{emptyMessage}</p>
-            )}
-            {tournaments.map((t) => (
-              <TournamentRow key={t._id} t={t} hideFinishedBadgeOnMobile />
-            ))}
-            {hasMore && (
-              <Button
-                variant="ghost"
-                size="sm"
-                fullWidth
-                loading={loadingMore}
-                onClick={onLoadMore}
-              >
-                Load more
-              </Button>
-            )}
-          </>
-        )}
-      </CardContent>
-    </Card>
+    <ListCard
+      title={title}
+      loading={loading}
+      empty={tournaments.length === 0}
+      emptyMessage={emptyMessage}
+      footer={
+        <LoadMoreButton
+          hasMore={hasMore}
+          loading={loadingMore}
+          onClick={onLoadMore}
+        />
+      }
+    >
+      {tournaments.map((t) => (
+        <TournamentRow key={t._id} t={t} hideFinishedBadgeOnMobile />
+      ))}
+    </ListCard>
   );
 }
 
@@ -196,60 +172,45 @@ function LeagueCard({
     safePage * PAGE_SIZE + PAGE_SIZE,
   );
   return (
-    <Card variant="solid">
-      <CardHeader>
-        <CardTitle>Leagues</CardTitle>
-        {canCreate && (
+    <ListCard
+      title="Leagues"
+      actions={
+        canCreate && (
           <Button variant="secondary" size="sm" onClick={onCreate}>
             <Plus className="h-4 w-4" />
             New
           </Button>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {loading ? (
-          <div className="flex justify-center py-6">
-            <Spinner className="text-base-content/40" />
+        )
+      }
+      loading={loading}
+      empty={leagues.length === 0}
+      emptyMessage="No leagues yet. A league is a series of tournaments whose points add up into one table."
+      footer={
+        <Pagination
+          page={safePage}
+          pageCount={pageCount}
+          onPageChange={setPage}
+        />
+      }
+    >
+      {items.map((c) => (
+        <CardRow key={c.id} to={`/leagues/${c.id}`}>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Layers className="h-4 w-4 shrink-0 text-(--primary)" />
+              <span className="min-w-0 font-medium wrap-break-word text-base-content">
+                {c.name}
+              </span>
+              {c.mine && <Badge variant="primary">Yours</Badge>}
+            </div>
+            <div className="mt-0.5 text-xs text-base-content/50">
+              {c.organizationName} · {c.tournamentCount} of {c.maxTournaments}{" "}
+              {c.tournamentCount === 1 ? "tournament" : "tournaments"}
+            </div>
           </div>
-        ) : (
-          <>
-            {leagues.length === 0 && (
-              <p className="text-sm text-base-content/50">
-                No leagues yet. A league is a series of tournaments whose points
-                add up into one table.
-              </p>
-            )}
-            {items.map((c) => (
-              <Link
-                key={c.id}
-                to={`/leagues/${c.id}`}
-                className="flex items-center justify-between gap-3 rounded-xl border border-base-300 bg-base-100/60 px-3 py-2.5 transition-colors hover:border-(--primary)/40"
-              >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Layers className="h-4 w-4 shrink-0 text-(--primary)" />
-                    <span className="min-w-0 font-medium wrap-break-word text-base-content">
-                      {c.name}
-                    </span>
-                    {c.mine && <Badge variant="primary">Yours</Badge>}
-                  </div>
-                  <div className="mt-0.5 text-xs text-base-content/50">
-                    {c.organizationName} · {c.tournamentCount} of{" "}
-                    {c.maxTournaments}{" "}
-                    {c.tournamentCount === 1 ? "tournament" : "tournaments"}
-                  </div>
-                </div>
-              </Link>
-            ))}
-            <Pagination
-              page={safePage}
-              pageCount={pageCount}
-              onPageChange={setPage}
-            />
-          </>
-        )}
-      </CardContent>
-    </Card>
+        </CardRow>
+      ))}
+    </ListCard>
   );
 }
 
@@ -501,37 +462,35 @@ export function Tournaments() {
         />
 
         {mineActive.length > 0 && (
-          <Card variant="solid">
-            <CardHeader>
-              <CardTitle>Active</CardTitle>
+          <ListCard
+            title="Active"
+            actions={
               <RefreshButton
                 onRefresh={handleManualRefresh}
                 refreshing={refreshing}
               />
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {mineActive.map((t) => (
-                <TournamentRow key={t._id} t={t} />
-              ))}
-            </CardContent>
-          </Card>
+            }
+          >
+            {mineActive.map((t) => (
+              <TournamentRow key={t._id} t={t} />
+            ))}
+          </ListCard>
         )}
 
         {openActive.length > 0 && (
-          <Card variant="solid">
-            <CardHeader>
-              <CardTitle>In progress</CardTitle>
+          <ListCard
+            title="In progress"
+            actions={
               <RefreshButton
                 onRefresh={handleManualRefresh}
                 refreshing={refreshing}
               />
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {openActive.map((t) => (
-                <TournamentRow key={t._id} t={t} />
-              ))}
-            </CardContent>
-          </Card>
+            }
+          >
+            {openActive.map((t) => (
+              <TournamentRow key={t._id} t={t} />
+            ))}
+          </ListCard>
         )}
 
         <FinishedTournamentCard

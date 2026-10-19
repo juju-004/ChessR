@@ -14,7 +14,7 @@ import {
   Button,
   Input,
   Select,
-  Spinner,
+  Spinner, CenteredSpinner,
 } from "@/components/ui/index.js";
 
 /**
@@ -126,9 +126,7 @@ export function AccountDetails() {
       bare
     >
       {loading ? (
-        <div className="flex justify-center py-16">
-          <Spinner />
-        </div>
+        <CenteredSpinner className="py-16" />
       ) : (
         <Card variant="solid" className="w-full space-y-3">
           <Select

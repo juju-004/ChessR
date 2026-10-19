@@ -120,7 +120,7 @@ export function setUserReportingBlock(username: string, blocked: boolean) {
 // server, a cut of every decisive game/cage-match wager and every
 // tournament reg-fee pool.
 
-export type RevenueSource = 'game' | 'cage_match' | 'tournament';
+export type RevenueSource = 'game' | 'cage_match' | 'tournament' | 'puzzle_race';
 
 export interface RevenueEntry {
   id: string;

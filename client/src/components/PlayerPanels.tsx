@@ -151,14 +151,19 @@ function MaterialBadge({
   return (
     <div
       className={cn(
-        "flex min-w-0 flex-wrap items-center gap-0.5 text-base-content/70",
-        size === "sm" && "justify-center leading-none",
+        // Never wraps: a long capture list is clipped rather than growing
+        // the panel, which on phone would resize the board.
+        "flex min-w-0 flex-nowrap items-center gap-0.5 overflow-hidden whitespace-nowrap leading-none text-base-content/70",
+        size === "sm" && "justify-center",
       )}
     >
       {pieceDiff.map((p) => (
         <span
           key={p.type}
-          className={cn("leading-none", size === "sm" ? "text-xs" : "text-sm")}
+          className={cn(
+            "leading-none",
+            size === "sm" ? "text-[11px]" : "text-xs md:text-sm",
+          )}
           title={`Up ${p.count} ${p.type}`}
         >
           {glyphs[p.type].repeat(Math.min(p.count, 9))}
@@ -167,8 +172,8 @@ function MaterialBadge({
       {advantage > 0 && (
         <span
           className={cn(
-            "font-bold text-(--primary)",
-            size === "sm" ? "text-[10px]" : "ml-0.5 text-xs",
+            "font-bold leading-none text-(--primary)",
+            size === "sm" ? "text-[9px]" : "ml-0.5 text-[10px] md:text-xs",
           )}
         >
           +{advantage}
@@ -476,15 +481,16 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
     <div className="flex h-13.5 items-center gap-3 rounded-xl bg-base-200/70 px-3 py-2 text-base-content">
       {score != null && <ScoreBadge score={score} className="-mr-1" />}
       {zenMode ? (
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-base-300/70 text-base-content/40">
-          <UserRound className="h-4 w-4" />
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-base-300/70 text-base-content/40 md:h-8 md:w-8">
+          <UserRound className="h-3 w-3 md:h-4 md:w-4" />
         </span>
       ) : profileHref ? (
         <Link to={profileHref} className="shrink-0">
           <Avatar
             username={username}
             gradient={avatarGradient}
-            size="sm"
+            size="xs"
+            mdSize="sm"
             status={connected ? "online" : "offline"}
           />
         </Link>
@@ -492,56 +498,57 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
         <Avatar
           username={username}
           gradient={avatarGradient}
-          size="sm"
+          size="xs"
+          mdSize="sm"
           status={connected ? "online" : "offline"}
         />
       )}
-      {/* No min-h reserved here on purpose, when neither badge below has
-       *  anything to show, this column is just the username line, and
-       *  `items-center` on the row centers it normally. The row itself is
-       *  a fixed height (above), not this column, so when a badge *does*
-       *  render, the now-taller two-line column re-centers (shifting the
-       *  username up to make room) without changing the row's own size,
-       *  which matters because on phone this row is a flex sibling of the
-       *  board itself (see .game-area-toppanel/-bottompanel in Game.tsx),
-       *  so a resizing row would resize the board mid-game. */}
+      {/* The second line (first-move countdown / disconnect claim / captured
+       *  pieces) lives in a fixed-height slot that is ALWAYS rendered, empty
+       *  or not. The row is a fixed height and this column is centred in it,
+       *  so a slot that only appeared when it had content made the username
+       *  jump up and down every capture. With the slot reserved the username
+       *  never moves, and on phone (where this row is a flex sibling of the
+       *  board, see GameBoardArea) the board never resizes either. */}
       <div className="min-w-0 flex-1">
         {zenMode ? (
-          <p className="truncate text-sm font-semibold text-base-content/40">
+          <p className="truncate text-sm font-semibold leading-5 text-base-content/40">
             Hidden
           </p>
         ) : profileHref ? (
           <Link
             to={profileHref}
-            className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-base-content hover:text-(--primary)"
+            className="flex min-w-0 items-center gap-1.5 text-sm font-semibold leading-5 text-base-content hover:text-(--primary)"
           >
             <span className="min-w-0 truncate">{username}</span>
             <RatingBadge rating={rating ?? null} />
           </Link>
         ) : (
-          <p className="truncate text-sm font-semibold text-base-content">
+          <p className="truncate text-sm font-semibold leading-5 text-base-content">
             {username}
           </p>
         )}
-        {disconnect ? (
-          <DisconnectBadge
-            expiresAt={disconnect.expiresAt}
-            onClaim={disconnect.onClaim}
-          />
-        ) : firstMoveGraceMs !== null ? (
-          <FirstMoveBadge
-            turnStartedAtMs={turnStartedAtMs}
-            graceMs={firstMoveGraceMs}
-          />
-        ) : (
-          !zenMode && (
-            <MaterialBadge
-              pieceDiff={pieceDiff}
-              glyphs={glyphs}
-              advantage={advantage}
+        <div className="flex h-4.5 min-w-0 items-center">
+          {disconnect ? (
+            <DisconnectBadge
+              expiresAt={disconnect.expiresAt}
+              onClaim={disconnect.onClaim}
             />
-          )
-        )}
+          ) : firstMoveGraceMs !== null ? (
+            <FirstMoveBadge
+              turnStartedAtMs={turnStartedAtMs}
+              graceMs={firstMoveGraceMs}
+            />
+          ) : (
+            !zenMode && (
+              <MaterialBadge
+                pieceDiff={pieceDiff}
+                glyphs={glyphs}
+                advantage={advantage}
+              />
+            )
+          )}
+        </div>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
         {berserked && <BerserkBadge />}

@@ -7,6 +7,7 @@ import {
   LineChart,
   Swords,
   Trophy,
+  Puzzle,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -29,6 +30,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/players", label: "Players", icon: Users },
   { to: "/cage", label: "Cage", icon: Swords },
   { to: "/tournaments", label: "Tournaments", icon: Trophy },
+  { to: "/puzzles", label: "Puzzles", icon: Puzzle },
   { to: "/analysis", label: "Analysis", icon: LineChart },
   { to: "/settings", label: "Settings", icon: Settings },
 ];

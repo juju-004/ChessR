@@ -90,16 +90,85 @@ function materialBalance(chess: Chess, color: "w" | "b"): number {
 }
 
 /**
- * Material swing for `mover` after playing `playedFen -> pv`, measured only
- * once the engine's own line has finished a full exchange (an even number of
- * plies after the move). Looking just one reply deep would flag every plain
- * trade (knight takes pawn, pawn takes knight) as a sacrifice.
+ * Capture-only search (quiescence) from the side to move's point of view:
+ * the material balance once every worthwhile capture and recapture has been
+ * played out. Stands pat, so a side is never forced to capture. Small node
+ * budget, it only has to settle simple "is this piece just hanging?" lines.
+ */
+function quiesce(
+  chess: Chess,
+  alpha: number,
+  beta: number,
+  depth: number,
+  budget: { n: number },
+): number {
+  const side = chess.turn();
+  const stand = materialBalance(chess, side);
+  if (depth === 0 || budget.n <= 0) return stand;
+  if (stand >= beta) return stand;
+  if (stand > alpha) alpha = stand;
+  const caps = chess.moves({ verbose: true }).filter((m) => m.captured);
+  // Most valuable victim, least valuable attacker first: cuts the search a lot.
+  caps.sort(
+    (a, b) =>
+      (PIECE_VALUE[b.captured!] ?? 0) * 10 -
+      (PIECE_VALUE[b.piece] ?? 0) -
+      ((PIECE_VALUE[a.captured!] ?? 0) * 10 - (PIECE_VALUE[a.piece] ?? 0)),
+  );
+  for (const m of caps) {
+    if (budget.n <= 0) break;
+    budget.n--;
+    chess.move({ from: m.from, to: m.to, promotion: m.promotion });
+    const score = -quiesce(chess, -beta, -alpha, depth - 1, budget);
+    chess.undo();
+    if (score >= beta) return score;
+    if (score > alpha) alpha = score;
+  }
+  return alpha;
+}
+
+/**
+ * Material the mover leaves en prise with this move, however the engine's
+ * own line goes: the opponent could grab it and it would not be won back by
+ * a plain recapture. Anything that was already hanging before the move
+ * (and the move did nothing about) doesn't count.
+ */
+function hangingMaterial(beforeFen: string, afterFen: string, mover: "w" | "b"): number {
+  try {
+    const baseline = materialBalance(new Chess(beforeFen), mover);
+    const afterValue = -quiesce(new Chess(afterFen), -1000, 1000, 6, { n: 600 });
+    let alreadyHanging = 0;
+    try {
+      // Same position with the opponent to move = "what if I'd passed".
+      const parts = beforeFen.split(" ");
+      parts[1] = mover === "w" ? "b" : "w";
+      parts[3] = "-";
+      const passed = new Chess(parts.join(" "));
+      const passedValue = -quiesce(passed, -1000, 1000, 6, { n: 600 });
+      alreadyHanging = Math.max(0, baseline - passedValue);
+    } catch {
+      /* odd position (e.g. the pass would leave a king in check): assume nothing */
+    }
+    return Math.max(0, baseline - afterValue - alreadyHanging);
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Material the mover gives up with `playedFen -> pv`. Two views, whichever
+ * is bigger: (a) the engine's own line, once a full exchange has finished
+ * (an even number of plies, or every plain trade would look like a
+ * sacrifice), and (b) pieces simply left hanging, which catches sacrifices
+ * the engine's line declines to take (the opponent "shouldn't" capture,
+ * but the piece is still offered, which is what makes a move brilliant).
  */
 function sacrificedMaterial(
   beforeFen: string,
   afterEval: PositionEval,
   mover: "w" | "b",
 ): number {
+  let viaLine = 0;
   try {
     const before = new Chess(beforeFen);
     const baseline = materialBalance(before, mover);
@@ -107,21 +176,22 @@ function sacrificedMaterial(
     // pv[0] is the opponent's reply, pv[1] the mover's answer, and so on.
     const plies = Math.min(pv.length, 4);
     const usable = plies - (plies % 2);
-    if (usable < 2) return 0;
-    const chess = new Chess(afterEval.fen);
-    for (let i = 0; i < usable; i++) {
-      const uci = pv[i];
-      chess.move({
-        from: uci.slice(0, 2),
-        to: uci.slice(2, 4),
-        promotion: uci.length > 4 ? uci[4] : undefined,
-      });
+    if (usable >= 2) {
+      const chess = new Chess(afterEval.fen);
+      for (let i = 0; i < usable; i++) {
+        const uci = pv[i];
+        chess.move({
+          from: uci.slice(0, 2),
+          to: uci.slice(2, 4),
+          promotion: uci.length > 4 ? uci[4] : undefined,
+        });
+      }
+      viaLine = baseline - materialBalance(chess, mover);
     }
-    return baseline - materialBalance(chess, mover);
   } catch {
     // Unplayable pv (e.g. a chess960 castle spelled differently): no verdict.
-    return 0;
   }
+  return Math.max(viaLine, hangingMaterial(beforeFen, afterEval.fen, mover));
 }
 
 export interface ClassifyContext {

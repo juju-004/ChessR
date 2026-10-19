@@ -9,8 +9,21 @@ import {
 } from "../lib/analysis/classify.js";
 
 /** Search depth per position. 12 is plenty for sorting moves into these
- *  buckets and keeps a 40-move game to roughly 10-20s on a phone. */
+ *  buckets on a computer... */
 export const ANALYSIS_DEPTH = 12;
+/** ...and phones get a shallower search, since one slow core has to do all
+ *  the work (roughly 2-3x faster, move ratings barely change). */
+export const ANALYSIS_DEPTH_MOBILE = 10;
+
+function pickDepth(): number {
+  try {
+    return window.matchMedia("(max-width: 767px)").matches
+      ? ANALYSIS_DEPTH_MOBILE
+      : ANALYSIS_DEPTH;
+  } catch {
+    return ANALYSIS_DEPTH;
+  }
+}
 
 const CACHE_PREFIX = "chessr:analysis:v1:";
 const CACHE_INDEX = "chessr:analysis:v1:index";
@@ -93,11 +106,22 @@ export function useGameAnalysis(input: UseGameAnalysisInput | null): GameAnalysi
   }, []);
 
   const key = input ? `${input.gameId}:${input.fens.length}` : null;
+  // The engine run waits for the opening book so it knows which positions
+  // it can skip.
+  const bookReady = book !== null;
 
   useEffect(() => {
-    if (!input) return;
+    if (!input || !book) return;
     let cancelled = false;
     const { gameId, fens, chess960 } = input;
+    const depth = pickDepth();
+    // Position k is "in book" when it is the start position or a known
+    // opening position. An engine run is only needed for a position if it
+    // sits next to a non-book one, so a long run of book moves costs nothing.
+    const isBookPos = (k: number) =>
+      k === 0 || (!chess960 && book.has(bookKey(fens[k])));
+    const skippable = (k: number) =>
+      k < fens.length - 1 && isBookPos(k) && isBookPos(k + 1);
 
     const cached = readCache(gameId, fens);
     if (cached) {
@@ -120,8 +144,13 @@ export function useGameAnalysis(input: UseGameAnalysisInput | null): GameAnalysi
           if (cancelled) return;
           const fen = fens[i];
           const terminal = terminalEval(fen);
-          const result: PositionEval =
-            terminal ?? { fen, lines: await engine.analyse(fen, ANALYSIS_DEPTH) };
+          const result: PositionEval = terminal
+            ? terminal
+            : skippable(i)
+              ? // Placeholder (level) eval for an opening position: nothing
+                // reads it for a rating, it only keeps the eval bar neutral.
+                { fen, lines: [{ cpWhite: 0, mate: null, pv: [] }] }
+              : { fen, lines: await engine.analyse(fen, depth) };
           results.push(result);
           if (cancelled) return;
           setEvals((prev) => {
@@ -144,18 +173,35 @@ export function useGameAnalysis(input: UseGameAnalysisInput | null): GameAnalysi
     };
     // `key` covers gameId + length; fens/moves are derived from the same game.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, bookReady]);
 
   const classes = useMemo(() => {
     if (!input) return [];
     return input.moves.map((m, i) => {
+      if (!book) return null;
+      const isBook = !input.chess960 && book.has(bookKey(input.fens[i + 1]));
+      // Opening moves are rated "book" without needing any engine result.
+      if (isBook) {
+        const verdict: MoveClassification = {
+          cls: "book",
+          loss: 0,
+          bestUci: null,
+          playedWasBest: false,
+        };
+        return verdict;
+      }
       const before = evals[i];
       const after = evals[i + 1];
-      if (!before || !after || !book) return null;
+      if (!before || !after) return null;
+      // The opponent's previous move only counts as an error to punish if it
+      // was actually searched (not a skipped opening position).
+      const prevWasBook =
+        i === 0 || (!input.chess960 && book.has(bookKey(input.fens[i])));
       return classifyMove(before, after, m, {
-        isBook: !input.chess960 && book.has(bookKey(input.fens[i + 1])),
+        isBook: false,
         prevTo: i > 0 ? input.moves[i - 1].to : undefined,
-        prevLoss: i > 0 && evals[i - 1] ? moveLoss(evals[i - 1]!, before) : undefined,
+        prevLoss:
+          !prevWasBook && evals[i - 1] ? moveLoss(evals[i - 1]!, before) : undefined,
       });
     });
   }, [evals, input, book]);

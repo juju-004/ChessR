@@ -5,7 +5,6 @@ import {
   Swords,
   UserPlus,
   Check,
-  X,
   TvMinimalPlay,
 } from "lucide-react";
 import {
@@ -19,18 +18,18 @@ import {
   useNotificationCenter,
   type NotificationItem,
 } from "../contexts/NotificationCenterContext.js";
-import { TIME_CONTROLS } from "../timeControls.js";
-import { MAX_WAGER_TOKENS, MIN_STAKE_TOKENS } from "../lib/limits.js";
 import { Page } from "@/components/ui/Page.js";
 import { Card } from "@/components/ui/Card.js";
-import { Select } from "@/components/ui/Select.js";
 import { Input } from "@/components/ui/Input.js";
 import { Button } from "@/components/ui/Button.js";
-import { Avatar } from "@/components/ui/Avatar.js";
-import { RCoin } from "@/components/ui/RCoin.js";
 import { ResponsiveOverlay } from "@/components/ui/ResponsiveOverlay.js";
-import { Spinner } from "@/components/ui/Spinner.js";
-import { RatingBadge } from "@/components/RatingBadge.js";
+import { CenteredSpinner } from "@/components/ui/CenteredSpinner.js";
+import { AcceptDeclineButtons } from "@/components/AcceptDeclineButtons.js";
+import { PlayerRow } from "@/components/lists/PlayerRow.js";
+import {
+  GameSettingsFields,
+  useGameSettings,
+} from "@/components/game/GameSettingsFields.js";
 import { claimToast } from "../lib/toastClaims.js";
 
 /** Merged "Players" page, search-for-anyone (the old /find) and your
@@ -71,9 +70,7 @@ export function Players() {
   // it's empty, so there's no loading state to render.
   const [onlinePlayers, setOnlinePlayers] = useState<Friend[]>([]);
   const [friendSearch, setFriendSearch] = useState("");
-  const [tcIndex, setTcIndex] = useState(2);
-  const [variant, setVariant] = useState<"standard" | "chess960">("standard");
-  const [wagerInput, setWagerInput] = useState("0");
+  const gameSettings = useGameSettings(2);
   const [status, setStatus] = useState<{
     message: string;
     isError: boolean;
@@ -192,12 +189,8 @@ export function Players() {
 
   function handleChallenge(targetId: string) {
     if (!socket) return;
-    const tc = TIME_CONTROLS[tcIndex];
-    // Wagers are opt-in now: 0 = a free game.
-    const wagerTokens = Math.min(
-      MAX_WAGER_TOKENS,
-      Math.max(0, Math.floor(Number(wagerInput) || 0)),
-    );
+    // Wagers are opt-in: 0 = a free game.
+    const { timeControl: tc, variant, wagerTokens } = gameSettings;
     socket.emit("challenge:send", {
       toUserId: targetId,
       baseMinutes: tc.baseMinutes,
@@ -293,57 +286,12 @@ export function Players() {
         }
       >
         <div className="space-y-3 px-4 md:px-2">
-          <Select
-            label="Time control"
-            value={tcIndex}
-            onChange={(e) => setTcIndex(Number(e.target.value))}
-          >
-            {TIME_CONTROLS.map((tc, i) => (
-              <option key={tc.label} value={i}>
-                {tc.label}
-              </option>
-            ))}
-          </Select>
-
-          <Select
-            label="Variant"
-            value={variant}
-            onChange={(e) =>
-              setVariant(e.target.value as "standard" | "chess960")
-            }
-          >
-            <option value="standard">Standard</option>
-            <option value="chess960">Chess960 (Fischer Random)</option>
-          </Select>
-
-          <Input
-            label={
-              <span className="inline-flex items-center gap-1">
-                <RCoin size={12} /> Coin wager (optional)
-              </span>
-            }
-            type="number"
-            min={0}
-            max={MAX_WAGER_TOKENS}
-            step={1}
-            value={wagerInput}
-            onChange={(e) => setWagerInput(e.target.value)}
-            error={
-              Number(wagerInput) > 0 &&
-              Math.floor(Number(wagerInput) || 0) < MIN_STAKE_TOKENS
-                ? `Enter 0 for a free game, or at least ${MIN_STAKE_TOKENS} R`
-                : undefined
-            }
-          />
+          <GameSettingsFields settings={gameSettings} />
           <span className="w-full gap-2 grid grid-cols-2">
             <Button
               variant="secondary"
               onClick={() => handleChallenge(p.id)}
-              disabled={
-                !p.online ||
-                (Math.floor(Number(wagerInput) || 0) > 0 &&
-                  Math.floor(Number(wagerInput) || 0) < MIN_STAKE_TOKENS)
-              }
+              disabled={!p.online || gameSettings.wagerBelowFloor}
             >
               {p.online ? "Send" : "offline"}
             </Button>
@@ -402,37 +350,15 @@ export function Players() {
               const alreadyFriend = friendIds.has(u._id);
               const requestSent = sentRequestIds.has(u._id);
               return (
-                <div
+                <PlayerRow
                   key={u._id}
+                  username={u.username}
+                  avatarGradient={u.avatarGradient}
+                  rating={u.rating}
+                  ratingCategory={u.ratingCategory}
                   onClick={() => navigate(`/profile/${u.username}`)}
-                  className="-mx-2 flex cursor-pointer items-center justify-between gap-2 rounded-lg border-b border-base-300 px-2 py-2 transition-colors last:border-none hover:bg-base-100/60"
-                >
-                  {/* Same layout as the friends list: no flex-wrap, the name
-                   *  block flexes/shrinks (min-w-0 flex-1) and the name itself
-                   *  truncates, so a long username never pushes the action
-                   *  button onto its own line. Challenging lives on the
-                   *  player's profile, not in this list. */}
-                  <span className="flex min-w-0 flex-1 items-center gap-2.5 text-sm text-base-content">
-                    <Avatar
-                      username={u.username}
-                      size="sm"
-                      gradient={u.avatarGradient}
-                      className="shrink-0"
-                    />
-                    <span className="min-w-0 truncate">{u.username}</span>
-                    <span className="shrink-0">
-                      <RatingBadge
-  rating={u.rating}
-  category={u.ratingCategory}
-  showIcon
-/>
-                    </span>
-                  </span>
-                  <span
-                    className="flex shrink-0 items-center gap-2"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {!alreadyFriend && (
+                  actions={
+                    !alreadyFriend && (
                       <Button
                         variant="secondary"
                         size="sm"
@@ -450,9 +376,9 @@ export function Players() {
                           </>
                         )}
                       </Button>
-                    )}
-                  </span>
-                </div>
+                    )
+                  }
+                />
               );
             })}
           </div>
@@ -464,38 +390,18 @@ export function Players() {
             Friend requests
           </h1>
           {requests.map((r) => (
-            <div
+            <PlayerRow
               key={r.id}
+              username={r.from.username}
+              avatarGradient={r.from.avatarGradient}
               onClick={() => navigate(`/profile/${r.from.username}`)}
-              className="-mx-2 flex cursor-pointer flex-wrap items-center justify-between gap-2 rounded-lg border-b border-base-300 px-2 py-2 transition-colors last:border-none hover:bg-base-100/60"
-            >
-              <span className="flex min-w-0 items-center gap-2.5 text-sm text-base-content">
-                <Avatar
-                  username={r.from.username}
-                  size="sm"
-                  gradient={r.from.avatarGradient}
+              actions={
+                <AcceptDeclineButtons
+                  onAccept={() => handleAccept(r.id)}
+                  onDecline={() => handleDecline(r.id)}
                 />
-                <span className="truncate">{r.from.username}</span>
-                {/* <RatingBadge rating={r.from.rating} /> */}
-              </span>
-              <span
-                className="flex flex-wrap gap-2"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Button size="sm" onClick={() => handleAccept(r.id)}>
-                  <Check className="h-4 w-4" />
-                  <span className="hidden sm:flex">Accept</span>
-                </Button>
-                <Button
-                  variant="glass"
-                  size="sm"
-                  onClick={() => handleDecline(r.id)}
-                >
-                  <X className="h-4 w-4" />
-                  <span className="hidden sm:flex">Decline</span>
-                </Button>
-              </span>
-            </div>
+              }
+            />
           ))}
         </Card>
         )}
@@ -506,35 +412,16 @@ export function Players() {
               Online players
             </h1>
             {onlinePlayers.map((p) => (
-              <div
+              <PlayerRow
                 key={p.id}
+                username={p.username}
+                avatarGradient={p.avatarGradient}
+                online
+                rating={p.rating}
+                ratingCategory={p.ratingCategory}
                 onClick={() => navigate(`/profile/${p.username}`)}
-                className="-mx-2 flex cursor-pointer items-center justify-between gap-2 rounded-lg border-b border-base-300 px-2 py-2 transition-colors last:border-none hover:bg-base-100/60!"
-              >
-                <span className="flex min-w-0 flex-1 items-center gap-2.5 text-sm text-base-content">
-                  <Avatar
-                    username={p.username}
-                    size="sm"
-                    gradient={p.avatarGradient}
-                    status="online"
-                    className="shrink-0"
-                  />
-                  <span className="min-w-0 truncate">{p.username}</span>
-                  <span className="shrink-0">
-                    <RatingBadge
-  rating={p.rating}
-  category={p.ratingCategory}
-  showIcon
-/>
-                  </span>
-                </span>
-                <span
-                  className="flex shrink-0 items-center gap-2"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {renderPlayerAction(p, "online")}
-                </span>
-              </div>
+                actions={renderPlayerAction(p, "online")}
+              />
             ))}
           </Card>
         )}
@@ -561,9 +448,7 @@ export function Players() {
           </div>
 
           {friendsLoading ? (
-            <div className="flex justify-center py-6">
-              <Spinner className="text-base-content/40" />
-            </div>
+            <CenteredSpinner className="py-6" />
           ) : (
             <>
               {friends.length === 0 && (
@@ -577,40 +462,16 @@ export function Players() {
                 </p>
               )}
               {visibleFriends.map((f) => (
-                <div
+                <PlayerRow
                   key={f.id}
+                  username={f.username}
+                  avatarGradient={f.avatarGradient}
+                  online={f.online}
+                  rating={f.rating}
+                  ratingCategory={f.ratingCategory}
                   onClick={() => navigate(`/profile/${f.username}`)}
-                  className="-mx-2 flex cursor-pointer items-center justify-between gap-2 rounded-lg border-b border-base-300 px-2 py-2 transition-colors last:border-none hover:bg-base-100/60!"
-                >
-                  {/* No flex-wrap on this row: a long username used to push
-                   *  the Challenge button onto its own line. Instead the
-                   *  name block flexes/shrinks (min-w-0 flex-1) and the name
-                   *  itself truncates, while the action buttons stay
-                   *  shrink-0 on the same line. */}
-                  <span className="flex min-w-0 flex-1 items-center gap-2.5 text-sm text-base-content">
-                    <Avatar
-                      username={f.username}
-                      size="sm"
-                      gradient={f.avatarGradient}
-                      status={f.online ? "online" : "offline"}
-                      className="shrink-0"
-                    />
-                    <span className="min-w-0 truncate">{f.username}</span>
-                    <span className="shrink-0">
-                      <RatingBadge
-  rating={f.rating}
-  category={f.ratingCategory}
-  showIcon
-/>
-                    </span>
-                  </span>
-                  <span
-                    className="flex shrink-0 items-center gap-2"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {renderPlayerAction(f, "friends")}
-                  </span>
-                </div>
+                  actions={renderPlayerAction(f, "friends")}
+                />
               ))}
             </>
           )}

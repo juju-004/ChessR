@@ -18,22 +18,24 @@ import { useConfirm } from "../contexts/ConfirmContext.js";
 import { useTokenBalance } from "../hooks/useTokenBalance.js";
 import { useRakePercent } from "../hooks/useRakePercent.js";
 import { RestrictionBanner } from "../components/RestrictionBanner.js";
+import {
+  GameSettingsFields,
+  useGameSettings,
+} from "../components/game/GameSettingsFields.js";
 import { RatingBadge } from "../components/RatingBadge.js";
-import { TIME_CONTROLS, formatTimeControl } from "../timeControls.js";
-import { MAX_WAGER_TOKENS, MIN_STAKE_TOKENS } from "../lib/limits.js";
+import { formatTimeControl } from "../timeControls.js";
 import {
   Page,
   Card,
   CardHeader,
   CardTitle,
   CardContent,
-  Select,
-  Input,
   Button,
   Badge,
   RCoin,
   Avatar,
-  Spinner,
+  CardRow,
+  CenteredSpinner,
   ResponsiveOverlay,
   TimeControlIcon,
 } from "../components/ui/index.js";
@@ -62,9 +64,8 @@ export function Lobby() {
   );
   const [loadError, setLoadError] = useState("");
 
-  const [tcIndex, setTcIndex] = useState(5);
-  const [variant, setVariant] = useState<GameVariant>("standard");
-  const [wagerInput, setWagerInput] = useState("0");
+  const gameSettings = useGameSettings(5);
+  const { wagerTokens, wagerBelowFloor } = gameSettings;
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
@@ -162,11 +163,6 @@ export function Lobby() {
     };
   }, [socket, load]);
 
-  const wagerTokens = Math.min(
-    MAX_WAGER_TOKENS,
-    Math.max(0, Math.floor(Number(wagerInput) || 0)),
-  );
-  const wagerBelowFloor = wagerTokens > 0 && wagerTokens < MIN_STAKE_TOKENS;
   const wagerTooHigh = balance !== null && wagerTokens > balance;
   const winnerTakes =
     rakePercent !== null && wagerTokens > 0
@@ -182,7 +178,7 @@ export function Lobby() {
   );
 
   async function handleCreate() {
-    const tc = TIME_CONTROLS[tcIndex];
+    const { timeControl: tc, variant } = gameSettings;
     setCreateError("");
     setCreating(true);
     try {
@@ -249,52 +245,15 @@ export function Lobby() {
 
   const createForm = (
     <div className="space-y-3 px-4 md:px-2">
-      <Select
-        label="Time control"
-        value={tcIndex}
-        onChange={(e) => setTcIndex(Number(e.target.value))}
-      >
-        {TIME_CONTROLS.map((tc, i) => (
-          <option key={tc.label} value={i}>
-            {tc.label}
-          </option>
-        ))}
-      </Select>
-      <Select
-        label="Variant"
-        value={variant}
-        onChange={(e) => setVariant(e.target.value as GameVariant)}
-      >
-        <option value="standard">Standard</option>
-        <option value="chess960">Chess960</option>
-      </Select>
-      <Input
-        label={
-          <span className="inline-flex items-center gap-1">
-            <RCoin size={12} /> Wager (optional)
-          </span>
-        }
-        type="number"
-        min={0}
-        max={MAX_WAGER_TOKENS}
-        step={1}
-        value={wagerInput}
-        onChange={(e) => setWagerInput(e.target.value)}
-        error={
-          wagerBelowFloor
-            ? `Enter 0 for a free game, or at least ${MIN_STAKE_TOKENS} R`
-            : wagerTooHigh
-              ? "Not enough R Coins"
+      <GameSettingsFields
+        settings={gameSettings}
+        wagerError={wagerTooHigh ? "Not enough R Coins" : undefined}
+        wagerHint={
+          wagerTokens === 0
+            ? "Free game, no R Coins at stake"
+            : winnerTakes !== null
+              ? `Winner takes ${winnerTakes}`
               : undefined
-        }
-        hint={
-          wagerBelowFloor || wagerTooHigh
-            ? undefined
-            : wagerTokens === 0
-              ? "Free game, no R Coins at stake"
-              : winnerTakes !== null
-                ? `Winner takes ${winnerTakes}`
-                : undefined
         }
       />
       <Button
@@ -383,9 +342,7 @@ export function Lobby() {
           </CardHeader>
           <CardContent className="space-y-2.5">
             {games === null && (
-              <div className="flex justify-center py-10">
-                <Spinner />
-              </div>
+              <CenteredSpinner className="py-10" />
             )}
             {games && sorted.length === 0 && (
               <div className="flex flex-col items-center gap-2 py-10 text-center">
@@ -406,13 +363,7 @@ export function Lobby() {
               const disabled = hasGame || cantAfford;
               return (
                 <div key={g._id}>
-                  <div
-                    className={`flex flex-col gap-2.5 rounded-2xl border px-3.5 py-3 transition-colors sm:flex-row sm:items-center sm:justify-between sm:gap-3 ${
-                      mine
-                        ? "border-(--primary)/40 bg-(--primary)/5"
-                        : "border-base-300 bg-base-100/60 hover:border-base-content/20"
-                    }`}
-                  >
+                  <CardRow stackOnMobile highlight={mine}>
                     {/* Below sm the card stacks into two rows (who + time
                      *  control on top, wager + action buttons underneath)
                      *  so the player name gets the whole card width instead
@@ -490,7 +441,7 @@ export function Lobby() {
                         </Button>
                       )}
                     </div>
-                  </div>
+                  </CardRow>
                   {rowError?.id === g._id && (
                     <p className="mt-1 px-1 text-sm text-red-400">
                       {rowError.message}

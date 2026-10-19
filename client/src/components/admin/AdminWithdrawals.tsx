@@ -7,7 +7,7 @@ import {
   type TxStatus,
   type WithdrawalListResponse,
 } from "../../api/admin.js";
-import { Card, Badge, Spinner, Button } from "../ui/index.js";
+import { Card, Badge, CenteredSpinner, Button } from "../ui/index.js";
 
 const FILTERS: (TxStatus | "all")[] = ["pending", "success", "failed", "all"];
 
@@ -147,9 +147,7 @@ export function AdminWithdrawals() {
       </div>
 
       {loading && (
-        <div className="flex justify-center py-10">
-          <Spinner className="text-base-content/40" />
-        </div>
+        <CenteredSpinner className="py-10" />
       )}
 
       {error && (

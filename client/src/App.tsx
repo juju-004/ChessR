@@ -59,6 +59,9 @@ const Players = lazy(() =>
 const AnalysisGame = lazy(() =>
   import("./pages/AnalysisGame.js").then((m) => ({ default: m.AnalysisGame })),
 );
+const AnalysisPgn = lazy(() =>
+  import("./pages/AnalysisPgn.js").then((m) => ({ default: m.AnalysisPgn })),
+);
 const Analysis = lazy(() =>
   import("./pages/Analysis.js").then((m) => ({ default: m.Analysis })),
 );
@@ -103,6 +106,12 @@ const TournamentDetail = lazy(() =>
   import("./pages/TournamentDetail.js").then((m) => ({
     default: m.TournamentDetail,
   })),
+);
+const PuzzleRaces = lazy(() =>
+  import("./pages/PuzzleRaces.js").then((m) => ({ default: m.PuzzleRaces })),
+);
+const PuzzleRacePage = lazy(() =>
+  import("./pages/PuzzleRace.js").then((m) => ({ default: m.PuzzleRacePage })),
 );
 const Lobby = lazy(() =>
   import("./pages/Lobby.js").then((m) => ({ default: m.Lobby })),
@@ -319,6 +328,14 @@ function AppBody() {
                 }
               />
               <Route
+                path="/analysis/pgn"
+                element={
+                  <ProtectedRoute>
+                    <AnalysisPgn />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/analysis/:code"
                 element={
                   <ProtectedRoute>
@@ -357,6 +374,22 @@ function AppBody() {
                 element={
                   <ProtectedRoute>
                     <Lobby />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/puzzles"
+                element={
+                  <ProtectedRoute>
+                    <PuzzleRaces />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/puzzles/:code"
+                element={
+                  <ProtectedRoute>
+                    <PuzzleRacePage />
                   </ProtectedRoute>
                 }
               />

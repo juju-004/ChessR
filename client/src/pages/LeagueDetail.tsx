@@ -23,7 +23,7 @@ import {
   CardContent,
   Button,
   Badge,
-  Spinner,
+  CenteredSpinner,
 } from "../components/ui/index.js";
 
 const CLIENT_URL = import.meta.env.VITE_CLIENT_URL ?? "http://localhost:5173";
@@ -96,9 +96,7 @@ export function LeagueDetail() {
         {error ? (
           <p className="text-sm text-red-400">{error}</p>
         ) : (
-          <div className="flex justify-center py-10">
-            <Spinner className="text-base-content/40" />
-          </div>
+          <CenteredSpinner className="py-10" />
         )}
       </Page>
     );

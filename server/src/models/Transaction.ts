@@ -21,7 +21,13 @@ export type TransactionType =
   | 'tournament_prize_fund'
   | 'tournament_payout'
   | 'tournament_reg_revenue'
-  | 'tournament_refund';
+  | 'tournament_refund'
+  // Puzzle race ledger entries, scoped to a PuzzleRace document: each player's
+  // stake, the winner's payout (pot minus rake), and refunds (a player leaving
+  // before the start, a cancelled race, or a race nobody scored in).
+  | 'puzzle_race_stake'
+  | 'puzzle_race_payout'
+  | 'puzzle_race_refund';
 export type TransactionStatus = 'pending' | 'success' | 'failed';
 
 export interface ITransaction extends Document {
@@ -35,6 +41,7 @@ export interface ITransaction extends Document {
   planId?: string; // which purchase plan, if type === 'purchase'
   game?: Types.ObjectId; // which game, if type is one of the wager_* entries
   tournament?: Types.ObjectId; // which tournament, if type is one of the tournament_* entries
+  puzzleRace?: Types.ObjectId; // which puzzle race, if type is one of the puzzle_race_* entries
   paystackRecipientCode?: string; // withdrawals. Paystack transfer recipient
   paystackTransferCode?: string; // withdrawals. Paystack transfer
   bankAccountNumber?: string;
@@ -65,6 +72,9 @@ const transactionSchema = new Schema<ITransaction>(
         'tournament_payout',
         'tournament_reg_revenue',
         'tournament_refund',
+        'puzzle_race_stake',
+        'puzzle_race_payout',
+        'puzzle_race_refund',
       ],
       required: true,
     },
@@ -75,6 +85,7 @@ const transactionSchema = new Schema<ITransaction>(
     planId: { type: String },
     game: { type: Schema.Types.ObjectId, ref: 'Game' },
     tournament: { type: Schema.Types.ObjectId, ref: 'Tournament' },
+    puzzleRace: { type: Schema.Types.ObjectId, ref: 'PuzzleRace' },
     paystackRecipientCode: { type: String },
     paystackTransferCode: { type: String },
     bankAccountNumber: { type: String },

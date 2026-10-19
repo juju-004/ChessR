@@ -6,6 +6,10 @@ export interface AvatarProps {
   src?: string | null;
   username: string;
   size?: "xs" | "sm" | "md" | "lg";
+  /** Size to switch to from the `md` breakpoint up, for avatars that should
+   *  be compact on phone but roomier on desktop (e.g. the game page's
+   *  player panels). Omit to keep `size` at every width. */
+  mdSize?: "xs" | "sm" | "md" | "lg";
   /** Small colored dot in the corner, typically online/offline presence. */
   status?: "online" | "offline" | null;
   /** Preset id from avatarGradients.ts. Omit (or "brand") for the default
@@ -22,6 +26,15 @@ const SIZE_CLASSES = {
   lg: "h-14 w-14 text-lg",
 } as const;
 
+// Literal class strings (not built from `md:${...}`) so Tailwind's scanner
+// can see them.
+const MD_SIZE_CLASSES = {
+  xs: "md:h-6 md:w-6 md:text-[10px]",
+  sm: "md:h-8 md:w-8 md:text-xs",
+  md: "md:h-10 md:w-10 md:text-sm",
+  lg: "md:h-14 md:w-14 md:text-lg",
+} as const;
+
 function initialsOf(username: string): string {
   return username.slice(0, 2).toUpperCase();
 }
@@ -30,6 +43,7 @@ export function Avatar({
   src,
   username,
   size = "md",
+  mdSize,
   status = null,
   gradient,
   className,
@@ -45,6 +59,7 @@ export function Avatar({
           "flex items-center justify-center overflow-hidden rounded-full font-semibold text-white select-none",
           !customStyle && "gradient-brand",
           SIZE_CLASSES[size],
+          mdSize && MD_SIZE_CLASSES[mdSize],
         )}
       >
         {src && !imgFailed ? (

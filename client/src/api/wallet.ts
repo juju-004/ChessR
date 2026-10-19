@@ -26,7 +26,10 @@ export interface Transaction {
     | "tournament_prize_fund"
     | "tournament_payout"
     | "tournament_reg_revenue"
-    | "tournament_refund";
+    | "tournament_refund"
+    | "puzzle_race_stake"
+    | "puzzle_race_payout"
+    | "puzzle_race_refund";
   status: "pending" | "success" | "failed";
   tokens: number;
   amountKobo: number;

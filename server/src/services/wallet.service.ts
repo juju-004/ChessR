@@ -567,7 +567,7 @@ export function computeRake(grossTokens: number): RakeSplit {
  *  settleWager, settleWinnerTakesAll, and distributePrize, the only three
  *  callers. */
 export async function recordRake(
-  source: "game" | "cage_match" | "tournament",
+  source: "game" | "cage_match" | "tournament" | "puzzle_race",
   sourceId: string,
   rakeTokens: number,
   grossPotTokens: number,
@@ -878,4 +878,98 @@ export async function listTransactions(
     total,
     totalPages: Math.max(1, Math.ceil(total / limit)),
   };
+}
+
+// --- Puzzle race escrow ---------------------------------------------------------
+// Every racer stakes the same amount; the winner takes the pot (minus the
+// platform rake). Same ledger idea as the wager/tournament helpers above, with
+// one deliberate difference: the credit helpers write their Transaction row
+// FIRST and use its unique `reference` as an idempotency key, so a retried
+// settlement (sweep, crash recovery, double click) can never pay twice.
+
+const isDuplicateKey = (err: unknown) => (err as { code?: number }).code === 11000;
+
+/** How many stakes this player has put into this race (a player can leave and
+ *  rejoin a waiting race, which stakes again). Used to number references. */
+async function puzzleRaceStakeCount(userId: string, raceId: string): Promise<number> {
+  return Transaction.countDocuments({ user: userId, puzzleRace: raceId, type: "puzzle_race_stake" });
+}
+
+/** Debits a player's stake for joining/creating a race. Throws a clear
+ *  "insufficient balance" error if they can't cover it. Callers must have
+ *  already claimed the player's seat atomically, so this never runs twice
+ *  for the same seat. */
+export async function debitPuzzleRaceStake(
+  userId: string,
+  raceId: string,
+  tokens: number,
+): Promise<void> {
+  if (tokens <= 0) return;
+
+  const debited = await User.findOneAndUpdate(
+    { _id: userId, tokenBalance: { $gte: tokens } },
+    { $inc: { tokenBalance: -tokens } },
+    { new: true },
+  );
+  if (!debited)
+    throw ApiError.badRequest("Insufficient R token balance for this race's wager");
+
+  try {
+    const attempt = await puzzleRaceStakeCount(userId, raceId);
+    await Transaction.create({
+      user: userId,
+      type: "puzzle_race_stake",
+      status: "success",
+      tokens,
+      amountKobo: 0,
+      reference: `PZR-STK-${raceId}-${userId}-${attempt + 1}`,
+      puzzleRace: raceId,
+    });
+  } catch (err) {
+    // Never keep the tokens if the ledger row couldn't be written.
+    await User.updateOne({ _id: userId }, { $inc: { tokenBalance: tokens } });
+    throw err;
+  }
+}
+
+/** Returns a stake (kind "puzzle_race_refund") or pays out a win
+ *  (kind "puzzle_race_payout"). Idempotent: the reference is derived from the
+ *  race, the player and (for refunds) which stake it returns, so repeating the
+ *  call is a no-op. Returns whether tokens were actually credited this call. */
+export async function creditPuzzleRaceReturn(
+  userId: string,
+  raceId: string,
+  tokens: number,
+  kind: "puzzle_race_refund" | "puzzle_race_payout",
+): Promise<boolean> {
+  if (tokens <= 0) return false;
+
+  const reference =
+    kind === "puzzle_race_payout"
+      ? `PZR-WIN-${raceId}-${userId}`
+      : `PZR-RFD-${raceId}-${userId}-${await puzzleRaceStakeCount(userId, raceId)}`;
+
+  try {
+    await Transaction.create({
+      user: userId,
+      type: kind,
+      status: "success",
+      tokens,
+      amountKobo: 0,
+      reference,
+      puzzleRace: raceId,
+    });
+  } catch (err) {
+    if (isDuplicateKey(err)) return false; // already credited
+    throw err;
+  }
+
+  try {
+    await User.updateOne({ _id: userId }, { $inc: { tokenBalance: tokens } });
+  } catch (err) {
+    // Roll the ledger row back so a retry can credit it properly.
+    await Transaction.deleteOne({ reference });
+    throw err;
+  }
+  return true;
 }

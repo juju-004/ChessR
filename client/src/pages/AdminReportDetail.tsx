@@ -8,7 +8,7 @@ import {
   type AdminReportDetail as AdminReportDetailType,
   type ReportStatus,
 } from "../api/admin.js";
-import { Card, Badge, Spinner, Button } from "../components/ui/index.js";
+import { Card, Badge, CenteredSpinner, Button } from "../components/ui/index.js";
 import { PageError } from "../components/PageError.js";
 
 const STATUS_OPTIONS: ReportStatus[] = ["pending", "reviewing", "actioned", "dismissed"];
@@ -66,9 +66,7 @@ export function AdminReportDetail() {
 
   if (loading) {
     return (
-      <div className="flex justify-center py-16">
-        <Spinner className="text-base-content/40" />
-      </div>
+      <CenteredSpinner className="py-16" />
     );
   }
 

@@ -16,7 +16,7 @@ import {
 import { ApiRequestError } from "../api/http.js";
 import { OrgBadge } from "../components/organizations/OrgBadge.js";
 import { cn } from "@/lib/cn.js";
-import { Page, Card, Input, Button, Spinner } from "../components/ui/index.js";
+import { Page, Card, Input, Button, CenteredSpinner } from "../components/ui/index.js";
 
 const PERKS = [
   {
@@ -123,9 +123,7 @@ export function OrganizationRequest() {
     <Page title="Organisation request" back>
       <div className="mx-auto max-w-2xl space-y-4">
         {loading ? (
-          <div className="flex justify-center py-12">
-            <Spinner className="text-base-content/40" />
-          </div>
+          <CenteredSpinner className="py-12" />
         ) : (
           <>
             {/* Intro */}

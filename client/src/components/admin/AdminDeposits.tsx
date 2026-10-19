@@ -5,7 +5,7 @@ import {
   type DepositListResponse,
   type TxStatus,
 } from "../../api/admin.js";
-import { Card, Badge, Spinner, Button } from "../ui/index.js";
+import { Card, Badge, CenteredSpinner, Button } from "../ui/index.js";
 
 const FILTERS: (TxStatus | "all")[] = ["all", "success", "pending", "failed"];
 
@@ -122,9 +122,7 @@ export function AdminDeposits() {
       </div>
 
       {loading && (
-        <div className="flex justify-center py-10">
-          <Spinner className="text-base-content/40" />
-        </div>
+        <CenteredSpinner className="py-10" />
       )}
 
       {error && (

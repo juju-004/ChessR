@@ -21,13 +21,7 @@ import { sendFriendRequest, removeFriend } from "../api/friends.js";
 import { updateAuthUser } from "../api/authStore.js";
 import { ApiRequestError } from "../api/http.js";
 import { PageError } from "../components/PageError.js";
-import {
-  formatTimeControl,
-  TIME_CONTROLS,
-  RATING_CATEGORIES,
-  RATING_CATEGORY_META,
-} from "../timeControls.js";
-import { MAX_WAGER_TOKENS, MIN_STAKE_TOKENS } from "../lib/limits.js";
+import { RATING_CATEGORIES, RATING_CATEGORY_META } from "../timeControls.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { useConfirm } from "../contexts/ConfirmContext.js";
 import { useNotify } from "../contexts/NotificationContext.js";
@@ -38,29 +32,21 @@ import {
   Button,
   Badge,
   Spinner,
-  TimeControlIcon,
   CategoryIcon,
-  Select,
-  Input,
   ResponsiveOverlay,
-  RCoin,
   Dropdown,
 } from "../components/ui/index.js";
+import { GameHistoryList } from "../components/lists/GameHistoryList.js";
+import {
+  GameSettingsFields,
+  useGameSettings,
+} from "../components/game/GameSettingsFields.js";
 import { EditProfileModal } from "../components/EditProfileModal.js";
 import { ReportUserModal } from "../components/ReportUserModal.js";
 import { RatingBadge } from "../components/RatingBadge.js";
 import { OrgBadge } from "../components/organizations/OrgBadge.js";
 
 const GAMES_PER_PAGE = 15;
-
-const resultVariant: Record<
-  UserGameHistoryItem["result"],
-  "success" | "error" | "neutral"
-> = {
-  win: "success",
-  loss: "error",
-  draw: "neutral",
-};
 
 export function Profile() {
   const { username } = useParams<{ username: string }>();
@@ -80,9 +66,7 @@ export function Profile() {
   // kept local here rather than shared state since this page only ever
   // challenges the one profile it's showing.
   const [challengeOpen, setChallengeOpen] = useState(false);
-  const [tcIndex, setTcIndex] = useState(0);
-  const [variant, setVariant] = useState<"standard" | "chess960">("standard");
-  const [wagerInput, setWagerInput] = useState("0");
+  const gameSettings = useGameSettings(0);
 
   useEffect(() => {
     if (!username) return;
@@ -231,11 +215,7 @@ export function Profile() {
         3000,
       );
     }
-    const tc = TIME_CONTROLS[tcIndex];
-    const wagerTokens = Math.min(
-      MAX_WAGER_TOKENS,
-      Math.max(0, Math.floor(Number(wagerInput) || 0)),
-    );
+    const { timeControl: tc, variant, wagerTokens } = gameSettings;
     socket.emit("challenge:send", {
       toUserId: profile.id,
       baseMinutes: tc.baseMinutes,
@@ -373,56 +353,12 @@ export function Profile() {
                           still send this, they'll see it once they're free.
                         </p>
                       )}
-                      <Select
-                        label="Time control"
-                        value={tcIndex}
-                        onChange={(e) => setTcIndex(Number(e.target.value))}
-                      >
-                        {TIME_CONTROLS.map((tc, i) => (
-                          <option key={tc.label} value={i}>
-                            {tc.label}
-                          </option>
-                        ))}
-                      </Select>
-                      <Select
-                        label="Variant"
-                        value={variant}
-                        onChange={(e) =>
-                          setVariant(e.target.value as "standard" | "chess960")
-                        }
-                      >
-                        <option value="standard">Standard</option>
-                        <option value="chess960">
-                          Chess960 (Fischer Random)
-                        </option>
-                      </Select>
-                      <Input
-                        label={
-                          <span className="inline-flex items-center gap-1">
-                            <RCoin size={12} /> Coin wager (optional)
-                          </span>
-                        }
-                        type="number"
-                        min={0}
-                        max={MAX_WAGER_TOKENS}
-                        step={1}
-                        value={wagerInput}
-                        onChange={(e) => setWagerInput(e.target.value)}
-                        error={
-                          Number(wagerInput) > 0 &&
-                          Math.floor(Number(wagerInput) || 0) < MIN_STAKE_TOKENS
-                            ? `Enter 0 for a free game, or at least ${MIN_STAKE_TOKENS} R`
-                            : undefined
-                        }
-                      />
+                      <GameSettingsFields settings={gameSettings} />
                       <Button
                         className="w-full"
                         variant="secondary"
                         onClick={handleChallenge}
-                        disabled={
-                          Math.floor(Number(wagerInput) || 0) > 0 &&
-                          Math.floor(Number(wagerInput) || 0) < MIN_STAKE_TOKENS
-                        }
+                        disabled={gameSettings.wagerBelowFloor}
                       >
                         Send
                       </Button>
@@ -558,73 +494,13 @@ export function Profile() {
               Game history
             </h2>
           </div>
-          {!gamesLoading && games.length === 0 && (
-            <p className="text-sm text-base-content/50">No games played yet.</p>
-          )}
-          <div className="divide-y divide-base-300">
-            {games.map((g) => (
-              <Link
-                key={g.gameId}
-                to={`/game/${g.joinCode}`}
-                className="flex items-center justify-between gap-3 py-2.5 text-sm transition-colors hover:text-(--primary)"
-              >
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <Avatar
-                    username={g.opponent?.username ?? "?"}
-                    size="xs"
-                    gradient={g.opponent?.avatarGradient}
-                  />
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-base-content">
-                      {g.opponent?.username ?? "Unknown"}
-                    </p>
-                    <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-base-content/40">
-                      <span
-                        className={
-                          g.color === "white"
-                            ? "inline-block h-2 w-2 rounded-full border border-base-content/30 bg-white"
-                            : "inline-block h-2 w-2 rounded-full border border-base-content/30 bg-black"
-                        }
-                      />
-                      <span className="capitalize">{g.color}</span>
-                      <span>·</span>
-                      <span className="inline-flex items-center gap-1">
-                        <TimeControlIcon
-                          baseSeconds={g.timeControl.baseSeconds}
-                          size={12}
-                        />
-                        {formatTimeControl(g.timeControl)}
-                      </span>
-                      <span>·</span>
-                      <span>{g.moveCount} moves</span>
-                      <span>·</span>
-                      <span>{new Date(g.endedAt).toLocaleDateString()}</span>
-                    </p>
-                  </div>
-                </div>
-                <Badge
-                  variant={resultVariant[g.result]}
-                  className="shrink-0 uppercase"
-                >
-                  {g.result}
-                </Badge>
-              </Link>
-            ))}
-          </div>
-
-          {gamesLoading && (
-            <div className="flex justify-center py-4">
-              <Spinner size="sm" className="text-base-content/40" />
-            </div>
-          )}
-
-          {!gamesLoading && hasMoreGames && (
-            <div className="mt-3 flex justify-center">
-              <Button variant="glass" size="sm" onClick={loadMoreGames}>
-                Load more
-              </Button>
-            </div>
-          )}
+          <GameHistoryList
+            games={games}
+            loading={gamesLoading}
+            hasMore={hasMoreGames}
+            onLoadMore={loadMoreGames}
+            linkFor={(g) => `/game/${g.joinCode}`}
+          />
         </Card>
       </div>
 

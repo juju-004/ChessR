@@ -7,7 +7,7 @@ import {
   type AdminOrgStatus,
 } from "../../api/admin.js";
 import { OrgBadge } from "../organizations/OrgBadge.js";
-import { Card, Badge, Spinner, Button } from "../ui/index.js";
+import { Card, Badge, CenteredSpinner, Button } from "../ui/index.js";
 
 const FILTERS: (AdminOrgStatus | "all")[] = ["pending", "approved", "rejected", "all"];
 
@@ -167,9 +167,7 @@ export function AdminOrganizations() {
       </div>
 
       {loading && (
-        <div className="flex justify-center py-10">
-          <Spinner className="text-base-content/40" />
-        </div>
+        <CenteredSpinner className="py-10" />
       )}
       {error && (
         <Card variant="solid" className="border-red-900/50 bg-red-950/20 text-red-300">

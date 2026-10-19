@@ -8,7 +8,7 @@ import {
   ChevronsRight,
   FlipVertical,
 } from "lucide-react";
-import { Page, Card, Avatar, Button, Spinner } from "../components/ui/index.js";
+import { Page, Card, Avatar, Button, CenteredSpinner } from "../components/ui/index.js";
 import { PageError } from "../components/PageError.js";
 import { AnalysisBoard } from "../components/analysis/AnalysisBoard.js";
 import { EvalBar } from "../components/analysis/EvalBar.js";
@@ -32,7 +32,7 @@ import { cn } from "../lib/cn.js";
 
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-interface GameMove {
+export interface GameMove {
   san: string;
   from: string;
   to: string;
@@ -40,13 +40,13 @@ interface GameMove {
   fenAfter: string;
 }
 
-interface Side {
+export interface Side {
   _id: string;
   username: string;
   avatarGradient?: string | null;
 }
 
-interface LoadedGame {
+export interface LoadedGame {
   _id: string;
   variant: "standard" | "chess960";
   initialFen?: string;
@@ -60,16 +60,10 @@ interface LoadedGame {
 export function AnalysisGame() {
   const { code } = useParams<{ code: string }>();
   const { user } = useAuth();
-  const { settings } = useSettings();
 
   const [game, setGame] = useState<LoadedGame | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [ply, setPly] = useState(0);
-  const [flipped, setFlipped] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  // Phones get the verdict above the board and the rest in a drawer;
-  // md and up keep everything in the side column.
-  const isDesktop = useIsDesktop();
+  const [initialFlipped, setInitialFlipped] = useState(false);
 
   useEffect(() => {
     if (!code) return;
@@ -80,9 +74,8 @@ export function AnalysisGame() {
       .then(({ game }) => {
         if (cancelled) return;
         setGame(game as LoadedGame);
-        setPly(0);
         // Open from the viewer's own side of the board.
-        setFlipped(game.black?._id === user?.id && game.white?._id !== user?.id);
+        setInitialFlipped(game.black?._id === user?.id && game.white?._id !== user?.id);
       })
       .catch((err) => !cancelled && setError(errMsg(err)));
     return () => {
@@ -92,15 +85,49 @@ export function AnalysisGame() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
-  const initialFen = game?.initialFen || START_FEN;
+  if (error) {
+    return (
+      <Page title="Game analysis" back="/analysis">
+        <PageError message={error} />
+      </Page>
+    );
+  }
+  if (!game) {
+    return (
+      <Page title="Game analysis" back="/analysis">
+        <CenteredSpinner size="sm" className="py-16" />
+      </Page>
+    );
+  }
+  return <AnalysisReview key={game._id} game={game} initialFlipped={initialFlipped} />;
+}
+
+/** The review UI itself. Shared by saved games and pasted PGNs. */
+export function AnalysisReview({
+  game,
+  initialFlipped = false,
+}: {
+  game: LoadedGame;
+  initialFlipped?: boolean;
+}) {
+  const { settings } = useSettings();
+
+  const [ply, setPly] = useState(0);
+  const [flipped, setFlipped] = useState(initialFlipped);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  // Phones get the verdict above the board and the rest in a drawer;
+  // md and up keep everything in the side column.
+  const isDesktop = useIsDesktop();
+
+  const initialFen = game.initialFen || START_FEN;
   const fens = useMemo(
-    () => (game ? [initialFen, ...game.moves.map((m) => m.fenAfter)] : []),
+    () => [initialFen, ...game.moves.map((m) => m.fenAfter)],
     [game, initialFen],
   );
 
   const analysisInput = useMemo(
     () =>
-      game && game.moves.length > 0
+      game.moves.length > 0
         ? {
             gameId: game._id,
             fens,
@@ -112,7 +139,7 @@ export function AnalysisGame() {
   );
   const analysis = useGameAnalysis(analysisInput);
 
-  const total = game?.moves.length ?? 0;
+  const total = game.moves.length;
   const go = useCallback((next: number) => setPly(Math.max(0, Math.min(total, next))), [total]);
 
   // Arrow keys / Home / End step through the game.
@@ -131,22 +158,6 @@ export function AnalysisGame() {
     return () => window.removeEventListener("keydown", onKey);
   }, [go, ply, total]);
 
-  if (error) {
-    return (
-      <Page title="Game analysis" back="/analysis">
-        <PageError message={error} />
-      </Page>
-    );
-  }
-  if (!game) {
-    return (
-      <Page title="Game analysis" back="/analysis">
-        <div className="flex justify-center py-16">
-          <Spinner size="sm" className="text-base-content/40" />
-        </div>
-      </Page>
-    );
-  }
   if (total === 0) {
     return (
       <Page title="Game analysis" back="/analysis">
@@ -209,7 +220,7 @@ export function AnalysisGame() {
               <p className="font-semibold text-base-content">
                 {move.san} is{" "}
                 <span style={{ color: MOVE_CLASS_META[verdict.cls].color }}>
-                  a {MOVE_CLASS_META[verdict.cls].label.toLowerCase()}
+                  {MOVE_CLASS_META[verdict.cls].phrase}
                 </span>
               </p>
               <p className="text-xs text-base-content/50">
@@ -249,21 +260,46 @@ export function AnalysisGame() {
     </Card>
   );
 
+  const countsGrid = (dots: boolean) => (
+    <div className="grid grid-cols-[1fr_auto_auto] items-center gap-x-4 gap-y-1.5 text-sm">
+      <span />
+      {dots ? (
+        <>
+          <SideDot color="white" />
+          <SideDot color="black" />
+        </>
+      ) : (
+        <>
+          <span className="text-center text-xs font-semibold text-base-content/50">White</span>
+          <span className="text-center text-xs font-semibold text-base-content/50">Black</span>
+        </>
+      )}
+      {MOVE_CLASSES.map((cls) => (
+        <SummaryRow key={cls} cls={cls} white={counts.w[cls]} black={counts.b[cls]} />
+      ))}
+    </div>
+  );
+
+  // Desktop side column: the labelled card.
   const summaryCard = (
     <Card>
       <div className="mb-3 grid grid-cols-2 gap-3">
         <AccuracyTile label="White" value={accuracy.w} />
         <AccuracyTile label="Black" value={accuracy.b} />
       </div>
-      <div className="grid grid-cols-[1fr_auto_auto] items-center gap-x-4 gap-y-1.5 text-sm">
-        <span />
-        <span className="text-center text-xs font-semibold text-base-content/50">White</span>
-        <span className="text-center text-xs font-semibold text-base-content/50">Black</span>
-        {MOVE_CLASSES.map((cls) => (
-          <SummaryRow key={cls} cls={cls} white={counts.w[cls]} black={counts.b[cls]} />
-        ))}
-      </div>
+      {countsGrid(false)}
     </Card>
+  );
+
+  // Phone drawer: no card, no labels, just a white panel and a black panel.
+  const drawerSummary = (
+    <div className="shrink-0 space-y-3">
+      <div className="grid grid-cols-2 gap-2">
+        <ColorAccuracyTile color="white" value={accuracy.w} />
+        <ColorAccuracyTile color="black" value={accuracy.b} />
+      </div>
+      {countsGrid(true)}
+    </div>
   );
 
   const movesCard = (
@@ -272,13 +308,26 @@ export function AnalysisGame() {
         moves={game.moves}
         classes={analysis?.classes ?? []}
         ply={ply}
+        onSelect={go}
+        maxHeightClass="max-h-72 lg:max-h-[24rem]"
+      />
+    </Card>
+  );
+
+  // In the drawer the move list takes whatever height is left, so the drawer
+  // itself never scrolls (only the list inside it, for long games).
+  const drawerMoves = (
+    <Card className="flex min-h-0 flex-1 flex-col p-2">
+      <MoveList
+        moves={game.moves}
+        classes={analysis?.classes ?? []}
+        ply={ply}
         onSelect={(next) => {
           go(next);
-          // On a phone the list lives in the drawer, so jumping to a move
-          // should reveal the board again.
+          // Jumping to a move should reveal the board again.
           setDrawerOpen(false);
         }}
-        maxHeightClass={isDesktop ? "max-h-72 lg:max-h-[24rem]" : "max-h-[55vh]"}
+        maxHeightClass="min-h-0 flex-1"
       />
     </Card>
   );
@@ -359,9 +408,9 @@ export function AnalysisGame() {
             onFlip={() => setFlipped((f) => !f)}
             onOpenDetails={() => setDrawerOpen(true)}
           />
-          <AnalysisDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} title="Summary and moves">
-            {summaryCard}
-            {movesCard}
+          <AnalysisDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>
+            {drawerSummary}
+            {drawerMoves}
           </AnalysisDrawer>
         </>
       )}
@@ -413,6 +462,35 @@ function PlayerStrip({
           {accuracy.toFixed(1)}%
         </span>
       )}
+    </div>
+  );
+}
+
+function SideDot({ color }: { color: "white" | "black" }) {
+  return (
+    <span className="flex justify-center">
+      <span
+        className={cn(
+          "inline-block h-3 w-3 rounded-full border border-base-content/30",
+          color === "white" ? "bg-white" : "bg-black",
+        )}
+      />
+    </span>
+  );
+}
+
+/** Accuracy panel painted in the side's own colour, no text label. */
+function ColorAccuracyTile({ color, value }: { color: "white" | "black"; value: number | null }) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl px-3 py-3 text-center",
+        color === "white" ? "bg-white text-black" : "border border-white/15 bg-black text-white",
+      )}
+    >
+      <p className="text-xl font-bold tabular-nums">
+        {value === null ? "–" : `${value.toFixed(1)}%`}
+      </p>
     </div>
   );
 }

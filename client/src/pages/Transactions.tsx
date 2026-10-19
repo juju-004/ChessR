@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
-  ChevronLeft,
-  ChevronRight,
+  Puzzle,
   Receipt,
   RotateCcw,
   Swords,
@@ -12,14 +11,15 @@ import {
   Coins,
   type LucideIcon,
 } from "lucide-react";
+import { Pagination } from "../components/Pagination.js";
 import { getTransactions, type Transaction } from "../api/wallet.js";
 import {
   Page,
   Card,
   Badge,
   type BadgeVariant,
-  Button,
-  Spinner,
+  EmptyState,
+  CenteredSpinner,
   Stagger,
   StaggerItem,
   RCoin,
@@ -42,6 +42,9 @@ const typeLabels: Record<Transaction["type"], string> = {
   tournament_payout: "Tournament prize won",
   tournament_reg_revenue: "Tournament registration revenue",
   tournament_refund: "Tournament refund",
+  puzzle_race_stake: "Puzzle race staked",
+  puzzle_race_payout: "Puzzle race won",
+  puzzle_race_refund: "Puzzle race refunded",
 };
 
 const typeIcons: Record<Transaction["type"], LucideIcon> = {
@@ -55,6 +58,9 @@ const typeIcons: Record<Transaction["type"], LucideIcon> = {
   tournament_payout: Trophy,
   tournament_reg_revenue: Coins,
   tournament_refund: RotateCcw,
+  puzzle_race_stake: Puzzle,
+  puzzle_race_payout: Trophy,
+  puzzle_race_refund: RotateCcw,
 };
 
 // Whether a transaction type ADDS to the balance (+) or REMOVES from it (-)
@@ -71,6 +77,9 @@ const typeAddsTokens: Record<Transaction["type"], boolean> = {
   tournament_payout: true,
   tournament_reg_revenue: true,
   tournament_refund: true,
+  puzzle_race_stake: false,
+  puzzle_race_payout: true,
+  puzzle_race_refund: true,
 };
 
 function isMoneyMovement(type: Transaction["type"]): boolean {
@@ -101,17 +110,12 @@ export function Transactions() {
       bare
     >
       {loading && (
-        <div className="flex justify-center py-16">
-          <Spinner />
-        </div>
+        <CenteredSpinner className="py-16" />
       )}
 
       {!loading && transactions.length === 0 && (
         <Card variant="solid">
-          <div className="flex flex-col items-center gap-2 py-8 text-center">
-            <Receipt className="h-8 w-8 text-base-content/30" />
-            <p className="text-sm text-base-content/60">No transactions yet.</p>
-          </div>
+          <EmptyState icon={Receipt}>No transactions yet.</EmptyState>
         </Card>
       )}
 
@@ -171,29 +175,13 @@ export function Transactions() {
         </Stagger>
       )}
 
-      {totalPages > 1 && (
-        <div className="mt-5 flex items-center justify-center gap-3">
-          <Button
-            variant="glass"
-            size="sm"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => p - 1)}
-          >
-            <ChevronLeft className="h-4 w-4" /> Prev
-          </Button>
-          <span className="text-sm text-base-content/60">
-            Page {page} of {totalPages}
-          </span>
-          <Button
-            variant="glass"
-            size="sm"
-            disabled={page >= totalPages}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Next <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
+      <div className="mt-5">
+        <Pagination
+          page={page - 1}
+          pageCount={totalPages}
+          onPageChange={(p) => setPage(p + 1)}
+        />
+      </div>
     </Page>
   );
 }

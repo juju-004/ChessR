@@ -13,6 +13,7 @@ import friendRoutes from './routes/friend.routes.js';
 import gameRoutes from './routes/game.routes.js';
 import cageMatchRoutes from './routes/cageMatch.routes.js';
 import tournamentRoutes from './routes/tournament.routes.js';
+import puzzleRaceRoutes from './routes/puzzleRace.routes.js';
 import cumulativeRoutes from './routes/cumulative.routes.js';
 import walletRoutes from './routes/wallet.routes.js';
 import reportRoutes from './routes/report.routes.js';
@@ -77,6 +78,7 @@ export function createApp() {
   app.use('/api/games', gameRoutes);
   app.use('/api/cage-matches', cageMatchRoutes);
   app.use('/api/tournaments', tournamentRoutes);
+  app.use('/api/puzzle-races', puzzleRaceRoutes);
   app.use('/api/cumulatives', cumulativeRoutes);
   app.use('/api/wallet', walletRoutes);
   app.use('/api/reports', reportRoutes);

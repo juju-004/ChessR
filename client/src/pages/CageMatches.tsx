@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 import {
   listMyCageMatches,
@@ -13,13 +13,10 @@ import { Pagination } from "../components/Pagination.js";
 import { RefreshButton } from "../components/RefreshButton.js";
 import {
   Page,
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
   Button,
+  CardRow,
+  ListCard,
   Badge,
-  Spinner,
 } from "../components/ui/index.js";
 import { formatRelativeTime } from "@/lib/utils.js";
 import { cn } from "@/lib/cn.js";
@@ -49,10 +46,7 @@ function CageMatchRow({ m, myId }: { m: CageMatch; myId: string | undefined }) {
     const myScore = iAmP1 ? standings.p1Score : standings.p2Score;
     const oppScore = iAmP1 ? standings.p2Score : standings.p1Score;
     return (
-      <Link
-        to={`/cage/${m.matchCode}`}
-        className="flex items-center justify-between gap-3 rounded-xl border border-base-300 bg-base-100/60 px-3 py-2.5 transition-colors hover:border-(--primary)/40"
-      >
+      <CardRow to={`/cage/${m.matchCode}`}>
         <span className="min-w-0 truncate text-sm text-base-content">
           vs {opp.username} · game {m.currentLegIndex + 1}/{m.legs.length}
         </span>
@@ -62,16 +56,13 @@ function CageMatchRow({ m, myId }: { m: CageMatch; myId: string | undefined }) {
             <Badge variant="warning">{m.wagerTokens} R</Badge>
           )}
         </span>
-      </Link>
+      </CardRow>
     );
   }
 
   const outcome = matchOutcomeLabel(m, myId);
   return (
-    <Link
-      to={`/cage/${m.matchCode}`}
-      className="flex items-center justify-between gap-3 rounded-xl border border-base-300 bg-base-100/60 px-3 py-2.5 transition-colors hover:border-(--primary)/40"
-    >
+    <CardRow to={`/cage/${m.matchCode}`}>
       <div className="min-w-0">
         <span className="text-sm text-base-content">
           You <span className="text-base-content/60">vs</span> {opp.username}
@@ -89,7 +80,7 @@ function CageMatchRow({ m, myId }: { m: CageMatch; myId: string | undefined }) {
       >
         {outcome}
       </span>
-    </Link>
+    </CardRow>
   );
 }
 
@@ -120,32 +111,23 @@ function ServerPagedMatchCard({
   loading?: boolean;
 }) {
   return (
-    <Card variant="solid">
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {loading ? (
-          <div className="flex justify-center py-6">
-            <Spinner className="text-base-content/40" />
-          </div>
-        ) : (
-          <>
-            {matches.length === 0 && (
-              <p className="text-sm text-base-content/50">{emptyMessage}</p>
-            )}
-            {matches.map((m) => (
-              <CageMatchRow key={m._id} m={m} myId={myId} />
-            ))}
-            <Pagination
-              page={page}
-              pageCount={pageCount}
-              onPageChange={onPageChange}
-            />
-          </>
-        )}
-      </CardContent>
-    </Card>
+    <ListCard
+      title={title}
+      loading={loading}
+      empty={matches.length === 0}
+      emptyMessage={emptyMessage}
+      footer={
+        <Pagination
+          page={page}
+          pageCount={pageCount}
+          onPageChange={onPageChange}
+        />
+      }
+    >
+      {matches.map((m) => (
+        <CageMatchRow key={m._id} m={m} myId={myId} />
+      ))}
+    </ListCard>
   );
 }
 
@@ -291,31 +273,22 @@ export function CageMatches() {
           </p>
         )}
 
-        <Card variant="solid">
-          <CardHeader>
-            <CardTitle>Active</CardTitle>
+        <ListCard
+          title="Active"
+          actions={
             <RefreshButton
               onRefresh={handleManualRefresh}
               refreshing={refreshing}
             />
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {matchesLoading ? (
-              <div className="flex justify-center py-6">
-                <Spinner className="text-base-content/40" />
-              </div>
-            ) : (
-              <>
-                {activeMatches.length === 0 && (
-                  <p className="text-sm text-base-content/50">None right now.</p>
-                )}
-                {activeMatches.map((m) => (
-                  <CageMatchRow key={m._id} m={m} myId={myId} />
-                ))}
-              </>
-            )}
-          </CardContent>
-        </Card>
+          }
+          loading={matchesLoading}
+          empty={activeMatches.length === 0}
+          emptyMessage="None right now."
+        >
+          {activeMatches.map((m) => (
+            <CageMatchRow key={m._id} m={m} myId={myId} />
+          ))}
+        </ListCard>
 
         <ServerPagedMatchCard
           title="Finished"

@@ -1,25 +1,33 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { LineChart } from "lucide-react";
-import { Page, Card, Avatar, Badge, Button, Spinner, TimeControlIcon } from "../components/ui/index.js";
+import { useNavigate } from "react-router-dom";
+import { Page, Card, Button, Textarea } from "../components/ui/index.js";
+import { GameHistoryList } from "../components/lists/GameHistoryList.js";
 import { PageError } from "../components/PageError.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import { getUserGames, type UserGameHistoryItem } from "../api/users.js";
-import { formatTimeControl } from "../timeControls.js";
 import { errMsg } from "../lib/errMsg.js";
+import { PGN_STORAGE_KEY, parsePgnGame } from "../lib/analysis/pgn.js";
 
 const GAMES_PER_PAGE = 15;
-
-const resultVariant: Record<UserGameHistoryItem["result"], "success" | "error" | "neutral"> = {
-  win: "success",
-  loss: "error",
-  draw: "neutral",
-};
 
 /** Your finished games. Picking one opens its engine review at /analysis/:code. */
 export function Analysis() {
   const { user } = useAuth();
   const username = user?.username;
+  const navigate = useNavigate();
+
+  const [pgn, setPgn] = useState("");
+  const [pgnError, setPgnError] = useState<string | null>(null);
+
+  function analysePgn() {
+    try {
+      parsePgnGame(pgn); // validate before leaving the page
+      sessionStorage.setItem(PGN_STORAGE_KEY, pgn.trim());
+      navigate("/analysis/pgn");
+    } catch (err) {
+      setPgnError(errMsg(err));
+    }
+  }
 
   const [games, setGames] = useState<UserGameHistoryItem[]>([]);
   const [page, setPage] = useState(1);
@@ -48,90 +56,55 @@ export function Analysis() {
     load(1);
   }, [load]);
 
+  const pgnCard = (
+    <Card className="mb-4">
+      <h3 className="mb-1 text-base font-semibold text-base-content">Analyze a PGN</h3>
+      <p className="mb-3 text-sm text-base-content/60">
+        Paste any game's PGN (from another site or app) to review it with the engine.
+      </p>
+      <Textarea
+        value={pgn}
+        onChange={(e) => {
+          setPgn(e.target.value);
+          setPgnError(null);
+        }}
+        rows={5}
+        placeholder={"[White \"Name\"]\n[Black \"Name\"]\n\n1. e4 e5 2. Nf3 Nc6 ..."}
+        error={pgnError ?? undefined}
+        spellCheck={false}
+        autoCapitalize="off"
+        autoCorrect="off"
+      />
+      <div className="mt-3 flex justify-end">
+        <Button size="sm" onClick={analysePgn} disabled={!pgn.trim()}>
+          Analyze
+        </Button>
+      </div>
+    </Card>
+  );
+
   if (error && games.length === 0) {
     return (
       <Page title="Analysis">
+        {pgnCard}
         <PageError message={error} />
       </Page>
     );
   }
 
   return (
-    <Page title="Analysis" description="Pick a game to review every move with the engine.">
+    <Page title="Analysis" description="Pick a game, or paste a PGN, to review every move with the engine.">
+      {pgnCard}
+
       <Card>
-        {loading && games.length === 0 && (
-          <div className="flex justify-center py-8">
-            <Spinner size="sm" className="text-base-content/40" />
-          </div>
-        )}
-
-        {!loading && games.length === 0 && (
-          <div className="flex flex-col items-center gap-2 py-10 text-center">
-            <LineChart className="h-8 w-8 text-base-content/30" />
-            <p className="text-sm text-base-content/60">
-              No finished games yet. Play one and it will show up here.
-            </p>
-          </div>
-        )}
-
-        <div className="divide-y divide-base-300">
-          {games.map((g) => (
-            <Link
-              key={g.gameId}
-              to={`/analysis/${g.joinCode}`}
-              className="flex items-center justify-between gap-3 py-2.5 text-sm transition-colors hover:text-(--primary)"
-            >
-              <div className="flex min-w-0 items-center gap-2.5">
-                <Avatar
-                  username={g.opponent?.username ?? "?"}
-                  size="sm"
-                  gradient={g.opponent?.avatarGradient}
-                />
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-base-content">
-                    vs {g.opponent?.username ?? "Unknown"}
-                  </p>
-                  <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-base-content/40">
-                    <span
-                      className={
-                        g.color === "white"
-                          ? "inline-block h-2 w-2 rounded-full border border-base-content/30 bg-white"
-                          : "inline-block h-2 w-2 rounded-full border border-base-content/30 bg-black"
-                      }
-                    />
-                    <span className="capitalize">{g.color}</span>
-                    <span>·</span>
-                    <span className="inline-flex items-center gap-1">
-                      <TimeControlIcon baseSeconds={g.timeControl.baseSeconds} size={12} />
-                      {formatTimeControl(g.timeControl)}
-                    </span>
-                    <span>·</span>
-                    <span>{g.moveCount} moves</span>
-                    <span>·</span>
-                    <span>{new Date(g.endedAt).toLocaleDateString()}</span>
-                  </p>
-                </div>
-              </div>
-              <Badge variant={resultVariant[g.result]} className="shrink-0 uppercase">
-                {g.result}
-              </Badge>
-            </Link>
-          ))}
-        </div>
-
-        {loading && games.length > 0 && (
-          <div className="flex justify-center py-4">
-            <Spinner size="sm" className="text-base-content/40" />
-          </div>
-        )}
-
-        {!loading && page < totalPages && (
-          <div className="mt-3 flex justify-center">
-            <Button variant="glass" size="sm" onClick={() => load(page + 1)}>
-              Load more
-            </Button>
-          </div>
-        )}
+        <GameHistoryList
+          games={games}
+          loading={loading}
+          hasMore={page < totalPages}
+          onLoadMore={() => load(page + 1)}
+          linkFor={(g) => `/analysis/${g.joinCode}`}
+          emptyText="No finished games yet. Play one and it will show up here."
+        />
       </Card>
     </Page>
   );

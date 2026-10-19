@@ -1,6 +1,5 @@
-import { Link } from "react-router-dom";
 import { FORMAT_LABEL, formatTimeControl, type Tournament } from "../../api/tournaments.js";
-import { Badge, RCoin, TimeControlIcon } from "../ui/index.js";
+import { Badge, CardRow, RCoin, TimeControlIcon } from "../ui/index.js";
 
 const STATUS_VARIANT: Record<
   Tournament["status"],
@@ -35,10 +34,7 @@ export function TournamentRow({
       : 0;
 
   return (
-    <Link
-      to={`/tournaments/${t.code}`}
-      className="flex min-w-0 items-center justify-between gap-3 overflow-hidden rounded-xl border border-base-300 bg-base-100/60 px-3 py-2.5 transition-colors hover:border-(--primary)/40"
-    >
+    <CardRow to={`/tournaments/${t.code}`} className="overflow-hidden">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="w-full min-w-0 font-medium text-base-content [overflow-wrap:anywhere] sm:w-auto">
@@ -87,7 +83,7 @@ export function TournamentRow({
               )}
         </div>
       </div>
-    </Link>
+    </CardRow>
   );
 }
 

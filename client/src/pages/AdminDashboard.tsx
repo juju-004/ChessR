@@ -7,6 +7,7 @@ import {
   Swords,
   Trophy,
   Gamepad2,
+  Puzzle,
   ShieldQuestion,
   Phone,
   Landmark,
@@ -32,7 +33,7 @@ import { AdminOrganizations } from "../components/admin/AdminOrganizations.js";
 import {
   Card,
   Badge,
-  Spinner,
+  CenteredSpinner,
   Button,
   Tabs,
   RCoinAmount,
@@ -60,12 +61,14 @@ const SOURCE_LABEL: Record<RevenueSource, string> = {
   game: "Games",
   cage_match: "Cage matches",
   tournament: "Tournaments",
+  puzzle_race: "Puzzle races",
 };
 
 const SOURCE_ICON: Record<RevenueSource, typeof Gamepad2> = {
   game: Gamepad2,
   cage_match: Swords,
   tournament: Trophy,
+  puzzle_race: Puzzle,
 };
 
 const FLAG_STATUS_FILTERS: (GameFlagStatus | "all")[] = [
@@ -235,9 +238,7 @@ export function AdminDashboard() {
           </div>
 
           {loading && (
-            <div className="flex justify-center py-10">
-              <Spinner className="text-base-content/40" />
-            </div>
+            <CenteredSpinner className="py-10" />
           )}
 
           {error && (
@@ -319,9 +320,7 @@ export function AdminDashboard() {
           </div>
 
           {flagsLoading && (
-            <div className="flex justify-center py-10">
-              <Spinner className="text-base-content/40" />
-            </div>
+            <CenteredSpinner className="py-10" />
           )}
 
           {flagsError && (
@@ -425,9 +424,7 @@ export function AdminDashboard() {
           </div>
 
           {nairaLoading && (
-            <div className="flex justify-center py-10">
-              <Spinner className="text-base-content/40" />
-            </div>
+            <CenteredSpinner className="py-10" />
           )}
 
           {nairaError && (
@@ -528,9 +525,7 @@ export function AdminDashboard() {
       ) : (
         <div className="space-y-4">
           {revenueLoading && (
-            <div className="flex justify-center py-10">
-              <Spinner className="text-base-content/40" />
-            </div>
+            <CenteredSpinner className="py-10" />
           )}
 
           {revenueError && (

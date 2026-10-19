@@ -1,7 +1,6 @@
 import { type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { X } from "lucide-react";
 import { sheetIn, sheetOut } from "../../lib/motion.js";
 
 /**
@@ -14,12 +13,10 @@ import { sheetIn, sheetOut } from "../../lib/motion.js";
 export function AnalysisDrawer({
   open,
   onClose,
-  title,
   children,
 }: {
   open: boolean;
   onClose: () => void;
-  title: string;
   children: ReactNode;
 }) {
   return createPortal(
@@ -33,7 +30,7 @@ export function AnalysisDrawer({
           exit={{ opacity: 0, transition: sheetOut }}
         >
           <motion.div
-            className="elevated-flat absolute inset-y-0 right-0 flex w-[88%] max-w-sm flex-col gap-3 overflow-y-auto border-l border-base-300/60 p-4 will-change-transform"
+            className="elevated-flat absolute inset-y-0 right-0 flex w-[88%] max-w-sm flex-col gap-3 overflow-hidden border-l border-base-300/60 p-4 will-change-transform"
             style={{
               paddingTop: "calc(1rem + env(safe-area-inset-top))",
               paddingBottom: "calc(1rem + env(safe-area-inset-bottom))",
@@ -43,17 +40,6 @@ export function AnalysisDrawer({
             animate={{ x: 0, transition: sheetIn }}
             exit={{ x: "100%", transition: sheetOut }}
           >
-            <div className="flex shrink-0 items-center justify-between">
-              <h2 className="text-base font-semibold text-base-content">{title}</h2>
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close"
-                className="text-base-content/50 hover:text-base-content/80"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
             {children}
           </motion.div>
         </motion.div>

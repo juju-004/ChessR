@@ -5,7 +5,6 @@ import {
   Plus,
   Hash,
   Wallet,
-  ArrowRight,
   ArrowDownToLine,
   History,
   Eye,
@@ -25,32 +24,29 @@ import {
 import { ApiRequestError } from "../api/http.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import { useSocket } from "../contexts/SocketContext.js";
+import { LiveGameRow } from "../components/lists/LiveGameRow.js";
+import { TournamentRow } from "../components/tournaments/TournamentRow.js";
 import { RestrictionBanner } from "../components/RestrictionBanner.js";
-import { TIME_CONTROLS, formatTimeControl } from "../timeControls.js";
+import {
+  GameSettingsFields,
+  useGameSettings,
+} from "../components/game/GameSettingsFields.js";
 import { extractGameCode } from "../lib/utils.js";
-import { MAX_WAGER_TOKENS, MIN_STAKE_TOKENS } from "../lib/limits.js";
 import { useTokenBalance } from "../hooks/useTokenBalance.js";
 import { useBalanceVisibility } from "../hooks/useBalanceVisibility.js";
 import { useRakePercent } from "../hooks/useRakePercent.js";
-import {
-  listOpenTournaments,
-  formatTimeControl as formatTournamentTimeControl,
-  type Tournament,
-} from "../api/tournaments.js";
+import { listOpenTournaments, type Tournament } from "../api/tournaments.js";
 import {
   Page,
   Card,
   CardHeader,
   CardTitle,
   CardContent,
-  Select,
   Input,
   Button,
-  Badge,
   RCoin,
+  ListCard,
   ResponsiveOverlay,
-  Avatar,
-  TimeControlIcon,
 } from "../components/ui/index.js";
 
 /** A single tappable/clickable tile for the quick-links grid, one icon,
@@ -100,9 +96,8 @@ function QuickLink({
 export function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [tcIndex, setTcIndex] = useState(2);
-  const [variant, setVariant] = useState<"standard" | "chess960">("standard");
-  const [wagerInput, setWagerInput] = useState("0");
+  const gameSettings = useGameSettings(2);
+  const { wagerTokens, wagerBelowFloor } = gameSettings;
   const [joinCodeInput, setJoinCodeInput] = useState("");
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
@@ -187,13 +182,6 @@ export function Dashboard() {
     };
   }, []);
 
-  // Wagers are opt-in now: 0 = a free game. Clamp only clears out negative/
-  // garbage input, it no longer forces every game up to MIN_STAKE_TOKENS.
-  const wagerTokens = Math.min(
-    MAX_WAGER_TOKENS,
-    Math.max(0, Math.floor(Number(wagerInput) || 0)),
-  );
-  const wagerBelowFloor = wagerTokens > 0 && wagerTokens < MIN_STAKE_TOKENS;
   const rakePercent = useRakePercent();
   const wagerRake =
     rakePercent !== null
@@ -201,7 +189,7 @@ export function Dashboard() {
       : null;
 
   async function handleCreate() {
-    const tc = TIME_CONTROLS[tcIndex];
+    const { timeControl: tc, variant } = gameSettings;
     setError("");
     setCreating(true);
     try {
@@ -327,65 +315,29 @@ export function Dashboard() {
             // join right now anyway, one game at a time (see
             // MAX_ACTIVE_GAMES_PER_USER server-side).
             <CardContent>
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-(--primary)/40 bg-(--primary)/5 px-3 py-2.5">
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <div className="flex shrink-0 -space-x-2">
-                    <Avatar
-                      username={myGame.white.username}
-                      gradient={myGame.white.avatarGradient}
-                      size="sm"
-                      className="ring-2 rounded-full ring-base-100"
-                    />
-                    {myGame.black && (
-                      <Avatar
-                        username={myGame.black.username}
-                        gradient={myGame.black.avatarGradient}
-                        size="sm"
-                        className="ring-2 rounded-full ring-base-100"
-                      />
-                    )}
-                  </div>
-                  <div className="min-w-0 text-sm text-base-content">
-                    <div className="truncate font-medium">
-                      {myGame.black ? (
-                        <>
-                          {myGame.white._id === user?.id
-                            ? "You"
-                            : myGame.white.username}{" "}
-                          <span className="text-base-content/40">vs</span>{" "}
-                          {myGame.black._id === user?.id
-                            ? "You"
-                            : myGame.black.username}
-                        </>
-                      ) : (
-                        "Waiting for an opponent…"
-                      )}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-base-content/50">
-                      <span className="inline-flex items-center gap-1">
-                        {myGame.moves.length > 0
-                          ? `Move ${Math.ceil(myGame.moves.length / 2)} · `
-                          : ""}
-                        <TimeControlIcon
-                          baseSeconds={myGame.timeControl.baseSeconds}
-                          size={12}
-                        />
-                        {formatTimeControl(myGame.timeControl)}
-                      </span>
-                      {myGame.wagerTokens > 0 && (
-                        <Badge variant="warning">
-                          <span className="inline-flex items-center gap-1">
-                            {myGame.wagerTokens} <RCoin size={10} />
-                          </span>
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <Link to={`/game/${myGame.joinCode}`} className="shrink-0">
-                  <Button size="sm">Resume</Button>
-                </Link>
-              </div>
+              <LiveGameRow
+                highlight
+                white={{
+                  username: myGame.white.username,
+                  avatarGradient: myGame.white.avatarGradient,
+                  label: myGame.white._id === user?.id ? "You" : undefined,
+                }}
+                black={
+                  myGame.black && {
+                    username: myGame.black.username,
+                    avatarGradient: myGame.black.avatarGradient,
+                    label: myGame.black._id === user?.id ? "You" : undefined,
+                  }
+                }
+                timeControl={myGame.timeControl}
+                moveCount={myGame.moves.length}
+                wagerTokens={myGame.wagerTokens}
+                action={
+                  <Link to={`/game/${myGame.joinCode}`}>
+                    <Button size="sm">Resume</Button>
+                  </Link>
+                }
+              />
             </CardContent>
           ) : (
             <CardContent className="flex flex-col gap-3 sm:flex-row">
@@ -401,52 +353,14 @@ export function Dashboard() {
                 }
               >
                 <div className="space-y-3 px-4 md:px-2">
-                  <Select
-                    label="Time control"
-                    value={tcIndex}
-                    onChange={(e) => setTcIndex(Number(e.target.value))}
-                  >
-                    {TIME_CONTROLS.map((tc, i) => (
-                      <option key={tc.label} value={i}>
-                        {tc.label}
-                      </option>
-                    ))}
-                  </Select>
-
-                  <Select
-                    label="Variant"
-                    value={variant}
-                    onChange={(e) =>
-                      setVariant(e.target.value as "standard" | "chess960")
-                    }
-                  >
-                    <option value="standard">Standard</option>
-                    <option value="chess960">Chess960 </option>
-                  </Select>
-
-                  <Input
-                    label={
-                      <span className="inline-flex items-center gap-1">
-                        <RCoin size={12} /> Coin wager (optional)
-                      </span>
-                    }
-                    type="number"
-                    min={0}
-                    max={MAX_WAGER_TOKENS}
-                    step={1}
-                    value={wagerInput}
-                    onChange={(e) => setWagerInput(e.target.value)}
-                    error={
-                      wagerBelowFloor
-                        ? `Enter 0 for a free game, or at least ${MIN_STAKE_TOKENS} R`
-                        : undefined
-                    }
-                    hint={
-                      !wagerBelowFloor && wagerTokens === 0
+                  <GameSettingsFields
+                    settings={gameSettings}
+                    wagerHint={
+                      wagerTokens === 0
                         ? "Free game, no R Coins at stake"
-                        : !wagerBelowFloor && wagerRake !== null
-                          ? `Winner takes ${wagerTokens * 2 - wagerRake} `
-                          : ``
+                        : wagerRake !== null
+                          ? `Winner takes ${wagerTokens * 2 - wagerRake}`
+                          : undefined
                     }
                   />
 
@@ -480,131 +394,61 @@ export function Dashboard() {
         </Card>
 
         {(gamesError || activeGames === null || activeGames.length > 0) && (
-          <Card variant="solid">
-            <CardHeader>
-              <CardTitle>Friends currently playing</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {gamesError && (
-                <p className="text-sm text-red-400">{gamesError}</p>
-              )}
-              {!gamesError && activeGames === null && (
-                <p className="text-sm text-base-content/60">Loading…</p>
-              )}
-              {activeGames &&
-                activeGames.map((g) => {
-                  return (
-                    <div
-                      key={g._id}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-base-300 bg-base-100/60 px-3 py-2.5"
-                    >
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <div className="flex shrink-0 -space-x-2">
-                          <Avatar
-                            username={g.white.username}
-                            gradient={g.white.avatarGradient}
-                            size="sm"
-                            className="ring-2 rounded-full ring-base-100"
-                          />
-                          <Avatar
-                            username={g.black.username}
-                            gradient={g.black.avatarGradient}
-                            size="sm"
-                            className="ring-2 rounded-full ring-base-100"
-                          />
-                        </div>
-                        <div className="min-w-0 text-sm text-base-content">
-                          <div className="truncate">
-                            <Link
-                              to={`/profile/${g.white.username}`}
-                              className="hover:underline"
-                            >
-                              {g.white.username}
-                            </Link>{" "}
-                            <span className="text-base-content/40">vs</span>{" "}
-                            <Link
-                              to={`/profile/${g.black.username}`}
-                              className="hover:underline"
-                            >
-                              {g.black.username}
-                            </Link>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-base-content/50">
-                            <span className="inline-flex items-center gap-1">
-                              Move {Math.ceil(g.moves.length / 2)} ·{" "}
-                              <TimeControlIcon
-                                baseSeconds={g.timeControl.baseSeconds}
-                                size={12}
-                              />
-                              {formatTimeControl(g.timeControl)}
-                            </span>
-                            {g.wagerTokens > 0 && (
-                              <Badge variant="warning">
-                                <span className="inline-flex items-center gap-1">
-                                  {g.wagerTokens} <RCoin size={10} />
-                                </span>
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <Link to={`/game/${g.joinCode}`} className="shrink-0">
-                        <Button variant="glass" size="sm">
-                          Watch
-                        </Button>
-                      </Link>
-                    </div>
-                  );
-                })}
-            </CardContent>
-          </Card>
+          <ListCard
+            title="Friends currently playing"
+            loading={!gamesError && activeGames === null}
+          >
+            {gamesError && <p className="text-sm text-red-400">{gamesError}</p>}
+            {activeGames?.map((g) => (
+              <LiveGameRow
+                key={g._id}
+                white={{
+                  username: g.white.username,
+                  avatarGradient: g.white.avatarGradient,
+                  profileHref: `/profile/${g.white.username}`,
+                }}
+                black={{
+                  username: g.black.username,
+                  avatarGradient: g.black.avatarGradient,
+                  profileHref: `/profile/${g.black.username}`,
+                }}
+                timeControl={g.timeControl}
+                moveCount={g.moves.length}
+                wagerTokens={g.wagerTokens}
+                action={
+                  <Link to={`/game/${g.joinCode}`}>
+                    <Button variant="glass" size="sm">
+                      Watch
+                    </Button>
+                  </Link>
+                }
+              />
+            ))}
+          </ListCard>
         )}
 
-        <Card variant="solid">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+        <ListCard
+          title={
+            <span className="flex items-center gap-2">
               <Trophy className="h-4 w-4 text-amber-400" /> Open tournaments
-            </CardTitle>
+            </span>
+          }
+          actions={
             <Link
               to="/tournaments"
               className="text-sm text-(--primary) hover:underline"
             >
               View all
             </Link>
-          </CardHeader>
-          <CardContent>
-            {openTournaments === null && (
-              <p className="text-sm text-base-content/60">Loading…</p>
-            )}
-            {openTournaments && openTournaments.length === 0 && (
-              <p className="text-sm text-base-content/60">
-                No open tournaments right now.
-              </p>
-            )}
-            {openTournaments &&
-              openTournaments.slice(0, 4).map((t) => (
-                <Link
-                  key={t._id}
-                  to={`/tournaments/${t.code}`}
-                  className="flex items-center justify-between gap-2 border-b border-base-300 py-2 last:border-none hover:text-(--primary)"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-base-content">
-                      {t.name}
-                    </p>
-                    <p className="text-xs text-base-content/50">
-                      {formatTournamentTimeControl(t)} ·{" "}
-                      {t.playerCount ?? t.players.length}{" "}
-                      {(t.playerCount ?? t.players.length) === 1
-                        ? "player"
-                        : "players"}
-                    </p>
-                  </div>
-                  <ArrowRight className="h-4 w-4 shrink-0 text-base-content/40" />
-                </Link>
-              ))}
-          </CardContent>
-        </Card>
+          }
+          loading={openTournaments === null}
+          empty={openTournaments?.length === 0}
+          emptyMessage="No open tournaments right now."
+        >
+          {openTournaments?.slice(0, 4).map((t) => (
+            <TournamentRow key={t._id} t={t} />
+          ))}
+        </ListCard>
 
         <footer className="flex flex-col items-center gap-y-1 pt-2 pb-2 text-xs text-base-content/50">
           <div className="flex items-center justify-center gap-x-4">

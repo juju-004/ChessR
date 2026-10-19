@@ -12,6 +12,7 @@ import { registerTournamentHandlers } from './tournamentSocket.js';
 import { registerPingHandlers } from './pingSocket.js';
 import { registerQuickPairingHandlers } from './quickPairingSocket.js';
 import { registerLobbyHandlers } from './lobbySocket.js';
+import { registerPuzzleRaceHandlers } from './puzzleRaceSocket.js';
 import { registerLatencyHandlers } from './latencySocket.js';
 import { setIo } from './io.js';
 import { installSocketFloodGuard } from './floodGuard.js';
@@ -69,6 +70,7 @@ export function initSocketServer(httpServer: HttpServer): Server {
     registerTournamentHandlers(io, socket);
     registerQuickPairingHandlers(io, socket);
     registerLobbyHandlers(io, socket);
+    registerPuzzleRaceHandlers(io, socket);
     registerPingHandlers(io, socket);
     registerLatencyHandlers(io, socket);
   });
