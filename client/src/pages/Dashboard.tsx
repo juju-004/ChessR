@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
-  Trophy,
   Plus,
   Hash,
   Wallet,
@@ -26,7 +25,6 @@ import { useAuth } from "../contexts/AuthContext.js";
 import { useSocket } from "../contexts/SocketContext.js";
 import { DailySummaryCard } from "../components/daily/DailySummaryCard.js";
 import { LiveGameRow } from "../components/lists/LiveGameRow.js";
-import { TournamentRow } from "../components/tournaments/TournamentRow.js";
 import { RestrictionBanner } from "../components/RestrictionBanner.js";
 import {
   GameSettingsFields,
@@ -36,7 +34,6 @@ import { extractGameCode } from "../lib/utils.js";
 import { useTokenBalance } from "../hooks/useTokenBalance.js";
 import { useBalanceVisibility } from "../hooks/useBalanceVisibility.js";
 import { useRakePercent } from "../hooks/useRakePercent.js";
-import { listOpenTournaments, type Tournament } from "../api/tournaments.js";
 import {
   Page,
   Card,
@@ -117,10 +114,6 @@ export function Dashboard() {
   const { hidden: balanceHidden, toggle: toggleBalanceHidden } =
     useBalanceVisibility();
 
-  const [openTournaments, setOpenTournaments] = useState<Tournament[] | null>(
-    null,
-  );
-
   // Number of open games in the lobby that someone else posted (the ones
   // you could actually join), shown as a badge on the Lobby tile. Pushed
   // live via lobby:changed, same signal the Lobby page itself uses.
@@ -174,9 +167,6 @@ export function Dashboard() {
     listFriendsActiveGames()
       .then((res) => !cancelled && setActiveGames(res.games))
       .catch(() => !cancelled && setGamesError("Failed to load active games."));
-    listOpenTournaments("pending")
-      .then((res) => !cancelled && setOpenTournaments(res.tournaments))
-      .catch(() => !cancelled && setOpenTournaments([]));
 
     return () => {
       cancelled = true;
@@ -382,7 +372,7 @@ export function Dashboard() {
               <div className="flex flex-1 gap-2">
                 <Input
                   type="text"
-                  placeholder="Join by code or link, e.g. 7K3M9P"
+                  placeholder="Join by code or link, e.g. 7kM3pR"
                   maxLength={200}
                   value={joinCodeInput}
                   onChange={(e) => setJoinCodeInput(e.target.value)}
@@ -429,29 +419,6 @@ export function Dashboard() {
             ))}
           </ListCard>
         )}
-
-        <ListCard
-          title={
-            <span className="flex items-center gap-2">
-              <Trophy className="h-4 w-4 text-amber-400" /> Open tournaments
-            </span>
-          }
-          actions={
-            <Link
-              to="/tournaments"
-              className="text-sm text-(--primary) hover:underline"
-            >
-              View all
-            </Link>
-          }
-          loading={openTournaments === null}
-          empty={openTournaments?.length === 0}
-          emptyMessage="No open tournaments right now."
-        >
-          {openTournaments?.slice(0, 4).map((t) => (
-            <TournamentRow key={t._id} t={t} />
-          ))}
-        </ListCard>
 
         <footer className="flex flex-col items-center gap-y-1 pt-2 pb-2 text-xs text-base-content/50">
           <div className="flex items-center justify-center gap-x-4">

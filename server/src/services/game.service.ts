@@ -1,4 +1,4 @@
-import { customAlphabet } from "nanoid";
+import { generateShortCode } from "../utils/shortCode.js";
 import { Game, type IGame } from "../models/Game.js";
 import { User } from "../models/User.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -143,7 +143,7 @@ function broadcastLobbyChanged(): void {
   lobbyEmitTimer.unref?.();
 }
 
-const generateCode = customAlphabet("ABCDEFGHJKMNPQRSTUVWXYZ23456789", 6);
+const generateCode = generateShortCode;
 
 async function uniqueJoinCode(): Promise<string> {
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -530,8 +530,17 @@ export async function listOpenGames(excludeUserId?: string) {
   return promise;
 }
 
-export async function getGameByCode(code: string) {
-  const game = await Game.findOne({ joinCode: code.toUpperCase() })
+// Join codes are case-sensitive. Games created before codes went mixed-case
+// are all-uppercase though, so a code that matches nothing as typed is
+// retried uppercased (someone typing an old code in lowercase).
+async function resolveJoinCode(code: string): Promise<string> {
+  if (await Game.exists({ joinCode: code })) return code;
+  return code.toUpperCase();
+}
+
+export async function getGameByCode(rawCode: string) {
+  const code = await resolveJoinCode(rawCode);
+  const game = await Game.findOne({ joinCode: code })
     .populate("white", "username avatarGradient rating ratings")
     .populate("black", "username avatarGradient rating ratings")
     // Just enough of the tournament for the "Back to tournament" link
@@ -1152,8 +1161,9 @@ async function loadFinishedTally(
   return tally;
 }
 
-export async function getDailyHeadToHead(code: string) {
-  const game = await Game.findOne({ joinCode: code.toUpperCase() })
+export async function getDailyHeadToHead(rawCode: string) {
+  const code = await resolveJoinCode(rawCode);
+  const game = await Game.findOne({ joinCode: code })
     .select("white black status")
     .lean();
   if (!game) throw ApiError.notFound("No game found with that code");

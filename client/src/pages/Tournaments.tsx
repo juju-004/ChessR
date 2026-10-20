@@ -37,6 +37,8 @@ import {
   Input,
   Textarea,
   Modal,
+  CenteredSpinner,
+  DescriptionCard,
 } from "../components/ui/index.js";
 
 // Client-side page size for the Open tournaments list, which already
@@ -284,7 +286,7 @@ function CreateLeagueModal({
           hint={`How many tournaments this league will have (${MIN_LEAGUE_TOURNAMENTS}-${MAX_LEAGUE_TOURNAMENTS}). It can't be changed later.`}
         />
         <Textarea
-          label="Description (optional)"
+          label="Description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           maxLength={500}
@@ -357,7 +359,8 @@ export function Tournaments() {
   const handleLoadMoreFinished = useCallback(() => {
     // floor(len / size) + 1 never skips a row even if the list shifted by a
     // newly finished tournament since the last fetch (an overlap is deduped).
-    const nextPage = Math.floor(finishedLenRef.current / FINISHED_PAGE_SIZE) + 1;
+    const nextPage =
+      Math.floor(finishedLenRef.current / FINISHED_PAGE_SIZE) + 1;
     setFinishedLoadingMore(true);
     listMyFinishedTournaments(nextPage)
       .then((res) => {
@@ -392,8 +395,13 @@ export function Tournaments() {
     refresh().finally(() => setRefreshing(false));
   }, [refresh]);
 
+  // True once the first refresh has settled, so the page shows a single
+  // spinner and then only the cards that actually have something in them.
+  const [ready, setReady] = useState(false);
   useEffect(() => {
-    refresh();
+    refresh()
+      .catch(() => undefined)
+      .finally(() => setReady(true));
   }, [refresh]);
 
   useEffect(() => {
@@ -425,6 +433,16 @@ export function Tournaments() {
     [mine],
   );
 
+  const showLeagueCard =
+    org?.status === "approved" || leagues.some((l) => l.joined || l.mine);
+  const hasLeagues = showLeagueCard && leagues.length > 0;
+  const hasAnyCard =
+    openPending.length > 0 ||
+    hasLeagues ||
+    mineActive.length > 0 ||
+    openActive.length > 0 ||
+    finished.length > 0;
+
   return (
     <Page
       title="Tournaments"
@@ -445,18 +463,24 @@ export function Tournaments() {
       }
     >
       <div className="mx-auto space-y-4">
-        <PaginatedTournamentCard
-          title="Open"
-          tournaments={openPending}
-          emptyMessage="No public tournaments waiting for players right now."
-          onRefresh={handleManualRefresh}
-          refreshing={refreshing}
-          loading={openLoading}
-        />
+        {!ready && <CenteredSpinner className="py-8" />}
+
+        {ready && openPending.length > 0 && (
+          <PaginatedTournamentCard
+            title="Open"
+            tournaments={openPending}
+            emptyMessage=""
+            onRefresh={handleManualRefresh}
+            refreshing={refreshing}
+            loading={openLoading}
+          />
+        )}
 
         {/* Hidden unless you're an approved organisation or are playing in
-         *  at least one league. */}
-        {(org?.status === "approved" || leagues.some((l) => l.joined || l.mine)) && (
+         *  at least one league, and (for a league player) it has leagues.
+         *  An approved organisation keeps the card even when empty, since
+         *  it holds the "New" button for starting a league. */}
+        {ready && showLeagueCard && (hasLeagues || org?.status === "approved") && (
           <LeagueCard
             leagues={leagues}
             loading={leaguesLoading}
@@ -465,7 +489,7 @@ export function Tournaments() {
           />
         )}
 
-        {mineActive.length > 0 && (
+        {ready && mineActive.length > 0 && (
           <ListCard
             title="Active"
             actions={
@@ -481,7 +505,7 @@ export function Tournaments() {
           </ListCard>
         )}
 
-        {openActive.length > 0 && (
+        {ready && openActive.length > 0 && (
           <ListCard
             title="In progress"
             actions={
@@ -497,15 +521,33 @@ export function Tournaments() {
           </ListCard>
         )}
 
-        <FinishedTournamentCard
-          title="Finished"
-          tournaments={finished}
-          hasMore={finished.length < finishedTotal}
-          loadingMore={finishedLoadingMore}
-          onLoadMore={handleLoadMoreFinished}
-          emptyMessage="Nothing finished yet."
-          loading={finishedLoading}
-        />
+        {ready && finished.length > 0 && (
+          <FinishedTournamentCard
+            title="Finished"
+            tournaments={finished}
+            hasMore={finished.length < finishedTotal}
+            loadingMore={finishedLoadingMore}
+            onLoadMore={handleLoadMoreFinished}
+            emptyMessage=""
+            loading={finishedLoading}
+          />
+        )}
+
+        {/* Only when every card above is empty. */}
+        {ready && !hasAnyCard && (
+          <DescriptionCard title="What are tournaments?">
+            <p>
+              Tournaments are organised events where many players compete
+              together: a knockout bracket, a swiss or arena event, or a round
+              robin. Join an open one, or create your own and set the time
+              control, format and prize pool.
+            </p>
+            <p>
+              Open tournaments, the ones you're in, ones in progress, leagues
+              and your finished results will all appear here.
+            </p>
+          </DescriptionCard>
+        )}
       </div>
       <CreateLeagueModal
         open={createLeagueOpen}

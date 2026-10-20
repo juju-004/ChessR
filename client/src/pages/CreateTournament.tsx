@@ -67,8 +67,7 @@ export function CreateTournament() {
       .then((r) => setMyLeagues(r.leagues))
       .catch(() => setMyLeagues([]));
   }, []);
-  const selectedLeague =
-    myLeagues.find((c) => c.id === leagueId) ?? null;
+  const selectedLeague = myLeagues.find((c) => c.id === leagueId) ?? null;
 
   const [status, setStatus] = useState<{
     message: string;
@@ -231,7 +230,7 @@ export function CreateTournament() {
               />
 
               <Textarea
-                label="Description (optional)"
+                label="Description "
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Rules, context, anything players should know before joining…"
@@ -244,8 +243,8 @@ export function CreateTournament() {
                   Format
                 </label>
                 <div className="grid grid-cols-2 mb-7 gap-2">
-                  {(Object.keys(FORMAT_LABEL) as TournamentFormat[])
-                    .map((f) => (
+                  {(Object.keys(FORMAT_LABEL) as TournamentFormat[]).map(
+                    (f) => (
                       <button
                         key={f}
                         onClick={() => handleFormatChange(f)}
@@ -260,7 +259,8 @@ export function CreateTournament() {
                           {FORMAT_DESCRIPTION[f]}
                         </div>
                       </button>
-                    ))}
+                    ),
+                  )}
                 </div>
               </div>
 
@@ -406,7 +406,7 @@ export function CreateTournament() {
                 }
               />
               <Input
-                label="Password (optional)"
+                label="Password"
                 type="text"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -422,9 +422,10 @@ export function CreateTournament() {
                     <span className="inline-flex items-center gap-1">
                       Add to a league
                       <HelpTip>
-                        Makes this the next stage of one of your leagues. Players join each
-                        tournament separately and their points carry forward into the league
-                        table. Swiss or Arena only.
+                        Makes this the next stage of one of your leagues.
+                        Players join each tournament separately and their points
+                        carry forward into the league table. Swiss or Arena
+                        only.
                       </HelpTip>
                     </span>
                   }
@@ -448,8 +449,8 @@ export function CreateTournament() {
                 {selectedLeague &&
                   !(LEAGUE_FORMATS as readonly string[]).includes(format) && (
                     <p className="text-xs text-red-400">
-                      Knockout and round-robin can't be part of a league. Choose Swiss or
-                      Arena as the format.
+                      Knockout and round-robin can't be part of a league. Choose
+                      Swiss or Arena as the format.
                     </p>
                   )}
               </section>

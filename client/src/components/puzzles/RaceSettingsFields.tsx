@@ -103,11 +103,11 @@ export function RaceSettingsFields({
       <SettingsNumber
         label={
           <span className="inline-flex items-center gap-1">
-            <RCoin size={12} /> Coin wager (optional)
+            <RCoin size={12} /> Coin wager
           </span>
         }
-        ariaLabel="Coin wager (optional)"
-        placeholder="Coin wager (optional)"
+        ariaLabel="Coin wager"
+        placeholder="Coin wager"
         icon={<RCoin size={16} />}
         value={settings.wagerInput}
         onChange={settings.setWagerInput}

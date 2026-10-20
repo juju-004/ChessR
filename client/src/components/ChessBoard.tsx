@@ -40,6 +40,10 @@ export interface ChessBoardProps {
    *  for an outside gutter in a narrow sidebar card, so it sets this to
    *  keep its coordinates inside at every breakpoint instead. */
   forceInsideCoordinates?: boolean;
+  /** Bump to drop any queued premove. For boards that rewind the position
+   *  themselves (a rejected puzzle move snapping back): without this a stale
+   *  premove would fire against the rewound position. */
+  clearPremoveSignal?: number;
 }
 
 export const ChessBoard = memo(function ChessBoard({
@@ -58,6 +62,7 @@ export const ChessBoard = memo(function ChessBoard({
   showCoordinates = true,
   showLegalMoves = true,
   forceInsideCoordinates = false,
+  clearPremoveSignal,
 }: ChessBoardProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -184,6 +189,13 @@ export const ChessBoard = memo(function ChessBoard({
     // `.set()` call pushed through.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardSize > 0]);
+
+  // Declared before the sync effect below on purpose: that effect calls
+  // playPremove(), so a premove being cancelled has to be gone by then.
+  useLayoutEffect(() => {
+    if (clearPremoveSignal === undefined) return;
+    groundRef.current?.cancelPremove();
+  }, [clearPremoveSignal]);
 
   useLayoutEffect(() => {
     const isFlip = orientationRef.current !== orientation;

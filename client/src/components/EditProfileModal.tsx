@@ -112,7 +112,7 @@ export function EditProfileModal({
             value={bio}
             onChange={(e) => setBio(e.target.value.slice(0, BIO_MAX))}
             rows={3}
-            placeholder="A short line about you (optional)"
+            placeholder="A short line about you"
             className="w-full resize-none rounded-lg border border-base-300 bg-base-200/60 px-3 py-2 text-sm text-base-content outline-none focus:border-(--primary)"
           />
           <p className="mt-1 text-right text-xs text-base-content/40">

@@ -46,3 +46,5 @@ export {
 } from "./TimeControlIcon.js";
 export { ThemeToggle } from "./ThemeToggle.js";
 export { FadeIn, ScaleIn, Stagger, StaggerItem } from "./Motion.js";
+
+export { DescriptionCard } from "./DescriptionCard.js";

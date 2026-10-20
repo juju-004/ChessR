@@ -32,7 +32,7 @@ const signalSchema = new Schema<SuspicionSignal>(
 const gameFlagSchema = new Schema<IGameFlag>(
   {
     game: { type: Schema.Types.ObjectId, ref: 'Game', required: true },
-    gameCode: { type: String, required: true, uppercase: true },
+    gameCode: { type: String, required: true },
     flaggedUser: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     side: { type: String, enum: ['white', 'black'], required: true },
     score: { type: Number, required: true },

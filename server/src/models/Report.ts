@@ -42,7 +42,7 @@ const reportSchema = new Schema<IReport>(
       required: true,
     },
     description: { type: String, required: true, trim: true, maxlength: 2000 },
-    gameCode: { type: String, trim: true, uppercase: true },
+    gameCode: { type: String, trim: true },
     status: {
       type: String,
       enum: ['pending', 'reviewing', 'actioned', 'dismissed'],

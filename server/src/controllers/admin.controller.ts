@@ -155,7 +155,12 @@ export const getReportDetail = asyncHandler(async (req, res) => {
 
   let game: Record<string, unknown> | null = null;
   if (report.gameCode) {
-    const gameDoc = await Game.findOne({ joinCode: report.gameCode.toUpperCase() })
+    // Codes are case-sensitive; reports filed before that were stored uppercased.
+    const gameDoc = await Game.findOne({
+      joinCode: (await Game.exists({ joinCode: report.gameCode }))
+        ? report.gameCode
+        : report.gameCode.toUpperCase(),
+    })
       .populate('white', 'username')
       .populate('black', 'username')
       .lean();

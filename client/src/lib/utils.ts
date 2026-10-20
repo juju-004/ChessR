@@ -109,5 +109,7 @@ export function extractGameCode(input: string): string {
   // only alphanumerics and uppercase it, matching the server's join-code
   // alphabet.
   const lastSegment = raw.split("/").pop() ?? raw;
-  return lastSegment.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  // Join codes are case-sensitive (mixed-case letters + digits), so the
+  // case is kept exactly as typed.
+  return lastSegment.replace(/[^a-zA-Z0-9]/g, "");
 }

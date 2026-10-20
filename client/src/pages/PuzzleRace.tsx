@@ -53,7 +53,13 @@ function useNow(active: boolean, ms = 100): number {
   return now;
 }
 
-type Phase = "waiting" | "countdown" | "running" | "timeup" | "finished" | "cancelled";
+type Phase =
+  | "waiting"
+  | "countdown"
+  | "running"
+  | "timeup"
+  | "finished"
+  | "cancelled";
 
 export function PuzzleRacePage() {
   const { code = "" } = useParams<{ code: string }>();
@@ -76,19 +82,34 @@ export function PuzzleRacePage() {
 
   const applyState = useCallback((state: Race) => {
     offsetRef.current = state.serverNow - Date.now();
-    setRace((prev) => (prev && prev.createdAt === state.createdAt && prev.serverNow > state.serverNow ? prev : state));
+    setRace((prev) =>
+      prev &&
+      prev.createdAt === state.createdAt &&
+      prev.serverNow > state.serverNow
+        ? prev
+        : state,
+    );
   }, []);
 
   // Initial load over REST so the page works before the socket is up.
   useEffect(() => {
     let cancelled = false;
     getRaceByCode(code)
-      .then(({ race }) => !cancelled && applyState(race))
+      .then(({ race }) => {
+        if (cancelled) return;
+        // Codes are case-sensitive; move to the real one if the server
+        // resolved a differently-cased legacy code.
+        if (race.code !== code) {
+          navigate(`/puzzles/${race.code}`, { replace: true });
+          return;
+        }
+        applyState(race);
+      })
       .catch(() => !cancelled && setNotFound(true));
     return () => {
       cancelled = true;
     };
-  }, [code, applyState]);
+  }, [code, applyState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Asks the server for the race state and MY current puzzle. */
   const sync = useCallback(() => {
@@ -96,7 +117,13 @@ export function PuzzleRacePage() {
     socket.emit(
       "puzzleRace:watch",
       { code },
-      (res: { ok: boolean; state?: Race; puzzle?: PuzzleView | null; lockMs?: number; error?: string }) => {
+      (res: {
+        ok: boolean;
+        state?: Race;
+        puzzle?: PuzzleView | null;
+        lockMs?: number;
+        error?: string;
+      }) => {
         if (!res?.ok || !res.state) return;
         applyState(res.state);
         setPuzzle(res.puzzle ?? null);
@@ -121,7 +148,9 @@ export function PuzzleRacePage() {
     };
   }, [socket, code, sync, applyState]);
 
-  const me: RacePlayer | undefined = race?.players.find((p) => p.userId === user?.id);
+  const me: RacePlayer | undefined = race?.players.find(
+    (p) => p.userId === user?.id,
+  );
   const isPlayer = !!me;
   const isCreator = !!race && race.creatorId === user?.id;
 
@@ -158,7 +187,8 @@ export function PuzzleRacePage() {
 
   // Money moved: refresh the balance badge when the race is settled.
   useEffect(() => {
-    if (status === "finished" || status === "cancelled") refresh().catch(() => {});
+    if (status === "finished" || status === "cancelled")
+      refresh().catch(() => {});
   }, [status, refresh]);
 
   const submitMove = useCallback(
@@ -173,8 +203,11 @@ export function PuzzleRacePage() {
         if (!socket) return resolve({ ok: false, status: "stale" });
         socket
           .timeout(6000)
-          .emit("puzzleRace:move", { code, ...move }, (err: unknown, res: MoveResult) =>
-            resolve(err || !res ? { ok: false, status: "stale" } : res),
+          .emit(
+            "puzzleRace:move",
+            { code, ...move },
+            (err: unknown, res: MoveResult) =>
+              resolve(err || !res ? { ok: false, status: "stale" } : res),
           );
       }),
     [socket, code],
@@ -187,13 +220,20 @@ export function PuzzleRacePage() {
     },
     [sync],
   );
-  const onWrong = useCallback((lockMs: number) => setLockUntil(Date.now() + lockMs), []);
+  const onWrong = useCallback(
+    (lockMs: number) => setLockUntil(Date.now() + lockMs),
+    [],
+  );
   const onResync = useCallback(() => {
     sync();
     setNonce((n) => n + 1);
   }, [sync]);
 
-  async function run(kind: "join" | "start" | "leave", fn: () => Promise<unknown>, after?: () => void) {
+  async function run(
+    kind: "join" | "start" | "leave",
+    fn: () => Promise<unknown>,
+    after?: () => void,
+  ) {
     setError("");
     setBusy(kind);
     try {
@@ -209,7 +249,9 @@ export function PuzzleRacePage() {
 
   async function copyLink() {
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/puzzles/${code}`);
+      await navigator.clipboard.writeText(
+        `${window.location.origin}/puzzles/${code}`,
+      );
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } catch {
@@ -244,12 +286,19 @@ export function PuzzleRacePage() {
   const lockLeft = Math.max(0, lockUntil - now);
   const locked = lockLeft > 0;
   const full = race.players.length >= race.maxPlayers;
-  const takes = winnerTakes(race.wagerTokens * race.players.length, rakePercent);
-  const timeLeft = race.endsAt ? race.endsAt - serverNow : race.timeLimitSeconds * 1000;
+  const takes = winnerTakes(
+    race.wagerTokens * race.players.length,
+    rakePercent,
+  );
+  const timeLeft = race.endsAt
+    ? race.endsAt - serverNow
+    : race.timeLimitSeconds * 1000;
 
   const statusBadge =
     phase === "waiting" ? (
-      <Badge variant="warning">Waiting for players</Badge>
+      <Badge variant="warning">
+        Waiting <span className="hidden sm:inline-flex">for players</span>
+      </Badge>
     ) : phase === "countdown" ? (
       <Badge variant="primary">Starting…</Badge>
     ) : phase === "running" || phase === "timeup" ? (
@@ -270,42 +319,47 @@ export function PuzzleRacePage() {
       <div className="grid gap-4 lg:grid-cols-[minmax(0,min(44rem,calc(100dvh-13rem)))_minmax(0,1fr)]">
         {/* ---- the play area ------------------------------------------------ */}
         {phase === "running" && isPlayer && puzzle && !me?.finished ? (
-              <div className="mx-auto w-full space-y-2 lg:max-w-[min(100%,calc(100dvh-13rem))]">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium text-base-content">
-                    Puzzle {puzzle.index + 1} of {puzzle.total}
-                  </span>
-                  <span className="inline-flex items-center gap-1 font-mono text-base-content/70">
-                    <Timer className="h-4 w-4" />
-                    {formatClock(timeLeft)}
+          // On phones the board bleeds out of the page's side gutter
+          // (-mx-4 cancels Page's px-4), same end result as the game page,
+          // which simply isn't wrapped in <Page>. From sm up the normal
+          // gutter and centred width apply again.
+          <div className="-mx-4 space-y-2 sm:mx-auto sm:w-full lg:max-w-[min(100%,calc(100dvh-13rem))]">
+            <div className="flex items-center justify-between px-4 text-sm sm:px-0">
+              <span className="font-medium text-base-content">
+                Puzzle {puzzle.index + 1} of {puzzle.total}
+              </span>
+              <span className="inline-flex items-center gap-1 font-mono text-base-content/70">
+                <Timer className="h-4 w-4" />
+                {formatClock(timeLeft)}
+              </span>
+            </div>
+            <div className="relative">
+              <PuzzleBoard
+                key={`${puzzle.index}-${nonce}`}
+                puzzle={puzzle}
+                disabled={locked}
+                onMove={submitMove}
+                onWrong={onWrong}
+                onSolved={onSolved}
+                onResync={onResync}
+              />
+              {locked && (
+                // z-30: chessground's pieces and overlays carry their own
+                // z-index, without one the pill could slide behind them.
+                <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center">
+                  <span className="rounded-full bg-red-500/90 px-3 py-1 text-xs font-semibold text-white shadow">
+                    Wrong move, locked {Math.ceil(lockLeft / 100) / 10}s
                   </span>
                 </div>
-                <div className="relative">
-                  <PuzzleBoard
-                    key={`${puzzle.index}-${nonce}`}
-                    puzzle={puzzle}
-                    disabled={locked}
-                    onMove={submitMove}
-                    onWrong={onWrong}
-                    onSolved={onSolved}
-                    onResync={onResync}
-                  />
-                  {locked && (
-                    <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center">
-                      <span className="rounded-full bg-red-500/90 px-3 py-1 text-xs font-semibold text-white shadow">
-                        Wrong move, locked {Math.ceil(lockLeft / 100) / 10}s
-                      </span>
-                    </div>
-                  )}
-                </div>
-                <p className="text-center text-xs text-base-content/50">
-                  Find the best move for{" "}
-                  <span className="font-medium text-base-content">
-                    {puzzle.orientation === "white" ? "White" : "Black"}
-                  </span>
-                </p>
-              </div>
-
+              )}
+            </div>
+            <p className="px-4 text-center text-xs text-base-content/50 sm:px-0">
+              Find the best move for{" "}
+              <span className="font-medium text-base-content">
+                {puzzle.orientation === "white" ? "White" : "Black"}
+              </span>
+            </p>
+          </div>
         ) : (
           <Card variant="solid">
             <CardContent className="p-3 sm:p-4">
@@ -316,7 +370,9 @@ export function PuzzleRacePage() {
                 isPlayer={isPlayer}
                 serverNow={serverNow}
                 timeLeft={timeLeft}
-                loadingPuzzle={phase === "running" && isPlayer && !me?.finished && !puzzle}
+                loadingPuzzle={
+                  phase === "running" && isPlayer && !me?.finished && !puzzle
+                }
               />
             </CardContent>
           </Card>
@@ -338,7 +394,10 @@ export function PuzzleRacePage() {
               <Stat icon={<Users className="h-4 w-4" />} label="Players">
                 {race.players.length}/{race.maxPlayers}
               </Stat>
-              <Stat icon={<RCoin size={14} />} label={race.wagerTokens > 0 ? "Pot" : "Wager"}>
+              <Stat
+                icon={<RCoin size={14} />}
+                label={race.wagerTokens > 0 ? "Pot" : "Wager"}
+              >
                 {race.wagerTokens > 0 ? (
                   <span className="inline-flex items-center gap-1">
                     {race.wagerTokens * race.players.length} <RCoin size={12} />
@@ -350,12 +409,18 @@ export function PuzzleRacePage() {
                   "Free"
                 )}
               </Stat>
-              {race.wagerTokens > 0 && takes !== null && phase !== "finished" && phase !== "cancelled" && (
-                <p className="col-span-2 text-xs text-base-content/50">
-                  Winner takes {takes} R
-                  {rakePercent ? ` (after the ${rakePercent}% platform fee)` : ""}.
-                </p>
-              )}
+              {race.wagerTokens > 0 &&
+                takes !== null &&
+                phase !== "finished" &&
+                phase !== "cancelled" && (
+                  <p className="col-span-2 text-xs text-base-content/50">
+                    Winner takes {takes} R
+                    {rakePercent
+                      ? ` (after the ${rakePercent}% platform fee)`
+                      : ""}
+                    .
+                  </p>
+                )}
             </CardContent>
           </Card>
 
@@ -371,8 +436,10 @@ export function PuzzleRacePage() {
               onJoin={() => run("join", () => joinRace(race.id), sync)}
               onStart={() => run("start", () => startRace(race.id))}
               onLeave={() =>
-                run("leave", () => (isCreator ? cancelRace(race.id) : leaveRace(race.id)), () =>
-                  navigate("/puzzles"),
+                run(
+                  "leave",
+                  () => (isCreator ? cancelRace(race.id) : leaveRace(race.id)),
+                  () => navigate("/puzzles"),
                 )
               }
             />
@@ -386,7 +453,9 @@ export function PuzzleRacePage() {
 
           <Card variant="solid">
             <CardHeader>
-              <CardTitle>{phase === "waiting" ? "Players" : "Standings"}</CardTitle>
+              <CardTitle>
+                {phase === "waiting" ? "Players" : "Standings"}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div>
@@ -395,7 +464,11 @@ export function PuzzleRacePage() {
                     key={p.userId}
                     to={`/profile/${p.username}`}
                     leading={
-                      <Avatar username={p.username} size="sm" gradient={p.avatarGradient} />
+                      <Avatar
+                        username={p.username}
+                        size="sm"
+                        gradient={p.avatarGradient}
+                      />
                     }
                     title={
                       <>
@@ -415,7 +488,11 @@ export function PuzzleRacePage() {
                     }
                     subtitle={
                       phase === "waiting" ? undefined : (
-                        <ProgressBar value={p.solved} total={race.puzzleCount} highlight={p.userId === user?.id} />
+                        <ProgressBar
+                          value={p.solved}
+                          total={race.puzzleCount}
+                          highlight={p.userId === user?.id}
+                        />
                       )
                     }
                     trailing={
@@ -423,7 +500,9 @@ export function PuzzleRacePage() {
                         <span className="text-xs tabular-nums text-base-content/60">
                           {p.solved}/{race.puzzleCount}
                           {p.mistakes > 0 && (
-                            <span className="ml-1.5 text-red-400/80">✗{p.mistakes}</span>
+                            <span className="ml-1.5 text-red-400/80">
+                              ✗{p.mistakes}
+                            </span>
                           )}
                         </span>
                       )
@@ -431,7 +510,9 @@ export function PuzzleRacePage() {
                   />
                 ))}
                 {phase === "waiting" &&
-                  Array.from({ length: race.maxPlayers - race.players.length }).map((_, i) => (
+                  Array.from({
+                    length: race.maxPlayers - race.players.length,
+                  }).map((_, i) => (
                     <div
                       key={`empty-${i}`}
                       className="-mx-2 flex items-center gap-2.5 border-b border-base-300 px-2 py-2.5 text-sm text-base-content/30 last:border-none"
@@ -498,7 +579,9 @@ function Stage({
     body = (
       <>
         <Puzzle className="h-10 w-10 text-(--primary)" />
-        <p className="text-lg font-semibold text-base-content">Waiting for the race to start</p>
+        <p className="text-lg font-semibold text-base-content">
+          Waiting for the race to start
+        </p>
         <p className="max-w-xs text-sm text-base-content/60">
           {race.players.length < 2
             ? "At least one more racer is needed. Share the link to invite someone."
@@ -507,11 +590,18 @@ function Stage({
       </>
     );
   } else if (phase === "countdown") {
-    const secs = Math.max(1, Math.ceil(((race.startsAt ?? serverNow) - serverNow) / 1000));
+    const secs = Math.max(
+      1,
+      Math.ceil(((race.startsAt ?? serverNow) - serverNow) / 1000),
+    );
     body = (
       <>
-        <p className="text-sm font-medium uppercase tracking-wide text-base-content/50">Get ready</p>
-        <p className="text-8xl font-bold tabular-nums text-(--primary)">{secs}</p>
+        <p className="text-sm font-medium uppercase tracking-wide text-base-content/50">
+          Get ready
+        </p>
+        <p className="text-8xl font-bold tabular-nums text-(--primary)">
+          {secs}
+        </p>
         <p className="text-sm text-base-content/60">
           {race.puzzleCount} puzzles, first to solve them all wins
         </p>
@@ -521,16 +611,24 @@ function Stage({
     if (!isPlayer) {
       body = (
         <>
-          <p className="text-lg font-semibold text-base-content">You're watching this race</p>
-          <p className="font-mono text-2xl text-base-content/70">{formatClock(timeLeft)}</p>
+          <p className="text-lg font-semibold text-base-content">
+            You're watching this race
+          </p>
+          <p className="font-mono text-2xl text-base-content/70">
+            {formatClock(timeLeft)}
+          </p>
         </>
       );
     } else if (me?.finished) {
       body = (
         <>
           <Check className="h-10 w-10 text-green-400" />
-          <p className="text-lg font-semibold text-base-content">You solved them all!</p>
-          <p className="text-sm text-base-content/60">Waiting for the result…</p>
+          <p className="text-lg font-semibold text-base-content">
+            You solved them all!
+          </p>
+          <p className="text-sm text-base-content/60">
+            Waiting for the result…
+          </p>
         </>
       );
     } else if (phase === "timeup") {
@@ -538,7 +636,9 @@ function Stage({
         <>
           <Timer className="h-10 w-10 text-amber-400" />
           <p className="text-lg font-semibold text-base-content">Time's up!</p>
-          <p className="text-sm text-base-content/60">Working out the result…</p>
+          <p className="text-sm text-base-content/60">
+            Working out the result…
+          </p>
         </>
       );
     } else if (loadingPuzzle) {
@@ -561,8 +661,12 @@ function Stage({
   } else {
     body = (
       <>
-        <p className="text-lg font-semibold text-base-content">This race was cancelled</p>
-        <p className="text-sm text-base-content/60">Any stakes were returned.</p>
+        <p className="text-lg font-semibold text-base-content">
+          This race was cancelled
+        </p>
+        <p className="text-sm text-base-content/60">
+          Any stakes were returned.
+        </p>
       </>
     );
   }
@@ -601,7 +705,12 @@ function WaitingActions({
     <Card variant="solid">
       <CardContent className="space-y-2 py-4">
         {!isPlayer && (
-          <Button className="w-full" onClick={onJoin} loading={busy === "join"} disabled={full}>
+          <Button
+            className="w-full"
+            onClick={onJoin}
+            loading={busy === "join"}
+            disabled={full}
+          >
             {full
               ? "Race is full"
               : race.wagerTokens > 0
@@ -616,21 +725,33 @@ function WaitingActions({
             loading={busy === "start"}
             disabled={race.players.length < 2}
           >
-            {race.players.length < 2 ? "Waiting for a second player" : "Start race now"}
+            {race.players.length < 2
+              ? "Waiting for a second player"
+              : "Start race now"}
           </Button>
         )}
         <Button variant="glass" className="w-full" onClick={onCopy}>
-          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+          {copied ? (
+            <Check className="h-4 w-4" />
+          ) : (
+            <Copy className="h-4 w-4" />
+          )}
           {copied ? "Link copied" : "Copy invite link"}
         </Button>
         {isPlayer && (
-          <Button variant="ghost" className="w-full" onClick={onLeave} loading={busy === "leave"}>
+          <Button
+            variant="ghost"
+            className="w-full"
+            onClick={onLeave}
+            loading={busy === "leave"}
+          >
             {isCreator ? "Cancel race" : "Leave race"}
           </Button>
         )}
         {isPlayer && race.wagerTokens > 0 && (
           <p className="text-center text-xs text-base-content/50">
-            Your {race.wagerTokens} R is held and refunded if you leave or the race is cancelled.
+            Your {race.wagerTokens} R is held and refunded if you leave or the
+            race is cancelled.
           </p>
         )}
       </CardContent>
@@ -638,7 +759,15 @@ function WaitingActions({
   );
 }
 
-function Results({ race, me, userId }: { race: Race; me?: RacePlayer; userId?: string }) {
+function Results({
+  race,
+  me,
+  userId,
+}: {
+  race: Race;
+  me?: RacePlayer;
+  userId?: string;
+}) {
   const iWon = !!userId && race.winnerId === userId;
   const winner = race.players.find((p) => p.userId === race.winnerId);
   const wagered = race.wagerTokens > 0;
@@ -658,11 +787,15 @@ function Results({ race, me, userId }: { race: Race; me?: RacePlayer; userId?: s
   } else if (iWon) {
     headline = "You won!";
     tone = "text-green-400";
-    detail = wagered ? `+${race.payoutTokens} R paid out from a ${race.potTokens} R pot.` : null;
+    detail = wagered
+      ? `+${race.payoutTokens} R paid out from a ${race.potTokens} R pot.`
+      : null;
   } else if (me) {
     headline = `${winner?.username ?? "Someone"} won`;
     tone = "text-base-content";
-    detail = wagered ? `You lost your ${race.wagerTokens} R stake.` : "Better luck next time.";
+    detail = wagered
+      ? `You lost your ${race.wagerTokens} R stake.`
+      : "Better luck next time.";
   } else {
     headline = `${winner?.username ?? "Someone"} won`;
     tone = "text-base-content";

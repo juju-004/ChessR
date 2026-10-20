@@ -1,4 +1,4 @@
-import { customAlphabet } from 'nanoid';
+import { generateShortCode } from '../utils/shortCode.js';
 import mongoose from 'mongoose';
 import { Puzzle } from '../models/Puzzle.js';
 import {
@@ -48,7 +48,7 @@ const DIFFICULTY_RANGE: Record<PuzzleRaceDifficulty, [number, number]> = {
   mixed: [0, 5000],
 };
 
-const newCode = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
+const newCode = generateShortCode;
 
 // --- Public shapes -------------------------------------------------------------
 type PopulatedUser = { _id: mongoose.Types.ObjectId; username: string; avatarGradient?: string | null };
@@ -175,9 +175,17 @@ async function finishIfOverdue(code: string): Promise<void> {
   }
 }
 
-export async function getPublicRaceByCode(code: string): Promise<PublicRace> {
-  await finishIfOverdue(code.toUpperCase());
-  const race = await loadPopulated({ code: code.toUpperCase() });
+/** Race codes are case-sensitive. Races made before codes went mixed-case are
+ *  all-uppercase, so a code matching nothing as typed is retried uppercased. */
+async function resolveRaceCode(code: string): Promise<string> {
+  if (await PuzzleRace.exists({ code })) return code;
+  return code.toUpperCase();
+}
+
+export async function getPublicRaceByCode(rawCode: string): Promise<PublicRace> {
+  const code = await resolveRaceCode(rawCode);
+  await finishIfOverdue(code);
+  const race = await loadPopulated({ code });
   if (!race) throw ApiError.notFound('Race not found');
   return toPublicRace(race);
 }
@@ -414,9 +422,10 @@ function buildView(race: Pick<IPuzzleRace, 'puzzles' | 'puzzleCount'>, player: I
 }
 
 /** Everything a client needs on entering / re-entering a race page. */
-export async function watchRace(code: string, userId: string) {
-  await finishIfOverdue(code.toUpperCase());
-  const populated = await loadPopulated({ code: code.toUpperCase() });
+export async function watchRace(rawCode: string, userId: string) {
+  const code = await resolveRaceCode(rawCode);
+  await finishIfOverdue(code);
+  const populated = await loadPopulated({ code });
   if (!populated) throw ApiError.notFound('Race not found');
   const raw = await PuzzleRace.findById(populated._id).lean();
   const me = raw?.players.find((p) => p.user.toString() === userId);
@@ -492,7 +501,6 @@ export interface MoveInput {
 }
 
 export async function submitMove(userId: string, code: string, input: MoveInput): Promise<MoveResult> {
-  code = code.toUpperCase();
   const race = await getCachedRace(code);
   if (!race) return { ok: false, status: 'not_active' };
 

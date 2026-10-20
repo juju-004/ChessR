@@ -17,6 +17,8 @@ import {
   CardRow,
   ListCard,
   Badge,
+  CenteredSpinner,
+  DescriptionCard,
 } from "../components/ui/index.js";
 import { formatRelativeTime } from "@/lib/utils.js";
 import { cn } from "@/lib/cn.js";
@@ -94,8 +96,6 @@ function ServerPagedMatchCard({
   page,
   pageCount,
   onPageChange,
-  emptyMessage,
-  loading = false,
 }: {
   title: string;
   matches: CageMatch[];
@@ -104,18 +104,10 @@ function ServerPagedMatchCard({
   page: number;
   pageCount: number;
   onPageChange: (page: number) => void;
-  emptyMessage: string;
-  /** True until the first page arrives, shows a spinner instead of the
-   *  empty message so "No finished cage matches yet" doesn't flash before
-   *  the real list lands. Later page changes keep the current rows up. */
-  loading?: boolean;
 }) {
   return (
     <ListCard
       title={title}
-      loading={loading}
-      empty={matches.length === 0}
-      emptyMessage={emptyMessage}
       footer={
         <Pagination
           page={page}
@@ -247,6 +239,10 @@ export function CageMatches() {
     };
   }, [socket, refreshMatches]);
 
+  const loading = matchesLoading || finishedLoading;
+  const hasActive = activeMatches.length > 0;
+  const hasFinished = finishedMatches.length > 0;
+
   return (
     <Page
       title="Cage matches"
@@ -273,33 +269,50 @@ export function CageMatches() {
           </p>
         )}
 
-        <ListCard
-          title="Active"
-          actions={
-            <RefreshButton
-              onRefresh={handleManualRefresh}
-              refreshing={refreshing}
-            />
-          }
-          loading={matchesLoading}
-          empty={activeMatches.length === 0}
-          emptyMessage="None right now."
-        >
-          {activeMatches.map((m) => (
-            <CageMatchRow key={m._id} m={m} myId={myId} />
-          ))}
-        </ListCard>
+        {loading && <CenteredSpinner className="py-8" />}
 
-        <ServerPagedMatchCard
-          title="Finished"
-          matches={finishedMatches}
-          myId={myId}
-          page={finishedPage}
-          pageCount={finishedPageCount}
-          onPageChange={handleFinishedPageChange}
-          emptyMessage="No finished cage matches yet."
-          loading={finishedLoading}
-        />
+        {hasActive && (
+          <ListCard
+            title="Active"
+            actions={
+              <RefreshButton
+                onRefresh={handleManualRefresh}
+                refreshing={refreshing}
+              />
+            }
+          >
+            {activeMatches.map((m) => (
+              <CageMatchRow key={m._id} m={m} myId={myId} />
+            ))}
+          </ListCard>
+        )}
+
+        {hasFinished && (
+          <ServerPagedMatchCard
+            title="Finished"
+            matches={finishedMatches}
+            myId={myId}
+            page={finishedPage}
+            pageCount={finishedPageCount}
+            onPageChange={handleFinishedPageChange}
+          />
+        )}
+
+        {/* Only when every card above is empty. */}
+        {!loading && !hasActive && !hasFinished && (
+          <DescriptionCard title="What are cage matches?">
+            <p>
+              A cage match is a series of games played back to back against the
+              same opponent, each at its own time control. You choose the games,
+              how the match is won (first to a number of wins, highest score, or
+              most time categories) and whether R Coins are at stake.
+            </p>
+            <p>
+              Tap Create cage match to challenge a friend or share an invite
+              link. Your active and finished matches will show up here.
+            </p>
+          </DescriptionCard>
+        )}
       </div>
     </Page>
   );

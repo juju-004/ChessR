@@ -52,7 +52,7 @@ export interface GameSettingsFieldsProps {
 
 const WAGER_LABEL = (
   <span className="inline-flex items-center gap-1">
-    <RCoin size={12} /> Coin wager (optional)
+    <RCoin size={12} /> Coin wager
   </span>
 );
 
@@ -103,8 +103,8 @@ export function GameSettingsFields({
       </SettingsSelect>
       <SettingsNumber
         label={WAGER_LABEL}
-        ariaLabel="Coin wager (optional)"
-        placeholder="Coin wager (optional)"
+        ariaLabel="Coin wager"
+        placeholder="Coin wager"
         icon={<RCoin size={16} />}
         value={wagerInput}
         onChange={setWagerInput}

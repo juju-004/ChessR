@@ -250,7 +250,7 @@ function EditTournamentForm({
           />
 
           <Textarea
-            label="Description (optional)"
+            label="Description "
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Rules, context, anything players should know before joining…"
@@ -266,9 +266,7 @@ function EditTournamentForm({
               {(Object.keys(FORMAT_LABEL) as TournamentFormat[])
                 .filter(
                   (f) =>
-                    !tournament.cumulative ||
-                    f === "swiss" ||
-                    f === "arena",
+                    !tournament.cumulative || f === "swiss" || f === "arena",
                 )
                 .map((f) => (
                   <button
@@ -418,9 +416,7 @@ function EditTournamentForm({
             </div>
           ) : (
             <Input
-              label={
-                tournament.hasPassword ? "New password" : "Password (optional)"
-              }
+              label={tournament.hasPassword ? "New password" : "Password"}
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
@@ -2000,147 +1996,147 @@ export function TournamentDetail() {
         {isPointsFormat && desktopPrimary}
 
         {isPointsFormat && standings.length > 0 && (
-            <Card variant="solid">
-              <CardHeader>
-                <CardTitle>Standings</CardTitle>
-                <div className="flex items-center gap-2">
-                  {myStandingsIndex !== -1 && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setStandingsPage(
-                          Math.floor(myStandingsIndex / STANDINGS_PAGE_SIZE),
-                        )
-                      }
-                      className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-(--secondary) transition-colors hover:bg-(--secondary)/10"
+          <Card variant="solid">
+            <CardHeader>
+              <CardTitle>Standings</CardTitle>
+              <div className="flex items-center gap-2">
+                {myStandingsIndex !== -1 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setStandingsPage(
+                        Math.floor(myStandingsIndex / STANDINGS_PAGE_SIZE),
+                      )
+                    }
+                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-(--secondary) transition-colors hover:bg-(--secondary)/10"
+                  >
+                    <LocateFixed className="h-3.5 w-3.5" /> Me
+                  </button>
+                )}
+                <Pagination
+                  badge
+                  page={safeStandingsPage}
+                  pageCount={standingsPageCount}
+                  onPageChange={setStandingsPage}
+                />
+              </div>
+            </CardHeader>
+            <div className="overflow-hidden rounded-xl border border-base-300">
+              <table className="w-full table-fixed text-sm">
+                <thead>
+                  <tr className="bg-base-300/50 text-left text-[11px] font-semibold uppercase tracking-wide text-base-content/50">
+                    <th className={STANDINGS_RANK_TH}>#</th>
+                    <th className="px-2 py-2 md:px-3">Player</th>
+                    <th className="hidden w-24 px-3 py-2 text-center md:table-cell">
+                      Form
+                    </th>
+                    <th
+                      className={cn(
+                        "px-3 py-2 text-right",
+                        tournament.format === "arena" ? "w-20" : "w-14",
+                      )}
                     >
-                      <LocateFixed className="h-3.5 w-3.5" /> Me
-                    </button>
-                  )}
-                  <Pagination
-                    badge
-                    page={safeStandingsPage}
-                    pageCount={standingsPageCount}
-                    onPageChange={setStandingsPage}
-                  />
-                </div>
-              </CardHeader>
-              <div className="overflow-hidden rounded-xl border border-base-300">
-                <table className="w-full table-fixed text-sm">
-                  <thead>
-                    <tr className="bg-base-300/50 text-left text-[11px] font-semibold uppercase tracking-wide text-base-content/50">
-                      <th className={STANDINGS_RANK_TH}>#</th>
-                      <th className="px-2 py-2 md:px-3">Player</th>
-                      <th className="hidden w-24 px-3 py-2 text-center md:table-cell">
-                        Form
-                      </th>
-                      <th
+                      Pts
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedStandings.map((row, i) => {
+                    const p = row.p;
+                    const rank =
+                      safeStandingsPage * STANDINGS_PAGE_SIZE + i + 1;
+                    const isMe = p.user === myId;
+                    return (
+                      <tr
+                        key={p.user}
                         className={cn(
-                          "px-3 py-2 text-right",
-                          tournament.format === "arena" ? "w-20" : "w-14",
+                          "border-t border-base-300/60 transition-colors",
+                          isMe
+                            ? "bg-(--secondary)/10"
+                            : i % 2 === 0
+                              ? "bg-base-100/50"
+                              : "bg-base-200/50",
                         )}
                       >
-                        Pts
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pagedStandings.map((row, i) => {
-                      const p = row.p;
-                      const rank =
-                        safeStandingsPage * STANDINGS_PAGE_SIZE + i + 1;
-                      const isMe = p.user === myId;
-                      return (
-                        <tr
-                          key={p.user}
+                        <td className={STANDINGS_RANK_TD}>
+                          <RankBadge rank={rank} />
+                        </td>
+                        <td
                           className={cn(
-                            "border-t border-base-300/60 transition-colors",
-                            isMe
-                              ? "bg-(--secondary)/10"
-                              : i % 2 === 0
-                                ? "bg-base-100/50"
-                                : "bg-base-200/50",
+                            "max-w-0 px-2 py-2 md:px-3",
+                            isMe && "font-semibold text-(--secondary)",
                           )}
                         >
-                          <td className={STANDINGS_RANK_TD}>
-                            <RankBadge rank={rank} />
-                          </td>
-                          <td
-                            className={cn(
-                              "max-w-0 px-2 py-2 md:px-3",
-                              isMe && "font-semibold text-(--secondary)",
-                            )}
-                          >
-                            <ResponsiveOverlay
-                              align="start"
-                              trigger={
-                                <button className="flex w-full min-w-0 items-center gap-1.5 text-left hover:scale-95 duration-150">
-                                  <Avatar
-                                    username={p.username}
-                                    gradient={p.avatarGradient}
-                                    size="xs"
-                                  />
-                                  <span className="min-w-0 truncate">
-                                    {p.username}
-                                  </span>
-                                  <RatingBadge
-                                    className="shrink-0"
-                                    rating={p.rating}
-                                  />
-                                  {p.paused && (
-                                    <Pause
-                                      className="h-3.5 w-3.5 shrink-0 text-base-content/50"
-                                      aria-label="Paused"
-                                    />
-                                  )}
-                                  {tournament.cumulative && (
-                                    <span className="shrink-0">
-                                      <Movement movement={row.movement} />
-                                    </span>
-                                  )}
-                                </button>
-                              }
-                            >
-                              <PlayerTournamentDetails
-                                tournament={tournament}
-                                player={p}
-                              />
-                            </ResponsiveOverlay>
-                          </td>
-                          <td className="hidden px-3 py-2 md:table-cell">
-                            <FormBadges form={p.form} />
-                          </td>
-                          <td
-                            className={cn(
-                              isMe ? "text-secondary" : "text-base-content",
-                              "px-3 py-2 text-right font-semibold",
-                            )}
-                          >
-                            {tournament.format === "arena" &&
-                            tournament.status === "active" &&
-                            isOnArenaStreak(p) ? (
-                              <span
-                                className="inline-flex items-center justify-end gap-0.5 text-orange-400"
-                                title="On a win streak: next game is worth double"
-                              >
-                                <Flame
-                                  className="h-3.5 w-3.5 shrink-0"
-                                  aria-label="On a win streak"
+                          <ResponsiveOverlay
+                            align="start"
+                            trigger={
+                              <button className="flex w-full min-w-0 items-center gap-1.5 text-left hover:scale-95 duration-150">
+                                <Avatar
+                                  username={p.username}
+                                  gradient={p.avatarGradient}
+                                  size="xs"
                                 />
-                                {row.points}
-                              </span>
-                            ) : (
-                              row.points
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          )}
+                                <span className="min-w-0 truncate">
+                                  {p.username}
+                                </span>
+                                <RatingBadge
+                                  className="shrink-0"
+                                  rating={p.rating}
+                                />
+                                {p.paused && (
+                                  <Pause
+                                    className="h-3.5 w-3.5 shrink-0 text-base-content/50"
+                                    aria-label="Paused"
+                                  />
+                                )}
+                                {tournament.cumulative && (
+                                  <span className="shrink-0">
+                                    <Movement movement={row.movement} />
+                                  </span>
+                                )}
+                              </button>
+                            }
+                          >
+                            <PlayerTournamentDetails
+                              tournament={tournament}
+                              player={p}
+                            />
+                          </ResponsiveOverlay>
+                        </td>
+                        <td className="hidden px-3 py-2 md:table-cell">
+                          <FormBadges form={p.form} />
+                        </td>
+                        <td
+                          className={cn(
+                            isMe ? "text-secondary" : "text-base-content",
+                            "px-3 py-2 text-right font-semibold",
+                          )}
+                        >
+                          {tournament.format === "arena" &&
+                          tournament.status === "active" &&
+                          isOnArenaStreak(p) ? (
+                            <span
+                              className="inline-flex items-center justify-end gap-0.5 text-orange-400"
+                              title="On a win streak: next game is worth double"
+                            >
+                              <Flame
+                                className="h-3.5 w-3.5 shrink-0"
+                                aria-label="On a win streak"
+                              />
+                              {row.points}
+                            </span>
+                          ) : (
+                            row.points
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
 
         {tournament.format === "arena" &&
           tournament.status === "active" &&

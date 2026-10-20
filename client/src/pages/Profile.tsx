@@ -43,7 +43,6 @@ import {
 } from "../components/game/GameSettingsFields.js";
 import { EditProfileModal } from "../components/EditProfileModal.js";
 import { ReportUserModal } from "../components/ReportUserModal.js";
-import { RatingBadge } from "../components/RatingBadge.js";
 import { OrgBadge } from "../components/organizations/OrgBadge.js";
 
 const GAMES_PER_PAGE = 15;
@@ -323,13 +322,10 @@ export function Profile() {
                     </Button>
                   </Link>
                 )}
-                {/* Only friends can be challenged (the server enforces this
-                    too — see challenge:send's own isFriend check — this just
-                    keeps the UI from offering an action that would only
-                    come back as an error). Being in a game right now
-                    doesn't hide it, see handleChallenge for that case. */}
-                {profile.isFriend && (
-                  <ResponsiveOverlay
+                {/* Anyone can challenge anyone, friend or not (the server
+                    allows it, see challenge:send). Being in a game right
+                    now doesn't hide it, see handleChallenge for that case. */}
+                <ResponsiveOverlay
                     title={`Challenge ${profile.username}`}
                     align="end"
                     className="w-72 max-w-[calc(100vw-2rem)]"
@@ -363,8 +359,7 @@ export function Profile() {
                         Send
                       </Button>
                     </div>
-                  </ResponsiveOverlay>
-                )}
+                </ResponsiveOverlay>
 
                 <Dropdown
                   align="end"
@@ -390,27 +385,34 @@ export function Profile() {
             )}
           </div>
 
-          {/* Ratings, one per ladder, in their own strip between the main
-              details and the win/loss record. Each ladder shows its icon above the badge. */}
+          {/* Ratings, one tile per ladder, between the main details and the
+              win/loss record. Phone: three compact stacked tiles (icon, big
+              number, label). From sm up: wider tiles with the icon in a
+              round chip beside the label and number. */}
           {profile.ratings && (
-            <div className="mt-4 grid grid-cols-3 gap-2 border-t border-base-300 pt-4 text-center">
-              {RATING_CATEGORIES.map((c) => (
-                <div key={c}>
-                  <CategoryIcon
-                    category={c}
-                    size={30}
-                    className="mx-auto mb-1.5 text-base-content"
-                  />
-                  <RatingBadge
-                    rating={profile.ratings![c]}
-                    category={c}
-                    className="px-3 py-0.5 text-base"
-                  />
-                  <p className="mt-1 hidden text-xs text-base-content/50 sm:block">
-                    {RATING_CATEGORY_META[c].label}
-                  </p>
-                </div>
-              ))}
+            <div className="mt-4 grid grid-cols-3 gap-2 border-t border-base-300 pt-4 sm:gap-3">
+              {RATING_CATEGORIES.map((c) => {
+                const rating = profile.ratings![c];
+                return (
+                  <div
+                    key={c}
+                    title={`${RATING_CATEGORY_META[c].label} rating${rating != null ? ` ${rating}` : ""}`}
+                    className="flex min-w-0 flex-col items-center gap-1.5 rounded-xl border border-base-300 bg-base-100/50 px-2 py-3 text-center sm:flex-row sm:gap-3 sm:px-4 sm:py-3.5 sm:text-left"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-(--primary)/10 text-(--primary) sm:h-11 sm:w-11">
+                      <CategoryIcon category={c} size={22} />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xl leading-none font-bold tabular-nums text-base-content sm:text-2xl">
+                        {rating ?? "—"}
+                      </p>
+                      <p className="mt-1 text-[11px] font-medium tracking-wide text-base-content/50 uppercase sm:text-xs">
+                        {RATING_CATEGORY_META[c].label}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 

@@ -31,7 +31,8 @@ const DISTINCT_REPORTERS_FREEZE_THRESHOLD = 2;
 function normalizeGameCode(input: string): string {
   const trimmed = input.trim();
   const match = trimmed.match(/\/game\/([a-zA-Z0-9]+)/);
-  return (match ? match[1] : trimmed).toUpperCase();
+  // Join codes are case-sensitive, never change the case.
+  return match ? match[1] : trimmed;
 }
 
 export interface CreateReportParams {

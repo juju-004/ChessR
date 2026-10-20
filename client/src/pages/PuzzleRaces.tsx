@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus, Puzzle, Timer } from "lucide-react";
+import { ChevronRight, Plus, Puzzle, Timer } from "lucide-react";
 import {
   createRace,
   DIFFICULTY_LABEL,
   getMyRace,
-  joinRace,
   listOpenRaces,
   type PuzzleRace,
 } from "../api/puzzleRaces.js";
@@ -28,6 +27,7 @@ import {
   RCoin,
   AvatarStack,
   CardRow,
+  CenteredSpinner,
   ListCard,
   ResponsiveOverlay,
 } from "../components/ui/index.js";
@@ -55,8 +55,6 @@ export function PuzzleRaces() {
   const [races, setRaces] = useState<PuzzleRace[] | null>(null);
   const [mine, setMine] = useState<{ code: string; status: "waiting" | "active" } | null>(null);
   const [loadError, setLoadError] = useState("");
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -131,23 +129,11 @@ export function PuzzleRaces() {
     }
   }
 
-  async function handleJoin(race: PuzzleRace) {
-    setRowError(null);
-    setBusyId(race.id);
-    try {
-      const { code } = await joinRace(race.id);
-      refresh().catch(() => {});
-      navigate(`/puzzles/${code}`);
-    } catch (err) {
-      setRowError({ id: race.id, message: errMsg(err) });
-      load();
-    } finally {
-      setBusyId(null);
-    }
-  }
-
   const pot = wagerTokens * settings.maxPlayers;
   const takes = winnerTakes(pot, rakePercent);
+
+  const hasOpenRaces = (races?.length ?? 0) > 0;
+  const showDescription = races !== null && !hasOpenRaces && !mine;
 
   const createForm = (
     <div className="space-y-3 px-4 md:px-2">
@@ -226,93 +212,61 @@ export function PuzzleRaces() {
           </CardRow>
         )}
 
-        <ListCard
-          title="Open races"
-          loading={races === null}
-          empty={races?.length === 0}
-          emptyMessage={
-            loadError || "No open races right now. Open one and others can join it."
-          }
-        >
+        {races === null && !loadError && <CenteredSpinner className="py-8" />}
+
+        {loadError && !hasOpenRaces && (
+          <p className="text-sm text-red-400">{loadError}</p>
+        )}
+
+        {hasOpenRaces && (
+        <ListCard title="Open races">
           {races?.map((r) => {
             const isMine = r.players.some((p) => p.userId === user?.id);
             const host = r.players.find((p) => p.userId === r.creatorId);
             const full = r.players.length >= r.maxPlayers;
-            const tooPoor = balance !== null && r.wagerTokens > balance;
             return (
-              <div key={r.id}>
-                <CardRow stackOnMobile highlight={isMine}>
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <AvatarStack players={r.players} />
-                    <div className="min-w-0 text-sm text-base-content">
-                      <div className="truncate font-medium">
-                        {host?.username ?? "Someone"}'s race
-                      </div>
-                      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-base-content/50">
-                        <span className="inline-flex items-center gap-1">
-                          <Puzzle className="h-3 w-3" />
-                          {r.puzzleCount} · {DIFFICULTY_LABEL[r.difficulty]}
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <Timer className="h-3 w-3" />
-                          {Math.round(r.timeLimitSeconds / 60)} min
-                        </span>
-                        <span>
-                          {r.players.length}/{r.maxPlayers} players
-                        </span>
-                        {r.wagerTokens > 0 ? (
-                          <Badge variant="warning">
-                            <span className="inline-flex items-center gap-1">
-                              {r.wagerTokens} <RCoin size={10} /> each
-                            </span>
-                          </Badge>
-                        ) : (
-                          <Badge variant="neutral">Free</Badge>
-                        )}
-                      </div>
+              <CardRow key={r.id} to={`/puzzles/${r.code}`} highlight={isMine}>
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <AvatarStack players={r.players} />
+                  <div className="min-w-0 text-sm text-base-content">
+                    <div className="truncate font-medium">
+                      {host?.username ?? "Someone"}'s race
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-base-content/50">
+                      <span className="inline-flex items-center gap-1">
+                        <Puzzle className="h-3 w-3" />
+                        {r.puzzleCount} · {DIFFICULTY_LABEL[r.difficulty]}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Timer className="h-3 w-3" />
+                        {Math.round(r.timeLimitSeconds / 60)} min
+                      </span>
+                      <span>
+                        {r.players.length}/{r.maxPlayers} players
+                      </span>
+                      {r.wagerTokens > 0 ? (
+                        <Badge variant="warning">
+                          <span className="inline-flex items-center gap-1">
+                            {r.wagerTokens} <RCoin size={10} /> each
+                          </span>
+                        </Badge>
+                      ) : (
+                        <Badge variant="neutral">Free</Badge>
+                      )}
+                      {full && !isMine && <Badge variant="neutral">Full</Badge>}
                     </div>
                   </div>
-                  <div className="flex shrink-0 gap-2">
-                    {isMine ? (
-                      <Link to={`/puzzles/${r.code}`}>
-                        <Button size="sm">Open</Button>
-                      </Link>
-                    ) : (
-                      <>
-                        <Link to={`/puzzles/${r.code}`}>
-                          <Button size="sm" variant="glass">
-                            View
-                          </Button>
-                        </Link>
-                        <Button
-                          size="sm"
-                          loading={busyId === r.id}
-                          disabled={inRace || full || tooPoor}
-                          title={
-                            inRace
-                              ? "Finish or leave your current race first"
-                              : tooPoor
-                                ? "Not enough R Coins"
-                                : full
-                                  ? "This race is full"
-                                  : undefined
-                          }
-                          onClick={() => handleJoin(r)}
-                        >
-                          Join
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </CardRow>
-                {rowError?.id === r.id && (
-                  <p className="mt-1 px-1 text-xs text-red-400">{rowError.message}</p>
-                )}
-              </div>
+                </div>
+                <ChevronRight className="h-4 w-4 shrink-0 text-base-content/30" />
+              </CardRow>
             );
           })}
         </ListCard>
+        )}
 
+        {/* Only when there's nothing else on the page (no race of yours, no
+         *  open races): the explainer then fills the empty space. */}
+        {showDescription && (
         <Card variant="solid">
           <CardContent className="space-y-1.5 py-4 text-sm text-base-content/60">
             <p className="font-medium text-base-content">How a race works</p>
@@ -329,6 +283,7 @@ export function PuzzleRaces() {
             </p>
           </CardContent>
         </Card>
+        )}
       </div>
     </Page>
   );

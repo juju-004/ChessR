@@ -758,6 +758,12 @@ export function Game() {
     getGameByCode(code)
       .then(({ game }) => {
         if (cancelled) return;
+        // Codes are case-sensitive; an old (uppercase) code typed in another
+        // case resolves server-side, so move to the real code.
+        if (game.joinCode && game.joinCode !== code) {
+          navigate(`/game/${game.joinCode}`, { replace: true });
+          return;
+        }
         setGameMeta(game);
         const isWhite = game.white?._id === user?.id;
         const isBlack = game.black?._id === user?.id;
@@ -1908,7 +1914,7 @@ export function Game() {
             avatarGradient: gameMeta.white?.avatarGradient,
           }}
           headline="is waiting for an opponent"
-          subline={`Game ${code.toUpperCase()}`}
+          subline={`Game ${code}`}
           footer={
             <>
               {loadError && (

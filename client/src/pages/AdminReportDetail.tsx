@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, AlertTriangle, ShieldAlert, ShieldOff, ShieldCheck } from "lucide-react";
+import {
+  ArrowLeft,
+  AlertTriangle,
+  ShieldAlert,
+  ShieldOff,
+  ShieldCheck,
+} from "lucide-react";
 import {
   getReportDetail,
   updateReport,
@@ -8,10 +14,20 @@ import {
   type AdminReportDetail as AdminReportDetailType,
   type ReportStatus,
 } from "../api/admin.js";
-import { Card, Badge, CenteredSpinner, Button } from "../components/ui/index.js";
+import {
+  Card,
+  Badge,
+  CenteredSpinner,
+  Button,
+} from "../components/ui/index.js";
 import { PageError } from "../components/PageError.js";
 
-const STATUS_OPTIONS: ReportStatus[] = ["pending", "reviewing", "actioned", "dismissed"];
+const STATUS_OPTIONS: ReportStatus[] = [
+  "pending",
+  "reviewing",
+  "actioned",
+  "dismissed",
+];
 
 function formatMs(ms: number) {
   return `${(ms / 1000).toFixed(1)}s`;
@@ -44,7 +60,11 @@ export function AdminReportDetail() {
     if (!id) return;
     setSaving(true);
     try {
-      await updateReport(id, { status, reviewNotes: notes, clearWithdrawalBlock: clearBlock });
+      await updateReport(id, {
+        status,
+        reviewNotes: notes,
+        clearWithdrawalBlock: clearBlock,
+      });
       const refreshed = await getReportDetail(id);
       setReport(refreshed);
       setClearBlock(false);
@@ -57,7 +77,10 @@ export function AdminReportDetail() {
     if (!report?.reporter) return;
     setTogglingReportAccess(true);
     try {
-      await setUserReportingBlock(report.reporter.username, !report.reporter.reportingBlocked);
+      await setUserReportingBlock(
+        report.reporter.username,
+        !report.reporter.reportingBlocked,
+      );
       if (id) setReport(await getReportDetail(id));
     } finally {
       setTogglingReportAccess(false);
@@ -65,9 +88,7 @@ export function AdminReportDetail() {
   }
 
   if (loading) {
-    return (
-      <CenteredSpinner className="py-16" />
-    );
+    return <CenteredSpinner className="py-16" />;
   }
 
   if (!report) {
@@ -142,7 +163,8 @@ export function AdminReportDetail() {
 
       {report.gameCode && !game && (
         <Card variant="solid" className="mb-4 text-sm text-base-content/60">
-          No game found for code <span className="font-mono">{report.gameCode}</span>.
+          No game found for code{" "}
+          <span className="font-mono">{report.gameCode}</span>.
         </Card>
       )}
 
@@ -161,7 +183,9 @@ export function AdminReportDetail() {
           <p className="text-sm break-words text-base-content/70">
             {game.white?.username ?? "?"} vs {game.black?.username ?? "?"} ·{" "}
             {game.moves.length} moves ·{" "}
-            {game.result ? `${game.result} (${game.endReason?.replace(/_/g, " ")})` : game.status}
+            {game.result
+              ? `${game.result} (${game.endReason?.replace(/_/g, " ")})`
+              : game.status}
           </p>
 
           {game.suspicion.some((s) => s.signals.length > 0) ? (
@@ -175,8 +199,10 @@ export function AdminReportDetail() {
                   >
                     <p className="flex items-start gap-1.5 font-semibold break-words text-amber-500">
                       <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
-                      {s.side === "white" ? game.white?.username : game.black?.username}, worth
-                      a look (score {s.score}/100)
+                      {s.side === "white"
+                        ? game.white?.username
+                        : game.black?.username}
+                      , worth a look (score {s.score}/100)
                     </p>
                     <ul className="mt-1.5 list-disc pl-5 break-words text-base-content/70">
                       {s.signals.map((sig, i) => (
@@ -209,7 +235,10 @@ export function AdminReportDetail() {
                   <span key={i} className="mr-2 inline-block">
                     {i % 2 === 0 ? `${Math.floor(i / 2) + 1}.` : ""} {m.san}
                     {thinkMs !== null && (
-                      <span className="text-base-content/30"> ({formatMs(thinkMs)})</span>
+                      <span className="text-base-content/30">
+                        {" "}
+                        ({formatMs(thinkMs)})
+                      </span>
                     )}
                   </span>
                 );
@@ -220,7 +249,9 @@ export function AdminReportDetail() {
       )}
 
       <Card variant="solid">
-        <h2 className="mb-3 text-base font-semibold text-base-content">Review</h2>
+        <h2 className="mb-3 text-base font-semibold text-base-content">
+          Review
+        </h2>
         <div className="mb-3 flex flex-wrap gap-2">
           {STATUS_OPTIONS.map((s) => (
             <button
@@ -240,11 +271,11 @@ export function AdminReportDetail() {
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
-          placeholder="Notes for the record (optional)"
+          placeholder="Notes for the record"
           className="w-full resize-none rounded-lg border border-base-300 bg-base-200/60 px-3 py-2 text-base text-base-content outline-none focus:border-(--primary) sm:text-sm"
         />
         {report.reportedUser?.withdrawalBlocked && (
-          <label className="mt-3 flex items-start gap-2 text-sm break-words text-base-content/70">
+          <label className="mt-3 flex items-start gap-2 text-sm wrap-break-word text-base-content/70">
             <input
               type="checkbox"
               className="mt-0.5 shrink-0"

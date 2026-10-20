@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import { ChessBoard } from "../ChessBoard.js";
 import { PromotionPicker } from "../PromotionPicker.js";
-import { computeDests, needsPromotion } from "../../chessUtils.js";
+import { computeDests, computePremoveDests, needsPromotion } from "../../chessUtils.js";
 import { useSettings } from "../../contexts/SettingsContext.js";
 import type { MoveResult, PuzzleView } from "../../api/puzzleRaces.js";
 
@@ -61,6 +61,8 @@ export function PuzzleBoard({
   const [busy, setBusy] = useState(puzzle.firstMove !== null);
   const [wrongFlash, setWrongFlash] = useState(false);
   const [promoPending, setPromoPending] = useState<{ from: string; to: string } | null>(null);
+  // Bumped whenever the board rewinds itself, so a queued premove is dropped.
+  const [premoveClear, setPremoveClear] = useState(0);
   // The step of the puzzle's line we are on; advances with each correct move.
   const stepRef = useRef(puzzle.moveIdx);
   const timers = useRef<number[]>([]);
@@ -88,6 +90,10 @@ export function PuzzleBoard({
 
   const chess = useMemo(() => new Chess(fen), [fen]);
   const dests = useMemo(() => computeDests(chess), [chess]);
+  const premoveDests = useMemo(
+    () => computePremoveDests(chess, puzzle.orientation),
+    [chess, puzzle.orientation],
+  );
   const interactive = !disabled && !busy && !promoPending;
 
   const submit = useCallback(
@@ -132,11 +138,13 @@ export function PuzzleBoard({
           setLastMove(undefined);
           setWrongFlash(false);
           setBusy(false);
+          setPremoveClear((n) => n + 1);
         }, WRONG_FLASH_MS);
       } else {
         // illegal / stale / not_active: our picture is out of date.
         setFen(before);
         setBusy(false);
+        setPremoveClear((n) => n + 1);
         onResync();
       }
     },
@@ -167,10 +175,15 @@ export function PuzzleBoard({
       <ChessBoard
         fen={fen}
         orientation={puzzle.orientation}
-        viewOnly={!interactive}
+        // Not view-only while we wait on the opponent's move (busy): a drag
+        // then is a premove, played the moment their reply lands. Real moves
+        // still need dests, which stay empty until the board is interactive.
+        viewOnly={disabled || !!promoPending}
         turnColor={turn}
         movableColor={puzzle.orientation}
         dests={interactive ? dests : new Map()}
+        premoveDests={premoveDests}
+        clearPremoveSignal={premoveClear}
         inCheck={chess.inCheck()}
         lastMove={lastMove}
         onUserMove={handleUserMove}

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { getGameByCode } from "../services/game.service.js";
 import { getTournamentByCode } from "../services/tournament.service.js";
+import { getPublicRaceByCode, type PublicRace } from "../services/puzzleRace.service.js";
 import { getCageMatchByCode, resolveCageInviteLink } from "../services/cageMatch.service.js";
 import { redis } from "../config/redis.js";
 import { User } from "../models/User.js";
@@ -351,6 +352,56 @@ export const getCageMatchOgCard = asyncHandler(async (req, res) => {
   res.send(html);
 });
 
+// Puzzle race card: who is racing, how many puzzles at what difficulty, the
+// stakes, and where the race is (open, live, finished).
+function describePuzzleRace(race: PublicRace): string {
+  const names = race.players.map((p) => p.username);
+  const count = race.puzzleCount;
+  const setup = `${count} ${count === 1 ? "puzzle" : "puzzles"} · ${race.difficulty} difficulty`;
+  const stakes =
+    race.wagerTokens > 0 ? `${race.wagerTokens} R Coins each` : "free race, no R Coins at stake";
+  const who =
+    names.length === 0
+      ? "A puzzle race"
+      : names.length === 1
+        ? `${names[0]}'s puzzle race`
+        : `${names.slice(0, 3).join(", ")}${names.length > 3 ? ` +${names.length - 3}` : ""} puzzle race`;
+
+  let status: string;
+  if (race.status === "waiting") {
+    status = `waiting for racers (${names.length}/${race.maxPlayers}) · open the link to join`;
+  } else if (race.status === "active") {
+    status = "live now";
+  } else if (race.status === "cancelled") {
+    status = "cancelled";
+  } else {
+    const winner = race.players.find((p) => p.userId === race.winnerId);
+    status = winner ? `won by ${winner.username}` : "finished";
+  }
+  return `${who} · ${setup} · ${stakes} · ${status}`;
+}
+
+export const getPuzzleRaceOgCard = asyncHandler(async (req, res) => {
+  const { code } = codeParamSchema.parse(req.params);
+
+  let description = "A puzzle race on Chessr: solve chess puzzles faster than your opponents.";
+  try {
+    const race = await getPublicRaceByCode(code);
+    description = describePuzzleRace(race);
+  } catch {
+    // Unknown/deleted code: still a valid (if generic) preview.
+  }
+
+  const html = renderPreviewPage({
+    title: `Chessr · Puzzle race ${code}`,
+    description,
+    url: `${CLIENT_URL}/puzzles/${encodeURIComponent(code)}`,
+  });
+
+  res.set("Content-Type", "text/html; charset=utf-8");
+  res.send(html);
+});
+
 export const getGameOgCard = asyncHandler(async (req, res) => {
   const { code } = codeParamSchema.parse(req.params);
 
@@ -363,7 +414,8 @@ export const getGameOgCard = asyncHandler(async (req, res) => {
   }
 
   const html = renderPreviewPage({
-    title: `Chessr · Game ${code.toUpperCase()}`,
+    // Game codes are case-sensitive, shown exactly as stored.
+    title: `Chessr · Game ${code}`,
     description,
     url: `${CLIENT_URL}/game/${encodeURIComponent(code)}`,
   });

@@ -21,8 +21,8 @@ const REASONS: { value: ReportReason; label: string }[] = [
 function extractGameCode(input: string): string {
   const trimmed = input.trim();
   const match = trimmed.match(/\/game\/([a-zA-Z0-9]+)/);
-  if (match) return match[1].toUpperCase();
-  return trimmed.toUpperCase();
+  // Join codes are case-sensitive, keep the case exactly as pasted.
+  return match ? match[1] : trimmed;
 }
 
 export interface ReportUserModalProps {
@@ -31,7 +31,11 @@ export interface ReportUserModalProps {
   username: string;
 }
 
-export function ReportUserModal({ open, onClose, username }: ReportUserModalProps) {
+export function ReportUserModal({
+  open,
+  onClose,
+  username,
+}: ReportUserModalProps) {
   const { notify } = useNotify();
   const [reason, setReason] = useState<ReportReason>("cheating");
   const [gameCode, setGameCode] = useState("");
@@ -64,7 +68,11 @@ export function ReportUserModal({ open, onClose, username }: ReportUserModalProp
       reset();
       onClose();
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Could not submit report");
+      setError(
+        err instanceof ApiRequestError
+          ? err.message
+          : "Could not submit report",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -82,13 +90,15 @@ export function ReportUserModal({ open, onClose, username }: ReportUserModalProp
       <div className="flex flex-col gap-4">
         <p className="text-sm text-base-content/60">
           Reports are reviewed by our team. If this involves a specific game,
-          include its code below so we can pull it up directly. The
-          account's withdrawals are put on hold automatically while we look
-          into it.
+          include its code below so we can pull it up directly. The account's
+          withdrawals are put on hold automatically while we look into it.
         </p>
 
         <div>
-          <label htmlFor="report-reason" className="mb-2 block text-sm font-medium text-base-content/80">
+          <label
+            htmlFor="report-reason"
+            className="mb-2 block text-sm font-medium text-base-content/80"
+          >
             Reason
           </label>
           <select
@@ -106,8 +116,11 @@ export function ReportUserModal({ open, onClose, username }: ReportUserModalProp
         </div>
 
         <div>
-          <label htmlFor="report-game-code" className="mb-2 block text-sm font-medium text-base-content/80">
-            Game code or URL <span className="text-base-content/40">(optional)</span>
+          <label
+            htmlFor="report-game-code"
+            className="mb-2 block text-sm font-medium text-base-content/80"
+          >
+            Game code or URL
           </label>
           <input
             id="report-game-code"
@@ -120,7 +133,10 @@ export function ReportUserModal({ open, onClose, username }: ReportUserModalProp
         </div>
 
         <div>
-          <label htmlFor="report-description" className="mb-2 block text-sm font-medium text-base-content/80">
+          <label
+            htmlFor="report-description"
+            className="mb-2 block text-sm font-medium text-base-content/80"
+          >
             What happened?
           </label>
           <textarea
