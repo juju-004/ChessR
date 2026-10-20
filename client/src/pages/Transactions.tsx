@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
+  CalendarCheck,
   Puzzle,
   Receipt,
   RotateCcw,
@@ -45,6 +46,7 @@ const typeLabels: Record<Transaction["type"], string> = {
   puzzle_race_stake: "Puzzle race staked",
   puzzle_race_payout: "Puzzle race won",
   puzzle_race_refund: "Puzzle race refunded",
+  daily_reward: "Daily challenge reward",
 };
 
 const typeIcons: Record<Transaction["type"], LucideIcon> = {
@@ -61,6 +63,7 @@ const typeIcons: Record<Transaction["type"], LucideIcon> = {
   puzzle_race_stake: Puzzle,
   puzzle_race_payout: Trophy,
   puzzle_race_refund: RotateCcw,
+  daily_reward: CalendarCheck,
 };
 
 // Whether a transaction type ADDS to the balance (+) or REMOVES from it (-)
@@ -80,6 +83,7 @@ const typeAddsTokens: Record<Transaction["type"], boolean> = {
   puzzle_race_stake: false,
   puzzle_race_payout: true,
   puzzle_race_refund: true,
+  daily_reward: true,
 };
 
 function isMoneyMovement(type: Transaction["type"]): boolean {

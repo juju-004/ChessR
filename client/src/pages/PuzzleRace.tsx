@@ -34,6 +34,7 @@ import {
   RCoin,
   ListRow,
   CenteredSpinner,
+  ProgressBar,
 } from "../components/ui/index.js";
 
 function formatClock(ms: number): string {
@@ -266,12 +267,10 @@ export function PuzzleRacePage() {
       back="/puzzles"
       actions={statusBadge}
     >
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,34rem)_minmax(0,1fr)]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,min(44rem,calc(100dvh-13rem)))_minmax(0,1fr)]">
         {/* ---- the play area ------------------------------------------------ */}
-        <Card variant="solid">
-          <CardContent className="p-3 sm:p-4">
-            {phase === "running" && isPlayer && puzzle && !me?.finished ? (
-              <div className="space-y-3">
+        {phase === "running" && isPlayer && puzzle && !me?.finished ? (
+              <div className="mx-auto w-full space-y-2 lg:max-w-[min(100%,calc(100dvh-13rem))]">
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-medium text-base-content">
                     Puzzle {puzzle.index + 1} of {puzzle.total}
@@ -306,7 +305,10 @@ export function PuzzleRacePage() {
                   </span>
                 </p>
               </div>
-            ) : (
+
+        ) : (
+          <Card variant="solid">
+            <CardContent className="p-3 sm:p-4">
               <Stage
                 phase={phase}
                 race={race}
@@ -316,9 +318,9 @@ export function PuzzleRacePage() {
                 timeLeft={timeLeft}
                 loadingPuzzle={phase === "running" && isPlayer && !me?.finished && !puzzle}
               />
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         {/* ---- side column ------------------------------------------------- */}
         <div className="space-y-4">
@@ -413,7 +415,7 @@ export function PuzzleRacePage() {
                     }
                     subtitle={
                       phase === "waiting" ? undefined : (
-                        <ProgressBar value={p.solved} total={race.puzzleCount} mine={p.userId === user?.id} />
+                        <ProgressBar value={p.solved} total={race.puzzleCount} highlight={p.userId === user?.id} />
                       )
                     }
                     trailing={
@@ -467,20 +469,6 @@ function Stat({
         {label}
       </div>
       <div className="font-medium text-base-content">{children}</div>
-    </div>
-  );
-}
-
-function ProgressBar({ value, total, mine }: { value: number; total: number; mine: boolean }) {
-  return (
-    <div className="h-1.5 w-full overflow-hidden rounded-full bg-base-300">
-      <div
-        className={cn(
-          "h-full rounded-full transition-all duration-300",
-          mine ? "bg-(--primary)" : "bg-base-content/40",
-        )}
-        style={{ width: `${total ? (value / total) * 100 : 0}%` }}
-      />
     </div>
   );
 }

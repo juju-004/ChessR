@@ -27,7 +27,11 @@ export type TransactionType =
   // before the start, a cancelled race, or a race nobody scored in).
   | 'puzzle_race_stake'
   | 'puzzle_race_payout'
-  | 'puzzle_race_refund';
+  | 'puzzle_race_refund'
+  // Free coins paid for completing a day of the daily challenges.
+  | 'daily_reward'
+  // Season leaderboard prize (see seasonLeaderboard.service.ts).
+  | 'season_reward';
 export type TransactionStatus = 'pending' | 'success' | 'failed';
 
 export interface ITransaction extends Document {
@@ -75,6 +79,8 @@ const transactionSchema = new Schema<ITransaction>(
         'puzzle_race_stake',
         'puzzle_race_payout',
         'puzzle_race_refund',
+        'daily_reward',
+        'season_reward',
       ],
       required: true,
     },

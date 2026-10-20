@@ -8,6 +8,7 @@ import { createDirectGame, assertUnderActiveGameLimit, countActiveGamesForUser, 
 import { assertNotRestricted } from '../services/suspension.service.js';
 import { isUserOnline } from '../services/presence.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
+import { trackDaily } from '../services/dailyChallenge.service.js';
 
 const CHALLENGE_TTL_SECONDS = 60;
 const challengeKey = (id: string) => `challenge:${id}`;
@@ -132,6 +133,7 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
         expiresInSeconds: CHALLENGE_TTL_SECONDS,
       });
 
+      trackDaily(userId, { type: 'challenge_sent', key: `challenge:${challengeId}` });
       socket.emit('challenge:sent', { challengeId, toUserId, wagerTokens });
     }),
   );

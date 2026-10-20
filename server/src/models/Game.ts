@@ -196,6 +196,8 @@ gameSchema.index({ black: 1, status: 1, endedAt: -1 });
 // Profile win/loss/draw counts filter on (player, status, result). With
 // `result` in the index they're answered from the index alone instead of
 // loading every finished game document (which carries the whole move list).
+// Season leaderboards scan finished games by end-time window.
+gameSchema.index({ status: 1, endedAt: 1 });
 gameSchema.index({ white: 1, status: 1, result: 1 });
 gameSchema.index({ black: 1, status: 1, result: 1 });
 

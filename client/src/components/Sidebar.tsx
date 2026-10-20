@@ -4,10 +4,11 @@ import { motion } from "framer-motion";
 import {
   LayoutDashboard,
   Users,
-  LineChart,
   Swords,
   Trophy,
+  Medal,
   Puzzle,
+  CalendarCheck,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -31,7 +32,8 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/cage", label: "Cage", icon: Swords },
   { to: "/tournaments", label: "Tournaments", icon: Trophy },
   { to: "/puzzles", label: "Puzzles", icon: Puzzle },
-  { to: "/analysis", label: "Analysis", icon: LineChart },
+  { to: "/daily", label: "Daily", icon: CalendarCheck },
+  { to: "/leaderboard", label: "Ranks", icon: Medal },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -98,8 +100,6 @@ export function MobileDock() {
   // Same hand-over for a single tournament's page (TournamentActionBarMobile),
   // but not the list or the create form, which keep the normal nav.
   if (/^\/tournaments\/(?!new$)[^/]+\/?$/.test(pathname)) return null;
-  // Same for a single game's analysis (AnalysisActionBarMobile).
-  if (/^\/analysis\/[^/]+\/?$/.test(pathname)) return null;
 
   const renderItem = (item: NavItem, extra: string) => {
     const isActive = item.end ? pathname === item.to : pathname.startsWith(item.to);

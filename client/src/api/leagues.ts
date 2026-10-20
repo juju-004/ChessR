@@ -25,6 +25,8 @@ export interface LeagueSummary {
   maxTournaments: number;
   /** True when the caller created it (only they can add tournaments). */
   mine: boolean;
+  /** True when the caller has joined a tournament in this league. */
+  joined: boolean;
   createdAt: string;
 }
 

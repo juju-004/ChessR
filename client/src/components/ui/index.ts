@@ -24,6 +24,7 @@ export {
   SettingsSelect,
   SettingsNumber,
 } from "./SettingsFields.js";
+export { ProgressBar } from "./ProgressBar.js";
 export { EmptyState } from "./EmptyState.js";
 export { CenteredSpinner } from "./CenteredSpinner.js";
 export { LoadMoreButton } from "./LoadMoreButton.js";

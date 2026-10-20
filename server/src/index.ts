@@ -18,6 +18,7 @@ import { Game } from './models/Game.js';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { runOncePerInterval } from './utils/distributedLock.js';
 import { sweepPuzzleRaces } from './services/puzzleRace.service.js';
+import { settleFinishedSeasons } from './services/seasonLeaderboard.service.js';
 import { stopInstancePresenceBeat } from './services/gamePresence.service.js';
 
 // Timing for the periodic sweeps: silent when fast, logs a warning when one
@@ -181,6 +182,7 @@ async function main() {
     sweep('sweepAbortedGames', SWEEP_PERIOD_MS, () => sweepAbortedGames());
     sweep('sweepStaleWaitingGames', SWEEP_PERIOD_MS, () => sweepStaleWaitingGames());
     sweep('sweepPuzzleRaces', SWEEP_PERIOD_MS, () => sweepPuzzleRaces());
+    sweep('settleFinishedSeasons', SWEEP_PERIOD_MS, () => settleFinishedSeasons());
   }, SWEEP_PERIOD_MS);
   reconcileInterval.unref();
 

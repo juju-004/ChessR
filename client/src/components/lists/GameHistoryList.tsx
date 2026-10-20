@@ -24,13 +24,13 @@ export interface GameHistoryListProps {
   loading: boolean;
   hasMore: boolean;
   onLoadMore: () => void;
-  /** Where a row goes when tapped (the replay, the analysis board, ...). */
+  /** Where a row goes when tapped (the replay, ...). */
   linkFor: (game: UserGameHistoryItem) => string;
   emptyText?: string;
 }
 
 /** A finished-games list: opponent, colour, time control, length, date and
- *  the result. Shared by the profile's history and the Analysis page. */
+ *  the result. Used for the profile's game history. */
 export function GameHistoryList({
   games,
   loading,

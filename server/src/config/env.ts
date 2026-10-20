@@ -29,6 +29,18 @@ const envSchema = z.object({
   // See wallet.service.ts's computeRake for the actual math.
   RAKE_PERCENT: z.coerce.number().min(0).max(100).default(10),
 
+  // The time zone daily challenges roll over in: a "day" starts at midnight
+  // here. Any IANA name (e.g. Africa/Lagos). See dailyChallenge.service.ts.
+  DAILY_CHALLENGE_TZ: z.string().default('Africa/Lagos'),
+
+  // Season leaderboards: season 1 starts at this instant, each season lasts
+  // SEASON_LENGTH_DAYS. Defaults to midnight Lagos (UTC+1) on 2026-10-21.
+  SEASON_EPOCH: z.string().default('2026-10-20T23:00:00.000Z'),
+  SEASON_LENGTH_DAYS: z.coerce.number().int().min(1).max(90).default(15),
+  // Minimum finished games to be eligible for the "most points" prize, so a
+  // lucky 1-0 can't take it. Doesn't affect the "most games" board.
+  SEASON_MIN_GAMES_FOR_POINTS_PRIZE: z.coerce.number().int().min(0).default(10),
+
   // Fixed credentials for the single expert-review admin account (see
   // admin.controller.ts), deliberately NOT a User document, so it never
   // shows up in player search, leaderboards, matchmaking, etc, and can't

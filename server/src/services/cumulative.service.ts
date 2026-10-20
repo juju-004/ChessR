@@ -29,10 +29,12 @@ export interface CumulativeSummary {
   tournamentCount: number;
   maxTournaments: number;
   mine: boolean;
+  /** True when the caller has joined a tournament in this league. */
+  joined: boolean;
   createdAt: string;
 }
 
-function summarize(l: any, userId?: string): CumulativeSummary {
+function summarize(l: any, userId?: string, joinedIds?: Set<string>): CumulativeSummary {
   return {
     id: String(l._id),
     name: l.name,
@@ -41,6 +43,7 @@ function summarize(l: any, userId?: string): CumulativeSummary {
     tournamentCount: (l.tournaments ?? []).length,
     maxTournaments: l.maxTournaments ?? MAX_CUMULATIVE_TOURNAMENTS,
     mine: !!userId && String(l.createdBy) === userId,
+    joined: !!joinedIds?.has(String(l._id)),
     createdAt: new Date(l.createdAt).toISOString(),
   };
 }
@@ -93,7 +96,15 @@ export async function listCumulatives(userId?: string): Promise<CumulativeSummar
     .limit(LIST_LIMIT)
     .select("name description organizationName createdBy tournaments createdAt")
     .lean();
-  return leagues.map((l) => summarize(l, userId));
+  let joinedIds: Set<string> | undefined;
+  if (userId && leagues.length) {
+    const ids = await Tournament.distinct("cumulative", {
+      cumulative: { $in: leagues.map((l) => l._id) },
+      "players.user": userId,
+    });
+    joinedIds = new Set(ids.map(String));
+  }
+  return leagues.map((l) => summarize(l, userId, joinedIds));
 }
 
 /** The caller's own cumulatives, for the "add to a cumulative" picker on the

@@ -1,7 +1,0 @@
-/* Tints both squares of the last move in the verdict's color (chess.com
-   style). Chessground already marks them with `.last-move`; we only swap the
-   color, driven by the --analysis-tint variable AnalysisBoard sets inline.
-   The extra .analysis-board class makes this beat chessground's own rule. */
-.analysis-board .cg-wrap cg-board square.last-move {
-  background-color: var(--analysis-tint, rgba(155, 199, 0, 0.41));
-}

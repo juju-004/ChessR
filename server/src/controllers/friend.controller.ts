@@ -8,6 +8,7 @@ import { getUserSocketIds, getOnlineUserIds } from '../services/presence.service
 import { getActiveGameCodesForUsers } from '../services/game.service.js';
 import { getIo } from '../sockets/io.js';
 import type { AuthedRequest } from '../middleware/auth.js';
+import { trackDaily } from '../services/dailyChallenge.service.js';
 
 const requestSchema = z.object({ toUserId: z.string().refine(mongoose.isValidObjectId) });
 const respondSchema = z.object({
@@ -61,6 +62,8 @@ export const sendFriendRequest = asyncHandler(async (req: AuthedRequest, res) =>
     }
     throw err;
   }
+
+  trackDaily(fromUserId, { type: 'friend_request_sent', key: `fr:${request.id}` });
 
   await pushToUser(toUserId, 'friend:request_received', {
     requestId: request.id,

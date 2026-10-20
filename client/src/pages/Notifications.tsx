@@ -6,6 +6,7 @@ import {
   Flag,
   Megaphone,
   Wallet,
+  CalendarCheck,
   CheckCheck,
   type LucideIcon,
 } from "lucide-react";
@@ -36,6 +37,7 @@ const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   report_freeze: Flag,
   admin_message: Megaphone,
   tournament_naira_prize: Wallet,
+  daily_reward: CalendarCheck,
 };
 
 const TYPE_ICON_CLASSES: Record<NotificationType, string> = {
@@ -44,6 +46,7 @@ const TYPE_ICON_CLASSES: Record<NotificationType, string> = {
   report_freeze: "bg-red-500/12 text-red-400",
   admin_message: "bg-(--primary)/12 text-(--primary)",
   tournament_naira_prize: "bg-green-500/12 text-green-400",
+  daily_reward: "bg-amber-500/12 text-amber-400",
 };
 
 const PAGE_SIZE = 20;

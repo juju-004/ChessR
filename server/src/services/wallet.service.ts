@@ -973,3 +973,57 @@ export async function creditPuzzleRaceReturn(
   }
   return true;
 }
+
+/** Pays a daily-challenge reward. Idempotent: `reference` is unique per
+ *  player, week and day, so calling this again for the same reward credits
+ *  nothing. Returns whether tokens were credited by this call. */
+export async function creditDailyReward(userId: string, tokens: number, reference: string): Promise<boolean> {
+  if (tokens <= 0) return false;
+  try {
+    await Transaction.create({
+      user: userId,
+      type: "daily_reward",
+      status: "success",
+      tokens,
+      amountKobo: 0,
+      reference,
+    });
+  } catch (err) {
+    if (isDuplicateKey(err)) return false; // already paid
+    throw err;
+  }
+  try {
+    await User.updateOne({ _id: userId }, { $inc: { tokenBalance: tokens } });
+  } catch (err) {
+    await Transaction.deleteOne({ reference });
+    throw err;
+  }
+  return true;
+}
+
+/** Pays a season-leaderboard prize. Idempotent: `reference` is unique per
+ *  season, board and player, so re-running a settlement credits nothing twice.
+ *  Returns whether tokens were credited by this call. */
+export async function creditSeasonReward(userId: string, tokens: number, reference: string): Promise<boolean> {
+  if (tokens <= 0) return false;
+  try {
+    await Transaction.create({
+      user: userId,
+      type: "season_reward",
+      status: "success",
+      tokens,
+      amountKobo: 0,
+      reference,
+    });
+  } catch (err) {
+    if (isDuplicateKey(err)) return false; // already paid
+    throw err;
+  }
+  try {
+    await User.updateOne({ _id: userId }, { $inc: { tokenBalance: tokens } });
+  } catch (err) {
+    await Transaction.deleteOne({ reference });
+    throw err;
+  }
+  return true;
+}

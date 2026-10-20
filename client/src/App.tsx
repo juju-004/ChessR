@@ -56,15 +56,6 @@ const Players = lazy(() =>
     default: m.Players,
   })),
 );
-const AnalysisGame = lazy(() =>
-  import("./pages/AnalysisGame.js").then((m) => ({ default: m.AnalysisGame })),
-);
-const AnalysisPgn = lazy(() =>
-  import("./pages/AnalysisPgn.js").then((m) => ({ default: m.AnalysisPgn })),
-);
-const Analysis = lazy(() =>
-  import("./pages/Analysis.js").then((m) => ({ default: m.Analysis })),
-);
 const Profile = lazy(() =>
   import("./pages/Profile.js").then((m) => ({ default: m.Profile })),
 );
@@ -106,6 +97,12 @@ const TournamentDetail = lazy(() =>
   import("./pages/TournamentDetail.js").then((m) => ({
     default: m.TournamentDetail,
   })),
+);
+const DailyChallenges = lazy(() =>
+  import("./pages/DailyChallenges.js").then((m) => ({ default: m.DailyChallenges })),
+);
+const Leaderboard = lazy(() =>
+  import("./pages/Leaderboard.js").then((m) => ({ default: m.Leaderboard })),
 );
 const PuzzleRaces = lazy(() =>
   import("./pages/PuzzleRaces.js").then((m) => ({ default: m.PuzzleRaces })),
@@ -319,30 +316,6 @@ function AppBody() {
                   </ProtectedRoute>
                 }
               />
-              <Route
-                path="/analysis"
-                element={
-                  <ProtectedRoute>
-                    <Analysis />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/analysis/pgn"
-                element={
-                  <ProtectedRoute>
-                    <AnalysisPgn />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/analysis/:code"
-                element={
-                  <ProtectedRoute>
-                    <AnalysisGame />
-                  </ProtectedRoute>
-                }
-              />
               {/* /find and /friends merged into one /players page, old
                *  bookmarks/links to either keep working. */}
               <Route
@@ -374,6 +347,22 @@ function AppBody() {
                 element={
                   <ProtectedRoute>
                     <Lobby />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/leaderboard"
+                element={
+                  <ProtectedRoute>
+                    <Leaderboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/daily"
+                element={
+                  <ProtectedRoute>
+                    <DailyChallenges />
                   </ProtectedRoute>
                 }
               />

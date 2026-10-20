@@ -39,6 +39,7 @@ import { getIo } from "../sockets/io.js";
 import { getArenaPresentUserIds } from "./presence.service.js";
 import { expireChat } from "./chat.service.js";
 import { createNotification } from "./notification.service.js";
+import { trackDaily } from "./dailyChallenge.service.js";
 import {
   CUMULATIVE_FORMATS,
   reserveCumulativeSlot,
@@ -920,6 +921,7 @@ export async function joinTournament(
     await tryArenaPairings(claimed.id);
   }
 
+  trackDaily(userId, { type: 'tournament_joined', key: `tour:${tournamentId}` });
   return claimed;
 }
 

@@ -25,7 +25,7 @@ const ROW_CLASSES =
 
 /**
  * The one list-row shell used for every "avatar + name + trailing thing"
- * list in the app: game history (profile, analysis), friends, online
+ * list in the app: game history, friends, online
  * players, search results and friend requests. Keeping the spacing,
  * dividers, truncation and hover state here is what makes all of those
  * lists look like the same list.

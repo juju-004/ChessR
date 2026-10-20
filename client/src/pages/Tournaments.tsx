@@ -454,12 +454,16 @@ export function Tournaments() {
           loading={openLoading}
         />
 
-        <LeagueCard
-          leagues={leagues}
-          loading={leaguesLoading}
-          canCreate={org?.status === "approved"}
-          onCreate={() => setCreateLeagueOpen(true)}
-        />
+        {/* Hidden unless you're an approved organisation or are playing in
+         *  at least one league. */}
+        {(org?.status === "approved" || leagues.some((l) => l.joined || l.mine)) && (
+          <LeagueCard
+            leagues={leagues}
+            loading={leaguesLoading}
+            canCreate={org?.status === "approved"}
+            onCreate={() => setCreateLeagueOpen(true)}
+          />
+        )}
 
         {mineActive.length > 0 && (
           <ListCard

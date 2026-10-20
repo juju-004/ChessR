@@ -24,6 +24,7 @@ import {
 import { ApiRequestError } from "../api/http.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import { useSocket } from "../contexts/SocketContext.js";
+import { DailySummaryCard } from "../components/daily/DailySummaryCard.js";
 import { LiveGameRow } from "../components/lists/LiveGameRow.js";
 import { TournamentRow } from "../components/tournaments/TournamentRow.js";
 import { RestrictionBanner } from "../components/RestrictionBanner.js";
@@ -298,6 +299,8 @@ export function Dashboard() {
             accent="bg-emerald-500/15 text-emerald-400"
           />
         </div>
+
+        <DailySummaryCard />
 
         {/* Play, create/join, collapsed behind a ResponsiveOverlay trigger
          *  (Modal on phone, Popover on desktop) instead of two permanently

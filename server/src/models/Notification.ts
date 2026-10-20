@@ -15,7 +15,9 @@ export type NotificationType =
   | 'anticheat_freeze'
   | 'report_freeze'
   | 'admin_message'
-  | 'tournament_naira_prize';
+  | 'tournament_naira_prize'
+  | 'daily_reward'
+  | 'season_reward';
 
 export interface INotification extends Document {
   _id: Types.ObjectId;
@@ -37,7 +39,7 @@ const notificationSchema = new Schema<INotification>(
     recipient: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     type: {
       type: String,
-      enum: ['welcome', 'anticheat_freeze', 'report_freeze', 'admin_message', 'tournament_naira_prize'],
+      enum: ['welcome', 'anticheat_freeze', 'report_freeze', 'admin_message', 'tournament_naira_prize', 'daily_reward', 'season_reward'],
       required: true,
     },
     title: { type: String, required: true, trim: true, maxlength: 120 },

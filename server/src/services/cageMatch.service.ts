@@ -10,6 +10,7 @@ import { debitWagerStake, creditWagerReturn, computeRake, recordRake } from "./w
 import { getIo } from "../sockets/io.js";
 import { expireChat } from "./chat.service.js";
 import { notifyGameEnded } from "./latency.service.js";
+import { trackDaily } from "./dailyChallenge.service.js";
 
 const generateCode = customAlphabet("ABCDEFGHJKMNPQRSTUVWXYZ23456789", 6);
 
@@ -449,6 +450,11 @@ export async function startCageMatch(
     }
     await CageMatch.deleteOne({ _id: match.id });
     throw err;
+  }
+
+  // Daily challenges: both players started a cage match.
+  for (const id of [challengerId, opponentId]) {
+    trackDaily(id, { type: 'cage_match_started', key: `cage:${match.id}` });
   }
 
   return { match, firstLeg: match.legs[0] };

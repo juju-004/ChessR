@@ -479,7 +479,8 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
 }: PanelData) {
   return (
     <div className="flex h-13.5 items-center gap-3 rounded-xl bg-base-200/70 px-3 py-2 text-base-content">
-      {score != null && <ScoreBadge score={score} className="-mr-1" />}
+      <div className="flex shrink-0 items-center gap-1">
+      {score != null && <ScoreBadge score={score} />}
       {zenMode ? (
         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-base-300/70 text-base-content/40 md:h-8 md:w-8">
           <UserRound className="h-3 w-3 md:h-4 md:w-4" />
@@ -503,6 +504,7 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
           status={connected ? "online" : "offline"}
         />
       )}
+      </div>
       {/* The second line (first-move countdown / disconnect claim / captured
        *  pieces) lives in a fixed-height slot that is ALWAYS rendered, empty
        *  or not. The row is a fixed height and this column is centred in it,
@@ -521,14 +523,14 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
             className="flex min-w-0 items-center gap-1.5 text-sm font-semibold leading-5 text-base-content hover:text-(--primary)"
           >
             <span className="min-w-0 truncate">{username}</span>
-            <RatingBadge rating={rating ?? null} />
           </Link>
         ) : (
           <p className="truncate text-sm font-semibold leading-5 text-base-content">
             {username}
           </p>
         )}
-        <div className="flex h-4.5 min-w-0 items-center">
+        <div className="flex h-4.5 min-w-0 items-center gap-1.5">
+          {!zenMode && profileHref && <RatingBadge rating={rating ?? null} />}
           {disconnect ? (
             <DisconnectBadge
               expiresAt={disconnect.expiresAt}
@@ -595,26 +597,31 @@ export const PlayerPanelFlank = memo(function PlayerPanelFlank({
         className,
       )}
     >
-      {score != null && (
-        <ScoreBadge score={score} className="absolute left-0.5 top-0.5 z-10 text-[10px]" />
-      )}
-      {profileHref ? (
-        <Link to={profileHref}>
+      <span className="relative inline-flex">
+        {score != null && (
+          <ScoreBadge
+            score={score}
+            className="absolute -left-2 -top-1.5 z-10 min-w-4 px-1 py-0 text-[10px]"
+          />
+        )}
+        {profileHref ? (
+          <Link to={profileHref}>
+            <Avatar
+              username={username}
+              gradient={avatarGradient}
+              size="sm"
+              status={connected ? "online" : "offline"}
+            />
+          </Link>
+        ) : (
           <Avatar
             username={username}
             gradient={avatarGradient}
             size="sm"
             status={connected ? "online" : "offline"}
           />
-        </Link>
-      ) : (
-        <Avatar
-          username={username}
-          gradient={avatarGradient}
-          size="sm"
-          status={connected ? "online" : "offline"}
-        />
-      )}
+        )}
+      </span>
       {profileHref ? (
         <Link
           to={profileHref}

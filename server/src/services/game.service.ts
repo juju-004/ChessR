@@ -33,10 +33,12 @@ import { runAutoCheatCheck } from "./anticheat.service.js";
 // request/reconciliation handlers), never evaluated at module-load time, 
 // so there's no temporal-dead-zone issue either direction.
 import { advanceCageMatchLeg, cancelCageMatchForAbortedFirstLeg } from "./cageMatch.service.js";
-import { withGameCategoryRating } from "./ratingCategory.js";
+import { withGameCategoryRating, ratingCategoryForSeconds } from "./ratingCategory.js";
 // Same deliberate circular-import pattern as advanceCageMatchLeg above.
 import { advanceTournamentIfPairing } from "./tournament.service.js";
 import { notifyGameEnded } from "./latency.service.js";
+import { trackDaily } from "./dailyChallenge.service.js";
+import { MIN_GAME_PLIES } from "./dailyChallenge.catalog.js";
 
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -602,8 +604,29 @@ export async function finalizeGame(
         ...(liveMoves.length > 0 && liveMoves[0].moveNumber === 1 ? { moves: liveMoves } : {}),
       },
     },
-    { select: 'cageMatchId white black' },
+    { select: 'cageMatchId white black wagerTokens variant timeControl moves.moveNumber' },
   ).lean();
+
+  // Daily challenges. Every ending funnels through here, so this one spot
+  // sees every finished two-player game (casual, wagered, tournament, cage).
+  // Games that ended almost at once don't count, see MIN_GAME_PLIES.
+  if (status === 'finished' && result !== null && updated?.black) {
+    const plies = liveMoves.length > 0 ? liveMoves[liveMoves.length - 1].moveNumber : (updated.moves?.length ?? 0);
+    if (plies >= MIN_GAME_PLIES) {
+      const base = {
+        type: 'game_finished' as const,
+        key: `game:${gameId}`,
+        wagerTokens: updated.wagerTokens ?? 0,
+        variant: updated.variant,
+        category: ratingCategoryForSeconds(updated.timeControl?.baseSeconds),
+        endReason,
+      };
+      const outcome = (color: 'white' | 'black') =>
+        result === 'draw' ? ('draw' as const) : result === color ? ('win' as const) : ('loss' as const);
+      trackDaily(updated.white.toString(), { ...base, result: outcome('white') });
+      trackDaily(updated.black.toString(), { ...base, result: outcome('black') });
+    }
+  }
 
   // A finished game changes the pair's daily score; drop the cached tally.
   if (status === 'finished' && updated?.black) {

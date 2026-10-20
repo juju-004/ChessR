@@ -12,6 +12,7 @@ import { ApiError } from '../utils/ApiError.js';
 import { getIo } from '../sockets/io.js';
 import { assertNotRestricted } from './suspension.service.js';
 import { describePuzzle, evaluateMove } from './puzzleRace.logic.js';
+import { trackDaily } from './dailyChallenge.service.js';
 import {
   debitPuzzleRaceStake,
   creditPuzzleRaceReturn,
@@ -261,6 +262,7 @@ export async function createRace(userId: string, input: CreateRaceInput): Promis
     }
   }
 
+  trackDaily(userId, { type: 'puzzle_race_joined', key: `race-join:${race.id}`, wagerTokens: input.wagerTokens });
   broadcastRacesChanged();
   return race;
 }
@@ -301,6 +303,7 @@ export async function joinRace(raceId: string, userId: string): Promise<IPuzzleR
     }
   }
 
+  trackDaily(userId, { type: 'puzzle_race_joined', key: `race-join:${claimed.id}`, wagerTokens: claimed.wagerTokens });
   broadcastRacesChanged();
   void broadcastRaceState(claimed.id);
 
@@ -542,6 +545,8 @@ export async function submitMove(userId: string, code: string, input: MoveInput)
     return { ok: true, status: 'correct', reply: verdict.reply, nextMoveIdx: moveIdx + 2 };
   }
 
+  trackDaily(userId, { type: 'puzzle_solved', key: `solve:${race.id}:${index}` });
+
   const solved = index + 1;
   const finishedAll = solved >= race.puzzleCount;
   const res = await PuzzleRace.updateOne(filter, {
@@ -626,6 +631,17 @@ async function finishRace(
   }
 
   raceCache.delete(finished.code);
+
+  // Daily challenges: everyone who raced gets their result.
+  for (const p of finished.players) {
+    trackDaily(p.user.toString(), {
+      type: 'puzzle_race_finished',
+      key: `race-end:${finished.id}`,
+      won: !!winnerId && p.user.toString() === winnerId,
+      completed: !!p.finishedAt,
+      wagerTokens: finished.wagerTokens,
+    });
+  }
 
   // The player who just finished gets their answer now; paying out (several
   // wallet writes) and telling everyone happens right after, not before.

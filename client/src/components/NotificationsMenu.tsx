@@ -11,6 +11,7 @@ import {
   Flag,
   Megaphone,
   Wallet,
+  CalendarCheck,
 } from "lucide-react";
 import { pressable } from "@/lib/motion.js";
 import { cn } from "@/lib/cn.js";
@@ -34,6 +35,7 @@ const SYSTEM_TYPE_ICON: Record<NotificationType, typeof Megaphone> = {
   report_freeze: Flag,
   admin_message: Megaphone,
   tournament_naira_prize: Wallet,
+  daily_reward: CalendarCheck,
 };
 
 const ICON_TONES = {
