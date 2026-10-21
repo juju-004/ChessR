@@ -12,7 +12,7 @@ import { RCoin } from "./ui/RCoin.js";
 import { TimeControlIcon } from "./ui/TimeControlIcon.js";
 
 /**
- * Cross-page real-time notifications: incoming friend challenges and rematch
+ * Cross-page real-time notifications: incoming challenges and rematch
  * offers need to reach the user no matter what page they're currently on, so
  * these listeners are wired up once here rather than inside individual pages.
  */

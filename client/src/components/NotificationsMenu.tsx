@@ -17,7 +17,7 @@ import { pressable } from "@/lib/motion.js";
 import { cn } from "@/lib/cn.js";
 import { Popover } from "./ui/Popover.js";
 import { AcceptDeclineButtons } from "./AcceptDeclineButtons.js";
-import { Avatar, RCoin, TimeControlIcon } from "./ui/index.js";
+import { RCoin, TimeControlIcon } from "./ui/index.js";
 import {
   useNotificationCenter,
   type NotificationItem,
@@ -128,7 +128,6 @@ export function NotificationsMenu({ className }: NotificationsMenuProps) {
     items,
     unreadCount,
     markAllSeen,
-    respondToFriendRequestItem,
     respondToChallengeItem,
     respondToCageInviteItem,
   } = useNotificationCenter();
@@ -175,38 +174,12 @@ export function NotificationsMenu({ className }: NotificationsMenuProps) {
 
         {items.length === 0 && (
           <p className="p-3 text-sm text-base-content/60">
-            Friend requests, challenges, and updates from Chessr will show up
-            here.
+            Challenges and updates from Chessr will show up here.
           </p>
         )}
 
         <div className="max-h-96 overflow-y-auto">
           {visibleItems.map((item) => {
-            if (item.kind === "friend_request") {
-              return (
-                <MenuRow
-                  key={`fr-${item.id}`}
-                  leading={
-                    <Avatar
-                      username={item.from.username}
-                      gradient={item.from.avatarGradient}
-                      size="sm"
-                    />
-                  }
-                >
-                  <p className="truncate text-sm text-base-content">
-                    <span className="font-semibold">{item.from.username}</span>{" "}
-                    wants to be friends
-                  </p>
-                  <AcceptDeclineButtons
-                    variant="pill"
-                    onAccept={() => respondToFriendRequestItem(item.id, true)}
-                    onDecline={() => respondToFriendRequestItem(item.id, false)}
-                  />
-                </MenuRow>
-              );
-            }
-
             if (item.kind === "challenge") {
               return (
                 <MenuRow

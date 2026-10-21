@@ -31,7 +31,7 @@ const sendSchema = z.object({
   // 0.5 = Hyper Bullet (30s), same floor as game.controller.ts's createSchema.
   baseMinutes: z.number().min(0.5).max(180).nullable().optional().default(10),
   incrementSeconds: z.number().min(0).max(60).optional().default(0),
-  variant: z.enum(['standard', 'chess960']).optional().default('standard'),
+  variant: z.enum(['standard', 'chess960', 'crazyhouse']).optional().default('standard'),
   wagerTokens: z
     .number()
     .int()
@@ -153,7 +153,7 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
         toId: string;
         baseMinutes: number | null;
         incrementSeconds: number;
-        variant: 'standard' | 'chess960';
+        variant: 'standard' | 'chess960' | 'crazyhouse';
         wagerTokens: number;
       };
       if (toId !== userId) return emitError(socket, 'This challenge is not addressed to you');

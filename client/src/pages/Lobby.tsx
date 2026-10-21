@@ -44,7 +44,9 @@ import {
 const POLL_MS = 60_000;
 
 function variantLabel(v: GameVariant) {
-  return v === "chess960" ? "Chess960" : "Standard";
+  if (v === "chess960") return "Chess960";
+  if (v === "crazyhouse") return "Crazyhouse";
+  return "Standard";
 }
 
 /** The open-games lobby: put up a game with a wager, and accept anyone

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Swords, Link2, Share2 } from "lucide-react";
-import { listFriends, type Friend } from "../api/friends.js";
+import { listFollowing, type PlayerSummary } from "../api/follows.js";
 import {
   type CageLegPlan,
   type CageWinnerMode,
@@ -44,10 +44,10 @@ export function CreateCageMatch() {
   // for someone who isn't online right now or isn't known to you yet, so
   // the opponent picker is hidden (there's nobody to pick).
   const [useLinkInvite, setUseLinkInvite] = useState(false);
-  const [friends, setFriends] = useState<Friend[]>([]);
+  const [following, setFollowing] = useState<PlayerSummary[]>([]);
   const [selectedFriend, setSelectedFriend] = useState("");
-  // A player picked from the Players page who isn't one of your friends
-  // (anyone can be challenged now), so they have no entry in `friends` to
+  // A player picked from the Players page who isn't one you follow
+  // (anyone can be challenged now), so they have no entry in `following` to
   // be found in. Carried over in the URL by the "Cage" button there.
   const [challengedPlayer, setChallengedPlayer] = useState<{
     id: string;
@@ -62,15 +62,15 @@ export function CreateCageMatch() {
 
   // ?challenge= (+ &name=) carries a player over from the Players page's
   // "Cage" button, so the opponent is picked automatically instead of making
-  // them find the name again in the dropdown. A friend is matched against
-  // the loaded friends list; anyone else is added to the dropdown from the
+  // them find the name again in the dropdown. A followed player is matched
+  // against the loaded following list; anyone else is added to the dropdown from the
   // name in the URL.
   useEffect(() => {
-    listFriends().then((res) => {
-      setFriends(res.friends);
+    listFollowing().then((res) => {
+      setFollowing(res.following);
       const challengeId = searchParams.get("challenge");
       if (!challengeId) return;
-      if (res.friends.some((f) => f.id === challengeId)) {
+      if (res.following.some((f) => f.id === challengeId)) {
         setSelectedFriend(challengeId);
         return;
       }
@@ -229,7 +229,7 @@ export function CreateCageMatch() {
                 checked={useLinkInvite}
                 onChange={setUseLinkInvite}
                 label="Use link invite"
-                description="Get a link to send to anyone, they don't need to be online or a friend."
+                description="Get a link to send to anyone, they don't need to be online or followed."
               />
               {!useLinkInvite && (
                 <section className="space-y-3">
@@ -240,12 +240,12 @@ export function CreateCageMatch() {
                   >
                     <option value="">Select a player…</option>
                     {challengedPlayer &&
-                      !friends.some((f) => f.id === challengedPlayer.id) && (
+                      !following.some((f) => f.id === challengedPlayer.id) && (
                         <option value={challengedPlayer.id}>
                           {challengedPlayer.username}
                         </option>
                       )}
-                    {friends.map((f) => (
+                    {following.map((f) => (
                       <option key={f.id} value={f.id} disabled={!f.online}>
                         {f.username} {f.online ? "" : "(offline)"}
                       </option>

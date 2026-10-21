@@ -1,6 +1,6 @@
 import type { RatingCategory } from '../timeControls.js';
 import { apiFetch } from './http.js';
-import type { Friend } from './friends.js';
+import type { PlayerSummary } from './follows.js';
 
 export interface UserSearchResult {
   _id: string;
@@ -27,15 +27,20 @@ export interface UserProfile {
   /** All three ladders. */
   ratings?: Record<RatingCategory, number>;
   stats: { wins: number; losses: number; draws: number; gamesPlayed: number };
-  isFriend: boolean;
+  /** The viewer follows this player. */
+  isFollowing: boolean;
+  /** This player follows the viewer. */
+  followsYou: boolean;
+  followerCount: number;
+  followingCount: number;
   isSelf: boolean;
   activeGameCode: string | null;
-  /** Same online/offline presence the friends list (Players.tsx) shows via
+  /** Same online/offline presence the following list (Players.tsx) shows via
    *  Avatar's status prop — a snapshot as of when this profile was
-   *  fetched, kept live afterward only for friends (see Profile.tsx's
-   *  friend:presence listener; that event is only ever broadcast to
-   *  friends, so a stranger's dot won't update again until the page is
-   *  reloaded). Always true for isSelf. */
+   *  fetched, kept live afterward only for players the viewer follows (see
+   *  Profile.tsx's follow:presence listener; that event is only ever sent
+   *  to a player's followers, so a stranger's dot won't update again until
+   *  the page is reloaded). Always true for isSelf. */
   online: boolean;
   /** Viewer's record against this profile's owner, null if not logged in,
    *  viewing your own profile, or the two of you have never played. */
@@ -69,10 +74,10 @@ export function searchUsers(q: string) {
   return apiFetch<{ users: UserSearchResult[] }>(`/users/search?q=${encodeURIComponent(q)}`);
 }
 
-/** Top online players by rating (never the caller), same shape as a friends
+/** Top online players by rating (never the caller), same shape as a following
  *  list entry. Empty when nobody else is online. */
 export function listOnlinePlayers() {
-  return apiFetch<{ players: Friend[] }>('/users/online/players');
+  return apiFetch<{ players: PlayerSummary[] }>('/users/online/players');
 }
 
 export function getProfile(username: string) {

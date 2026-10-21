@@ -27,13 +27,13 @@ import { PlatformRevenue } from "../models/PlatformRevenue.js";
 import { Tournament } from "../models/Tournament.js";
 import { GameFlag } from "../models/GameFlag.js";
 import { Report } from "../models/Report.js";
-import { FriendRequest } from "../models/FriendRequest.js";
+import { Follow } from "../models/Follow.js";
 
 const APPLY = process.argv.includes("--apply");
 
 const models = [
   User, Game, Notification, CageMatch, Transaction,
-  PlatformRevenue, Tournament, GameFlag, Report, FriendRequest,
+  PlatformRevenue, Tournament, GameFlag, Report, Follow,
 ] as const;
 
 async function main(): Promise<void> {

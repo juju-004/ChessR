@@ -89,7 +89,7 @@ export interface Tournament {
    *  half of this. */
   organizerOnly: boolean;
   format: TournamentFormat;
-  variant: "standard" | "chess960";
+  variant: "standard" | "chess960" | "crazyhouse";
   baseMinutes: number | null;
   incrementSeconds: number;
   status: TournamentStatus;
@@ -241,7 +241,9 @@ export function formatTimeControl(
     t.baseMinutes === null
       ? "Unlimited"
       : `${t.baseMinutes}+${t.incrementSeconds}`;
-  return t.variant === "chess960" ? `${base} · 960` : base;
+  if (t.variant === "chess960") return `${base} · 960`;
+  if (t.variant === "crazyhouse") return `${base} · Crazyhouse`;
+  return base;
 }
 
 /** Speed category from the BASE minutes only (the increment is ignored, so

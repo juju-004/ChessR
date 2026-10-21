@@ -8,7 +8,7 @@ import {
 export interface GameMeta {
   _id: string;
   joinCode: string;
-  variant: "standard" | "chess960";
+  variant: "standard" | "chess960" | "crazyhouse";
   initialFen: string;
   white: { _id: string; username: string; avatarGradient?: any; rating?: number | null; ratingCategory?: RatingCategory | null } | null;
   black: { _id: string; username: string; avatarGradient?: any; rating?: number | null; ratingCategory?: RatingCategory | null } | null;
@@ -57,6 +57,11 @@ export interface MoveLogEntry {
   san: string;
   from: string;
   to: string;
+  /** Crazyhouse: role letter of the piece dropped by this move. */
+  drop?: string;
+  /** Crazyhouse: the full (extended) FEN after this move, used to show the
+   *  position, pockets included, when browsing the move list. */
+  fenAfter?: string;
   /** Server timestamp of when this move landed, present for every move
    *  of a finished game (persisted) and, live, for any move made from
    *  this point in the socket connection onward (see gameSocket.ts's

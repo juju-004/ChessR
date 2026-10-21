@@ -100,6 +100,7 @@ export function GameSettingsFields({
       >
         <option value="standard">Standard</option>
         <option value="chess960">Chess960</option>
+        <option value="crazyhouse">Crazyhouse</option>
       </SettingsSelect>
       <SettingsNumber
         label={WAGER_LABEL}

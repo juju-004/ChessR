@@ -308,7 +308,7 @@ export function CageMatches() {
               most time categories) and whether R Coins are at stake.
             </p>
             <p>
-              Tap Create cage match to challenge a friend or share an invite
+              Tap Create cage match to challenge a player or share an invite
               link. Your active and finished matches will show up here.
             </p>
           </DescriptionCard>

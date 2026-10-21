@@ -14,10 +14,10 @@ import {
 } from "lucide-react";
 import {
   createGame,
-  listFriendsActiveGames,
+  listFollowingActiveGames,
   listMyActiveGames,
   listOpenGames,
-  type ActiveFriendGame,
+  type ActiveFollowingGame,
   type MyActiveGame,
 } from "../api/games.js";
 import { ApiRequestError } from "../api/http.js";
@@ -99,7 +99,7 @@ export function Dashboard() {
   const [joinCodeInput, setJoinCodeInput] = useState("");
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
-  const [activeGames, setActiveGames] = useState<ActiveFriendGame[] | null>(
+  const [activeGames, setActiveGames] = useState<ActiveFollowingGame[] | null>(
     null,
   );
   const [gamesError, setGamesError] = useState("");
@@ -164,7 +164,7 @@ export function Dashboard() {
     listMyActiveGames()
       .then((res) => !cancelled && setMyGame(res.games[0] ?? null))
       .catch(() => !cancelled && setMyGame(null));
-    listFriendsActiveGames()
+    listFollowingActiveGames()
       .then((res) => !cancelled && setActiveGames(res.games))
       .catch(() => !cancelled && setGamesError("Failed to load active games."));
 
@@ -300,9 +300,9 @@ export function Dashboard() {
             <CardTitle>Play</CardTitle>
           </CardHeader>
           {myGame ? (
-            // Mirrors the "Friends currently playing" row below, this is
+            // Mirrors the "Following currently playing" row below, this is
             // the same "who, at what point, for what stakes" summary,
-            // just for your own game instead of a friend's, and a
+            // just for your own game instead of a followed player's, and a
             // "Resume" action instead of "Watch". Shown instead of the
             // create/join form below because there's nothing to create or
             // join right now anyway, one game at a time (see
@@ -388,7 +388,7 @@ export function Dashboard() {
 
         {(gamesError || activeGames === null || activeGames.length > 0) && (
           <ListCard
-            title="Friends currently playing"
+            title="Following currently playing"
             loading={!gamesError && activeGames === null}
           >
             {gamesError && <p className="text-sm text-red-400">{gamesError}</p>}
@@ -436,12 +436,6 @@ export function Dashboard() {
               Terms of Service
             </Link>
           </div>
-          <Link
-            to="/organization/request"
-            className="hover:text-base-content mt-1.5 hover:underline"
-          >
-            Organisation request
-          </Link>
         </footer>
       </div>
     </Page>

@@ -11,7 +11,7 @@ import {
   listMyActiveGames,
   getGameByCode,
   getDailyHeadToHead,
-  listFriendsActiveGames,
+  listFollowingActiveGames,
 } from "../services/game.service.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 
@@ -26,7 +26,7 @@ const MIN_STAKE_TOKENS = 20;
 
 const createSchema = z.object({
   isPrivate: z.boolean().optional().default(false),
-  variant: z.enum(["standard", "chess960"]).optional().default("standard"),
+  variant: z.enum(["standard", "chess960", "crazyhouse"]).optional().default("standard"),
   // null/omitted baseMinutes = unlimited time. The floor is 0.5 (30s) so the
   // "Hyper Bullet · ½+0" preset the client offers is actually accepted.
   baseMinutes: z.number().min(0.5).max(180).nullable().optional().default(10),
@@ -102,9 +102,9 @@ export const getGame = asyncHandler(async (req, res) => {
   res.json({ game });
 });
 
-export const getFriendsActiveGames = asyncHandler(
+export const getFollowingActiveGames = asyncHandler(
   async (req: AuthedRequest, res) => {
-    const games = await listFriendsActiveGames(req.user!.id);
+    const games = await listFollowingActiveGames(req.user!.id);
     res.json({ games });
   },
 );

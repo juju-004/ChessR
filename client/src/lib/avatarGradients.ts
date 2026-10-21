@@ -25,16 +25,32 @@ export const AVATAR_GRADIENTS: AvatarGradientPreset[] = [
   { id: "ice", label: "Ice", from: "#38bdf8", to: "#a5f3fc" },
 ];
 
-export function findAvatarGradient(id?: string | null): AvatarGradientPreset {
-  return AVATAR_GRADIENTS.find((g) => g.id === id) ?? AVATAR_GRADIENTS[0];
+/** An avatar's look is stored in ONE string, `"<gradient>"` or
+ *  `"<gradient>+<icon>"` (e.g. `"ocean+water"`). It lives in the existing
+ *  `avatarGradient` field so every list, game and socket payload that already
+ *  carries it shows the icon with no other plumbing, and old values (a plain
+ *  gradient id, or nothing) keep working unchanged. */
+export function parseAvatarStyle(value?: string | null): { gradientId: string; iconId: string | null } {
+  const [gradientId, iconId] = (value ?? "").split("+");
+  return { gradientId: gradientId || "brand", iconId: iconId || null };
 }
 
-export function avatarGradientStyle(id?: string | null): CSSProperties | undefined {
+export function buildAvatarStyle(gradientId: string, iconId?: string | null): string {
+  return iconId ? `${gradientId}+${iconId}` : gradientId;
+}
+
+export function findAvatarGradient(id?: string | null): AvatarGradientPreset {
+  const { gradientId } = parseAvatarStyle(id);
+  return AVATAR_GRADIENTS.find((g) => g.id === gradientId) ?? AVATAR_GRADIENTS[0];
+}
+
+export function avatarGradientStyle(value?: string | null): CSSProperties | undefined {
   // "brand" (and anything unrecognized) just falls back to the existing
   // .gradient-brand class, no inline style needed, and it means old rows
   // without an avatarGradient at all render exactly as they did before.
-  if (!id || id === "brand") return undefined;
-  const preset = findAvatarGradient(id);
+  const { gradientId } = parseAvatarStyle(value);
+  if (gradientId === "brand") return undefined;
+  const preset = findAvatarGradient(gradientId);
   return {
     backgroundImage: `linear-gradient(135deg, ${preset.from} 0%, ${preset.to} 100%)`,
   };

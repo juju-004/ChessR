@@ -1,7 +1,7 @@
 import { Check, X } from "lucide-react";
 import { Button } from "./ui/Button.js";
 
-/** The Accept / Decline pair for friend requests, challenges and cage
+/** The Accept / Decline pair for challenges and cage
  *  invites. `pill` is the compact style for the notifications dropdown;
  *  `button` uses the UI-kit buttons (icon-only below `sm`) for full lists. */
 export function AcceptDeclineButtons({

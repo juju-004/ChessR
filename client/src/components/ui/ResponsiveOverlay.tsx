@@ -35,7 +35,7 @@ export interface ResponsiveOverlayProps {
  * a real dismiss target on a small touch screen, while a popover anchored
  * right next to the trigger is faster and less disruptive with a mouse
  * and screen space to spare. Pulled out as a shared component so the
- * dashboard's "create game" form, the players page's per-friend challenge
+ * dashboard's "create game" form, the players page's per-player challenge
  * form, and anything else with a compact trigger + a real form behind it
  * (spectator chat, etc.) all get this behavior for free instead of each
  * reimplementing their own breakpoint switch.

@@ -32,7 +32,6 @@ export interface IUser extends Document {
   emailVerificationTokenHash?: string;
   emailVerificationExpires?: Date;
   tokenBalance: number;
-  friends: Types.ObjectId[];
   avatarUrl?: string;
   /** Preset id from the client's avatarGradients.ts list, validated against
    *  that same allow-list server-side (see user.controller.ts) so this can
@@ -145,7 +144,6 @@ const userSchema = new Schema<IUser>(
     emailVerificationTokenHash: { type: String, select: false, index: { sparse: true } },
     emailVerificationExpires: { type: Date, select: false },
     tokenBalance: { type: Number, default: 0, min: 0 },
-    friends: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     avatarUrl: { type: String },
     avatarGradient: { type: String },
     bio: { type: String, maxlength: 160, trim: true },

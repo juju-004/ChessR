@@ -28,7 +28,7 @@ function PlayerName({ p }: { p: LiveGamePlayer }) {
 
 /** A game in progress (or waiting for an opponent): overlapping avatars,
  *  "A vs B", time control, move number, stake, and a trailing action
- *  (Watch / Resume). Used for your own game and your friends' games. */
+ *  (Watch / Resume). Used for your own game and followed players' games. */
 export function LiveGameRow({
   white,
   black,

@@ -162,6 +162,7 @@ export function CageGamePlanEditor({
           >
             <option value="standard">Standard</option>
             <option value="chess960">Chess960</option>
+            <option value="crazyhouse">Crazyhouse</option>
           </Select>
           <Input
             label={

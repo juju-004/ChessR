@@ -11,6 +11,7 @@ import {
   initialCastlingRights,
   type CastlingRightsState,
 } from './chess960Castling.js';
+import { zhApply, zhOutcome, type ZhEnd, type ZhRole } from './crazyhouse.js';
 
 const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const LIVE_STATE_TTL_SECONDS = 60 * 60 * 6; // 6h safety net; refreshed on every move
@@ -39,7 +40,7 @@ export interface LiveGameState {
   gameId: string;
   whiteId: string;
   blackId: string;
-  variant: 'standard' | 'chess960';
+  variant: 'standard' | 'chess960' | 'crazyhouse';
   initialFen: string;
   fen: string;
   status: 'active' | 'finished';
@@ -88,7 +89,10 @@ export class GameTimeoutError extends Error {
 }
 
 export function getSideToMove(fen: string): 'white' | 'black' {
-  return new Chess(fen).turn() === 'w' ? 'white' : 'black';
+  // Read straight off the FEN's side-to-move field instead of building a
+  // Chess instance: it is cheaper, and a Crazyhouse extended FEN (pockets in
+  // square brackets) is not something chess.js can load.
+  return fen.split(' ')[1] === 'b' ? 'black' : 'white';
 }
 
 /** Pure clock check, does not mutate anything. Returns the winning side if time has run out.
@@ -115,7 +119,7 @@ export async function initLiveState(
   blackId: string,
   timeControl: LiveTimeControl,
   fen: string = STARTING_FEN,
-  variant: 'standard' | 'chess960' = 'standard',
+  variant: 'standard' | 'chess960' | 'crazyhouse' = 'standard',
   wagerTokens: number = 0,
 ): Promise<LiveGameState> {
   const state: LiveGameState = {
@@ -294,6 +298,8 @@ export interface MoveResult {
   from: string;
   to: string;
   promotion?: string;
+  /** Crazyhouse: role of the piece dropped by this move (from === to). */
+  drop?: string;
   fenAfter: string;
   isGameOver: boolean;
   result: 'white' | 'black' | 'draw' | null;
@@ -315,7 +321,7 @@ export interface MoveResult {
 async function finalizeMove(
   gameId: string,
   state: LiveGameState,
-  chess: Chess,
+  chess: Chess | null,
   moverSide: 'white' | 'black',
   san: string,
   from: string,
@@ -324,6 +330,10 @@ async function finalizeMove(
   updatedRights: CastlingRightsState,
   lagCompensationMs = 0,
   moveTimestampMs: number = Date.now(),
+  /** Crazyhouse: the resulting extended FEN and the game-ending condition
+   *  worked out by crazyhouse.ts. When set, `chess` is unused (chess.js
+   *  can't see pockets, so its own game-over checks would be wrong). */
+  zh?: { fen: string; end: ZhEnd | null; drop?: string },
 ): Promise<MoveResult> {
   let whiteRemainingMs = state.whiteRemainingMs;
   let blackRemainingMs = state.blackRemainingMs;
@@ -353,7 +363,7 @@ async function finalizeMove(
     }
   }
 
-  const newFen = chess.fen();
+  const newFen = zh ? zh.fen : chess!.fen();
   const newKey = repetitionKey(newFen);
   const newPositionHistory = [...state.positionHistory, newKey];
   const isThreefoldRepetition = newPositionHistory.filter((k) => k === newKey).length >= 3;
@@ -363,22 +373,36 @@ async function finalizeMove(
   // chess.js's own isGameOver() internally checks threefold repetition too,
   // but via the same broken (history-less) mechanism, so it can say "false"
   // even when our reliable check says otherwise. OR them together.
-  const isGameOver = chess.isGameOver() || isThreefoldRepetition;
+  const isGameOver = zh
+    ? zh.end !== null || isThreefoldRepetition
+    : chess!.isGameOver() || isThreefoldRepetition;
 
-  if (isGameOver) {
-    if (chess.isCheckmate()) {
+  if (isGameOver && zh) {
+    // Crazyhouse has no fifty-move rule, and its insufficient-material rule
+    // lives in zhOutcome (pockets matter). Mate/stalemate also come from
+    // there, since a drop can answer a check chess.js would call mate.
+    if (zh.end) {
+      result = zh.end.result;
+      endReason = zh.end.reason;
+    } else {
+      result = 'draw';
+      endReason = 'threefold_repetition';
+    }
+  } else if (isGameOver) {
+    const chess_ = chess!;
+    if (chess_.isCheckmate()) {
       result = moverSide;
       endReason = 'checkmate';
-    } else if (chess.isStalemate()) {
+    } else if (chess_.isStalemate()) {
       result = 'draw';
       endReason = 'stalemate';
     } else if (isThreefoldRepetition) {
       result = 'draw';
       endReason = 'threefold_repetition';
-    } else if (chess.isInsufficientMaterial()) {
+    } else if (chess_.isInsufficientMaterial()) {
       result = 'draw';
       endReason = 'insufficient_material';
-    } else if (chess.isDraw()) {
+    } else if (chess_.isDraw()) {
       result = 'draw';
       endReason = 'fifty_move_rule';
     }
@@ -402,6 +426,7 @@ async function finalizeMove(
     from,
     to,
     ...(promotion ? { promotion } : {}),
+    ...(zh?.drop ? { drop: zh.drop } : {}),
     fenAfter: newFen,
     moveNumber: newState.moveCount,
     timestampMs: moveTimestampMs,
@@ -418,6 +443,7 @@ async function finalizeMove(
     from,
     to,
     promotion,
+    ...(zh?.drop ? { drop: zh.drop } : {}),
     fenAfter: newFen,
     isGameOver,
     result,
@@ -438,7 +464,7 @@ async function finalizeMove(
 export async function applyMove(
   gameId: string,
   userId: string,
-  move: { from: string; to: string; promotion?: string },
+  move: { from?: string; to: string; promotion?: string; drop?: ZhRole },
   lagCompensationMs = 0,
   moveTimestampMs: number = Date.now(),
 ): Promise<MoveResult> {
@@ -462,7 +488,7 @@ export async function applyMove(
 async function applyMoveOnce(
   gameId: string,
   userId: string,
-  move: { from: string; to: string; promotion?: string },
+  move: { from?: string; to: string; promotion?: string; drop?: ZhRole },
   lagCompensationMs = 0,
   moveTimestampMs: number = Date.now(),
 ): Promise<MoveResult> {
@@ -482,6 +508,34 @@ async function applyMoveOnce(
   const timeoutWinner = computeTimeoutWinner(state);
   if (timeoutWinner) throw new GameTimeoutError(timeoutWinner);
 
+  // Crazyhouse: pockets and drops live in crazyhouse.ts's extended FEN, so
+  // chess.js never sees this position directly.
+  if (state.variant === 'crazyhouse') {
+    const applied = zhApply(state.fen, {
+      from: move.from,
+      to: move.to,
+      promotion: move.promotion,
+      drop: move.drop,
+    });
+    if (!applied) throw ApiError.badRequest('Illegal move');
+    const end = zhOutcome(applied.fen);
+    return finalizeMove(
+      gameId,
+      state,
+      null,
+      playerSide,
+      applied.san,
+      applied.from,
+      applied.to,
+      applied.promotion,
+      state.castlingRights ?? initialCastlingRights(),
+      lagCompensationMs,
+      moveTimestampMs,
+      { fen: applied.fen, end, drop: applied.drop },
+    );
+  }
+
+  if (!move.from) throw ApiError.badRequest('Illegal move');
   const chess = new Chess(state.fen);
   const rights = state.castlingRights ?? initialCastlingRights();
 

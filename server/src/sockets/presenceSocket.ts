@@ -1,5 +1,6 @@
 import type { Server, Socket } from 'socket.io';
 import { User } from '../models/User.js';
+import { Follow } from '../models/Follow.js';
 import {
   registerSocket,
   unregisterSocket,
@@ -25,13 +26,13 @@ export function registerPresenceHandlers(io: Server, socket: Socket) {
     // A personal room lets other parts of the app (friend requests, challenges)
     // reach every tab/device a user has open without tracking raw socket ids.
     await socket.join(`user:${userId}`);
-    // Only the first socket is news to friends. Extra tabs/devices used to
-    // each cost a friends lookup plus one emit per friend for nothing.
+    // Only the first socket is news to followers. Extra tabs/devices used to
+    // each cost a follower lookup plus one emit per follower for nothing.
     if (cameOnline) {
       // Feeds the Players page's "Online players" card (see markOnlineRanked).
       const me = await User.findById(userId).select('rating').lean();
       await markOnlineRanked(userId, me?.rating ?? 1500);
-      await notifyFriends(io, userId, 'friend:presence', { userId, online: true });
+      await notifyFollowers(io, userId, 'follow:presence', { userId, online: true });
     }
     // Smart pairing (see arenaAvailablePlayers) skips offline players
     // entirely rather than pairing them against someone who isn't there, 
@@ -61,17 +62,23 @@ export function registerPresenceHandlers(io: Server, socket: Socket) {
         const left = await leaveQuickPairingQueue(userId);
         if (left) await broadcastLobbyCounts(io);
         await unmarkOnlineRanked(userId);
-        await notifyFriends(io, userId, 'friend:presence', { userId, online: false });
+        await notifyFollowers(io, userId, 'follow:presence', { userId, online: false });
       }
     })().catch((err) => console.error('presence teardown failed:', err));
   });
 }
 
-async function notifyFriends(io: Server, userId: string, event: string, payload: unknown) {
-  const user = await User.findById(userId).select('friends').lean();
-  if (!user) return;
-  if (user.friends.length === 0) return;
-  // One emit addressed to every friend's room: a single adapter publish
-  // instead of one per friend.
-  io.to(user.friends.map((friendId) => `user:${friendId.toString()}`)).emit(event, payload);
+/** Presence is pushed to the people who FOLLOW this user (they're the ones
+ *  with an online dot for them), not to the people this user follows. */
+const PRESENCE_FANOUT_LIMIT = 5000;
+
+async function notifyFollowers(io: Server, userId: string, event: string, payload: unknown) {
+  const rows = await Follow.find({ following: userId })
+    .select('follower')
+    .limit(PRESENCE_FANOUT_LIMIT)
+    .lean();
+  if (rows.length === 0) return;
+  // One emit addressed to every follower's room: a single adapter publish
+  // instead of one per follower.
+  io.to(rows.map((r) => `user:${r.follower.toString()}`)).emit(event, payload);
 }

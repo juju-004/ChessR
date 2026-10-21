@@ -49,7 +49,7 @@ export type CageMatchEndReason = 'completed' | 'no_show_forfeit' | 'forfeit' | '
 
 export interface ICageLeg {
   index: number;
-  variant: 'standard' | 'chess960';
+  variant: 'standard' | 'chess960' | 'crazyhouse';
   baseMinutes: number | null;
   incrementSeconds: number;
   category: LegCategory;
@@ -99,7 +99,7 @@ export interface ICageMatch extends Document {
 const legSchema = new Schema<ICageLeg>(
   {
     index: { type: Number, required: true },
-    variant: { type: String, enum: ['standard', 'chess960'], default: 'standard' },
+    variant: { type: String, enum: ['standard', 'chess960', 'crazyhouse'], default: 'standard' },
     baseMinutes: { type: Number, default: null },
     incrementSeconds: { type: Number, default: 0 },
     category: { type: String, enum: ['bullet', 'blitz', 'rapid', 'classical'], required: true },

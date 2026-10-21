@@ -33,7 +33,7 @@ async function uniqueMatchCode(): Promise<string> {
 }
 
 export interface CageLegInput {
-  variant: "standard" | "chess960";
+  variant: "standard" | "chess960" | "crazyhouse";
   baseMinutes: number | null;
   incrementSeconds: number;
 }

@@ -5,7 +5,7 @@ import mongoose, { Schema, type Document, type Types } from 'mongoose';
 // future admin broadcast. Deliberately a separate thing from:
 //   - NotificationContext.tsx's toasts (client-only, ephemeral, never
 //     persisted, e.g. "Move played")
-//   - the friend-request/challenge/cage-invite bell (NotificationCenterContext,
+//   - the challenge/cage-invite bell (NotificationCenterContext,
 //     social & actionable, mostly Redis-backed with short TTLs)
 // This model is for messages *the platform* sends *to* a user about their
 // account, read once and kept around, the way a bank app's notification

@@ -1,15 +1,16 @@
 import { useState } from "react";
 import { cn } from "@/lib/cn.js";
-import { avatarGradientStyle } from "@/lib/avatarGradients.js";
+import { avatarGradientStyle, parseAvatarStyle } from "@/lib/avatarGradients.js";
+import { AvatarIconGlyph, findAvatarIcon } from "@/lib/avatarIcons.js";
 
 export interface AvatarProps {
   src?: string | null;
   username: string;
-  size?: "xs" | "sm" | "md" | "lg";
+  size?: "xs" | "sm" | "md" | "lg" | "xl";
   /** Size to switch to from the `md` breakpoint up, for avatars that should
    *  be compact on phone but roomier on desktop (e.g. the game page's
    *  player panels). Omit to keep `size` at every width. */
-  mdSize?: "xs" | "sm" | "md" | "lg";
+  mdSize?: "xs" | "sm" | "md" | "lg" | "xl";
   /** Small colored dot in the corner, typically online/offline presence. */
   status?: "online" | "offline" | null;
   /** Preset id from avatarGradients.ts. Omit (or "brand") for the default
@@ -24,6 +25,7 @@ const SIZE_CLASSES = {
   sm: "h-8 w-8 text-xs",
   md: "h-10 w-10 text-sm",
   lg: "h-14 w-14 text-lg",
+  xl: "h-24 w-24 text-3xl",
 } as const;
 
 // Literal class strings (not built from `md:${...}`) so Tailwind's scanner
@@ -33,6 +35,7 @@ const MD_SIZE_CLASSES = {
   sm: "md:h-8 md:w-8 md:text-xs",
   md: "md:h-10 md:w-10 md:text-sm",
   lg: "md:h-14 md:w-14 md:text-lg",
+  xl: "md:h-24 md:w-24 md:text-3xl",
 } as const;
 
 function initialsOf(username: string): string {
@@ -50,6 +53,8 @@ export function Avatar({
 }: AvatarProps) {
   const [imgFailed, setImgFailed] = useState(false);
   const customStyle = avatarGradientStyle(gradient);
+  const iconId = parseAvatarStyle(gradient).iconId;
+  const hasIcon = !!findAvatarIcon(iconId);
 
   return (
     <span className={cn("relative inline-flex shrink-0", className)}>
@@ -69,6 +74,8 @@ export function Avatar({
             className="h-full w-full object-cover"
             onError={() => setImgFailed(true)}
           />
+        ) : hasIcon ? (
+          <AvatarIconGlyph id={iconId!} className="h-full w-full" />
         ) : (
           initialsOf(username)
         )}
@@ -77,7 +84,7 @@ export function Avatar({
         <span
           className={cn(
             "absolute right-0 bottom-0 rounded-full ring-2 ring-base-100",
-            size === "lg" ? "h-3.5 w-3.5" : "h-2.5 w-2.5",
+            size === "xl" ? "h-5 w-5" : size === "lg" ? "h-3.5 w-3.5" : "h-2.5 w-2.5",
             status === "online" ? "bg-green-500" : "bg-neutral-500",
           )}
         />

@@ -5,7 +5,7 @@ import {
   joinGame,
   cancelGame,
   getOpenGames,
-  getFriendsActiveGames,
+  getFollowingActiveGames,
   getMyActiveGames,
   getGame,
   getGameByCodeHandler,
@@ -19,7 +19,7 @@ router.post('/', requireAuth, createGame);
 router.post('/:id/join', requireAuth, joinGame);
 router.delete('/:id', requireAuth, cancelGame);
 router.get('/open', requireAuth, getOpenGames);
-router.get('/active/friends', requireAuth, getFriendsActiveGames);
+router.get('/active/following', requireAuth, getFollowingActiveGames);
 router.get('/active/mine', requireAuth, getMyActiveGames);
 // No auth, these are fetched by link-preview crawlers (WhatsApp, Facebook,
 // etc.), which never carry a session. See og.controller.ts for the caveat

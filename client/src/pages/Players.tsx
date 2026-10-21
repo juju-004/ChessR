@@ -4,6 +4,7 @@ import {
   Search,
   Swords,
   UserPlus,
+  UserMinus,
   Check,
   TvMinimalPlay,
 } from "lucide-react";
@@ -12,19 +13,21 @@ import {
   listOnlinePlayers,
   type UserSearchResult,
 } from "../api/users.js";
-import { listFriends, sendFriendRequest, type Friend } from "../api/friends.js";
-import { useSocket } from "../contexts/SocketContext.js";
 import {
-  useNotificationCenter,
-  type NotificationItem,
-} from "../contexts/NotificationCenterContext.js";
+  listFollowing,
+  listFollowers,
+  followUser,
+  unfollowUser,
+  type PlayerSummary,
+} from "../api/follows.js";
+import { useSocket } from "../contexts/SocketContext.js";
 import { Page } from "@/components/ui/Page.js";
 import { Card } from "@/components/ui/Card.js";
 import { Input } from "@/components/ui/Input.js";
 import { Button } from "@/components/ui/Button.js";
 import { ResponsiveOverlay } from "@/components/ui/ResponsiveOverlay.js";
 import { CenteredSpinner } from "@/components/ui/CenteredSpinner.js";
-import { AcceptDeclineButtons } from "@/components/AcceptDeclineButtons.js";
+import { Tabs } from "@/components/ui/Tabs.js";
 import { PlayerRow } from "@/components/lists/PlayerRow.js";
 import {
   GameSettingsFields,
@@ -32,44 +35,27 @@ import {
 } from "@/components/game/GameSettingsFields.js";
 import { claimToast } from "../lib/toastClaims.js";
 
-/** Merged "Players" page, search-for-anyone (the old /find) and your
- *  friends list + requests + challenge form (the old /friends) used to be
- *  two separate pages, but they're really one workflow: find someone,
- *  friend them, then challenge them, splitting that across a nav switch
- *  just added a click in the middle of it. Search results now also get an
- *  inline "Add friend" action, which /find never had. */
+type FollowTab = "following" | "followers";
+
+const SEARCH_PAGE_SIZE = 5;
+
+/** Merged "Players" page: search for anyone, follow players (Lichess style,
+ *  one-way and instant, no request to accept), see who follows you, and
+ *  challenge any player. */
 export function Players() {
   const socket = useSocket();
   const navigate = useNavigate();
-  const { items: notificationItems, respondToFriendRequestItem } =
-    useNotificationCenter();
-  // Pending friend requests are now owned by NotificationCenterContext
-  // (single source of truth, also backs the navbar bell), this page just
-  // filters that same list down to the friend_request items rather than
-  // keeping its own separate copy. Used to be its own REST fetch +
-  // friend:request_received listener here, which is exactly how accepting
-  // a request from this page could leave a stale copy sitting in the bell
-  // (or vice versa), two independent lists that had no way to know about
-  // each other's changes.
-  const requests = useMemo(
-    () =>
-      notificationItems.filter(
-        (i): i is Extract<NotificationItem, { kind: "friend_request" }> =>
-          i.kind === "friend_request",
-      ),
-    [notificationItems],
-  );
-  const [friends, setFriends] = useState<Friend[]>([]);
-  // True only until the very first fetch resolves (see refreshFriends
-  // below, which is also reused for background refreshes on friend
-  // accept/remove/online-status socket events — those shouldn't re-flash
-  // a spinner over an already-loaded list, just the initial mount should).
-  const [friendsLoading, setFriendsLoading] = useState(true);
+  const [following, setFollowing] = useState<PlayerSummary[]>([]);
+  const [followers, setFollowers] = useState<PlayerSummary[]>([]);
+  const [tab, setTab] = useState<FollowTab>("following");
+  // True only until the very first fetch resolves; background refreshes on
+  // presence events shouldn't re-flash a spinner over an already-loaded list.
+  const [listsLoading, setListsLoading] = useState(true);
   // Top online players (excluding you), see GET /users/online/players. Empty
   // until the first fetch resolves, and the whole card stays hidden while
   // it's empty, so there's no loading state to render.
-  const [onlinePlayers, setOnlinePlayers] = useState<Friend[]>([]);
-  const [friendSearch, setFriendSearch] = useState("");
+  const [onlinePlayers, setOnlinePlayers] = useState<PlayerSummary[]>([]);
+  const [listSearch, setListSearch] = useState("");
   const gameSettings = useGameSettings(2);
   const [status, setStatus] = useState<{
     message: string;
@@ -78,25 +64,40 @@ export function Players() {
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<UserSearchResult[]>([]);
+  // Search results are shown SEARCH_PAGE_SIZE at a time, "Show more" adds
+  // another batch.
+  const [shownResults, setShownResults] = useState(SEARCH_PAGE_SIZE);
   const [searchError, setSearchError] = useState("");
-  const [sentRequestIds, setSentRequestIds] = useState<Set<string>>(new Set());
+  /** Players with a follow/unfollow request in flight, so a double tap can't
+   *  fire it twice. */
+  const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
   /** Which row currently has its challenge overlay open, null means none.
    *  Only one at a time, so a single piece of state (rather than a per-row
    *  open flag) is enough, and it lets the "Send challenge" button close
    *  its own overlay after sending. Keyed by list + player id, since the
    *  same player can appear in more than one list at once (online players
-   *  and friends, say) and only the row that was clicked should open. */
+   *  and following, say) and only the row that was clicked should open. */
   const [challengingKey, setChallengingKey] = useState<string | null>(null);
 
-  const refreshFriends = useCallback(() => {
-    listFriends()
-      .then((res) => setFriends(res.friends))
-      .finally(() => setFriendsLoading(false));
+  const refreshFollowing = useCallback(() => {
+    return listFollowing()
+      .then((res) => setFollowing(res.following))
+      .catch(() => {
+        // Keep showing what we had on a failed background refresh.
+      });
+  }, []);
+
+  const refreshFollowers = useCallback(() => {
+    return listFollowers()
+      .then((res) => setFollowers(res.followers))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
-    refreshFriends();
-  }, [refreshFriends]);
+    Promise.all([refreshFollowing(), refreshFollowers()]).finally(() =>
+      setListsLoading(false),
+    );
+  }, [refreshFollowing, refreshFollowers]);
 
   const refreshOnlinePlayers = useCallback(() => {
     listOnlinePlayers()
@@ -106,7 +107,7 @@ export function Players() {
       });
   }, []);
 
-  // Only friends get a live presence push (friend:presence), so everyone
+  // Only players you follow get a live presence push (follow:presence), so everyone
   // else's online/offline changes are picked up by a light poll instead,
   // paused while the tab is hidden, plus an immediate refresh on return.
   useEffect(() => {
@@ -127,25 +128,16 @@ export function Players() {
   useEffect(() => {
     if (!socket) return;
 
-    // Pushed to the SENDER once the other side accepts or declines (see
-    // pushToUser(request.from...) in friend.controller.ts). Without this,
-    // the accepter's own optimistic refreshFriends() in
-    // respondToFriendRequestItem was the only place the new friendship
-    // ever got picked up, the sender just sat on stale data ("no friends
-    // yet" / a still-pending request) until they happened to reload the
-    // page.
-    function onRequestResolved(payload: { accepted: boolean }) {
-      if (payload.accepted) refreshFriends();
-    }
-    // Same idea, the other direction: pushed to the person who just got
-    // unfriended, so their list drops that friend immediately instead of
-    // sitting stale until a refresh.
-    function onFriendRemoved() {
-      refreshFriends();
-    }
+    // Someone you follow (or, on the Followers tab, someone who follows
+    // you) came online / went offline. Only the visible list is refetched.
     function onPresence() {
-      refreshFriends();
+      if (tab === "following") void refreshFollowing();
+      else void refreshFollowers();
       refreshOnlinePlayers();
+    }
+    // Someone just followed you: keep the Followers list and count current.
+    function onFollowed() {
+      void refreshFollowers();
     }
     function onSent() {
       setStatus({
@@ -157,35 +149,20 @@ export function Players() {
       setStatus({ message: payload.message, isError: true });
     }
 
-    socket.on("friend:request_resolved", onRequestResolved);
-    socket.on("friend:removed", onFriendRemoved);
-    socket.on("friend:presence", onPresence);
+    socket.on("follow:presence", onPresence);
+    socket.on("follow:new", onFollowed);
     socket.on("challenge:sent", onSent);
     const release0 = claimToast("challenge:error");
     socket.on("challenge:error", onError);
 
     return () => {
-      socket.off("friend:request_resolved", onRequestResolved);
-      socket.off("friend:removed", onFriendRemoved);
-      socket.off("friend:presence", onPresence);
+      socket.off("follow:presence", onPresence);
+      socket.off("follow:new", onFollowed);
       socket.off("challenge:sent", onSent);
       release0();
       socket.off("challenge:error", onError);
     };
-  }, [socket, refreshFriends, refreshOnlinePlayers]);
-
-  function handleAccept(requestId: string) {
-    respondToFriendRequestItem(requestId, true);
-    // respondToFriendRequestItem's own REST call already updates the
-    // friendship server-side, this just gets it reflected here too
-    // (optimistically, same as before) rather than waiting on the next
-    // full page load.
-    refreshFriends();
-  }
-
-  function handleDecline(requestId: string) {
-    respondToFriendRequestItem(requestId, false);
-  }
+  }, [socket, tab, refreshFollowing, refreshFollowers, refreshOnlinePlayers]);
 
   function handleChallenge(targetId: string) {
     if (!socket) return;
@@ -207,6 +184,7 @@ export function Players() {
 
   function handleSearchChange(value: string) {
     setQuery(value);
+    setShownResults(SEARCH_PAGE_SIZE);
     if (!value.trim()) {
       setResults([]);
       return;
@@ -219,31 +197,46 @@ export function Players() {
       .catch(() => setSearchError("Search failed."));
   }
 
-  async function handleAddFriend(userId: string) {
-    await sendFriendRequest(userId);
-    setSentRequestIds((prev) => new Set(prev).add(userId));
+  async function toggleFollow(userId: string, follow: boolean) {
+    if (busyIds.has(userId)) return;
+    setBusyIds((prev) => new Set(prev).add(userId));
+    try {
+      if (follow) await followUser(userId);
+      else await unfollowUser(userId);
+      // Both lists carry an `isFollowing` flag / membership that changed.
+      await Promise.all([refreshFollowing(), refreshFollowers()]);
+    } catch {
+      // Non-fatal: the button stays as it was so they can retry.
+    } finally {
+      setBusyIds((prev) => {
+        const next = new Set(prev);
+        next.delete(userId);
+        return next;
+      });
+    }
   }
 
-  // Search matches on username substring (case-insensitive); sort mode
-  // "online" groups online friends first (alphabetical within each group)
-  // so the people you can actually challenge right now surface without
-  // hunting through a long offline list, "alphabetical" ignores online
-  // status entirely for a straight a-z list.
-  const visibleFriends = useMemo(() => {
-    const q = friendSearch.trim().toLowerCase();
+  // Search matches on username substring (case-insensitive). Online players
+  // come first so the people you can actually challenge right now surface
+  // without hunting through a long offline list; the server order (most
+  // recent follow first) is kept within each group.
+  const activeList = tab === "following" ? following : followers;
+  const visibleList = useMemo(() => {
+    const q = listSearch.trim().toLowerCase();
     const filtered = q
-      ? friends.filter((f) => f.username.toLowerCase().includes(q))
-      : friends;
-    return [...filtered].sort((a) => {
-      return a.online ? -1 : 1;
-    });
-  }, [friends, friendSearch]);
+      ? activeList.filter((f) => f.username.toLowerCase().includes(q))
+      : activeList;
+    return [...filtered].sort((a, b) => Number(b.online) - Number(a.online));
+  }, [activeList, listSearch]);
 
-  const friendIds = useMemo(() => new Set(friends.map((f) => f.id)), [friends]);
+  const followingIds = useMemo(
+    () => new Set(following.map((f) => f.id)),
+    [following],
+  );
 
   /** Watch (if they're mid-game) or Challenge, shared by every list on this
-   *  page (search results, online players, friends), since anyone can
-   *  challenge anyone, friend or not. Time control/variant/wager (for a live
+   *  page (search results, online players, following, followers), since anyone can
+   *  challenge anyone, followed or not. Time control/variant/wager (for a live
    *  challenge) and the cage match option both live in the one overlay;
    *  those settings persist across players (same tcIndex/variant/wagerInput
    *  state) so re-challenging with the same setup is still one click. The
@@ -314,7 +307,7 @@ export function Players() {
     <Page
       playersPage
       title="Players"
-      description="Search for anyone, manage friends, and challenge any player."
+      description="Search for anyone, follow players, and challenge any player."
     >
       <div className="space-y-4">
         {status && (
@@ -346,9 +339,9 @@ export function Players() {
           )}
 
           <div>
-            {results.map((u) => {
-              const alreadyFriend = friendIds.has(u._id);
-              const requestSent = sentRequestIds.has(u._id);
+            {results.slice(0, shownResults).map((u) => {
+              const isFollowing = followingIds.has(u._id);
+              const busy = busyIds.has(u._id);
               return (
                 <PlayerRow
                   key={u._id}
@@ -358,53 +351,38 @@ export function Players() {
                   ratingCategory={u.ratingCategory}
                   onClick={() => navigate(`/profile/${u.username}`)}
                   actions={
-                    !alreadyFriend && (
+                    isFollowing ? (
+                      <Button variant="glass" size="sm" disabled>
+                        <Check className="h-4 w-4" />{" "}
+                        <span className="hidden sm:flex">Following</span>
+                      </Button>
+                    ) : (
                       <Button
                         variant="secondary"
                         size="sm"
-                        disabled={requestSent}
-                        onClick={() => handleAddFriend(u._id)}
+                        disabled={busy}
+                        onClick={() => toggleFollow(u._id, true)}
                       >
-                        {requestSent ? (
-                          <>
-                            <Check className="h-4 w-4" /> Sent
-                          </>
-                        ) : (
-                          <>
-                            <UserPlus className="h-4 w-4" />{" "}
-                            <span className="hidden sm:flex">Add friend</span>
-                          </>
-                        )}
+                        <UserPlus className="h-4 w-4" />{" "}
+                        <span className="hidden sm:flex">Follow</span>
                       </Button>
                     )
                   }
                 />
               );
             })}
+            {results.length > shownResults && (
+              <Button
+                variant="glass"
+                size="sm"
+                className="mt-2 w-full"
+                onClick={() => setShownResults((n) => n + SEARCH_PAGE_SIZE)}
+              >
+                Show more ({results.length - shownResults} more)
+              </Button>
+            )}
           </div>
         </Card>
-
-        {requests.length > 0 && (
-        <Card variant="solid">
-          <h1 className="mb-2 text-lg font-semibold text-base-content">
-            Friend requests
-          </h1>
-          {requests.map((r) => (
-            <PlayerRow
-              key={r.id}
-              username={r.from.username}
-              avatarGradient={r.from.avatarGradient}
-              onClick={() => navigate(`/profile/${r.from.username}`)}
-              actions={
-                <AcceptDeclineButtons
-                  onAccept={() => handleAccept(r.id)}
-                  onDecline={() => handleDecline(r.id)}
-                />
-              }
-            />
-          ))}
-        </Card>
-        )}
 
         {onlinePlayers.length > 0 && (
           <Card variant="solid" className="w-full">
@@ -427,50 +405,92 @@ export function Players() {
         )}
 
         <Card variant="solid" className="w-full">
-          <h1 className="mb-3 text-lg font-semibold text-base-content">
-            Friends{" "}
-            {friends.length > 0 && (
-              <span className="text-sm! opacity-50">
-                ({`${friends.length}`})
-              </span>
-            )}
-          </h1>
+          <Tabs
+            className="mb-3.5"
+            items={[
+              {
+                value: "following",
+                label: `Following${following.length > 0 ? ` (${following.length})` : ""}`,
+              },
+              {
+                value: "followers",
+                label: `Followers${followers.length > 0 ? ` (${followers.length})` : ""}`,
+              },
+            ]}
+            value={tab}
+            onChange={(v) => {
+              setTab(v as FollowTab);
+              setListSearch("");
+              // Presence can have moved while the other tab was hidden.
+              if (v === "following") void refreshFollowing();
+              else void refreshFollowers();
+            }}
+          />
 
           <div className="mb-3.5 flex gap-2 sm:items-end">
             <div className="flex-1">
               <Input
-                value={friendSearch}
-                onChange={(e) => setFriendSearch(e.target.value)}
-                placeholder="Find a friend by username…"
+                value={listSearch}
+                onChange={(e) => setListSearch(e.target.value)}
+                placeholder="Find a player by username…"
                 leadingIcon={<Search className="h-4 w-4" />}
               />
             </div>
           </div>
 
-          {friendsLoading ? (
+          {listsLoading ? (
             <CenteredSpinner className="py-6" />
           ) : (
             <>
-              {friends.length === 0 && (
+              {activeList.length === 0 && (
                 <p className="text-sm text-base-content/60">
-                  No friends yet. Search for players above and add some!
+                  {tab === "following"
+                    ? "You're not following anyone yet. Search for players above and follow some!"
+                    : "No followers yet."}
                 </p>
               )}
-              {friends.length > 0 && visibleFriends.length === 0 && (
+              {activeList.length > 0 && visibleList.length === 0 && (
                 <p className="text-sm text-base-content/60">
-                  No friends match "{friendSearch}".
+                  No players match "{listSearch}".
                 </p>
               )}
-              {visibleFriends.map((f) => (
+              {visibleList.map((p) => (
                 <PlayerRow
-                  key={f.id}
-                  username={f.username}
-                  avatarGradient={f.avatarGradient}
-                  online={f.online}
-                  rating={f.rating}
-                  ratingCategory={f.ratingCategory}
-                  onClick={() => navigate(`/profile/${f.username}`)}
-                  actions={renderPlayerAction(f, "friends")}
+                  key={p.id}
+                  username={p.username}
+                  avatarGradient={p.avatarGradient}
+                  online={p.online}
+                  rating={p.rating}
+                  ratingCategory={p.ratingCategory}
+                  onClick={() => navigate(`/profile/${p.username}`)}
+                  actions={
+                    <div className="flex items-center gap-1.5">
+                      {tab === "following" ? (
+                        <Button
+                          variant="glass"
+                          size="sm"
+                          disabled={busyIds.has(p.id)}
+                          onClick={() => toggleFollow(p.id, false)}
+                          aria-label={`Unfollow ${p.username}`}
+                        >
+                          <UserMinus className="h-4 w-4" />
+                        </Button>
+                      ) : (
+                        !p.isFollowing && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={busyIds.has(p.id)}
+                            onClick={() => toggleFollow(p.id, true)}
+                          >
+                            <UserPlus className="h-4 w-4" />{" "}
+                            <span className="hidden sm:flex">Follow back</span>
+                          </Button>
+                        )
+                      )}
+                      {renderPlayerAction(p, tab)}
+                    </div>
+                  }
                 />
               ))}
             </>

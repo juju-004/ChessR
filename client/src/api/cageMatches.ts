@@ -1,6 +1,6 @@
 import { apiFetch } from './http.js';
 
-export type CageVariant = 'standard' | 'chess960';
+export type CageVariant = 'standard' | 'chess960' | 'crazyhouse';
 export type CageWinnerMode = 'total_score' | 'most_categories' | 'first_to_n';
 export type CageWagerMode = 'none' | 'winner_takes_all' | 'per_leg' | 'split_even';
 export type LegCategory = 'bullet' | 'blitz' | 'rapid' | 'classical';
@@ -123,7 +123,9 @@ export function legCategory(leg: CageLegPlan): LegCategory {
 
 export function formatLegTimeControl(leg: CageLegPlan): string {
   const base = leg.baseMinutes === null ? 'Unlimited' : `${leg.baseMinutes}+${leg.incrementSeconds}`;
-  return leg.variant === 'chess960' ? `${base} · 960` : base;
+  if (leg.variant === 'chess960') return `${base} · 960`;
+  if (leg.variant === 'crazyhouse') return `${base} · Crazyhouse`;
+  return base;
 }
 
 export const CATEGORY_LABEL: Record<LegCategory, string> = {

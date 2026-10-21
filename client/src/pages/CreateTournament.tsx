@@ -79,7 +79,7 @@ export function CreateTournament() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [format, setFormat] = useState<TournamentFormat>("swiss");
-  const [variant, setVariant] = useState<"standard" | "chess960">("standard");
+  const [variant, setVariant] = useState<"standard" | "chess960" | "crazyhouse">("standard");
   const [presetIdx, setPresetIdx] = useState(3);
 
   // --- Players & schedule ---
@@ -280,11 +280,12 @@ export function CreateTournament() {
                   label="Variant"
                   value={variant}
                   onChange={(e) =>
-                    setVariant(e.target.value as "standard" | "chess960")
+                    setVariant(e.target.value as "standard" | "chess960" | "crazyhouse")
                   }
                 >
                   <option value="standard">Standard</option>
                   <option value="chess960">Chess960</option>
+                  <option value="crazyhouse">Crazyhouse</option>
                 </Select>
               </div>
             </section>

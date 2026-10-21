@@ -13,7 +13,8 @@ import {
   activateAllQuickPairingSegments,
 } from './services/quickPairing.service.js';
 import { broadcastLobbyCounts } from './sockets/quickPairingSocket.js';
-import { FriendRequest } from './models/FriendRequest.js';
+import { Follow } from './models/Follow.js';
+import { migrateFriendsToFollows } from './services/followMigration.service.js';
 import { Game } from './models/Game.js';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { runOncePerInterval } from './utils/distributedLock.js';
@@ -37,22 +38,18 @@ function timed<T>(name: string, fn: () => Promise<T>): Promise<T | void> {
 async function main() {
   await connectMongo();
 
-  // Self-heals a schema change: FriendRequest's unique index used to be a
-  // blanket {from, to} unique index; it's now partial, scoped to pending
-  // requests only, so a resolved request no longer permanently blocks a
-  // fresh one between the same two people (see FriendRequest.ts).
-  // Mongoose's autoIndex creates newly-defined indexes on boot but won't
-  // drop a conflicting old one on its own, a database that already had
-  // the old index just keeps silently enforcing it forever, defeating the
-  // fix, hence this. syncIndexes drops anything not in the current schema
-  // and creates what's missing; idempotent and cheap once already in
-  // sync, so it's fine to just run on every boot rather than needing a
-  // one-off migration script someone has to remember to run.
-  await FriendRequest.syncIndexes().catch((err) => {
-    console.error('FriendRequest.syncIndexes failed:', err);
+  // Builds the Follow indexes (unique pair + the "who follows me" lookup)
+  // on deploy instead of relying on autoIndex alone, then converts any
+  // leftover mutual friendships into follows. The conversion is a no-op once
+  // every user's old `friends` field is gone; delete it after one deploy.
+  await Follow.syncIndexes().catch((err) => {
+    console.error('Follow.syncIndexes failed:', err);
+  });
+  await migrateFriendsToFollows().catch((err) => {
+    console.error('friends -> follows migration failed:', err);
   });
 
-  // Same reasoning as FriendRequest above: guarantees the two indexes
+  // Same reasoning as above: guarantees the two indexes
   // getUserGames needs (see Game.ts) actually get built on deploy rather
   // than relying on autoIndex alone. On a games collection that's already
   // grown a fair amount, building these for the first time isn't

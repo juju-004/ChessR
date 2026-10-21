@@ -194,7 +194,9 @@ interface CageLegLike {
 function cageLegLabel(leg: CageLegLike): string {
   const tc =
     leg.baseMinutes === null ? "Unlimited" : `${leg.baseMinutes}+${leg.incrementSeconds}`;
-  return leg.variant === "chess960" ? `${tc} Chess960` : tc;
+  if (leg.variant === "chess960") return `${tc} Chess960`;
+  if (leg.variant === "crazyhouse") return `${tc} Crazyhouse`;
+  return tc;
 }
 
 // The games in play order, written the way a game card writes a time control

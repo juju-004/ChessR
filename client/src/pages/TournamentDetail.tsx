@@ -130,7 +130,7 @@ function EditTournamentForm({
   const [name, setName] = useState(tournament.name);
   const [description, setDescription] = useState(tournament.description ?? "");
   const [format, setFormat] = useState<TournamentFormat>(tournament.format);
-  const [variant, setVariant] = useState<"standard" | "chess960">(
+  const [variant, setVariant] = useState<"standard" | "chess960" | "crazyhouse">(
     tournament.variant,
   );
   const [presetIdx, setPresetIdx] = useState(() => {
@@ -303,11 +303,12 @@ function EditTournamentForm({
               label="Variant"
               value={variant}
               onChange={(e) =>
-                setVariant(e.target.value as "standard" | "chess960")
+                setVariant(e.target.value as "standard" | "chess960" | "crazyhouse")
               }
             >
               <option value="standard">Standard</option>
               <option value="chess960">Chess960</option>
+              <option value="crazyhouse">Crazyhouse</option>
             </Select>
           </div>
         </section>
@@ -1573,7 +1574,11 @@ export function TournamentDetail() {
       ? "Unlimited"
       : `${tournament.baseMinutes}+${tournament.incrementSeconds}`,
     speed,
-    tournament.variant === "chess960" ? "Chess960" : null,
+    tournament.variant === "chess960"
+      ? "Chess960"
+      : tournament.variant === "crazyhouse"
+        ? "Crazyhouse"
+        : null,
     FORMAT_LABEL[tournament.format],
   ]
     .filter(Boolean)

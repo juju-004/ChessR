@@ -18,7 +18,7 @@ export interface QuickPairingSegment {
   categoryLabel: string;
   baseMinutes: number;
   incrementSeconds: number;
-  variant: "standard" | "chess960";
+  variant: "standard" | "chess960" | "crazyhouse";
 }
 
 // The four lobbies David asked for. Order here is display order everywhere
@@ -56,6 +56,14 @@ export const QUICK_PAIRING_SEGMENTS: QuickPairingSegment[] = [
     baseMinutes: 2,
     incrementSeconds: 0,
     variant: "chess960",
+  },
+  {
+    id: "crazyhouse_3_0",
+    label: "3+0",
+    categoryLabel: "Crazyhouse",
+    baseMinutes: 3,
+    incrementSeconds: 0,
+    variant: "crazyhouse",
   },
 ];
 

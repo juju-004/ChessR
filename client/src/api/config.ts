@@ -8,7 +8,7 @@ export interface QuickPairingSegment {
   categoryLabel: string;
   baseMinutes: number;
   incrementSeconds: number;
-  variant: 'standard' | 'chess960';
+  variant: 'standard' | 'chess960' | 'crazyhouse';
 }
 
 export interface PlatformConfig {

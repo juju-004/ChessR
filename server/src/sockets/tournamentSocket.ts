@@ -42,7 +42,7 @@ const createSchema = z.object({
   name: z.string().trim().min(3).max(60),
   description: z.string().trim().max(1000).nullable().optional(),
   format: z.enum(['normal', 'swiss', 'round_robin', 'arena']),
-  variant: z.enum(['standard', 'chess960']).default('standard'),
+  variant: z.enum(['standard', 'chess960', 'crazyhouse']).default('standard'),
   baseMinutes: z.number().min(0.5).max(180).nullable(),
   incrementSeconds: z.number().min(0).max(60).default(0),
   // Deprecated and ignored (roster cap is fixed server-side), accepted so a
@@ -95,7 +95,7 @@ const editSchema = idSchema.extend({
   name: z.string().trim().min(3).max(60).optional(),
   description: z.string().trim().max(1000).nullable().optional(),
   format: z.enum(['normal', 'swiss', 'round_robin', 'arena']).optional(),
-  variant: z.enum(['standard', 'chess960']).optional(),
+  variant: z.enum(['standard', 'chess960', 'crazyhouse']).optional(),
   baseMinutes: z.number().min(0.5).max(180).nullable().optional(),
   incrementSeconds: z.number().min(0).max(60).optional(),
   maxPlayers: z.number().optional(), // deprecated, ignored

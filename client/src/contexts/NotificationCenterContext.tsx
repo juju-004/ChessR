@@ -11,27 +11,11 @@ import { useAuth } from "./AuthContext.js";
 import { useSocket } from "./SocketContext.js";
 import { useOnOwnGamePageRef } from "../hooks/useOnOwnGamePageRef.js";
 import {
-  listIncomingRequests,
-  respondToFriendRequest,
-  type IncomingRequest,
-} from "../api/friends.js";
-import {
   getNotifications,
   markAllNotificationsRead,
   type AppNotification,
   type NotificationType,
 } from "../api/notifications.js";
-
-interface FriendRequestItem {
-  kind: "friend_request";
-  id: string;
-  from: {
-    id: string;
-    username: string;
-    avatarGradient?: string | null;
-  };
-  seen: boolean;
-}
 
 interface ChallengeItem {
   kind: "challenge";
@@ -70,7 +54,6 @@ interface SystemNotificationItem {
 }
 
 export type NotificationItem =
-  | FriendRequestItem
   | ChallengeItem
   | CageInviteItem
   | SystemNotificationItem;
@@ -79,7 +62,6 @@ interface NotificationCenterValue {
   items: NotificationItem[];
   unreadCount: number;
   markAllSeen: () => void;
-  respondToFriendRequestItem: (id: string, accept: boolean) => void;
   respondToChallengeItem: (id: string, accept: boolean) => void;
   respondToCageInviteItem: (id: string, accept: boolean) => void;
   /** id omitted marks every system item seen locally. */
@@ -100,47 +82,22 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
   // of sync with the other.
   const onOwnGamePageRef = useOnOwnGamePageRef();
 
-  // Friend requests are the one kind of these three that's actually
-  // persisted (see FriendRequest model / listIncomingRequests), so they're
-  // the only ones seeded from the server on load, a request sent while
-  // this person was offline still shows up next time they open the app.
-  // Challenges and cage invites are Redis-backed with a short TTL by
-  // design (see challengeSocket.ts / cageMatchSocket.ts), there's nothing
-  // to backfill for those, they only ever enter this list live, the same
-  // way the existing toast notifications in GlobalListeners do.
+  // System notifications are the only persisted kind, so they're the only
+  // ones seeded from the server on load. Challenges and cage invites are
+  // Redis-backed with a short TTL by design (see challengeSocket.ts /
+  // cageMatchSocket.ts), there's nothing to backfill for those, they only
+  // ever enter this list live, the same way the existing toast
+  // notifications in GlobalListeners do.
   useEffect(() => {
     if (!isAuthed) {
       setItems([]);
       return;
     }
-    listIncomingRequests()
-      .then(({ requests }) => {
-        setItems((prev) => [
-          ...requests.map(
-            (r: IncomingRequest): FriendRequestItem => ({
-              kind: "friend_request",
-              id: r._id,
-              from: {
-                id: r.from._id,
-                username: r.from.username,
-                avatarGradient: r.from.avatarGradient,
-              },
-              seen: true,
-            }),
-          ),
-          ...prev,
-        ]);
-      })
-      .catch(() => {
-        /* Not critical, the Players page's own request list is still the
-           source of truth either way, this just backs the bell. */
-      });
 
-    // Unlike friend requests, system notifications are the actual source
-    // of truth here (there's no separate full-list page these merely
-    // mirror, /notifications reads from the same API), so this seeds
-    // whatever's unread plus a little recent read history, not just a
-    // pending queue.
+    // System notifications are the actual source of truth here (there's no
+    // separate full-list page these merely mirror, /notifications reads
+    // from the same API), so this seeds whatever's unread plus a little
+    // recent read history, not just a pending queue.
     getNotifications(1, 20)
       .then(({ notifications }) => {
         setItems((prev) => [
@@ -159,35 +116,12 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
         ]);
       })
       .catch(() => {
-        /* Best-effort, same posture as the friend-request seed above. */
+        /* Best-effort: the /notifications page is still the full list. */
       });
   }, [isAuthed]);
 
   useEffect(() => {
     if (!socket) return;
-
-    function onFriendRequestReceived(payload: {
-      requestId: string;
-      from: {
-        id: string;
-        username: string;
-        avatarGradient?: string | null;
-      };
-    }) {
-      setItems((prev) => [
-        {
-          kind: "friend_request",
-          id: payload.requestId,
-          from: {
-            id: payload.from.id,
-            username: payload.from.username,
-            avatarGradient: payload.from.avatarGradient,
-          },
-          seen: false,
-        },
-        ...prev,
-      ]);
-    }
 
     function onChallengeReceived(payload: {
       challengeId: string;
@@ -282,7 +216,6 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
       removeCageInvite(payload?.inviteId);
     }
 
-    socket.on("friend:request_received", onFriendRequestReceived);
     socket.on("challenge:received", onChallengeReceived);
     // Any of these three mean the challenge is no longer actionable,
     // whichever side caused it (including this person having just
@@ -303,7 +236,6 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
     socket.on("notification:new", onSystemNotification);
 
     return () => {
-      socket.off("friend:request_received", onFriendRequestReceived);
       socket.off("challenge:received", onChallengeReceived);
       socket.off("challenge:accepted", onChallengeResolved);
       socket.off("challenge:declined", onChallengeResolved);
@@ -326,13 +258,6 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
         markAllNotificationsRead().catch(() => {});
       }
       return prev.map((i) => (i.seen ? i : { ...i, seen: true }));
-    });
-  }, []);
-
-  const respondToFriendRequestItem = useCallback((id: string, accept: boolean) => {
-    setItems((prev) => prev.filter((i) => !(i.kind === "friend_request" && i.id === id)));
-    respondToFriendRequest(id, accept).catch(() => {
-      /* Best-effort, same as the equivalent flow on the Players page. */
     });
   }, []);
 
@@ -373,7 +298,6 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
       items,
       unreadCount,
       markAllSeen,
-      respondToFriendRequestItem,
       respondToChallengeItem,
       respondToCageInviteItem,
       markSystemItemSeenLocally,
@@ -382,7 +306,6 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
       items,
       unreadCount,
       markAllSeen,
-      respondToFriendRequestItem,
       respondToChallengeItem,
       respondToCageInviteItem,
       markSystemItemSeenLocally,

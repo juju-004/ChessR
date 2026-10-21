@@ -17,9 +17,10 @@
 
 // --- Tuning ------------------------------------------------------------------
 /** Paid when that day of the week is completed. Day 1 first. A full week pays
- *  exactly 200 R (= N1,000 at the N5-per-R rate): +6 R each day, with Day 7
- *  getting a slightly bigger finish so the week adds up to a round total. */
-export const DAY_REWARDS = [10, 16, 22, 28, 34, 40, 50];
+ *  exactly 200 R (= N1,000 at the N5-per-R rate): Days 1-5 climb by 4 R
+ *  (6, 10, 14, 18, 22 = 70 R), Day 6 pays 30 R and Day 7 pays 100 R, so the
+ *  big money goes to people who never skipped a day. */
+export const DAY_REWARDS = [6, 10, 14, 18, 22, 30, 100];
 /** Optional extra paid on top of Day 7's reward for finishing the whole week.
  *  0 = off (Day 7's reward already is the big prize). */
 export const WEEK_BONUS = 0;
@@ -51,7 +52,7 @@ export interface DailyEvent {
   // game_finished
   result?: 'win' | 'loss' | 'draw';
   wagerTokens?: number;
-  variant?: 'standard' | 'chess960';
+  variant?: 'standard' | 'chess960' | 'crazyhouse';
   category?: 'bullet' | 'blitz' | 'rapid';
   endReason?: string | null;
   // puzzle_race_finished
@@ -287,7 +288,7 @@ export const CATALOG: Record<string, ChallengeDef> = Object.fromEntries([
     link: '/tournaments',
     icon: 'trophy',
   }),
-  def({ id: 'friend_request', title: 'Send a friend request', type: 'friend_request_sent', target: 1, link: '/players', icon: 'users' }),
+  def({ id: 'friend_request', title: 'Follow a player', type: 'friend_request_sent', target: 1, link: '/players', icon: 'users' }),
   def({ id: 'challenge_send', title: 'Challenge a player to a game', type: 'challenge_sent', target: 1, link: '/players', icon: 'swords' }),
   def({ id: 'start_cage', title: 'Start a cage match', type: 'cage_match_started', target: 1, link: '/cage', icon: 'swords' }),
 ]);

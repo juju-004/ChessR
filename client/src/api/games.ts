@@ -6,9 +6,9 @@ export interface TimeControlChoice {
   incrementSeconds: number;
 }
 
-export type GameVariant = 'standard' | 'chess960';
+export type GameVariant = 'standard' | 'chess960' | 'crazyhouse';
 
-export interface ActiveFriendGame {
+export interface ActiveFollowingGame {
   _id: string;
   joinCode: string;
   white: { _id: string; username: string; avatarGradient?: string | null };
@@ -99,6 +99,6 @@ export function getGameScore(code: string) {
   return apiFetch<{ score: DailyScore }>(`/games/code/${encodeURIComponent(code)}/score`);
 }
 
-export function listFriendsActiveGames() {
-  return apiFetch<{ games: ActiveFriendGame[] }>('/games/active/friends');
+export function listFollowingActiveGames() {
+  return apiFetch<{ games: ActiveFollowingGame[] }>('/games/active/following');
 }

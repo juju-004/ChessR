@@ -1,4 +1,4 @@
-import { useRef, memo } from "react";
+import { useRef, useMemo, memo } from "react";
 import { motion } from "framer-motion";
 import { Ban } from "lucide-react";
 import { ChessBoard, BoardCoordinatesOutside } from "../ChessBoard.js";
@@ -7,6 +7,14 @@ import { PlayerPanelRow, type PanelData } from "../PlayerPanels.js";
 import { Button } from "../ui/index.js";
 import { springSnappy } from "../../lib/motion.js";
 import { useSquareSize } from "./useSquareSize.js";
+import { chessFen } from "../../chessUtils.js";
+import { parseZhFen, type ZhRole } from "../../crazyhouse.js";
+import {
+  PocketBar,
+  DropOverlay,
+  DragGhost,
+  useDropController,
+} from "./CrazyhousePockets.js";
 
 interface GameBoardAreaProps {
   opponentPanelData: PanelData;
@@ -32,6 +40,13 @@ interface GameBoardAreaProps {
   onCancelWaitingGame: () => void;
   promoPending: boolean;
   onPromotionPick: (piece: "q" | "r" | "b" | "n") => void;
+  /** Crazyhouse only: shows both pockets and lets the player drop pieces. */
+  variant?: "standard" | "chess960" | "crazyhouse";
+  /** The live (never historical) position, drops are made against this. */
+  liveFen?: string;
+  /** True only while the viewing player may drop right now. */
+  canDrop?: boolean;
+  onDrop?: (role: ZhRole, square: string) => void;
 }
 
 /** The board itself plus everything that visually anchors to it: the
@@ -69,9 +84,21 @@ export const GameBoardArea = memo(function GameBoardArea({
   onCancelWaitingGame,
   promoPending,
   onPromotionPick,
+  variant,
+  liveFen,
+  canDrop = false,
+  onDrop,
 }: GameBoardAreaProps) {
   const squareWrapperRef = useRef<HTMLDivElement | null>(null);
   const squareSize = useSquareSize(squareWrapperRef);
+  const boardBoxRef = useRef<HTMLDivElement | null>(null);
+  const isZh = variant === "crazyhouse";
+  // Pockets are read off the position on screen (so scrubbing back through
+  // the move list shows the pockets as they were), drops use the live one.
+  const pockets = useMemo(
+    () => (isZh ? parseZhFen(displayFen).pockets : null),
+    [isZh, displayFen],
+  );
 
   // Flipping the board moves my pieces to the top, the panels flanking
   // it should move with them, so the panel nearest my rank on screen
@@ -85,6 +112,35 @@ export const GameBoardArea = memo(function GameBoardArea({
       : "black"
     : (myColor ?? "white");
 
+  const topPocketColor: "white" | "black" =
+    orientation === "white" ? "black" : "white";
+  const bottomPocketColor = orientation;
+  const drop = useDropController({
+    boardRef: boardBoxRef,
+    orientation,
+    liveFen: liveFen ?? displayFen,
+    canDrop: isZh && canDrop,
+    onDrop: onDrop ?? (() => undefined),
+  });
+  const pocketRow = (color: "white" | "black") =>
+    pockets ? (
+      <div
+        className="mx-auto w-[95%] md:w-full"
+        style={{
+          maxWidth: squareSize > 0 ? squareSize : undefined,
+        }}
+      >
+        <PocketBar
+          color={color}
+          pocket={color === "white" ? pockets.w : pockets.b}
+          pieceTheme={pieceTheme}
+          interactive={canDrop && color === myColor}
+          selectedRole={drop.selectedRole}
+          onPiecePointerDown={drop.handlePocketPointerDown}
+        />
+      </div>
+    ) : null;
+
   return (
     <div className="game-area-board mt-4 md:mt-0 relative flex flex-col flex-1 items-center justify-center">
       <div className=" md:hidden w-[95%]">
@@ -97,11 +153,13 @@ export const GameBoardArea = memo(function GameBoardArea({
        *  which the board below is then sized to with plain inline
        *  width/height. No CSS unit trickery, no container-query support
        *  to depend on, just a measured number in, a pixel size out. */}
+      {isZh && <div className="mt-1.5">{pocketRow(topPocketColor)}</div>}
       <div
         ref={squareWrapperRef}
         className="relative flex w-full min-h-0 flex-1 items-center justify-center"
       >
         <div
+          ref={boardBoxRef}
           className="relative"
           style={{
             width: squareSize || undefined,
@@ -112,7 +170,7 @@ export const GameBoardArea = memo(function GameBoardArea({
             className={`relative rounded-md lg:rounded-2xl flex items-center shadow- overflow-hidden board-theme-${boardTheme} piece-theme-${pieceTheme} justify-center h-full w-full`}
           >
             <ChessBoard
-              fen={displayFen}
+              fen={chessFen(displayFen)}
               orientation={orientation}
               viewOnly={viewOnly}
               turnColor={turnColor}
@@ -147,6 +205,14 @@ export const GameBoardArea = memo(function GameBoardArea({
               </div>
             )}
             {promoPending && <PromotionPicker onPick={onPromotionPick} />}
+            {isZh && (
+              <DropOverlay
+                orientation={orientation}
+                legalSquares={drop.legalSquares}
+                captureTaps={drop.selectedRole !== null && drop.drag === null}
+                onPointerDown={drop.handleBoardPointerDown}
+              />
+            )}
           </div>
           {/* Deliberately a sibling of the overflow-hidden themed div above,
            *  not a child of it — labels positioned outside the board's own
@@ -160,9 +226,20 @@ export const GameBoardArea = memo(function GameBoardArea({
           )}
         </div>
       </div>
+      {isZh && <div className="mb-1.5">{pocketRow(bottomPocketColor)}</div>}
       <div className=" md:hidden w-[95%]">
         <PlayerPanelRow {...bottomPanelData} />
       </div>
+      {isZh && drop.drag && myColor && (
+        <DragGhost
+          role={drop.drag.role}
+          color={myColor}
+          x={drop.drag.x}
+          y={drop.drag.y}
+          size={Math.max(40, (squareSize / 8) * 1.2)}
+          pieceTheme={pieceTheme}
+        />
+      )}
     </div>
   );
 });

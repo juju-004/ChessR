@@ -432,7 +432,7 @@ export interface CreateTournamentInput {
   // Optional, freeform. See the ITournament doc comment server-side.
   description?: string | null;
   format: TournamentFormat;
-  variant: "standard" | "chess960";
+  variant: "standard" | "chess960" | "crazyhouse";
   baseMinutes: number | null;
   incrementSeconds: number;
   // Ignored: the roster cap is always MAX_TOURNAMENT_PLAYERS now. Kept
@@ -1041,7 +1041,7 @@ export interface UpdateTournamentInput {
   name?: string;
   description?: string | null;
   format?: TournamentFormat;
-  variant?: "standard" | "chess960";
+  variant?: "standard" | "chess960" | "crazyhouse";
   baseMinutes?: number | null;
   incrementSeconds?: number;
   // Ignored, see CreateTournamentInput.maxPlayers.

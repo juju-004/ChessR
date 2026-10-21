@@ -145,7 +145,12 @@ export function QuickPairing() {
                 </p>
                 <p className="mt-1 text-sm text-base-content/60">
                   Looking for a {searching.label}
-                  {searching.variant === "chess960" ? " Chess960" : ""} opponent
+                  {searching.variant === "chess960"
+                    ? " Chess960"
+                    : searching.variant === "crazyhouse"
+                      ? " Crazyhouse"
+                      : ""}{" "}
+                  opponent
                   {user?.ratings && (
                     <>
                       {" "}
@@ -196,6 +201,9 @@ export function QuickPairing() {
                         {seg.variant === "chess960" && (
                           <Badge variant="secondary">960</Badge>
                         )}
+                        {seg.variant === "crazyhouse" && (
+                          <Badge variant="secondary">Drops</Badge>
+                        )}
                       </div>
                       <div>
                         <p className="text-2xl font-bold tabular-nums text-base-content">
@@ -204,7 +212,9 @@ export function QuickPairing() {
                         <p className="text-xs text-base-content/50">
                           {seg.variant === "chess960"
                             ? "Chess960"
-                            : seg.categoryLabel}
+                            : seg.variant === "crazyhouse"
+                              ? "Crazyhouse"
+                              : seg.categoryLabel}
                         </p>
                       </div>
                       <p className="flex items-center gap-1 text-xs text-base-content/60">

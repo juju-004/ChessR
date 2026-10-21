@@ -1,4 +1,15 @@
 import { Chess } from 'chess.js';
+import { parseZhFen } from './crazyhouse.js';
+
+/**
+ * The FEN chess.js and chessground can understand. A Crazyhouse position is
+ * stored as an extended FEN (`...[Qp]` pockets, `~` on promoted pieces, see
+ * crazyhouse.ts); everything else passes through untouched, so this is safe
+ * to call on any FEN.
+ */
+export function chessFen(fen: string): string {
+  return fen.includes('[') || fen.includes('~') ? parseZhFen(fen).clean : fen;
+}
 
 export function computeDests(chess: Chess): Map<string, string[]> {
   const dests = new Map<string, string[]>();
@@ -385,7 +396,7 @@ export function addChess960CastlingDests(
 export function replayMove(
   chess: Chess,
   san: string,
-  variant: 'standard' | 'chess960' | undefined,
+  variant: 'standard' | 'chess960' | 'crazyhouse' | undefined,
   initialFen: string,
 ): void {
   if (variant === 'chess960' && (san === 'O-O' || san === 'O-O-O')) {
@@ -603,7 +614,7 @@ export interface PgnGameInfo {
   white: string;
   black: string;
   result: "white" | "black" | "draw" | null;
-  variant: "standard" | "chess960";
+  variant: "standard" | "chess960" | "crazyhouse";
   initialFen: string;
   moves: PgnMoveEntry[];
   /** Game creation date, ISO string or Date. Defaults to now if omitted. */
@@ -658,6 +669,11 @@ export function buildPgn(info: PgnGameInfo): string {
       "TimeControl",
       baseSeconds === null ? "-" : `${baseSeconds}+${incrementSeconds}`,
     ]);
+  }
+  if (info.variant === "crazyhouse") {
+    // Standard start position, so Variant alone is enough. Drops are
+    // written the usual way (e.g. N@f3), pawn drops as P@e4.
+    headers.push(["Variant", "Crazyhouse"]);
   }
   if (info.variant === "chess960") {
     // Standard PGN tags for a non-default starting position — every PGN

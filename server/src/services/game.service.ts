@@ -1,6 +1,6 @@
 import { generateShortCode } from "../utils/shortCode.js";
 import { Game, type IGame } from "../models/Game.js";
-import { User } from "../models/User.js";
+import { Follow } from "../models/Follow.js";
 import { ApiError } from "../utils/ApiError.js";
 import {
   claimGameEnd,
@@ -22,6 +22,7 @@ import {
 import { getIo } from "../sockets/io.js";
 import { redis } from "../config/redis.js";
 import { generateChess960Fen } from "./chess960.service.js";
+import { ZH_START_FEN } from "./crazyhouse.js";
 import { debitWagerStake, creditWagerReturn, computeRake, recordRake } from "./wallet.service.js";
 import { expireChat } from "./chat.service.js";
 import { applyRatingForGame } from "./rating.service.js";
@@ -171,7 +172,7 @@ function toLiveTimeControl(input: TimeControlInput): LiveTimeControl {
 export async function createOpenGame(
   hostUserId: string,
   timeControl: TimeControlInput,
-  variant: "standard" | "chess960" = "standard",
+  variant: "standard" | "chess960" | "crazyhouse" = "standard",
   isPrivate = false,
   wagerTokens = 0,
 ): Promise<IGame> {
@@ -179,7 +180,11 @@ export async function createOpenGame(
 
   const joinCode = await uniqueJoinCode();
   const startingFen =
-    variant === "chess960" ? generateChess960Fen() : STARTING_FEN;
+    variant === "chess960"
+      ? generateChess960Fen()
+      : variant === "crazyhouse"
+        ? ZH_START_FEN
+        : STARTING_FEN;
 
   // Host's stake is locked up front, the moment the table is opened, not at
   // join time, so a wagered game can never be sitting open with a stake the
@@ -327,14 +332,18 @@ export async function createDirectGame(
   blackId: string,
   timeControl: TimeControlInput,
   challengeId?: string,
-  variant: "standard" | "chess960" = "standard",
+  variant: "standard" | "chess960" | "crazyhouse" = "standard",
   wagerTokens = 0,
   cageLeg?: { cageMatchId: string; legIndex: number },
   tournamentPairing?: { tournamentId: string; roundIndex: number; pairingIndex: number },
 ): Promise<IGame> {
   const joinCode = await uniqueJoinCode();
   const startingFen =
-    variant === "chess960" ? generateChess960Fen() : STARTING_FEN;
+    variant === "chess960"
+      ? generateChess960Fen()
+      : variant === "crazyhouse"
+        ? ZH_START_FEN
+        : STARTING_FEN;
   const game = await Game.create({
     joinCode,
     variant,
@@ -415,16 +424,17 @@ export async function listMyActiveGames(userId: string) {
     .lean();
 }
 
-export async function listFriendsActiveGames(userId: string) {
-  const user = await User.findById(userId).select("friends").lean();
-  const friendIds = user?.friends ?? [];
-  if (friendIds.length === 0) return [];
+/** Live games of the players this user follows. */
+export async function listFollowingActiveGames(userId: string) {
+  const rows = await Follow.find({ follower: userId }).select("following").limit(500).lean();
+  const followingIds = rows.map((r) => r.following);
+  if (followingIds.length === 0) return [];
 
   return Game.find({
     status: "active",
-    $or: [{ white: { $in: friendIds } }, { black: { $in: friendIds } }],
-    // A game the viewer is themself playing in isn't "a friend currently
-    // playing" from their own point of view, it's just their own game, and
+    $or: [{ white: { $in: followingIds } }, { black: { $in: followingIds } }],
+    // A game the viewer is themself playing in isn't "someone you follow
+    // currently playing" from their own point of view, it's just their own game, and
     // showing it here (with a "Watch" link back into their own live game)
     // was the actual bug being fixed. Exclude it regardless of which side
     // of the board the viewer is on.
@@ -438,8 +448,8 @@ export async function listFriendsActiveGames(userId: string) {
     .lean();
 }
 
-/** Used by the Friends list and Profile page to swap a "Challenge"/"Add
- *  friend" button for a "Watch" link when that person is mid-game. Returns
+/** Used by the Following list and Profile page to swap a "Challenge"/"Follow"
+ *  button for a "Watch" link when that person is mid-game. Returns
  *  just the join code (cheap projection) or null if they're not playing.
  *  `viewerId`, when given, excludes a game the viewer is themselves also a
  *  participant in — otherwise looking at your own live opponent's profile
@@ -458,7 +468,7 @@ export async function getActiveGameCodeForUser(userId: string, viewerId?: string
 }
 
 /** Batch form of getActiveGameCodeForUser: ONE query for a whole list of
- *  users (the friends list used to run one query per friend). Same rule as
+ *  users (the following list used to run one query per player). Same rule as
  *  the single version: a game the viewer is also in is excluded. Returns
  *  userId -> joinCode for whoever is mid-game. */
 export async function getActiveGameCodesForUsers(

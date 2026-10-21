@@ -164,7 +164,7 @@ export interface ITournament extends Document {
   // players and pairings already reference.
   organizerOnly: boolean;
   format: TournamentFormat;
-  variant: "standard" | "chess960";
+  variant: "standard" | "chess960" | "crazyhouse";
   baseMinutes: number | null;
   incrementSeconds: number;
   status: TournamentStatus;
@@ -390,7 +390,7 @@ const tournamentSchema = new Schema<ITournament>(
     },
     variant: {
       type: String,
-      enum: ["standard", "chess960"],
+      enum: ["standard", "chess960", "crazyhouse"],
       default: "standard",
     },
     baseMinutes: { type: Number, default: null },

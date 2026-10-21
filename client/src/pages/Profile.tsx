@@ -5,7 +5,6 @@ import {
   Eye,
   UserPlus,
   UserMinus,
-  Check,
   Pencil,
   Scale,
   Flag,
@@ -17,20 +16,18 @@ import {
   type UserProfile,
   type UserGameHistoryItem,
 } from "../api/users.js";
-import { sendFriendRequest, removeFriend } from "../api/friends.js";
+import { followUser, unfollowUser } from "../api/follows.js";
 import { updateAuthUser } from "../api/authStore.js";
 import { ApiRequestError } from "../api/http.js";
 import { PageError } from "../components/PageError.js";
 import { RATING_CATEGORIES, RATING_CATEGORY_META } from "../timeControls.js";
 import { useSocket } from "../contexts/SocketContext.js";
-import { useConfirm } from "../contexts/ConfirmContext.js";
 import { useNotify } from "../contexts/NotificationContext.js";
 import {
   Page,
   Card,
   Avatar,
   Button,
-  Badge,
   Spinner,
   CategoryIcon,
   ResponsiveOverlay,
@@ -50,14 +47,13 @@ const GAMES_PER_PAGE = 15;
 export function Profile() {
   const { username } = useParams<{ username: string }>();
   const socket = useSocket();
-  const confirmDialog = useConfirm();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [games, setGames] = useState<UserGameHistoryItem[]>([]);
   const [page, setPage] = useState(1);
   const [totalGames, setTotalGames] = useState(0);
   const [gamesLoading, setGamesLoading] = useState(false);
   const [error, setError] = useState("");
-  const [friendRequestSent, setFriendRequestSent] = useState(false);
+  const [followBusy, setFollowBusy] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const { notify } = useNotify();
@@ -80,44 +76,26 @@ export function Profile() {
       );
   }, [username]);
 
-  // Lets a still-pending "Request sent" state on this profile flip to
-  // "Friends" live if the person it's for accepts while you're sitting
-  // here, same fix as the friends list on the Players page, just for the
-  // one-profile case, "by" on this event is whoever just resolved the
-  // request, i.e. the person this profile belongs to.
+  // Keeps the online dot live while this profile is open for a player you
+  // follow, same way the Players page does. follow:presence is only sent to
+  // a player's followers, so a stranger's dot stays a snapshot from
+  // whenever the page loaded. follow:new keeps the follower count (and the
+  // "follows you" label) current if this profile's owner follows you.
   useEffect(() => {
     if (!socket || !profile) return;
-    function onRequestResolved(payload: { accepted: boolean; by: string }) {
-      if (!payload.accepted || payload.by !== profile!.id) return;
-      setFriendRequestSent(false);
-      setProfile((prev) => (prev ? { ...prev, isFriend: true } : prev));
-    }
-    // The other direction: this profile's owner just unfriended you (from
-    // their own friends list, or their own view of your profile) while
-    // you happened to be looking at theirs, flip the Unfriend button back
-    // to "Add friend" live instead of leaving a stale "Unfriend" button
-    // that would 204-and-do-nothing (or worse, silently re-friend them)
-    // the next time it's clicked.
-    function onFriendRemoved(payload: { by: string }) {
-      if (payload.by !== profile!.id) return;
-      setProfile((prev) => (prev ? { ...prev, isFriend: false } : prev));
-    }
-    // Keeps the online dot live while this friend's profile is open, same
-    // way the friends list does (Players.tsx). Only ever fires for actual
-    // friends — friend:presence is only broadcast to a user's friends
-    // server-side (see notifyFriends in presenceSocket.ts) — so a
-    // stranger's dot stays a snapshot from whenever the page loaded.
     function onPresence(payload: { userId: string; online: boolean }) {
       if (payload.userId !== profile!.id) return;
       setProfile((prev) => (prev ? { ...prev, online: payload.online } : prev));
     }
-    socket.on("friend:request_resolved", onRequestResolved);
-    socket.on("friend:removed", onFriendRemoved);
-    socket.on("friend:presence", onPresence);
+    function onFollowed(payload: { by: string }) {
+      if (payload.by !== profile!.id) return;
+      setProfile((prev) => (prev ? { ...prev, followsYou: true } : prev));
+    }
+    socket.on("follow:presence", onPresence);
+    socket.on("follow:new", onFollowed);
     return () => {
-      socket.off("friend:request_resolved", onRequestResolved);
-      socket.off("friend:removed", onFriendRemoved);
-      socket.off("friend:presence", onPresence);
+      socket.off("follow:presence", onPresence);
+      socket.off("follow:new", onFollowed);
     };
   }, [socket, profile?.id]);
 
@@ -179,27 +157,42 @@ export function Profile() {
     );
   }
 
-  async function handleAddFriend() {
-    if (!profile) return;
+  async function handleFollow() {
+    if (!profile || followBusy) return;
+    setFollowBusy(true);
     try {
-      await sendFriendRequest(profile.id);
-      setFriendRequestSent(true);
+      await followUser(profile.id);
+      setProfile((prev) =>
+        prev
+          ? { ...prev, isFollowing: true, followerCount: prev.followerCount + 1 }
+          : prev,
+      );
     } catch {
       // Non-fatal, keep the button visible so they can retry.
+    } finally {
+      setFollowBusy(false);
     }
   }
 
-  async function handleUnfriend() {
-    if (!profile) return;
-    const ok = await confirmDialog({
-      title: `Unfriend ${profile.username}?`,
-      description: "You can always send another friend request later.",
-      variant: "danger",
-      confirmLabel: "Unfriend",
-    });
-    if (!ok) return;
-    await removeFriend(profile.id);
-    setProfile((prev) => (prev ? { ...prev, isFriend: false } : prev));
+  async function handleUnfollow() {
+    if (!profile || followBusy) return;
+    setFollowBusy(true);
+    try {
+      await unfollowUser(profile.id);
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              isFollowing: false,
+              followerCount: Math.max(0, prev.followerCount - 1),
+            }
+          : prev,
+      );
+    } catch {
+      // Non-fatal, the button stays as "Following" so they can retry.
+    } finally {
+      setFollowBusy(false);
+    }
   }
 
   function handleChallenge() {
@@ -265,6 +258,22 @@ export function Profile() {
                     <OrgBadge name={profile.organization.name} />
                   </div>
                 )}
+                <p className="mt-1 text-sm text-base-content/70">
+                  <span className="font-semibold text-base-content">
+                    {profile.followerCount}
+                  </span>{" "}
+                  {profile.followerCount === 1 ? "follower" : "followers"}
+                  {" · "}
+                  <span className="font-semibold text-base-content">
+                    {profile.followingCount}
+                  </span>{" "}
+                  following
+                  {profile.followsYou && !profile.isSelf && (
+                    <span className="ml-2 rounded bg-base-200 px-1.5 py-0.5 text-xs text-base-content/60">
+                      Follows you
+                    </span>
+                  )}
+                </p>
                 <p className="mt-1 text-sm text-base-content/50">
                   Member since{" "}
                   {new Date(profile.memberSince).toLocaleDateString()}
@@ -278,36 +287,32 @@ export function Profile() {
 
             {!profile.isSelf && (
               // Standard mobile profile-actions row: one prominent
-              // relationship action (Add friend / Unfriend / pending state)
+              // relationship action (Follow / Unfollow)
               // takes the lead, everything else collapses to same-size
               // icon-only buttons alongside it — Watch and Challenge when
               // relevant, and a "more" overflow menu for the one
               // infrequent/meta action (Report), rather than every action
               // competing for attention as its own labeled button.
               <div className="flex items-center gap-2">
-                {profile.isFriend ? (
+                {profile.isFollowing ? (
                   <Button
                     variant="glass"
-                    className=""
-                    onClick={handleUnfriend}
-                    aria-label={`Unfriend ${profile.username}`}
+                    className="flex-1"
+                    disabled={followBusy}
+                    onClick={handleUnfollow}
+                    aria-label={`Unfollow ${profile.username}`}
                   >
-                    <UserMinus className="h-4 w-4" /> Unfriend
+                    <UserMinus className="h-4 w-4" /> Unfollow
                   </Button>
-                ) : friendRequestSent ? (
-                  <Badge
-                    variant="success"
-                    className="h-10 flex-1 justify-center py-2! text-sm!"
-                  >
-                    <Check className="h-3.5 w-3.5" /> Request sent
-                  </Badge>
                 ) : (
                   <Button
                     className="flex-1"
-                    onClick={handleAddFriend}
-                    aria-label={`Add ${profile.username} as a friend`}
+                    disabled={followBusy}
+                    onClick={handleFollow}
+                    aria-label={`Follow ${profile.username}`}
                   >
-                    <UserPlus className="h-4 w-4" /> Add friend
+                    <UserPlus className="h-4 w-4" />{" "}
+                    {profile.followsYou ? "Follow back" : "Follow"}
                   </Button>
                 )}
 
@@ -322,7 +327,7 @@ export function Profile() {
                     </Button>
                   </Link>
                 )}
-                {/* Anyone can challenge anyone, friend or not (the server
+                {/* Anyone can challenge anyone, followed or not (the server
                     allows it, see challenge:send). Being in a game right
                     now doesn't hide it, see handleChallenge for that case. */}
                 <ResponsiveOverlay

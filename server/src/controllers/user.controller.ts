@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { Types } from 'mongoose';
 import { User } from '../models/User.js';
 import { Game } from '../models/Game.js';
+import { Follow } from '../models/Follow.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { getActiveGameCodeForUser, getActiveGameCodesForUsers } from '../services/game.service.js';
@@ -20,6 +21,21 @@ const searchSchema = z.object({
 const VALID_AVATAR_GRADIENTS = [
   'brand', 'sunset', 'ocean', 'forest', 'berry', 'fire', 'midnight', 'gold', 'rose', 'ice',
 ] as const;
+// Mirrors client/src/lib/avatarIcons.tsx. The avatar's look is one string,
+// "<gradient>" or "<gradient>+<icon>" (e.g. "ocean+water"), stored in the
+// existing avatarGradient field so everything that already carries it shows
+// the icon too.
+const VALID_AVATAR_ICONS = ['air', 'water', 'earth', 'fire'] as const;
+
+const avatarStyleSchema = z.string().refine((v) => {
+  const parts = v.split('+');
+  if (parts.length > 2) return false;
+  const [gradient, icon] = parts;
+  return (
+    (VALID_AVATAR_GRADIENTS as readonly string[]).includes(gradient) &&
+    (icon === undefined || (VALID_AVATAR_ICONS as readonly string[]).includes(icon))
+  );
+}, 'Invalid avatar style');
 
 const usernameSchema = z
   .string()
@@ -29,7 +45,7 @@ const usernameSchema = z
   .regex(/^[a-zA-Z0-9_]+$/, 'Username may only contain letters, numbers, underscores');
 
 const updateProfileSchema = z.object({
-  avatarGradient: z.enum(VALID_AVATAR_GRADIENTS).optional(),
+  avatarGradient: avatarStyleSchema.optional(),
   bio: z.string().trim().max(160).optional(),
   username: usernameSchema.optional(),
   acceptChallenges: z.boolean().optional(),
@@ -106,7 +122,7 @@ export const searchUsers = asyncHandler(async (req: AuthedRequest, res) => {
 const ONLINE_PLAYERS_LIMIT = 5;
 
 /** The top few online players by rating (never the caller), for the Players
- *  page's "Online players" card. Same shape as a friends-list entry so the
+ *  page's "Online players" card. Same shape as a following-list entry so the
  *  client can render both with the same row. */
 export const listOnlinePlayers = asyncHandler(async (req: AuthedRequest, res) => {
   const viewerId = req.user!.id;
@@ -144,13 +160,24 @@ export const listOnlinePlayers = asyncHandler(async (req: AuthedRequest, res) =>
 export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
   const { username } = req.params;
   const user = await User.findOne({ usernameLower: username.toLowerCase() })
-    .select('username avatarUrl avatarGradient bio friends createdAt rating ratingCategory ratings')
+    .select('username avatarUrl avatarGradient bio createdAt rating ratingCategory ratings')
     .lean();
 
   if (!user) throw ApiError.notFound('User not found');
 
-  const isFriend = req.user ? user.friends.some((f) => f.toString() === req.user!.id) : false;
   const isSelf = req.user?.id === user._id.toString();
+
+  // Follow state + counts for the profile header: whether the viewer follows
+  // this player, whether this player follows the viewer, and both totals.
+  const viewerId = req.user?.id;
+  const [isFollowingRow, followsYouRow, followerCount, followingCount] = await Promise.all([
+    viewerId && !isSelf ? Follow.exists({ follower: viewerId, following: user._id }) : null,
+    viewerId && !isSelf ? Follow.exists({ follower: user._id, following: viewerId }) : null,
+    Follow.countDocuments({ following: user._id }),
+    Follow.countDocuments({ follower: user._id }),
+  ]);
+  const isFollowing = !!isFollowingRow;
+  const followsYou = !!followsYouRow;
 
   // ONE aggregate for the record AND the head-to-head (this used to be 3
   // countDocuments, or 6 when viewing someone else's profile). $match picks
@@ -213,9 +240,9 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
   // Only worth checking once we know it isn't the viewer's own profile, 
   // there's no "watch yourself" button to show either way.
   const activeGameCode = isSelf ? null : await getActiveGameCodeForUser(user._id.toString(), req.user?.id);
-  // Same online/offline dot the friends list shows (Players.tsx), just
+  // Same online/offline dot the following list shows (Players.tsx), just
   // computed here too since this is a different fetch (this page's own
-  // profile lookup, not the friends list), see isUserOnline for what
+  // profile lookup, not the following list), see isUserOnline for what
   // "online" actually means (has at least one live socket connected).
   const online = isSelf ? true : await isUserOnline(user._id.toString());
 
@@ -245,7 +272,10 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
     // All three ladders (bullet / blitz / rapid) for the profile page.
     ratings: resolveRatings(user),
     stats: { wins, losses, draws, gamesPlayed: wins + losses + draws },
-    isFriend,
+    isFollowing,
+    followsYou,
+    followerCount,
+    followingCount,
     isSelf,
     activeGameCode,
     online,

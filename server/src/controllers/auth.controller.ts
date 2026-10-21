@@ -165,7 +165,7 @@ function sendWelcomeNotification(userId: string): void {
     recipientId: userId,
     type: "welcome",
     title: "Welcome to Chessr",
-    body: "Chessr is multiplayer chess with cage matches, tournaments, and real R-token wagers on the line. Play rated games, challenge friends directly, or enter a tournament. See the About page for a full tour of what you can do here, and the Terms page for the rules around wagers, withdrawals, and fair play before you jump in.",
+    body: "Chessr is multiplayer chess with cage matches, tournaments, and real R-token wagers on the line. Play rated games, challenge players directly, or enter a tournament. See the About page for a full tour of what you can do here, and the Terms page for the rules around wagers, withdrawals, and fair play before you jump in.",
     link: "/about",
   }).catch((err) => console.error("Failed to send welcome notification:", err));
 }
@@ -335,7 +335,6 @@ export const me = asyncHandler(async (req: AuthedRequest, res) => {
     emailVerified: user.emailVerified,
     acceptChallenges: user.acceptChallenges,
     tokenBalance: user.tokenBalance,
-    friendCount: user.friends.length,
     // See userFields()'s identical treatment above: present only while
     // still active, so the client only ever sees a live countdown target.
     suspendedUntil:

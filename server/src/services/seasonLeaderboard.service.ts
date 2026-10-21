@@ -22,7 +22,7 @@ import { createNotification } from './notification.service.js';
 
 export const SEASON_PRIZES = [100, 50, 20, 10, 10] as const;
 const DAY_MS = 86_400_000;
-const TOP_N = 50;
+const TOP_N = 20;
 const CACHE_MS = 30_000;
 
 const epochMs = () => new Date(env.SEASON_EPOCH).getTime();

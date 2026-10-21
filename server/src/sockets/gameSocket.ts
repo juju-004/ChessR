@@ -93,9 +93,14 @@ const joinSchema = z.object({ gameId: z.string().refine(mongoose.isValidObjectId
 const leaveSchema = joinSchema;
 const moveSchema = z.object({
   gameId: z.string().refine(mongoose.isValidObjectId),
-  from: z.string().length(2),
+  // `from` is absent for a Crazyhouse drop, which instead names the role
+  // being dropped from the mover's pocket.
+  from: z.string().length(2).optional(),
   to: z.string().length(2),
   promotion: z.enum(['q', 'r', 'b', 'n']).optional(),
+  drop: z.enum(['p', 'n', 'b', 'r', 'q']).optional(),
+}).refine((m) => (m.drop ? m.from === undefined : m.from !== undefined), {
+  message: 'A move needs either a from square or a drop role',
 });
 const gameIdSchema = z.object({ gameId: z.string().refine(mongoose.isValidObjectId) });
 const claimSchema = z.object({
@@ -717,12 +722,12 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       const parsed = moveSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid move payload');
       if (isMoveRateLimited(socket.id)) return emitError(socket, 'Please slow down');
-      const { gameId, from, to, promotion } = parsed.data;
+      const { gameId, from, to, promotion, drop } = parsed.data;
 
       try {
         const lagCompensationMs = getLagCompensationMs(socket.id);
         const moveTimestampMs = Date.now();
-        const result = await applyMove(gameId, userId, { from, to, promotion }, lagCompensationMs, moveTimestampMs);
+        const result = await applyMove(gameId, userId, { from, to, promotion, drop }, lagCompensationMs, moveTimestampMs);
 
         // The move was already stored (in Redis, atomically with the new
         // position) by applyMove. Nothing is written to Mongo per move; the
@@ -733,6 +738,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           from: result.from,
           to: result.to,
           promotion: result.promotion,
+          drop: result.drop,
           fen: result.fenAfter,
           moveNumber: result.moveNumber,
           whiteRemainingMs: result.whiteRemainingMs,

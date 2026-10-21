@@ -441,7 +441,10 @@ function ClockBadge({
         // as a likely contributor to move lag.
         size === "sm"
           ? "rounded-md px-1.5 py-1 font-mono text-xs font-bold tabular-nums"
-          : "shrink-0 rounded-lg px-2.5 py-1 text-right font-mono text-sm font-bold tabular-nums",
+          : // A little bigger on phones, much bigger from md up where the
+            // right-hand panel has the room (the row grows to match, see
+            // PlayerPanelRow).
+            "shrink-0 rounded-lg px-2.5 py-1 text-right font-mono text-base font-bold tabular-nums md:px-3 md:text-2xl lg:px-4 lg:py-1.5 lg:text-4xl",
         isLow
           ? "bg-red-500/15 text-red-500"
           : isTurn
@@ -478,7 +481,7 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
   score,
 }: PanelData) {
   return (
-    <div className="flex h-13.5 items-center gap-3 rounded-xl bg-base-200/70 px-3 py-2 text-base-content">
+    <div className="flex h-13.5 items-center gap-3 rounded-xl bg-base-200/70 px-3 py-2 text-base-content md:h-16 lg:h-20">
       <div className="flex shrink-0 items-center gap-1">
       {score != null && <ScoreBadge score={score} />}
       {zenMode ? (

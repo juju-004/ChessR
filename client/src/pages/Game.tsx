@@ -86,11 +86,13 @@ import {
   replayMove,
   buildPgn,
   computeMaterialDiff,
+  chessFen,
   computeLowTimeThresholdMs,
   computeFirstMoveThresholdMs,
   reconstructPlyClocks,
   turnColor,
 } from "../chessUtils.js";
+import { zhApply, type ZhRole } from "../crazyhouse.js";
 import { refreshBalance } from "../api/walletStore.js";
 import {
   playGameStartSound,
@@ -274,7 +276,9 @@ export function Game() {
   // chat gets the same treatment, their open/closed state is in chatStore.)
   const CLIENT_URL = import.meta.env.VITE_CLIENT_URL ?? "http://localhost:5173";
 
-  const chess = useMemo(() => new Chess(fen), [fen]);
+  // chessFen: a Crazyhouse FEN carries pockets that chess.js can't parse.
+  const chess = useMemo(() => new Chess(chessFen(fen)), [fen]);
+  const isCrazyhouse = gameMeta?.variant === "crazyhouse";
   const myColor: "white" | "black" | undefined =
     role === "white" || role === "black" ? role : undefined;
 
@@ -330,6 +334,12 @@ export function Game() {
     fens: string[];
   } | null>(null);
   const historyFens = useMemo(() => {
+    // Crazyhouse positions can't be replayed through chess.js (pockets,
+    // drops), but every move already carries the full position after it.
+    if (gameMeta?.variant === "crazyhouse") {
+      if (!gameMeta.initialFen || moves.some((m) => !m.fenAfter)) return null;
+      return [gameMeta.initialFen, ...moves.map((m) => m.fenAfter as string)];
+    }
     try {
       const cache = historyCacheRef.current;
       const canExtend =
@@ -361,7 +371,7 @@ export function Game() {
       historyCacheRef.current = null;
       return null;
     }
-  }, [gameMeta?.initialFen, moves]);
+  }, [gameMeta?.initialFen, gameMeta?.variant, moves]);
 
   const liveViewPly = moves.length;
   const isViewingHistory =
@@ -412,7 +422,21 @@ export function Game() {
   // moves (see isViewingHistory/displayFen above), so the material
   // count on the panels always matches what's drawn on the board, not
   // the live game state you've scrolled away from.
-  const material = useMemo(() => computeMaterialDiff(displayFen), [displayFen]);
+  // Crazyhouse has no "captured pieces" tray: captures go to the pockets
+  // shown beside the board, so the material line stays empty there.
+  const material = useMemo(
+    () =>
+      isCrazyhouse
+        ? {
+            capturedByWhite: [],
+            capturedByBlack: [],
+            netCapturedByWhite: [],
+            netCapturedByBlack: [],
+            advantage: 0,
+          }
+        : computeMaterialDiff(displayFen),
+    [displayFen, isCrazyhouse],
+  );
   // Per-move clock reconstruction, see reconstructPlyClocks for the exact
   // rules this mirrors from the server. Recomputed only when the move list
   // itself changes (new move, or a fresh load), not on every render/tick,
@@ -1027,6 +1051,8 @@ export function Game() {
           san: payload.san,
           from: payload.from,
           to: payload.to,
+          ...(payload.drop ? { drop: payload.drop } : {}),
+          ...(payload.fen ? { fenAfter: payload.fen } : {}),
           timestampMs: payload.timestampMs,
         },
       ]);
@@ -1381,6 +1407,15 @@ export function Game() {
     promotion?: "q" | "r" | "b" | "n",
   ) {
     try {
+      if (gameMeta?.variant === "crazyhouse") {
+        const applied = zhApply(fen, { from: orig, to: dest, promotion });
+        if (!applied) return;
+        setFen(applied.fen);
+        setLastMove([orig, dest]);
+        pendingOptimisticMoveRef.current = true;
+        optimisticFenRef.current = applied.fen;
+        return;
+      }
       const localChess = new Chess(fen);
       // Chess960 castling can't go through chess.js's own .move() at all
       // (see applyChess960CastleMove's doc comment) — without this branch
@@ -1436,6 +1471,24 @@ export function Game() {
       socket.emit("game:move", { gameId: gameMeta._id, from: orig, to: dest });
     },
     [socket, gameMeta, fen, chess, settings.autoQueen],
+  );
+
+  // Crazyhouse: put a piece from the player's pocket on the board. Applied
+  // locally first (same as a normal move) and then sent as a drop; the
+  // server re-validates everything.
+  const handleDrop = useCallback(
+    (role: ZhRole, square: string) => {
+      if (!socket || !gameMeta) return;
+      setMoveError("");
+      const applied = zhApply(fen, { drop: role, to: square });
+      if (!applied) return;
+      setFen(applied.fen);
+      setLastMove([square, square]);
+      pendingOptimisticMoveRef.current = true;
+      optimisticFenRef.current = applied.fen;
+      socket.emit("game:move", { gameId: gameMeta._id, drop: role, to: square });
+    },
+    [socket, gameMeta, fen],
   );
 
   function handlePromotionPick(piece: "q" | "r" | "b" | "n") {
@@ -1736,6 +1789,12 @@ export function Game() {
           Chess960
         </Badge>,
       );
+    if (gameMeta?.variant === "crazyhouse")
+      list.push(
+        <Badge key="zh" variant="secondary">
+          Crazyhouse
+        </Badge>,
+      );
     if (gameMeta?.wagerTokens)
       list.push(
         <Badge key="wager" variant="warning">
@@ -1945,10 +2004,16 @@ export function Game() {
             detail={
               gameMeta.variant === "chess960"
                 ? "Back rank is shuffled"
-                : undefined
+                : gameMeta.variant === "crazyhouse"
+                  ? "Captured pieces can be dropped back on the board"
+                  : undefined
             }
           >
-            {gameMeta.variant === "chess960" ? "Chess960" : "Standard"}
+            {gameMeta.variant === "chess960"
+              ? "Chess960"
+              : gameMeta.variant === "crazyhouse"
+                ? "Crazyhouse"
+                : "Standard"}
           </InviteTerm>
           {gameMeta.wagerTokens ? (
             <InviteTerm
@@ -2267,6 +2332,18 @@ export function Game() {
           onCancelWaitingGame={handleCancelWaitingGame}
           promoPending={promoPending ? true : false}
           onPromotionPick={handlePromotionPick}
+          variant={gameMeta?.variant}
+          liveFen={fen}
+          canDrop={
+            isCrazyhouse &&
+            isPlayer &&
+            status === "active" &&
+            !pausedLeg &&
+            !isViewingHistory &&
+            !promoPending &&
+            sideToMove === myColor
+          }
+          onDrop={handleDrop}
         />
 
         {/* Right panel, tablet & desktop. Player panels, the cage match

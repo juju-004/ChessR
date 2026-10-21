@@ -62,7 +62,7 @@ const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
 const MIN_STAKE_TOKENS = 20;
 
 const legSchema = z.object({
-  variant: z.enum(['standard', 'chess960']).default('standard'),
+  variant: z.enum(['standard', 'chess960', 'crazyhouse']).default('standard'),
   baseMinutes: z.number().min(0.5).max(180).nullable(),
   incrementSeconds: z.number().min(0).max(60).default(0),
 });

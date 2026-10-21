@@ -20,6 +20,9 @@ export interface IMove {
   from: string;
   to: string;
   promotion?: string;
+  /** Crazyhouse: role letter (p/n/b/r/q) of the piece dropped by this move.
+   *  For a drop, `from` and `to` are both the target square. */
+  drop?: string;
   fenAfter: string;
   moveNumber: number;
   timestampMs: number;
@@ -34,7 +37,7 @@ export interface ITimeControl {
 export interface IGame extends Document {
   _id: Types.ObjectId;
   joinCode: string;
-  variant: 'standard' | 'chess960';
+  variant: 'standard' | 'chess960' | 'crazyhouse';
   initialFen: string;
   white: Types.ObjectId;
   black: Types.ObjectId | null;
@@ -98,6 +101,7 @@ const moveSchema = new Schema<IMove>(
     from: { type: String, required: true },
     to: { type: String, required: true },
     promotion: { type: String },
+    drop: { type: String, enum: ['p', 'n', 'b', 'r', 'q'] },
     fenAfter: { type: String, required: true },
     moveNumber: { type: Number, required: true },
     timestampMs: { type: Number, required: true },
@@ -118,7 +122,7 @@ const gameSchema = new Schema<IGame>(
     // Short, shareable, human-typeable identifier, this is what shows up in the
     // URL and what a friend types in to join. The Mongo _id stays internal.
     joinCode: { type: String, required: true, unique: true, index: true },
-    variant: { type: String, enum: ['standard', 'chess960'], default: 'standard' },
+    variant: { type: String, enum: ['standard', 'chess960', 'crazyhouse'], default: 'standard' },
     initialFen: {
       type: String,
       required: true,

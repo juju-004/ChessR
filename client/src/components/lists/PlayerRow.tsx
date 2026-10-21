@@ -18,8 +18,8 @@ export interface PlayerRowProps {
 }
 
 /** A player in a list: avatar (with presence dot when known), name, rating
- *  and optional actions. Used by search results, friend requests, online
- *  players and friends so they all read the same. */
+ *  and optional actions. Used by search results, online players,
+ *  following and followers so they all read the same. */
 export function PlayerRow({
   username,
   avatarGradient,
