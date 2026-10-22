@@ -21,7 +21,8 @@ import {
   CenteredSpinner,
 } from "../components/ui/index.js";
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong");
+const errMsg = (e: unknown) =>
+  e instanceof Error ? e.message : "Something went wrong";
 
 function formatLeft(ms: number): string {
   if (ms <= 0) return "Ending now";
@@ -31,8 +32,13 @@ function formatLeft(ms: number): string {
   return d > 0 ? `${d}d ${h}h left` : `${h}h ${m}m left`;
 }
 
-const fmtPoints = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
-const fmtDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+const fmtPoints = (n: number) =>
+  Number.isInteger(n) ? String(n) : n.toFixed(1);
+const fmtDate = (iso: string) =>
+  new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
 
 /** Each board shows at most this many rows (the server caps it too). */
 const BOARD_LIMIT = 20;
@@ -42,12 +48,87 @@ const BOARDS: { key: SeasonBoard; title: string }[] = [
   { key: "points", title: "Most points" },
 ];
 
-function Row({ row, board, isMe }: { row: SeasonRow; board: SeasonBoard; isMe: boolean }) {
-  // The points board shows a W/D record instead of the points score, so the
-  // actual points are never visible.
-  const main = board === "games" ? row.games : `${row.wins}W ${row.draws}D`;
+/** Width of the right-hand stat columns, shared by the header strip and the
+ *  rows so the numbers line up exactly. */
+const STAT_COL = "w-11 sm:w-12";
+
+/** One compact stat pill. Fixed width + tabular numbers keep a column of
+ *  them visually aligned from the first row to the last. */
+function StatPill({
+  value,
+  suffix,
+  tone,
+  title,
+}: {
+  value: number;
+  suffix: string;
+  tone: "win" | "draw";
+  title?: string;
+}) {
   return (
-    <li className={cn("flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5", isMe && "bg-primary/10")}>
+    <span
+      title={title}
+      className={cn(
+        STAT_COL,
+        "inline-flex items-baseline justify-center gap-px rounded-md py-0.5 text-sm font-semibold tabular-nums leading-tight",
+        tone === "win"
+          ? "bg-emerald-500/12 text-emerald-500"
+          : "bg-amber-500/12 text-amber-500",
+      )}
+    >
+      {value}
+      <span className="text-[10px] font-bold opacity-80">{suffix}</span>
+    </span>
+  );
+}
+
+function HeaderStrip({ board }: { board: SeasonBoard }) {
+  const cell =
+    "text-[10px] font-semibold uppercase tracking-wider text-base-content/40";
+  return (
+    <div className="flex items-center gap-2 border-b border-base-content/5 px-4 py-1.5 sm:px-5">
+      <span className={cn(cell, "w-5 shrink-0 text-center")}>#</span>
+      <span className={cn(cell, "flex-1")}>Player</span>
+      {board === "games" ? (
+        <span className={cn(cell, "w-12 text-center")}>Games</span>
+      ) : (
+        <>
+          <span className={cn(cell, STAT_COL, "text-center")}>Won</span>
+          <span className={cn(cell, STAT_COL, "text-center")}>Drawn</span>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Row({
+  row,
+  board,
+  isMe,
+  index,
+}: {
+  row: SeasonRow;
+  board: SeasonBoard;
+  isMe: boolean;
+  index: number;
+}) {
+  // The points board shows wins and draws instead of the points score, so
+  // the actual points are never visible. Losses are only in the tooltip.
+  const record = `${row.wins} won, ${row.draws} drawn, ${row.losses} lost`;
+  return (
+    <li
+      className={cn(
+        "flex items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors sm:px-3 sm:py-2",
+        // Zebra striping instead of divider lines. Done by index (not
+        // odd:/even:) because cn() doesn't merge classes, so a stripe class
+        // would fight the "me" highlight.
+        isMe
+          ? "bg-primary/12 ring-1 ring-inset ring-primary/25"
+          : index % 2 === 1
+            ? "bg-base-content/4"
+            : "bg-transparent",
+      )}
+    >
       {/* The prize replaces the serial number on the places that win one.
           Kept as narrow as the content allows (a prize tops out at 3
           digits, a top-20 rank at 2) so the avatar sits close to it. */}
@@ -57,12 +138,14 @@ function Row({ row, board, isMe }: { row: SeasonRow; board: SeasonBoard; isMe: b
           title={`${row.prize} R prize for place ${row.rank}`}
         >
           <RCoin size={12} />
-          <span className="text-[10px] font-semibold tabular-nums text-amber-300">{row.prize}</span>
+          <span className="text-[10px] font-semibold tabular-nums text-amber-300">
+            {row.prize}
+          </span>
         </span>
       ) : (
         <span
           className={cn(
-            "w-5 shrink-0 text-center font-semibold tabular-nums whitespace-nowrap text-base-content/70",
+            "w-5 shrink-0 text-center font-semibold tabular-nums whitespace-nowrap text-base-content/60",
             // A rank outside the top 20 (your own row) can be 3-4 digits.
             row.rank >= 100 ? "text-[10px]" : "text-sm",
           )}
@@ -70,14 +153,33 @@ function Row({ row, board, isMe }: { row: SeasonRow; board: SeasonBoard; isMe: b
           {row.rank}
         </span>
       )}
-      <Avatar username={row.username} gradient={row.avatarGradient} size="xs" mdSize="compact" />
+      <Avatar
+        username={row.username}
+        gradient={row.avatarGradient}
+        size="xs"
+        mdSize="compact"
+      />
       <div className="min-w-0 flex-1">
-        <Link to={`/profile/${row.username}`} className="block truncate text-sm font-medium hover:underline">
+        <Link
+          to={`/profile/${row.username}`}
+          className="block truncate text-sm font-medium hover:underline"
+        >
           {row.username}
-          {isMe && <span className="ml-1.5 text-xs text-base-content/50">(you)</span>}
+          {isMe && (
+            <span className="ml-1.5 text-xs text-base-content/50">(you)</span>
+          )}
         </Link>
       </div>
-      <span className="text-right text-base font-semibold tabular-nums whitespace-nowrap">{main}</span>
+      {board === "games" ? (
+        <span className="w-12 text-center text-base font-semibold tabular-nums whitespace-nowrap">
+          {row.games}
+        </span>
+      ) : (
+        <>
+          <StatPill value={row.wins} suffix="W" tone="win" title={record} />
+          <StatPill value={row.draws} suffix="D" tone="draw" title={record} />
+        </>
+      )}
     </li>
   );
 }
@@ -104,7 +206,9 @@ export function Leaderboard() {
 
   useEffect(() => {
     void load();
-    getPastSeasons().then((r) => setPast(r.seasons)).catch(() => {});
+    getPastSeasons()
+      .then((r) => setPast(r.seasons))
+      .catch(() => {});
     const t = setInterval(() => setNow(Date.now()), 30_000);
     const r = setInterval(() => void load(), 60_000);
     return () => {
@@ -124,13 +228,20 @@ export function Leaderboard() {
   function goTo(index: number) {
     const el = scrollerRef.current;
     if (!el) return;
-    el.scrollTo({ left: index * (el.scrollWidth - el.clientWidth), behavior: "smooth" });
+    el.scrollTo({
+      left: index * (el.scrollWidth - el.clientWidth),
+      behavior: "smooth",
+    });
   }
 
   if (!data) {
     return (
       <Page title="Leaderboard" back="/">
-        {error ? <PageError message={error} /> : <CenteredSpinner className="py-16" />}
+        {error ? (
+          <PageError message={error} />
+        ) : (
+          <CenteredSpinner className="py-16" />
+        )}
       </Page>
     );
   }
@@ -174,7 +285,9 @@ export function Leaderboard() {
                 onClick={() => goTo(i)}
                 className={cn(
                   "h-1.5 rounded-full transition-all",
-                  activeBoard === i ? "w-5 bg-primary" : "w-1.5 bg-base-content/25",
+                  activeBoard === i
+                    ? "w-5 bg-primary"
+                    : "w-1.5 bg-base-content/25",
                 )}
               />
             ))}
@@ -195,12 +308,14 @@ export function Leaderboard() {
         <div
           ref={scrollerRef}
           onScroll={onScroll}
-          className="flex snap-x snap-mandatory gap-3 overflow-x-auto [scrollbar-width:none] md:grid md:snap-none md:grid-cols-2 md:gap-4 md:overflow-visible [&::-webkit-scrollbar]:hidden"
+          className="flex snap-x snap-mandatory gap-3 overflow-x-auto scrollbar-none md:grid md:snap-none md:grid-cols-2 md:gap-4 md:overflow-visible [&::-webkit-scrollbar]:hidden"
         >
           {BOARDS.map(({ key, title }) => {
             const b = data.boards[key];
             const rows = b.top.slice(0, BOARD_LIMIT);
-            const meInTop = b.me ? rows.some((r) => r.user === b.me!.user) : false;
+            const meInTop = b.me
+              ? rows.some((r) => r.user === b.me!.user)
+              : false;
             return (
               <Card
                 key={key}
@@ -208,29 +323,44 @@ export function Leaderboard() {
                 className="min-w-full snap-center self-start overflow-hidden p-0 md:min-w-0"
               >
                 <div className="border-b border-base-content/5 px-3 py-3 sm:px-4">
-                  <h2 className="text-base font-extrabold tracking-tight sm:text-lg md:text-xl">{title}</h2>
+                  <h2 className="text-base font-extrabold tracking-tight sm:text-lg md:text-xl">
+                    {title}
+                  </h2>
                   {key === "points" && data.minGamesForPointsPrize > 0 && (
                     <p className="mt-0.5 text-xs text-base-content/50">
-                      Play at least {data.minGamesForPointsPrize} games this season to be eligible for a prize.
+                      Play at least {data.minGamesForPointsPrize} games this
+                      season to be eligible for a prize.
                     </p>
                   )}
                 </div>
                 {rows.length === 0 ? (
                   <CardContent className="py-10 text-center text-sm text-base-content/60">
-                    No games finished this season yet. Play one to get on the board.
+                    No games finished this season yet. Play one to get on the
+                    board.
                   </CardContent>
                 ) : (
-                  <ul className="divide-y divide-base-content/5">
-                    {rows.map((r) => (
-                      <Row key={r.user} row={r} board={key} isMe={r.user === b.me?.user} />
-                    ))}
-                    {b.me && !meInTop && (
-                      <>
-                        <li className="px-4 py-1 text-center text-xs text-base-content/40">...</li>
-                        <Row row={b.me} board={key} isMe />
-                      </>
-                    )}
-                  </ul>
+                  <>
+                    <HeaderStrip board={key} />
+                    <ul className="space-y-0.5 p-1.5 sm:p-2">
+                      {rows.map((r, i) => (
+                        <Row
+                          key={r.user}
+                          row={r}
+                          board={key}
+                          isMe={r.user === b.me?.user}
+                          index={i}
+                        />
+                      ))}
+                      {b.me && !meInTop && (
+                        <>
+                          <li className="py-0.5 text-center text-xs leading-none tracking-widest text-base-content/30">
+                            ...
+                          </li>
+                          <Row row={b.me} board={key} isMe index={0} />
+                        </>
+                      )}
+                    </ul>
+                  </>
                 )}
               </Card>
             );
@@ -247,14 +377,21 @@ export function Leaderboard() {
                 <CardContent className="space-y-1 py-3 text-sm">
                   <p className="font-medium">Season {s.season}</p>
                   {(["games", "points"] as SeasonBoard[]).map((bd) => {
-                    const w = s.winners.find((x) => x.board === bd && x.rank === 1);
+                    const w = s.winners.find(
+                      (x) => x.board === bd && x.rank === 1,
+                    );
                     return (
                       <p key={bd} className="text-xs text-base-content/70">
                         {bd === "games" ? "Most games" : "Most points"}:{" "}
                         {w ? (
-                          <Link to={`/profile/${w.username}`} className="font-medium text-base-content hover:underline">
+                          <Link
+                            to={`/profile/${w.username}`}
+                            className="font-medium text-base-content hover:underline"
+                          >
                             {w.username}
-                            {bd === "games" && w.value != null ? ` (${fmtPoints(w.value)})` : ""}
+                            {bd === "games" && w.value != null
+                              ? ` (${fmtPoints(w.value)})`
+                              : ""}
                           </Link>
                         ) : (
                           "no winner"

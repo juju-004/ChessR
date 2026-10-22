@@ -16,7 +16,7 @@ import { Card, Button } from "../ui/index.js";
  *
  * Layout: icon + text on one row, with the button stacked full-width under
  * the text on phones and sitting to the right from `sm` up. Every text
- * block has min-w-0 + break-words so a long tournament name or bank name
+ * block has min-w-0 + wrap-break-word so a long tournament name or bank name
  * can never push the card wider than the screen.
  */
 export function NairaWinnerBanner({

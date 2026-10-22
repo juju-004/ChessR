@@ -72,14 +72,14 @@ function WeekStrip({
   return (
     <div
       ref={stripRef}
-      className="[scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:grid sm:grid-cols-7 sm:overflow-visible sm:px-0 sm:pb-0"
+      className="scrollbar-none [&::-webkit-scrollbar]:hidden -mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:grid sm:grid-cols-7 sm:overflow-visible sm:px-0 sm:pb-0"
     >
       {week.map((d) => (
         <div
           key={d.day}
           data-day={d.day}
           className={cn(
-            "flex min-w-[4.5rem] shrink-0 flex-1 snap-center flex-col items-center gap-1 rounded-xl border px-1 py-2 text-center transition-colors sm:min-w-0 sm:shrink",
+            "flex min-w-18 shrink-0 flex-1 snap-center flex-col items-center gap-1 rounded-xl border px-1 py-2 text-center transition-colors sm:min-w-0 sm:shrink",
             d.status === "done" && "border-green-500/40 bg-green-500/10",
             d.status === "today" && "border-(--primary) bg-(--primary)/10",
             d.status === "upcoming" && "border-base-300 bg-base-100/40",

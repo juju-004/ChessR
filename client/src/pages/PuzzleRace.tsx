@@ -19,6 +19,7 @@ import { useTokenBalance } from "../hooks/useTokenBalance.js";
 import { useRakePercent } from "../hooks/useRakePercent.js";
 import { errMsg } from "../lib/errMsg.js";
 import { cn } from "../lib/cn.js";
+import { ordinalSuffix } from "../api/tournaments.js";
 import { PuzzleBoard } from "../components/puzzles/PuzzleBoard.js";
 import { PageError } from "../components/PageError.js";
 import { winnerTakes } from "./PuzzleRaces.js";
@@ -268,6 +269,20 @@ export function PuzzleRacePage() {
     });
   }, [race]);
 
+  // My live place. Same ordering as `ranked`, but players level with me
+  // (e.g. everyone on 0 solved at the start) share the place instead of
+  // one of them being arbitrarily shown as 1st.
+  const myPlace = useMemo(() => {
+    if (!race || !me) return null;
+    const ahead = race.players.filter((p) => {
+      if (p.userId === me.userId) return false;
+      if (p.finished !== me.finished) return p.finished;
+      if (p.solved !== me.solved) return p.solved > me.solved;
+      return (p.lastSolveMs ?? Infinity) < (me.lastSolveMs ?? Infinity);
+    }).length;
+    return ahead + 1;
+  }, [race, me]);
+
   if (notFound) {
     return (
       <Page title="Puzzle race" back="/puzzles">
@@ -328,6 +343,20 @@ export function PuzzleRacePage() {
               <span className="font-medium text-base-content">
                 Puzzle {puzzle.index + 1} of {puzzle.total}
               </span>
+              {/* Live place, phones/tablets only (from lg the standings sit
+                  beside the board). The place is the bigger number. */}
+              {myPlace != null && race.players.length > 1 && (
+                <span
+                  className="inline-flex items-baseline tabular-nums text-base-content/60 lg:hidden"
+                  title="Your current place"
+                >
+                  <span className="text-lg font-extrabold leading-none text-primary">
+                    {myPlace}
+                    <sup className="text-[10px] font-bold">{ordinalSuffix(myPlace)}</sup>
+                  </span>
+                  <span className="text-sm font-semibold">/{race.players.length}</span>
+                </span>
+              )}
               <span className="inline-flex items-center gap-1 font-mono text-base-content/70">
                 <Timer className="h-4 w-4" />
                 {formatClock(timeLeft)}

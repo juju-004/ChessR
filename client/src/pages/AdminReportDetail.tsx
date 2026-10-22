@@ -108,7 +108,7 @@ export function AdminReportDetail() {
 
       <Card variant="solid" className="mb-4">
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <h1 className="min-w-0 text-lg font-semibold break-words text-base-content">
+          <h1 className="min-w-0 text-lg font-semibold wrap-break-word text-base-content">
             Report against{" "}
             <Link
               to={`/profile/${report.reportedUser?.username}`}
@@ -124,18 +124,18 @@ export function AdminReportDetail() {
             </Badge>
           )}
         </div>
-        <p className="mt-1 text-xs break-words text-base-content/40">
+        <p className="mt-1 text-xs wrap-break-word text-base-content/40">
           Filed by {report.reporter?.username ?? "unknown"} ·{" "}
           {new Date(report.createdAt).toLocaleString()} · reason:{" "}
           {report.reason.replace(/_/g, " ")}
         </p>
-        <p className="mt-3 text-sm break-words whitespace-pre-wrap text-base-content/80">
+        <p className="mt-3 text-sm wrap-break-word whitespace-pre-wrap text-base-content/80">
           {report.description}
         </p>
 
         {report.reporter && (
           <div className="mt-3 flex flex-col gap-2 border-t border-base-300/60 pt-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-            <p className="min-w-0 text-xs break-words text-base-content/50">
+            <p className="min-w-0 text-xs wrap-break-word text-base-content/50">
               {report.reporter.reportingBlocked
                 ? `${report.reporter.username} is currently blocked from filing new reports.`
                 : `Bogus or bad-faith report? You can restrict ${report.reporter.username} from filing more.`}
@@ -180,7 +180,7 @@ export function AdminReportDetail() {
               </Button>
             </Link>
           </div>
-          <p className="text-sm break-words text-base-content/70">
+          <p className="text-sm wrap-break-word text-base-content/70">
             {game.white?.username ?? "?"} vs {game.black?.username ?? "?"} ·{" "}
             {game.moves.length} moves ·{" "}
             {game.result
@@ -197,14 +197,14 @@ export function AdminReportDetail() {
                     key={s.side}
                     className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm"
                   >
-                    <p className="flex items-start gap-1.5 font-semibold break-words text-amber-500">
+                    <p className="flex items-start gap-1.5 font-semibold wrap-break-word text-amber-500">
                       <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
                       {s.side === "white"
                         ? game.white?.username
                         : game.black?.username}
                       , worth a look (score {s.score}/100)
                     </p>
-                    <ul className="mt-1.5 list-disc pl-5 break-words text-base-content/70">
+                    <ul className="mt-1.5 list-disc pl-5 wrap-break-word text-base-content/70">
                       {s.signals.map((sig, i) => (
                         <li key={i}>{sig.detail}</li>
                       ))}

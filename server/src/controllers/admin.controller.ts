@@ -75,6 +75,7 @@ export const getRevenueSummary = asyncHandler(async (req, res) => {
     game: { tokens: 0, count: 0 },
     cage_match: { tokens: 0, count: 0 },
     tournament: { tokens: 0, count: 0 },
+    puzzle_race: { tokens: 0, count: 0 },
   };
   let balanceTokens = 0;
   for (const row of totals) {

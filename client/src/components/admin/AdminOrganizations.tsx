@@ -9,7 +9,12 @@ import {
 import { OrgBadge } from "../organizations/OrgBadge.js";
 import { Card, Badge, CenteredSpinner, Button } from "../ui/index.js";
 
-const FILTERS: (AdminOrgStatus | "all")[] = ["pending", "approved", "rejected", "all"];
+const FILTERS: (AdminOrgStatus | "all")[] = [
+  "pending",
+  "approved",
+  "rejected",
+  "all",
+];
 
 const statusVariant: Record<AdminOrgStatus, "warning" | "success" | "error"> = {
   pending: "warning",
@@ -38,7 +43,11 @@ function OrgCard({
       });
       onChanged({ ...r.organization, owner: org.owner });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not update that organisation");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not update that organisation",
+      );
     } finally {
       setBusy(false);
     }
@@ -51,12 +60,19 @@ function OrgCard({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-3">
           <div className="min-w-0">
-            <div className="font-semibold break-words text-base-content">
-              {org.status === "approved" ? <OrgBadge name={org.name} /> : org.name}
+            <div className="font-semibold wrap-break-word text-base-content">
+              {org.status === "approved" ? (
+                <OrgBadge name={org.name} />
+              ) : (
+                org.name
+              )}
             </div>
             <div className="text-xs text-base-content/50">
-              Owner: <span className="text-base-content/70">{org.owner?.username ?? "Unknown"}</span> ·{" "}
-              {new Date(org.createdAt).toLocaleString()}
+              Owner:{" "}
+              <span className="text-base-content/70">
+                {org.owner?.username ?? "Unknown"}
+              </span>{" "}
+              · {new Date(org.createdAt).toLocaleString()}
             </div>
           </div>
         </div>
@@ -88,10 +104,20 @@ function OrgCard({
             className="w-full rounded-xl border border-base-300 bg-base-100/60 px-3 py-2 text-sm text-base-content outline-none focus:border-(--primary)"
           />
           <div className="flex gap-2">
-            <Button variant="secondary" size="sm" disabled={busy} onClick={() => act("approve")}>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={busy}
+              onClick={() => act("approve")}
+            >
               Approve
             </Button>
-            <Button variant="glass" size="sm" disabled={busy} onClick={() => act("reject")}>
+            <Button
+              variant="glass"
+              size="sm"
+              disabled={busy}
+              onClick={() => act("reject")}
+            >
               Reject
             </Button>
           </div>
@@ -107,7 +133,12 @@ function OrgCard({
             maxLength={300}
             className="min-w-0 flex-1 rounded-xl border border-base-300 bg-base-100/60 px-3 py-2 text-sm text-base-content outline-none focus:border-(--primary)"
           />
-          <Button variant="glass" size="sm" disabled={busy} onClick={() => act("revoke")}>
+          <Button
+            variant="glass"
+            size="sm"
+            disabled={busy}
+            onClick={() => act("revoke")}
+          >
             Revoke
           </Button>
         </div>
@@ -166,11 +197,12 @@ export function AdminOrganizations() {
         </Button>
       </div>
 
-      {loading && (
-        <CenteredSpinner className="py-10" />
-      )}
+      {loading && <CenteredSpinner className="py-10" />}
       {error && (
-        <Card variant="solid" className="border-red-900/50 bg-red-950/20 text-red-300">
+        <Card
+          variant="solid"
+          className="border-red-900/50 bg-red-950/20 text-red-300"
+        >
           {error}
         </Card>
       )}
