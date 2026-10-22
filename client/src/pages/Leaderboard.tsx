@@ -43,36 +43,41 @@ const BOARDS: { key: SeasonBoard; title: string }[] = [
 ];
 
 function Row({ row, board, isMe }: { row: SeasonRow; board: SeasonBoard; isMe: boolean }) {
-  const main = board === "games" ? row.games : fmtPoints(row.points);
-  const sub =
-    board === "games"
-      ? `${fmtPoints(row.points)} pts`
-      : `${row.games} games · ${row.wins}W ${row.draws}D ${row.losses}L`;
+  // The points board shows a W/D record instead of the points score, so the
+  // actual points are never visible.
+  const main = board === "games" ? row.games : `${row.wins}W ${row.draws}D`;
   return (
-    <li className={cn("flex items-center gap-2 px-3 py-2 sm:gap-3 sm:px-4 sm:py-2.5", isMe && "bg-primary/10")}>
-      {/* The prize replaces the serial number on the places that win one. */}
+    <li className={cn("flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5", isMe && "bg-primary/10")}>
+      {/* The prize replaces the serial number on the places that win one.
+          Kept as narrow as the content allows (a prize tops out at 3
+          digits, a top-20 rank at 2) so the avatar sits close to it. */}
       {row.prize > 0 ? (
         <span
-          className="flex w-8 shrink-0 flex-col items-center gap-0.5 leading-none sm:w-9"
+          className="flex w-5 shrink-0 flex-col items-center gap-0.5 leading-none"
           title={`${row.prize} R prize for place ${row.rank}`}
         >
           <RCoin size={12} />
-          <span className="text-[11px] font-semibold tabular-nums text-amber-300">{row.prize}</span>
+          <span className="text-[10px] font-semibold tabular-nums text-amber-300">{row.prize}</span>
         </span>
       ) : (
-        <span className="w-8 shrink-0 text-center text-sm font-semibold tabular-nums text-base-content/70 sm:w-9">
+        <span
+          className={cn(
+            "w-5 shrink-0 text-center font-semibold tabular-nums whitespace-nowrap text-base-content/70",
+            // A rank outside the top 20 (your own row) can be 3-4 digits.
+            row.rank >= 100 ? "text-[10px]" : "text-sm",
+          )}
+        >
           {row.rank}
         </span>
       )}
-      <Avatar username={row.username} gradient={row.avatarGradient} size="xs" mdSize="sm" />
+      <Avatar username={row.username} gradient={row.avatarGradient} size="xs" mdSize="compact" />
       <div className="min-w-0 flex-1">
         <Link to={`/profile/${row.username}`} className="block truncate text-sm font-medium hover:underline">
           {row.username}
           {isMe && <span className="ml-1.5 text-xs text-base-content/50">(you)</span>}
         </Link>
-        <p className="truncate text-xs text-base-content/50">{sub}</p>
       </div>
-      <span className="min-w-10 text-right text-base font-semibold tabular-nums">{main}</span>
+      <span className="text-right text-base font-semibold tabular-nums whitespace-nowrap">{main}</span>
     </li>
   );
 }
@@ -203,7 +208,7 @@ export function Leaderboard() {
                 className="min-w-full snap-center self-start overflow-hidden p-0 md:min-w-0"
               >
                 <div className="border-b border-base-content/5 px-3 py-3 sm:px-4">
-                  <h2 className="text-sm font-semibold">{title}</h2>
+                  <h2 className="text-base font-extrabold tracking-tight sm:text-lg md:text-xl">{title}</h2>
                   {key === "points" && data.minGamesForPointsPrize > 0 && (
                     <p className="mt-0.5 text-xs text-base-content/50">
                       Play at least {data.minGamesForPointsPrize} games this season to be eligible for a prize.
@@ -248,7 +253,8 @@ export function Leaderboard() {
                         {bd === "games" ? "Most games" : "Most points"}:{" "}
                         {w ? (
                           <Link to={`/profile/${w.username}`} className="font-medium text-base-content hover:underline">
-                            {w.username} ({fmtPoints(w.value)})
+                            {w.username}
+                            {bd === "games" && w.value != null ? ` (${fmtPoints(w.value)})` : ""}
                           </Link>
                         ) : (
                           "no winner"

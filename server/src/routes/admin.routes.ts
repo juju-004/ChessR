@@ -10,6 +10,7 @@ import {
   updateGameFlag,
   listNairaTournaments,
   listWithdrawals,
+  getWithdrawal,
   resolveWithdrawal,
   listDeposits,
 } from '../controllers/admin.controller.js';
@@ -28,6 +29,7 @@ router.get('/game-flags', requireAdmin, listGameFlags);
 router.patch('/game-flags/:id', requireAdmin, updateGameFlag);
 router.get('/naira-tournaments', requireAdmin, listNairaTournaments);
 router.get('/withdrawals', requireAdmin, listWithdrawals);
+router.get('/withdrawals/:id', requireAdmin, getWithdrawal);
 router.patch('/withdrawals/:id', requireAdmin, resolveWithdrawal);
 router.get('/deposits', requireAdmin, listDeposits);
 router.get('/organizations', requireAdmin, adminListOrganizations);

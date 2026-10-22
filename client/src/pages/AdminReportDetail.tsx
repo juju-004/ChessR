@@ -100,7 +100,7 @@ export function AdminReportDetail() {
   return (
     <div className="mx-auto w-full max-w-4xl min-w-0 px-3 py-5 sm:px-4 sm:py-6">
       <button
-        onClick={() => navigate("/admin")}
+        onClick={() => navigate("/admin/reports")}
         className="mb-4 flex items-center gap-1.5 text-sm text-base-content/60 hover:text-base-content"
       >
         <ArrowLeft className="h-4 w-4" /> Back to queue

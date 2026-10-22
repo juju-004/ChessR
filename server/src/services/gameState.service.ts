@@ -51,6 +51,11 @@ export interface LiveGameState {
   // doesn't need a separate Mongo round trip to know what's riding on it.
   wagerTokens: number;
   timeControl: LiveTimeControl;
+  // Odds games only: each side's own increment (their base time is simply
+  // their starting whiteRemainingMs / blackRemainingMs). Absent = both sides
+  // use timeControl.incrementMs.
+  whiteIncrementMs?: number;
+  blackIncrementMs?: number;
   whiteRemainingMs: number | null;
   blackRemainingMs: number | null;
   turnStartedAtMs: number;
@@ -121,6 +126,9 @@ export async function initLiveState(
   fen: string = STARTING_FEN,
   variant: 'standard' | 'chess960' | 'crazyhouse' = 'standard',
   wagerTokens: number = 0,
+  /** Odds games: a separate clock per colour. When given, `timeControl` is
+   *  only the shared fallback and each side starts on, and gains, its own. */
+  clocks?: { white: LiveTimeControl; black: LiveTimeControl },
 ): Promise<LiveGameState> {
   const state: LiveGameState = {
     gameId,
@@ -135,8 +143,11 @@ export async function initLiveState(
     moveCount: 0,
     wagerTokens,
     timeControl,
-    whiteRemainingMs: timeControl.baseMs,
-    blackRemainingMs: timeControl.baseMs,
+    ...(clocks
+      ? { whiteIncrementMs: clocks.white.incrementMs, blackIncrementMs: clocks.black.incrementMs }
+      : {}),
+    whiteRemainingMs: clocks ? clocks.white.baseMs : timeControl.baseMs,
+    blackRemainingMs: clocks ? clocks.black.baseMs : timeControl.baseMs,
     turnStartedAtMs: Date.now(),
     paused: false,
     whiteBerserk: false,
@@ -355,10 +366,10 @@ async function finalizeMove(
     // clock, same idea Lichess calls lag compensation.
     const elapsed = Math.max(0, Date.now() - state.turnStartedAtMs - lagCompensationMs);
     if (moverSide === 'white') {
-      const increment = state.whiteBerserk ? 0 : state.timeControl.incrementMs;
+      const increment = state.whiteBerserk ? 0 : (state.whiteIncrementMs ?? state.timeControl.incrementMs);
       whiteRemainingMs = Math.max(0, (whiteRemainingMs ?? 0) - elapsed) + increment;
     } else {
-      const increment = state.blackBerserk ? 0 : state.timeControl.incrementMs;
+      const increment = state.blackBerserk ? 0 : (state.blackIncrementMs ?? state.timeControl.incrementMs);
       blackRemainingMs = Math.max(0, (blackRemainingMs ?? 0) - elapsed) + increment;
     }
   }

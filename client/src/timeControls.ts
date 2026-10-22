@@ -98,29 +98,45 @@ export function timeControlCategoryFromSeconds(
 }
 
 // --- Rating ladders ----------------------------------------------------------
-// Three ratings per player. Which one a game moves depends on its base time
-// only (never the increment): bullet < 3 min, blitz < 8 min, rapid 8 min and
-// up (classical and untimed included). Mirrors server/src/services/ratingCategory.ts.
-export type RatingCategory = "bullet" | "blitz" | "rapid";
+// Five ratings per player. Standard chess moves one of three ladders chosen
+// by the game's base time only (never the increment): bullet < 3 min,
+// blitz < 8 min, rapid 8 min and up (classical and untimed included).
+// Chess960 and Crazyhouse each have their own ladder whatever the time
+// control. Mirrors server/src/services/ratingCategory.ts.
+export type TimeRatingCategory = "bullet" | "blitz" | "rapid";
+export type RatingCategory = TimeRatingCategory | "chess960" | "crazyhouse";
+export type RatingVariant = "standard" | "chess960" | "crazyhouse";
 
-export const RATING_CATEGORIES: RatingCategory[] = ["bullet", "blitz", "rapid"];
+export const RATING_CATEGORIES: RatingCategory[] = ["bullet", "blitz", "rapid", "chess960", "crazyhouse"];
 
-export function ratingCategoryForSeconds(baseSeconds: number | null | undefined): RatingCategory {
+export function ratingCategoryForSeconds(baseSeconds: number | null | undefined): TimeRatingCategory {
   if (baseSeconds === null || baseSeconds === undefined) return "rapid";
   if (baseSeconds < 3 * 60) return "bullet";
   if (baseSeconds < 8 * 60) return "blitz";
   return "rapid";
 }
 
-export function ratingCategoryForMinutes(baseMinutes: number | null | undefined): RatingCategory {
+export function ratingCategoryForMinutes(baseMinutes: number | null | undefined): TimeRatingCategory {
   return ratingCategoryForSeconds(baseMinutes === null || baseMinutes === undefined ? null : baseMinutes * 60);
 }
 
-/** Per-ladder labels. Ladders are told apart by their time-control icon
+/** The ladder a game moves: the variant's own ladder for Chess960 and
+ *  Crazyhouse, otherwise the one its base time belongs to. */
+export function ratingCategoryForGameMinutes(
+  baseMinutes: number | null | undefined,
+  variant?: RatingVariant | null,
+): RatingCategory {
+  if (variant === "chess960" || variant === "crazyhouse") return variant;
+  return ratingCategoryForMinutes(baseMinutes);
+}
+
+/** Per-ladder labels. Ladders are told apart by their icon
  *  (see components/ui/TimeControlIcon.tsx), not by color. */
 export const RATING_CATEGORY_META: Record<RatingCategory, { label: string }> = {
   bullet: { label: "Bullet" },
   blitz: { label: "Blitz" },
   rapid: { label: "Rapid" },
+  chess960: { label: "Chess960" },
+  crazyhouse: { label: "Crazyhouse" },
 };
 

@@ -22,7 +22,12 @@ interface ChallengeItem {
   id: string;
   from: { id: string; username: string };
   timeControl: { baseMinutes: number | null; incrementSeconds: number };
+  /** The reader's own clock when it differs from the challenger's. */
+  odds?: { baseMinutes: number | null; incrementSeconds: number } | null;
+  variant?: string;
   wagerTokens?: number;
+  /** Ms timestamp after which the server no longer has this challenge. */
+  expiresAt?: number;
   seen: boolean;
 }
 
@@ -127,25 +132,42 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
       challengeId: string;
       from: { id: string; username: string };
       timeControl: { baseMinutes: number | null; incrementSeconds: number };
+      odds?: { baseMinutes: number | null; incrementSeconds: number } | null;
+      variant?: string;
       wagerTokens?: number;
+      expiresInSeconds?: number;
+      /** Waited for this player (sent while they were offline). */
+      queued?: boolean;
     }) {
       // Mirror image of GlobalListeners' toast suppression: outside the
       // game page this already showed as a toast, so it doesn't need to
       // also show up here, that was the double-up bug (bell dot AND
       // toast for the same challenge). Only add it here when the toast
       // itself was suppressed (mid-game), so it's not lost entirely.
-      if (!onOwnGamePageRef.current) return;
-      setItems((prev) => [
-        {
-          kind: "challenge",
-          id: payload.challengeId,
-          from: payload.from,
-          timeControl: payload.timeControl,
-          wagerTokens: payload.wagerTokens,
-          seen: false,
-        },
-        ...prev,
-      ]);
+      // The exception is a queued challenge (sent while they were offline):
+      // its toast fades after a minute but the challenge itself waits much
+      // longer, so it always gets a bell item too.
+      if (!onOwnGamePageRef.current && !payload.queued) return;
+      setItems((prev) => {
+        // A reconnect replays everything still waiting; don't add it twice.
+        if (prev.some((i) => i.kind === "challenge" && i.id === payload.challengeId)) return prev;
+        return [
+          {
+            kind: "challenge",
+            id: payload.challengeId,
+            from: payload.from,
+            timeControl: payload.timeControl,
+            odds: payload.odds,
+            variant: payload.variant,
+            wagerTokens: payload.wagerTokens,
+            expiresAt: payload.expiresInSeconds
+              ? Date.now() + payload.expiresInSeconds * 1000
+              : undefined,
+            seen: false,
+          },
+          ...prev,
+        ];
+      });
     }
 
     function removeChallenge(challengeId?: string) {
@@ -203,8 +225,8 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
       setItems((prev) => prev.filter((i) => !(i.kind === "cage_invite" && i.id === inviteId)));
     }
 
-    function onChallengeResolved() {
-      removeChallenge(undefined);
+    function onChallengeResolved(payload?: { challengeId?: string }) {
+      removeChallenge(payload?.challengeId);
     }
     function onChallengeCancelled(payload?: { challengeId?: string }) {
       removeChallenge(payload?.challengeId);
@@ -229,6 +251,8 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
     socket.on("challenge:accepted", onChallengeResolved);
     socket.on("challenge:declined", onChallengeResolved);
     socket.on("challenge:cancelled", onChallengeCancelled);
+    // Answered from another place (the toast, or another tab of this account).
+    socket.on("challenge:resolved", onChallengeResolved);
     socket.on("cage:accepted", onCageResolved);
     socket.on("cage:declined", onCageResolved);
     socket.on("cage:cancelled", onCageCancelled);
@@ -240,6 +264,7 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
       socket.off("challenge:accepted", onChallengeResolved);
       socket.off("challenge:declined", onChallengeResolved);
       socket.off("challenge:cancelled", onChallengeCancelled);
+      socket.off("challenge:resolved", onChallengeResolved);
       socket.off("cage:accepted", onCageResolved);
       socket.off("cage:declined", onCageResolved);
       socket.off("cage:cancelled", onCageCancelled);
@@ -291,11 +316,21 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
     );
   }, []);
 
-  const unreadCount = useMemo(() => items.filter((i) => !i.seen).length, [items]);
+  // Challenges whose server-side lifetime has run out are no longer
+  // answerable, so they drop out of the list instead of erroring on tap.
+  const liveItems = useMemo(
+    () =>
+      items.filter(
+        (i) => i.kind !== "challenge" || !i.expiresAt || i.expiresAt > Date.now(),
+      ),
+    [items],
+  );
+
+  const unreadCount = useMemo(() => liveItems.filter((i) => !i.seen).length, [liveItems]);
 
   const value = useMemo<NotificationCenterValue>(
     () => ({
-      items,
+      items: liveItems,
       unreadCount,
       markAllSeen,
       respondToChallengeItem,
@@ -303,7 +338,7 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
       markSystemItemSeenLocally,
     }),
     [
-      items,
+      liveItems,
       unreadCount,
       markAllSeen,
       respondToChallengeItem,

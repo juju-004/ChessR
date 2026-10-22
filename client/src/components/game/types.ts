@@ -14,6 +14,12 @@ export interface GameMeta {
   black: { _id: string; username: string; avatarGradient?: any; rating?: number | null; ratingCategory?: RatingCategory | null } | null;
   status: "waiting" | "active" | "finished" | "aborted";
   timeControl: { baseSeconds: number | null; incrementSeconds: number };
+  /** Odds games only (a challenge where each player has their own clock):
+   *  the clock each colour plays on. Absent/null on every normal game. */
+  clocks?: {
+    white: { baseSeconds: number | null; incrementSeconds: number };
+    black: { baseSeconds: number | null; incrementSeconds: number };
+  } | null;
   wagerTokens?: number;
   cageMatchId?: string | null;
   legIndex?: number | null;

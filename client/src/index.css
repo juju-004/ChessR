@@ -492,6 +492,20 @@ body:has(.game-page) {
   background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOng9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHZpZXdCb3g9IjAgMCA4IDgiIHNoYXBlLXJlbmRlcmluZz0iY3Jpc3BFZGdlcyI+CjxnIGlkPSJhIj4KICA8ZyBpZD0iYiI+CiAgICA8ZyBpZD0iYyI+CiAgICAgIDxnIGlkPSJkIj4KICAgICAgICA8cmVjdCB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBpZD0iZSIgb3BhY2l0eT0iMCIvPgogICAgICAgIDx1c2UgeD0iMSIgeT0iMSIgaHJlZj0iI2UiIHg6aHJlZj0iI2UiLz4KICAgICAgICA8cmVjdCB5PSIxIiB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBpZD0iZiIgZmlsbD0iIzVmOGJhMyIvPgogICAgICAgIDx1c2UgeD0iMSIgeT0iLTEiIGhyZWY9IiNmIiB4OmhyZWY9IiNmIi8+CiAgICAgIDwvZz4KICAgICAgPHVzZSB4PSIyIiBocmVmPSIjZCIgeDpocmVmPSIjZCIvPgogICAgPC9nPgogICAgPHVzZSB4PSI0IiBocmVmPSIjYyIgeDpocmVmPSIjYyIvPgogIDwvZz4KICA8dXNlIHk9IjIiIGhyZWY9IiNiIiB4OmhyZWY9IiNiIi8+CjwvZz4KPHVzZSB5PSI0IiBocmVmPSIjYSIgeDpocmVmPSIjYSIvPgo8L3N2Zz4K");
 }
 
+/* The two square colors of every board theme as custom properties, for UI
+   that has to sit next to the board and stay readable with any piece set
+   (the Crazyhouse pockets: white pieces go on the dark square color, black
+   pieces on the light one, so a piece is never drawn on a backdrop close to
+   its own color). Keep in step with the swatches above. */
+.board-theme-brown { --board-light: #e9d3b0; --board-dark: #b58863; }
+.board-theme-green { --board-light: #eeeed2; --board-dark: #769656; }
+.board-theme-blue { --board-light: #dee3e6; --board-dark: #4b7399; }
+.board-theme-gray { --board-light: #d9d9d9; --board-dark: #7a7a7a; }
+.board-theme-purple { --board-light: #e8e3f0; --board-dark: #8877b5; }
+.board-theme-walnut { --board-light: #e8c99b; --board-dark: #8b5a2b; }
+.board-theme-coral { --board-light: #fbe0d4; --board-dark: #d9785c; }
+.board-theme-ic { --board-light: #dde6ea; --board-dark: #5f8ba3; }
+
 /* Piece themes, real, distinct artwork per theme, embedded the same way
    chessground.cburnett.css itself embeds cburnett (one background-image
    data URI per role+color combo). "classic" is the bundled cburnett set

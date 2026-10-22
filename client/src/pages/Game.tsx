@@ -1779,8 +1779,16 @@ export function Game() {
               baseSeconds={gameMeta.timeControl.baseSeconds}
               size={12}
             />
-            {formatTimeControl(gameMeta.timeControl)}
+            {gameMeta.clocks
+              ? `${formatTimeControl(gameMeta.clocks.white)} vs ${formatTimeControl(gameMeta.clocks.black)}`
+              : formatTimeControl(gameMeta.timeControl)}
           </span>
+        </Badge>,
+      );
+    if (gameMeta?.clocks)
+      list.push(
+        <Badge key="odds" variant="neutral">
+          Odds
         </Badge>,
       );
     if (gameMeta?.variant === "chess960")
@@ -1866,6 +1874,7 @@ export function Game() {
   }, [
     settings.zenMode,
     gameMeta?.timeControl,
+    gameMeta?.clocks,
     gameMeta?.variant,
     gameMeta?.wagerTokens,
     gameMeta?.tournamentId,

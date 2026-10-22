@@ -15,7 +15,6 @@ import {
 } from "../api/users.js";
 import {
   listFollowing,
-  listFollowers,
   followUser,
   unfollowUser,
   type PlayerSummary,
@@ -27,7 +26,6 @@ import { Input } from "@/components/ui/Input.js";
 import { Button } from "@/components/ui/Button.js";
 import { ResponsiveOverlay } from "@/components/ui/ResponsiveOverlay.js";
 import { CenteredSpinner } from "@/components/ui/CenteredSpinner.js";
-import { Tabs } from "@/components/ui/Tabs.js";
 import { PlayerRow } from "@/components/lists/PlayerRow.js";
 import {
   GameSettingsFields,
@@ -35,19 +33,16 @@ import {
 } from "@/components/game/GameSettingsFields.js";
 import { claimToast } from "../lib/toastClaims.js";
 
-type FollowTab = "following" | "followers";
-
+/** Search always shows a flat 5 results (the server caps it at 5 too). */
 const SEARCH_PAGE_SIZE = 5;
 
 /** Merged "Players" page: search for anyone, follow players (Lichess style,
- *  one-way and instant, no request to accept), see who follows you, and
+ *  one-way and instant, no request to accept), see who you follow, and
  *  challenge any player. */
 export function Players() {
   const socket = useSocket();
   const navigate = useNavigate();
   const [following, setFollowing] = useState<PlayerSummary[]>([]);
-  const [followers, setFollowers] = useState<PlayerSummary[]>([]);
-  const [tab, setTab] = useState<FollowTab>("following");
   // True only until the very first fetch resolves; background refreshes on
   // presence events shouldn't re-flash a spinner over an already-loaded list.
   const [listsLoading, setListsLoading] = useState(true);
@@ -64,9 +59,6 @@ export function Players() {
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<UserSearchResult[]>([]);
-  // Search results are shown SEARCH_PAGE_SIZE at a time, "Show more" adds
-  // another batch.
-  const [shownResults, setShownResults] = useState(SEARCH_PAGE_SIZE);
   const [searchError, setSearchError] = useState("");
   /** Players with a follow/unfollow request in flight, so a double tap can't
    *  fire it twice. */
@@ -87,17 +79,9 @@ export function Players() {
       });
   }, []);
 
-  const refreshFollowers = useCallback(() => {
-    return listFollowers()
-      .then((res) => setFollowers(res.followers))
-      .catch(() => {});
-  }, []);
-
   useEffect(() => {
-    Promise.all([refreshFollowing(), refreshFollowers()]).finally(() =>
-      setListsLoading(false),
-    );
-  }, [refreshFollowing, refreshFollowers]);
+    refreshFollowing().finally(() => setListsLoading(false));
+  }, [refreshFollowing]);
 
   const refreshOnlinePlayers = useCallback(() => {
     listOnlinePlayers()
@@ -128,20 +112,16 @@ export function Players() {
   useEffect(() => {
     if (!socket) return;
 
-    // Someone you follow (or, on the Followers tab, someone who follows
-    // you) came online / went offline. Only the visible list is refetched.
+    // Someone you follow came online / went offline.
     function onPresence() {
-      if (tab === "following") void refreshFollowing();
-      else void refreshFollowers();
+      void refreshFollowing();
       refreshOnlinePlayers();
     }
-    // Someone just followed you: keep the Followers list and count current.
-    function onFollowed() {
-      void refreshFollowers();
-    }
-    function onSent() {
+    function onSent(payload?: { offline?: boolean }) {
       setStatus({
-        message: "Challenge sent. Waiting for a response…",
+        message: payload?.offline
+          ? "Challenge sent. They're offline and will see it as soon as they come back online."
+          : "Challenge sent. Waiting for a response…",
         isError: false,
       });
     }
@@ -150,33 +130,37 @@ export function Players() {
     }
 
     socket.on("follow:presence", onPresence);
-    socket.on("follow:new", onFollowed);
     socket.on("challenge:sent", onSent);
     const release0 = claimToast("challenge:error");
     socket.on("challenge:error", onError);
 
     return () => {
       socket.off("follow:presence", onPresence);
-      socket.off("follow:new", onFollowed);
       socket.off("challenge:sent", onSent);
       release0();
       socket.off("challenge:error", onError);
     };
-  }, [socket, tab, refreshFollowing, refreshFollowers, refreshOnlinePlayers]);
+  }, [socket, refreshFollowing, refreshOnlinePlayers]);
 
-  function handleChallenge(targetId: string) {
+  function handleChallenge(targetId: string, online: boolean) {
     if (!socket) return;
     // Wagers are opt-in: 0 = a free game.
-    const { timeControl: tc, variant, wagerTokens } = gameSettings;
+    const { timeControl: tc, odds, variant, wagerTokens } = gameSettings;
     socket.emit("challenge:send", {
       toUserId: targetId,
       baseMinutes: tc.baseMinutes,
       incrementSeconds: tc.incrementSeconds,
+      // Odds: the other player's clock, when it differs from yours.
+      odds: odds
+        ? { baseMinutes: odds.baseMinutes, incrementSeconds: odds.incrementSeconds }
+        : null,
       variant,
       wagerTokens,
     });
     setStatus({
-      message: `Challenge sent. Waiting for a response…`,
+      message: online
+        ? "Challenge sent. Waiting for a response…"
+        : "Challenge sent. They're offline and will see it as soon as they come back online.",
       isError: false,
     });
     setChallengingKey(null);
@@ -184,7 +168,6 @@ export function Players() {
 
   function handleSearchChange(value: string) {
     setQuery(value);
-    setShownResults(SEARCH_PAGE_SIZE);
     if (!value.trim()) {
       setResults([]);
       return;
@@ -203,8 +186,8 @@ export function Players() {
     try {
       if (follow) await followUser(userId);
       else await unfollowUser(userId);
-      // Both lists carry an `isFollowing` flag / membership that changed.
-      await Promise.all([refreshFollowing(), refreshFollowers()]);
+      // Membership of the following list just changed.
+      await refreshFollowing();
     } catch {
       // Non-fatal: the button stays as it was so they can retry.
     } finally {
@@ -220,14 +203,13 @@ export function Players() {
   // come first so the people you can actually challenge right now surface
   // without hunting through a long offline list; the server order (most
   // recent follow first) is kept within each group.
-  const activeList = tab === "following" ? following : followers;
   const visibleList = useMemo(() => {
     const q = listSearch.trim().toLowerCase();
     const filtered = q
-      ? activeList.filter((f) => f.username.toLowerCase().includes(q))
-      : activeList;
+      ? following.filter((f) => f.username.toLowerCase().includes(q))
+      : following;
     return [...filtered].sort((a, b) => Number(b.online) - Number(a.online));
-  }, [activeList, listSearch]);
+  }, [following, listSearch]);
 
   const followingIds = useMemo(
     () => new Set(following.map((f) => f.id)),
@@ -235,7 +217,7 @@ export function Players() {
   );
 
   /** Watch (if they're mid-game) or Challenge, shared by every list on this
-   *  page (search results, online players, following, followers), since anyone can
+   *  page (search results, online players, following), since anyone can
    *  challenge anyone, followed or not. Time control/variant/wager (for a live
    *  challenge) and the cage match option both live in the one overlay;
    *  those settings persist across players (same tcIndex/variant/wagerInput
@@ -279,14 +261,20 @@ export function Players() {
         }
       >
         <div className="space-y-3 px-4 md:px-2">
-          <GameSettingsFields settings={gameSettings} />
+          <GameSettingsFields settings={gameSettings} challenge />
+          {!p.online && (
+            <p className="text-xs text-base-content/50">
+              {p.username} is offline. They'll see your challenge as soon as they
+              come back online.
+            </p>
+          )}
           <span className="w-full gap-2 grid grid-cols-2">
             <Button
               variant="secondary"
-              onClick={() => handleChallenge(p.id)}
-              disabled={!p.online || gameSettings.wagerBelowFloor}
+              onClick={() => handleChallenge(p.id, p.online)}
+              disabled={gameSettings.wagerBelowFloor || gameSettings.clockInvalid}
             >
-              {p.online ? "Send" : "offline"}
+              Send
             </Button>
 
             <Link
@@ -339,7 +327,7 @@ export function Players() {
           )}
 
           <div>
-            {results.slice(0, shownResults).map((u) => {
+            {results.slice(0, SEARCH_PAGE_SIZE).map((u) => {
               const isFollowing = followingIds.has(u._id);
               const busy = busyIds.has(u._id);
               return (
@@ -371,16 +359,6 @@ export function Players() {
                 />
               );
             })}
-            {results.length > shownResults && (
-              <Button
-                variant="glass"
-                size="sm"
-                className="mt-2 w-full"
-                onClick={() => setShownResults((n) => n + SEARCH_PAGE_SIZE)}
-              >
-                Show more ({results.length - shownResults} more)
-              </Button>
-            )}
           </div>
         </Card>
 
@@ -405,27 +383,9 @@ export function Players() {
         )}
 
         <Card variant="solid" className="w-full">
-          <Tabs
-            className="mb-3.5"
-            items={[
-              {
-                value: "following",
-                label: `Following${following.length > 0 ? ` (${following.length})` : ""}`,
-              },
-              {
-                value: "followers",
-                label: `Followers${followers.length > 0 ? ` (${followers.length})` : ""}`,
-              },
-            ]}
-            value={tab}
-            onChange={(v) => {
-              setTab(v as FollowTab);
-              setListSearch("");
-              // Presence can have moved while the other tab was hidden.
-              if (v === "following") void refreshFollowing();
-              else void refreshFollowers();
-            }}
-          />
+          <h2 className="mb-3.5 text-lg font-semibold text-base-content">
+            Following{following.length > 0 ? ` (${following.length})` : ""}
+          </h2>
 
           <div className="mb-3.5 flex gap-2 sm:items-end">
             <div className="flex-1">
@@ -442,14 +402,13 @@ export function Players() {
             <CenteredSpinner className="py-6" />
           ) : (
             <>
-              {activeList.length === 0 && (
+              {following.length === 0 && (
                 <p className="text-sm text-base-content/60">
-                  {tab === "following"
-                    ? "You're not following anyone yet. Search for players above and follow some!"
-                    : "No followers yet."}
+                  You're not following anyone yet. Search for players above and
+                  follow some!
                 </p>
               )}
-              {activeList.length > 0 && visibleList.length === 0 && (
+              {following.length > 0 && visibleList.length === 0 && (
                 <p className="text-sm text-base-content/60">
                   No players match "{listSearch}".
                 </p>
@@ -465,30 +424,16 @@ export function Players() {
                   onClick={() => navigate(`/profile/${p.username}`)}
                   actions={
                     <div className="flex items-center gap-1.5">
-                      {tab === "following" ? (
-                        <Button
-                          variant="glass"
-                          size="sm"
-                          disabled={busyIds.has(p.id)}
-                          onClick={() => toggleFollow(p.id, false)}
-                          aria-label={`Unfollow ${p.username}`}
-                        >
-                          <UserMinus className="h-4 w-4" />
-                        </Button>
-                      ) : (
-                        !p.isFollowing && (
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            disabled={busyIds.has(p.id)}
-                            onClick={() => toggleFollow(p.id, true)}
-                          >
-                            <UserPlus className="h-4 w-4" />{" "}
-                            <span className="hidden sm:flex">Follow back</span>
-                          </Button>
-                        )
-                      )}
-                      {renderPlayerAction(p, tab)}
+                      <Button
+                        variant="glass"
+                        size="sm"
+                        disabled={busyIds.has(p.id)}
+                        onClick={() => toggleFollow(p.id, false)}
+                        aria-label={`Unfollow ${p.username}`}
+                      >
+                        <UserMinus className="h-4 w-4" />
+                      </Button>
+                      {renderPlayerAction(p, "following")}
                     </div>
                   }
                 />

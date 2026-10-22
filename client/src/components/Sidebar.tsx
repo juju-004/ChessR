@@ -26,16 +26,32 @@ interface NavItem {
   end?: boolean;
 }
 
-const NAV_ITEMS: NavItem[] = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/players", label: "Players", icon: Users },
-  { to: "/cage", label: "Cage", icon: Swords },
-  { to: "/tournaments", label: "Tournaments", icon: Trophy },
-  { to: "/puzzles", label: "Puzzles", icon: Puzzle },
-  { to: "/daily", label: "Daily", icon: CalendarCheck },
-  { to: "/leaderboard", label: "Ranks", icon: Medal },
-  { to: "/settings", label: "Settings", icon: Settings },
+const DASHBOARD: NavItem = { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true };
+const SETTINGS: NavItem = { to: "/settings", label: "Settings", icon: Settings };
+
+/** Desktop sidebar sections. Cage, Tournaments and Puzzles are the ways to
+ *  play, so they sit together under "Play". */
+const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
+  {
+    label: "Play",
+    items: [
+      { to: "/cage", label: "Cage", icon: Swords },
+      { to: "/tournaments", label: "Tournaments", icon: Trophy },
+      { to: "/puzzles", label: "Puzzles", icon: Puzzle },
+    ],
+  },
+  {
+    label: "Explore",
+    items: [
+      { to: "/players", label: "Players", icon: Users },
+      { to: "/daily", label: "Daily", icon: CalendarCheck },
+      { to: "/leaderboard", label: "Ranks", icon: Medal },
+    ],
+  },
 ];
+
+/** Flat list for the mobile dock, in the same order as the sidebar. */
+const NAV_ITEMS: NavItem[] = [DASHBOARD, ...NAV_GROUPS.flatMap((g) => g.items), SETTINGS];
 
 /**
  * The desktop-only vertical elevated rail (md and up). The mobile
@@ -63,15 +79,48 @@ export const Sidebar = memo(function Sidebar() {
           : "w-56",
       )}
     >
-      {NAV_ITEMS.map((item) => (
-        <SidebarLink
-          key={item.to}
-          item={item}
-          layoutId="sidebar-desktop-active"
-          orientation="vertical"
-          collapsible={collapsible}
-        />
+      <SidebarLink
+        item={DASHBOARD}
+        layoutId="sidebar-desktop-active"
+        orientation="vertical"
+        collapsible={collapsible}
+      />
+
+      {NAV_GROUPS.map((group) => (
+        <div key={group.label} className="flex flex-col gap-1">
+          {/* Expanded: a small section heading. Collapsed icon rail: a thin
+              divider instead, until the rail is hovered open. */}
+          <p
+            className={cn(
+              "px-3 pb-0.5 pt-4 text-[11px] font-semibold uppercase tracking-wider text-base-content/40",
+              collapsible && "hidden group-hover:block",
+            )}
+          >
+            {group.label}
+          </p>
+          {collapsible && (
+            <div className="mx-2 my-2 h-px bg-base-content/10 group-hover:hidden" />
+          )}
+          {group.items.map((item) => (
+            <SidebarLink
+              key={item.to}
+              item={item}
+              layoutId="sidebar-desktop-active"
+              orientation="vertical"
+              collapsible={collapsible}
+            />
+          ))}
+        </div>
       ))}
+
+      {/* Settings sits apart at the bottom of the rail. */}
+      <div className="mx-2 mb-1 mt-3 h-px bg-base-content/10" />
+      <SidebarLink
+        item={SETTINGS}
+        layoutId="sidebar-desktop-active"
+        orientation="vertical"
+        collapsible={collapsible}
+      />
     </nav>
   );
 });
@@ -153,13 +202,13 @@ function SidebarLink({
           "relative flex flex-1 items-center gap-2.5 rounded-xl text-sm font-medium transition-colors",
           orientation === "vertical"
             ? cn(
-                "px-3 py-2.5",
+                "px-3 py-2",
                 collapsible && "justify-center group-hover:justify-start",
               )
             : "flex-col gap-0.5 px-2.5 py-1.5 text-[11px]",
           isActive
             ? "text-white"
-            : "text-base-content/60 hover:text-base-content",
+            : "text-base-content/60 hover:bg-base-content/5 hover:text-base-content",
         )
       }
     >

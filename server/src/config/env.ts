@@ -73,13 +73,13 @@ const envSchema = z.object({
   // route itself refuses to work until this is set.
   GOOGLE_CLIENT_ID: z.string().optional(),
 
-  // CallMeBot (callmebot.com) WhatsApp alerts to the owner when a withdrawal
-  // is requested (see whatsapp.service.ts). Both optional so a deployment
-  // without them still boots; sends are skipped with a log line.
-  // The owner's own WhatsApp number, with country code (+234XXXXXXXXXX).
-  WHATSAPP_NOTIFY_NUMBER: z.string().optional(),
-  // API key CallMeBot sends back after the one-time activation message.
-  CALLMEBOT_API_KEY: z.string().optional(),
+  // Telegram bot alerts to the owner when a withdrawal is requested (see
+  // telegram.service.ts). Both optional so a deployment without them still
+  // boots; sends are skipped with a log line.
+  // Bot token from @BotFather.
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  // Owner chat ids (numeric), comma-separated, found via the bot's getUpdates.
+  TELEGRAM_CHAT_ID: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

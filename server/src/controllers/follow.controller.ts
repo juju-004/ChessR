@@ -4,9 +4,8 @@ import { User } from '../models/User.js';
 import { Follow } from '../models/Follow.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { getUserSocketIds, getOnlineUserIds } from '../services/presence.service.js';
+import { getOnlineUserIds } from '../services/presence.service.js';
 import { getActiveGameCodesForUsers } from '../services/game.service.js';
-import { getIo } from '../sockets/io.js';
 import type { AuthedRequest } from '../middleware/auth.js';
 import { trackDaily } from '../services/dailyChallenge.service.js';
 
@@ -16,13 +15,6 @@ const followSchema = z.object({ userId: z.string().refine(mongoose.isValidObject
 const LIST_LIMIT = 500;
 
 const PLAYER_FIELDS = 'username avatarUrl avatarGradient rating ratingCategory';
-
-async function pushToUser(userId: string, event: string, payload: unknown) {
-  const socketIds = await getUserSocketIds(userId);
-  if (socketIds.length === 0) return;
-  const io = getIo();
-  for (const id of socketIds) io.to(id).emit(event, payload);
-}
 
 /** Decorates a list of users with presence + "mid-game" in two batched
  *  lookups (one Redis round trip, one Mongo query), not two per player. */
@@ -68,9 +60,8 @@ export const followUser = asyncHandler(async (req: AuthedRequest, res) => {
     // Keyed by target so follow -> unfollow -> follow of the same person
     // can't be farmed for the daily challenge.
     trackDaily(me, { type: 'friend_request_sent', key: `follow:${targetId}` });
-    // Lets an open Followers list / profile update live. No bell item: a
-    // follow isn't actionable, and notifying on every follow is spam bait.
-    await pushToUser(targetId, 'follow:new', { by: me });
+    // Deliberately silent: the person being followed gets no notification
+    // and no live event, nothing tells them someone followed them.
   }
 
   res.status(created ? 201 : 200).json({ following: true });

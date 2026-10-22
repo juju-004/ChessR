@@ -87,11 +87,11 @@ function setRefreshCookie(res: Response, token: string) {
 function ratingFields(user: {
   rating: number;
   ratingCategory?: 'bullet' | 'blitz' | 'rapid';
-  ratings?: { bullet: number; blitz: number; rapid: number };
+  ratings?: { bullet: number; blitz: number; rapid: number; chess960?: number; crazyhouse?: number };
 }) {
   return {
-    // Best of the three ladders (what lists show), which ladder that is,
-    // and all three.
+    // Best of the three time ladders (what lists show), which ladder that
+    // is, and every ladder (the three time ones plus Chess960 and Crazyhouse).
     rating: user.rating,
     ratingCategory: user.ratingCategory ?? 'blitz',
     ratings: resolveRatings(user),

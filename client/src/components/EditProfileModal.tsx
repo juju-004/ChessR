@@ -8,7 +8,7 @@ import {
   buildAvatarStyle,
   parseAvatarStyle,
 } from "../lib/avatarGradients.js";
-import { AVATAR_ICONS, AvatarIconGlyph } from "../lib/avatarIcons.js";
+import { AVATAR_ICONS, AvatarIconGlyph, normalizeAvatarIconId } from "../lib/avatarIcons.js";
 import { updateMyProfile } from "../api/users.js";
 import { ApiRequestError } from "../api/http.js";
 import { useNotify } from "../contexts/NotificationContext.js";
@@ -50,7 +50,9 @@ export function EditProfileModal({
   // The gradient and the optional icon are stored together in one string
   // (see parseAvatarStyle), so split them for editing and join on save.
   const [gradient, setGradient] = useState(parseAvatarStyle(currentGradient).gradientId);
-  const [icon, setIcon] = useState<string | null>(parseAvatarStyle(currentGradient).iconId);
+  const [icon, setIcon] = useState<string | null>(
+    normalizeAvatarIconId(parseAvatarStyle(currentGradient).iconId),
+  );
   const [bio, setBio] = useState(currentBio ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -61,7 +63,7 @@ export function EditProfileModal({
     if (!open) return;
     const parsed = parseAvatarStyle(currentGradient);
     setGradient(parsed.gradientId);
-    setIcon(parsed.iconId);
+    setIcon(normalizeAvatarIconId(parsed.iconId));
     setBio(currentBio ?? "");
     setError("");
   }, [open, currentGradient, currentBio]);
@@ -85,7 +87,7 @@ export function EditProfileModal({
 
   return (
     <Modal icon={<Edit />} open={open} onClose={onClose} title="Edit profile">
-      <div className="flex max-h-[75vh] flex-col gap-6 overflow-y-auto px-3 pb-1">
+      <div className="flex flex-col gap-6 px-1 pb-1">
         {/* Live preview, updates as you pick, so you see exactly what
             everyone else will. */}
         <div className="flex flex-col items-center gap-2 rounded-2xl bg-base-200/60 py-5">

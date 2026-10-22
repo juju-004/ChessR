@@ -29,8 +29,6 @@ export interface UserProfile {
   stats: { wins: number; losses: number; draws: number; gamesPlayed: number };
   /** The viewer follows this player. */
   isFollowing: boolean;
-  /** This player follows the viewer. */
-  followsYou: boolean;
   followerCount: number;
   followingCount: number;
   isSelf: boolean;

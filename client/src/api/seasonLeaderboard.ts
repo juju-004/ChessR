@@ -11,7 +11,6 @@ export interface SeasonRow {
   wins: number;
   draws: number;
   losses: number;
-  points: number;
   /** R prize this row is currently on course for (0 = none). */
   prize: number;
 }
@@ -39,7 +38,8 @@ export interface PastSeasonWinner {
   user: string;
   username: string;
   avatarGradient: string | null;
-  value: number;
+  /** Games played on the games board; always null on the points board. */
+  value: number | null;
   prize: number;
 }
 

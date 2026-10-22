@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-/** Avatar icons: original element symbols (air, water, earth, fire) drawn on a
+/** Avatar icons: original symbols (swirl, drop, peak, flame) drawn on a
  *  24x24 grid. They use `currentColor` for the main shape and a translucent
  *  black for shading, so they sit on any gradient the same way initials do. */
 export interface AvatarIconPreset {
@@ -11,8 +11,8 @@ export interface AvatarIconPreset {
 
 export const AVATAR_ICONS: AvatarIconPreset[] = [
   {
-    id: "air",
-    label: "Air",
+    id: "swirl",
+    label: "Swirl",
     glyph: (
       <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M3 9h10.5a3 3 0 1 0-3-3" />
@@ -22,8 +22,8 @@ export const AVATAR_ICONS: AvatarIconPreset[] = [
     ),
   },
   {
-    id: "water",
-    label: "Water",
+    id: "drop",
+    label: "Drop",
     glyph: (
       <>
         <path fill="currentColor" d="M12 2.5c3.6 4.3 6.2 7.5 6.2 11a6.2 6.2 0 0 1-12.4 0c0-3.5 2.6-6.7 6.2-11z" />
@@ -39,8 +39,8 @@ export const AVATAR_ICONS: AvatarIconPreset[] = [
     ),
   },
   {
-    id: "earth",
-    label: "Earth",
+    id: "peak",
+    label: "Peak",
     glyph: (
       <>
         <path fill="currentColor" d="M2.5 19.5 9 7l3.2 6 2.3-3.6 7 10.1z" />
@@ -49,8 +49,8 @@ export const AVATAR_ICONS: AvatarIconPreset[] = [
     ),
   },
   {
-    id: "fire",
-    label: "Fire",
+    id: "flame",
+    label: "Flame",
     glyph: (
       <>
         <path
@@ -67,8 +67,23 @@ export const AVATAR_ICONS: AvatarIconPreset[] = [
   },
 ];
 
+/** Ids saved before the rename keep working: they map to the same drawing. */
+const LEGACY_ICON_IDS: Record<string, string> = {
+  air: "swirl",
+  water: "drop",
+  earth: "peak",
+  fire: "flame",
+};
+
+/** Maps an old saved id to its current one (current ids pass through). */
+export function normalizeAvatarIconId(id?: string | null): string | null {
+  if (!id) return null;
+  return LEGACY_ICON_IDS[id] ?? id;
+}
+
 export function findAvatarIcon(id?: string | null): AvatarIconPreset | undefined {
-  return id ? AVATAR_ICONS.find((i) => i.id === id) : undefined;
+  const current = normalizeAvatarIconId(id);
+  return current ? AVATAR_ICONS.find((i) => i.id === current) : undefined;
 }
 
 /** Draws an icon at the size of its parent (the avatar circle). */

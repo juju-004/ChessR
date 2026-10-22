@@ -503,9 +503,9 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       const game = {
         ...rawGame,
         // Ratings shown in-game are the ones on this game's own ladder.
-        white: withGameCategoryRating(playerById.get(String(rawGame.white)) ?? rawGame.white, rawGame.timeControl?.baseSeconds ?? null),
+        white: withGameCategoryRating(playerById.get(String(rawGame.white)) ?? rawGame.white, rawGame.timeControl?.baseSeconds ?? null, rawGame.variant),
         black: rawGame.black
-          ? withGameCategoryRating(playerById.get(String(rawGame.black)) ?? rawGame.black, rawGame.timeControl?.baseSeconds ?? null)
+          ? withGameCategoryRating(playerById.get(String(rawGame.black)) ?? rawGame.black, rawGame.timeControl?.baseSeconds ?? null, rawGame.variant)
           : rawGame.black,
       };
       // Already loaded here, so the timers/chat/abort/end-of-game code never
@@ -638,6 +638,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         spectatorCount,
         moves: mergeLiveMoves(game.moves, liveMoves),
         timeControl: game.timeControl,
+        clocks: game.clocks ?? null,
         wagerTokens: game.wagerTokens,
         cageMatchId: game.cageMatchId ?? null,
         legIndex: game.legIndex ?? null,
@@ -649,9 +650,11 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           : (game.berserk ?? { white: false, black: false }),
         paused: liveState?.paused ?? false,
         whiteRemainingMs:
-          liveState?.whiteRemainingMs ?? (game.timeControl.baseSeconds ? game.timeControl.baseSeconds * 1000 : null),
+          liveState?.whiteRemainingMs ??
+          (((game.clocks?.white ?? game.timeControl).baseSeconds) ? (game.clocks?.white ?? game.timeControl).baseSeconds! * 1000 : null),
         blackRemainingMs:
-          liveState?.blackRemainingMs ?? (game.timeControl.baseSeconds ? game.timeControl.baseSeconds * 1000 : null),
+          liveState?.blackRemainingMs ??
+          (((game.clocks?.black ?? game.timeControl).baseSeconds) ? (game.clocks?.black ?? game.timeControl).baseSeconds! * 1000 : null),
         turnStartedAtMs: liveState?.turnStartedAtMs ?? Date.now(),
         spectatorChatHistory: chatHistory,
         playerChatHistory,
@@ -959,7 +962,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       if (!pending) return emitError(socket, 'That rematch offer has expired');
 
       const game = await Game.findById(gameId)
-        .select('white black timeControl variant wagerTokens')
+        .select('white black timeControl clocks variant wagerTokens')
         .lean();
       if (!game) return emitError(socket, 'Original game not found');
 
@@ -1010,6 +1013,17 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         return;
       }
 
+      // Odds games: the colours swap but each player keeps their OWN clock,
+      // so whoever had 3+0 still has 3+0 after the swap (their clock moves
+      // from white to black, or the other way round, with them).
+      const toInput = (c: { baseSeconds: number | null; incrementSeconds: number }) => ({
+        baseMinutes: c.baseSeconds === null ? null : c.baseSeconds / 60,
+        incrementSeconds: c.incrementSeconds,
+      });
+      const oddsClocks = game.clocks
+        ? { white: toInput(game.clocks.black), black: toInput(game.clocks.white) }
+        : undefined;
+
       let newGame;
       try {
         newGame = await createDirectGame(
@@ -1022,6 +1036,9 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           undefined,
           game.variant,
           game.wagerTokens,
+          undefined,
+          undefined,
+          oddsClocks,
         );
       } catch (err) {
         // Same wager as the original game, if either side can no longer

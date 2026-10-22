@@ -9,7 +9,7 @@ import { useOnOwnGamePageRef } from "../hooks/useOnOwnGamePageRef.js";
 import { getCageMatchByCode, type CageMatch } from "../api/cageMatches.js";
 import { CageMatchOverModal } from "./CageMatchOverModal.js";
 import { RCoin } from "./ui/RCoin.js";
-import { TimeControlIcon } from "./ui/TimeControlIcon.js";
+import { ChallengeSummary, type ChallengeClock } from "./ChallengeSummary.js";
 
 /**
  * Cross-page real-time notifications: incoming challenges and rematch
@@ -52,7 +52,9 @@ export function GlobalListeners() {
     function onChallengeReceived(payload: {
       challengeId: string;
       from: { id: string; username: string };
-      timeControl: { baseMinutes: number | null; incrementSeconds: number };
+      timeControl: ChallengeClock;
+      odds?: ChallengeClock | null;
+      variant?: string;
       wagerTokens?: number;
     }) {
       if (!socket) return;
@@ -61,31 +63,14 @@ export function GlobalListeners() {
       // same ref), not both, so no toast here in that case.
       if (onOwnGamePageRef.current) return;
 
-      const tc =
-        payload.timeControl.baseMinutes === null
-          ? "Unlimited"
-          : `${payload.timeControl.baseMinutes}+${payload.timeControl.incrementSeconds}`;
-      const wagerNote = payload.wagerTokens ? (
-        <>
-          ,{" "}
-          <span className="inline-flex items-center gap-0.5">
-            {payload.wagerTokens}{" "}
-            <RCoin className="translate-y-0.75" size={14} />
-          </span>
-        </>
-      ) : null;
       notify(
-        <span>
-          {payload.from.username} challenged you to a game (
-          <span className="inline-flex items-center gap-0.5">
-            <TimeControlIcon
-              baseMinutes={payload.timeControl.baseMinutes}
-              size={12}
-            />
-            {tc}
-          </span>
-          {wagerNote}).
-        </span>,
+        <ChallengeSummary
+          username={payload.from.username}
+          timeControl={payload.timeControl}
+          odds={payload.odds}
+          variant={payload.variant}
+          wagerTokens={payload.wagerTokens}
+        />,
         [
           {
             label: "Accept",
@@ -385,6 +370,13 @@ export function GlobalListeners() {
       );
     }
 
+    // Challenges sent while this player was offline are waiting on the server;
+    // ask for them now that the listener above is in place, and again after
+    // every reconnect (a challenge can also arrive while the socket is down).
+    const syncChallenges = () => socket.emit("challenge:sync");
+    socket.on("connect", syncChallenges);
+    if (socket.connected) syncChallenges();
+
     socket.on("challenge:received", onChallengeReceived);
     socket.on("challenge:accepted", onChallengeAccepted);
     socket.on("challenge:declined", onChallengeDeclined);
@@ -410,6 +402,7 @@ export function GlobalListeners() {
     socket.on("notification:new", onNotificationNew);
 
     return () => {
+      socket.off("connect", syncChallenges);
       socket.off("challenge:received", onChallengeReceived);
       socket.off("challenge:accepted", onChallengeAccepted);
       socket.off("challenge:declined", onChallengeDeclined);

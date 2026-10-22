@@ -336,7 +336,19 @@ export async function createDirectGame(
   wagerTokens = 0,
   cageLeg?: { cageMatchId: string; legIndex: number },
   tournamentPairing?: { tournamentId: string; roundIndex: number; pairingIndex: number },
+  /** Odds: a separate (timed) clock for each colour. Only challenges and
+   *  their rematches pass this. `timeControl` is then ignored in favour of
+   *  the faster of the two for the stored summary. */
+  oddsClocks?: { white: TimeControlInput; black: TimeControlInput },
 ): Promise<IGame> {
+  if (oddsClocks) {
+    if (oddsClocks.white.baseMinutes === null || oddsClocks.black.baseMinutes === null) {
+      throw ApiError.badRequest("Odds games need a timed clock for both players");
+    }
+    // The faster clock stands in as the game's headline time control.
+    timeControl =
+      oddsClocks.black.baseMinutes < oddsClocks.white.baseMinutes ? oddsClocks.black : oddsClocks.white;
+  }
   const joinCode = await uniqueJoinCode();
   const startingFen =
     variant === "chess960"
@@ -344,6 +356,10 @@ export async function createDirectGame(
       : variant === "crazyhouse"
         ? ZH_START_FEN
         : STARTING_FEN;
+  const toStoredClock = (tc: TimeControlInput) => ({
+    baseSeconds: tc.baseMinutes === null ? null : tc.baseMinutes * 60,
+    incrementSeconds: tc.incrementSeconds,
+  });
   const game = await Game.create({
     joinCode,
     variant,
@@ -366,11 +382,10 @@ export async function createDirectGame(
           pairingIndex: tournamentPairing.pairingIndex,
         }
       : {}),
-    timeControl: {
-      baseSeconds:
-        timeControl.baseMinutes === null ? null : timeControl.baseMinutes * 60,
-      incrementSeconds: timeControl.incrementSeconds,
-    },
+    ...(oddsClocks
+      ? { clocks: { white: toStoredClock(oddsClocks.white), black: toStoredClock(oddsClocks.black) } }
+      : {}),
+    timeControl: toStoredClock(timeControl),
   });
 
   // Both sides stake at the moment the game is actually created (i.e. right
@@ -402,6 +417,9 @@ export async function createDirectGame(
     game.initialFen,
     game.variant,
     wagerTokens,
+    oddsClocks
+      ? { white: toLiveTimeControl(oddsClocks.white), black: toLiveTimeControl(oddsClocks.black) }
+      : undefined,
   );
   await scheduleGameTimer(game.id);
   await scheduleFirstMoveTimer(game.id);
@@ -515,11 +533,12 @@ function queryOpenGames(excludeUserId?: string) {
     // (a thenable), and every .then/.catch/await on it re-runs the query, so
     // the cache below hit "Query was already executed" and /games/open 500'd.
     .exec()
-    // Show each poster's rating on THIS game's ladder (bullet/blitz/rapid).
+    // Show each poster's rating on THIS game's ladder (bullet/blitz/rapid,
+    // or the variant's own ladder for Chess960 / Crazyhouse).
     .then((games) =>
       games.map((g) => ({
         ...g,
-        white: withGameCategoryRating(g.white, g.timeControl?.baseSeconds ?? null),
+        white: withGameCategoryRating(g.white, g.timeControl?.baseSeconds ?? null, g.variant),
       })),
     );
 }
@@ -568,8 +587,8 @@ export async function getGameByCode(rawCode: string) {
   if (!game) throw ApiError.notFound("No game found with that code");
   // Players' ratings as shown in this game are the ones on its own ladder.
   const gameBaseSeconds = game.timeControl?.baseSeconds ?? null;
-  game.white = withGameCategoryRating(game.white, gameBaseSeconds);
-  game.black = withGameCategoryRating(game.black, gameBaseSeconds);
+  game.white = withGameCategoryRating(game.white, gameBaseSeconds, game.variant);
+  game.black = withGameCategoryRating(game.black, gameBaseSeconds, game.variant);
   // A game in progress keeps its moves and current position in Redis, not
   // Mongo, until it ends (see finalizeGame).
   if (game.status === "active") {

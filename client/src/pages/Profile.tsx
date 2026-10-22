@@ -79,23 +79,16 @@ export function Profile() {
   // Keeps the online dot live while this profile is open for a player you
   // follow, same way the Players page does. follow:presence is only sent to
   // a player's followers, so a stranger's dot stays a snapshot from
-  // whenever the page loaded. follow:new keeps the follower count (and the
-  // "follows you" label) current if this profile's owner follows you.
+  // whenever the page loaded.
   useEffect(() => {
     if (!socket || !profile) return;
     function onPresence(payload: { userId: string; online: boolean }) {
       if (payload.userId !== profile!.id) return;
       setProfile((prev) => (prev ? { ...prev, online: payload.online } : prev));
     }
-    function onFollowed(payload: { by: string }) {
-      if (payload.by !== profile!.id) return;
-      setProfile((prev) => (prev ? { ...prev, followsYou: true } : prev));
-    }
     socket.on("follow:presence", onPresence);
-    socket.on("follow:new", onFollowed);
     return () => {
       socket.off("follow:presence", onPresence);
-      socket.off("follow:new", onFollowed);
     };
   }, [socket, profile?.id]);
 
@@ -104,8 +97,14 @@ export function Profile() {
   // as their own separate events instead.
   useEffect(() => {
     if (!socket) return;
-    function onSent() {
-      notify("Challenge sent. Waiting for a response…", [], 3000);
+    function onSent(payload?: { offline?: boolean }) {
+      notify(
+        payload?.offline
+          ? "Challenge sent. They're offline and will see it when they come back online."
+          : "Challenge sent. Waiting for a response…",
+        [],
+        3000,
+      );
     }
     // No challenge:error handler here: GlobalListeners already toasts it, and
     // a second toast from this page made every rejection show twice.
@@ -207,11 +206,15 @@ export function Profile() {
         3000,
       );
     }
-    const { timeControl: tc, variant, wagerTokens } = gameSettings;
+    const { timeControl: tc, odds, variant, wagerTokens } = gameSettings;
     socket.emit("challenge:send", {
       toUserId: profile.id,
       baseMinutes: tc.baseMinutes,
       incrementSeconds: tc.incrementSeconds,
+      // Odds: the other player's clock, when it differs from yours.
+      odds: odds
+        ? { baseMinutes: odds.baseMinutes, incrementSeconds: odds.incrementSeconds }
+        : null,
       variant,
       wagerTokens,
     });
@@ -268,11 +271,6 @@ export function Profile() {
                     {profile.followingCount}
                   </span>{" "}
                   following
-                  {profile.followsYou && !profile.isSelf && (
-                    <span className="ml-2 rounded bg-base-200 px-1.5 py-0.5 text-xs text-base-content/60">
-                      Follows you
-                    </span>
-                  )}
                 </p>
                 <p className="mt-1 text-sm text-base-content/50">
                   Member since{" "}
@@ -312,7 +310,7 @@ export function Profile() {
                     aria-label={`Follow ${profile.username}`}
                   >
                     <UserPlus className="h-4 w-4" />{" "}
-                    {profile.followsYou ? "Follow back" : "Follow"}
+                    Follow
                   </Button>
                 )}
 
@@ -354,12 +352,18 @@ export function Profile() {
                           still send this, they'll see it once they're free.
                         </p>
                       )}
-                      <GameSettingsFields settings={gameSettings} />
+                      {!profile.online && !profile.activeGameCode && (
+                        <p className="text-xs text-base-content/50">
+                          {profile.username} is offline. They'll see your
+                          challenge as soon as they come back online.
+                        </p>
+                      )}
+                      <GameSettingsFields settings={gameSettings} challenge />
                       <Button
                         className="w-full"
                         variant="secondary"
                         onClick={handleChallenge}
-                        disabled={gameSettings.wagerBelowFloor}
+                        disabled={gameSettings.wagerBelowFloor || gameSettings.clockInvalid}
                       >
                         Send
                       </Button>
@@ -390,28 +394,32 @@ export function Profile() {
             )}
           </div>
 
-          {/* Ratings, one tile per ladder, between the main details and the
-              win/loss record. Phone: three compact stacked tiles (icon, big
-              number, label). From sm up: wider tiles with the icon in a
-              round chip beside the label and number. */}
+          {/* Ratings, one tile per ladder (bullet, blitz, rapid, Chess960,
+              Crazyhouse), between the main details and the win/loss record.
+              Five tiles don't fit on one line, so the row scrolls sideways
+              instead of squeezing them: every tile keeps a minimum width
+              (shrink-0) and grows to share the space only when there is
+              room. Phone: compact stacked tiles (icon, big number, label).
+              From sm up: wider tiles with the icon in a round chip beside
+              the label and number. */}
           {profile.ratings && (
-            <div className="mt-4 grid grid-cols-3 gap-2 border-t border-base-300 pt-4 sm:gap-3">
+            <div className="mt-4 flex snap-x snap-proximity gap-2 overflow-x-auto overscroll-x-contain border-t border-base-300 pt-4 pb-1.5 [scrollbar-width:thin] sm:gap-3">
               {RATING_CATEGORIES.map((c) => {
                 const rating = profile.ratings![c];
                 return (
                   <div
                     key={c}
                     title={`${RATING_CATEGORY_META[c].label} rating${rating != null ? ` ${rating}` : ""}`}
-                    className="flex min-w-0 flex-col items-center gap-1.5 rounded-xl border border-base-300 bg-base-100/50 px-2 py-3 text-center sm:flex-row sm:gap-3 sm:px-4 sm:py-3.5 sm:text-left"
+                    className="flex min-w-28 flex-1 shrink-0 snap-start flex-col items-center gap-1.5 rounded-xl border border-base-300 bg-base-100/50 px-2 py-3 text-center sm:min-w-44 sm:flex-row sm:gap-3 sm:px-4 sm:py-3.5 sm:text-left"
                   >
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-(--primary)/10 text-(--primary) sm:h-11 sm:w-11">
                       <CategoryIcon category={c} size={22} />
                     </span>
-                    <div className="min-w-0">
+                    <div>
                       <p className="text-xl leading-none font-bold tabular-nums text-base-content sm:text-2xl">
                         {rating ?? "—"}
                       </p>
-                      <p className="mt-1 text-[11px] font-medium tracking-wide text-base-content/50 uppercase sm:text-xs">
+                      <p className="mt-1 text-[11px] font-medium tracking-wide whitespace-nowrap text-base-content/50 uppercase sm:text-xs">
                         {RATING_CATEGORY_META[c].label}
                       </p>
                     </div>

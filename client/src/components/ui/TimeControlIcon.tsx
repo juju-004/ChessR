@@ -1,5 +1,10 @@
 import type { ComponentType } from "react";
-import { Hourglass, Infinity as InfinityIcon } from "lucide-react";
+import {
+  ArrowDownToLine,
+  Hourglass,
+  Infinity as InfinityIcon,
+  Shuffle,
+} from "lucide-react";
 import { cn } from "@/lib/cn.js";
 import { BulletGlyph, BlitzGlyph, RapidGlyph } from "./TimeControlGlyphs.js";
 import {
@@ -11,23 +16,31 @@ import {
 // Bullet, blitz and rapid use the custom glyphs in TimeControlGlyphs.tsx;
 // classical/unlimited keep a sensible matching pair (hourglass for a long
 // game, infinity for no clock at all) so every bucket in TimeControlCategory
-// has one.
+// has one. The two variant rating ladders sit alongside them: a shuffle for
+// Chess960 (random back rank), a piece dropping onto a line for Crazyhouse.
 type CategoryIconComponent = ComponentType<{
   size?: number;
   className?: string;
   "aria-hidden"?: boolean | "true" | "false";
 }>;
 
-const CATEGORY_ICON: Record<TimeControlCategory, CategoryIconComponent> = {
+export type VariantIconCategory = "chess960" | "crazyhouse";
+
+const CATEGORY_ICON: Record<
+  TimeControlCategory | VariantIconCategory,
+  CategoryIconComponent
+> = {
   bullet: BulletGlyph,
   blitz: BlitzGlyph,
   rapid: RapidGlyph,
   classical: Hourglass,
   unlimited: InfinityIcon,
+  chess960: Shuffle,
+  crazyhouse: ArrowDownToLine,
 };
 
 export interface CategoryIconProps {
-  category: TimeControlCategory;
+  category: TimeControlCategory | VariantIconCategory;
   size?: number;
   className?: string;
   /** Optional text-color class. The icon has no color of its own: it

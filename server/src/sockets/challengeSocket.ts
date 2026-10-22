@@ -10,8 +10,16 @@ import { isUserOnline } from '../services/presence.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
 import { trackDaily } from '../services/dailyChallenge.service.js';
 
+// A challenge to someone who is online lives for a minute, like it always has.
+// One to someone who is OFFLINE waits for them for a day, and is shown to them
+// the moment they come back online (see challenge:sync below).
 const CHALLENGE_TTL_SECONDS = 60;
+const OFFLINE_CHALLENGE_TTL_SECONDS = 24 * 60 * 60;
+// Most challenges replayed to someone when they come online.
+const MAX_REPLAYED_CHALLENGES = 20;
 const challengeKey = (id: string) => `challenge:${id}`;
+// Ids of the challenges still waiting for a given player to answer.
+const inboxKey = (toId: string) => `challenge:inbox:${toId}`;
 // Tracks "userId already has an unanswered challenge out to this specific
 // person", same TTL as the challenge itself. Blocks challenge:send from
 // firing again for the same pair while one's still pending, which is what
@@ -26,11 +34,44 @@ const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
 // branching this flows into in game.service.ts's createDirectGame.
 const MIN_STAKE_TOKENS = 20;
 
+const clockSchema = z.object({
+  baseMinutes: z.number().min(0.5).max(180),
+  incrementSeconds: z.number().min(0).max(60),
+});
+
+type StoredChallenge = {
+  fromId: string;
+  fromUsername: string;
+  toId: string;
+  baseMinutes: number | null;
+  incrementSeconds: number;
+  /** Odds: the CHALLENGED player's clock, when it differs from the
+   *  challenger's (baseMinutes/incrementSeconds). Null = same clock. */
+  odds: { baseMinutes: number; incrementSeconds: number } | null;
+  variant: 'standard' | 'chess960' | 'crazyhouse';
+  wagerTokens: number;
+};
+
+function receivedPayload(challengeId: string, c: StoredChallenge, expiresInSeconds: number) {
+  return {
+    challengeId,
+    from: { id: c.fromId, username: c.fromUsername },
+    timeControl: { baseMinutes: c.baseMinutes, incrementSeconds: c.incrementSeconds },
+    odds: c.odds,
+    variant: c.variant,
+    wagerTokens: c.wagerTokens,
+    expiresInSeconds,
+  };
+}
+
 const sendSchema = z.object({
   toUserId: z.string().refine(mongoose.isValidObjectId),
   // 0.5 = Hyper Bullet (30s), same floor as game.controller.ts's createSchema.
   baseMinutes: z.number().min(0.5).max(180).nullable().optional().default(10),
   incrementSeconds: z.number().min(0).max(60).optional().default(0),
+  // Odds, challenges only: the challenged player's clock, when it should
+  // differ from the challenger's. Both clocks must be timed.
+  odds: clockSchema.nullable().optional(),
   variant: z.enum(['standard', 'chess960', 'crazyhouse']).optional().default('standard'),
   wagerTokens: z
     .number()
@@ -72,6 +113,10 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
       const parsed = sendSchema.safeParse(raw);
       if (!parsed.success) return emitError(socket, 'Invalid challenge payload');
       const { toUserId, baseMinutes, incrementSeconds, variant, wagerTokens } = parsed.data;
+      const odds = parsed.data.odds ?? null;
+      if (odds && baseMinutes === null) {
+        return emitError(socket, 'Odds need a timed clock for both players');
+      }
 
       if (toUserId === userId) return emitError(socket, "You can't challenge yourself");
 
@@ -84,8 +129,9 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
       // Any player can challenge any other player, friend or not.
       const me = await User.findById(userId).select('tokenBalance').lean();
 
+      // An offline player can be challenged too: it waits for them and they
+      // see it as soon as they come back online.
       const online = await isUserOnline(toUserId);
-      if (!online) return emitError(socket, 'That player is currently offline');
 
       const target = await User.findById(toUserId).select('acceptChallenges').lean();
       if (target && target.acceptChallenges === false) {
@@ -110,31 +156,40 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
       // unanswered challenge to this same person is still outstanding,
       // reject another one instead of piling up a fresh `challenge:received`
       // notification on their end every time this fires.
-      const alreadyPending = await redis.exists(pendingPairKey(userId, toUserId));
-      if (alreadyPending) {
-        return emitError(socket, "You already have a pending challenge to that player.");
+      const pendingId = await redis.get(pendingPairKey(userId, toUserId));
+      if (pendingId) {
+        if (online) {
+          return emitError(socket, "You already have a pending challenge to that player.");
+        }
+        // They're offline, so they haven't seen the earlier one and a second
+        // can't spam them: the new challenge simply replaces it (that is how
+        // you change the settings of a challenge nobody has answered yet).
+        await redis.del(challengeKey(pendingId));
+        await redis.srem(inboxKey(toUserId), pendingId);
       }
 
+      const ttl = online ? CHALLENGE_TTL_SECONDS : OFFLINE_CHALLENGE_TTL_SECONDS;
       const challengeId = nanoid();
-      await redis.set(
-        challengeKey(challengeId),
-        JSON.stringify({ fromId: userId, toId: toUserId, baseMinutes, incrementSeconds, variant, wagerTokens }),
-        'EX',
-        CHALLENGE_TTL_SECONDS,
-      );
-      await redis.set(pendingPairKey(userId, toUserId), challengeId, 'EX', CHALLENGE_TTL_SECONDS);
-
-      io.to(`user:${toUserId}`).emit('challenge:received', {
-        challengeId,
-        from: { id: userId, username },
-        timeControl: { baseMinutes, incrementSeconds },
+      const challenge: StoredChallenge = {
+        fromId: userId,
+        fromUsername: username,
+        toId: toUserId,
+        baseMinutes,
+        incrementSeconds,
+        odds,
         variant,
         wagerTokens,
-        expiresInSeconds: CHALLENGE_TTL_SECONDS,
-      });
+      };
+      await redis.set(challengeKey(challengeId), JSON.stringify(challenge), 'EX', ttl);
+      await redis.set(pendingPairKey(userId, toUserId), challengeId, 'EX', ttl);
+      await redis.sadd(inboxKey(toUserId), challengeId);
+      await redis.expire(inboxKey(toUserId), OFFLINE_CHALLENGE_TTL_SECONDS);
+
+      // No-op when they're offline: challenge:sync replays it on their return.
+      io.to(`user:${toUserId}`).emit('challenge:received', receivedPayload(challengeId, challenge, ttl));
 
       trackDaily(userId, { type: 'challenge_sent', key: `challenge:${challengeId}` });
-      socket.emit('challenge:sent', { challengeId, toUserId, wagerTokens });
+      socket.emit('challenge:sent', { challengeId, toUserId, wagerTokens, offline: !online });
     }),
   );
 
@@ -148,18 +203,26 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
       const stored = await redis.get(challengeKey(challengeId));
       if (!stored) return emitError(socket, 'This challenge has expired');
 
-      const { fromId, toId, baseMinutes, incrementSeconds, variant, wagerTokens } = JSON.parse(stored) as {
-        fromId: string;
-        toId: string;
-        baseMinutes: number | null;
-        incrementSeconds: number;
-        variant: 'standard' | 'chess960' | 'crazyhouse';
-        wagerTokens: number;
-      };
+      const { fromId, fromUsername, toId, baseMinutes, incrementSeconds, variant, wagerTokens, odds } =
+        JSON.parse(stored) as StoredChallenge;
       if (toId !== userId) return emitError(socket, 'This challenge is not addressed to you');
+
+      // A challenge can be accepted after its sender has gone offline (they
+      // sent it while you were away, then left). A game can't start with
+      // nobody there, so keep the challenge waiting and say why.
+      if (accept && !(await isUserOnline(fromId))) {
+        return emitError(
+          socket,
+          `${fromUsername ?? 'That player'} is offline right now. Try accepting again once they're back online.`,
+        );
+      }
 
       await redis.del(challengeKey(challengeId));
       await redis.del(pendingPairKey(fromId, toId));
+      await redis.srem(inboxKey(toId), challengeId);
+      // Tells every place this player has the challenge showing (the toast,
+      // the bell, other tabs) that it has been answered.
+      io.to(`user:${toId}`).emit('challenge:resolved', { challengeId });
 
       if (!accept) {
         io.to(`user:${fromId}`).emit('challenge:declined', { challengeId, by: userId });
@@ -198,6 +261,16 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
       }
 
       const [whiteId, blackId] = Math.random() < 0.5 ? [fromId, toId] : [toId, fromId];
+      // Odds: the challenger plays their own clock and the challenged player
+      // theirs, whichever colours the draw gives them.
+      const fromClock = { baseMinutes, incrementSeconds };
+      const toClock = odds ?? null;
+      const oddsClocks = toClock
+        ? {
+            white: whiteId === fromId ? fromClock : toClock,
+            black: blackId === fromId ? fromClock : toClock,
+          }
+        : undefined;
       let game;
       try {
         game = await createDirectGame(
@@ -207,6 +280,9 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
           challengeId,
           variant,
           wagerTokens,
+          undefined,
+          undefined,
+          oddsClocks,
         );
       } catch (err) {
         // Most likely: one side's R token balance dropped below the wager
@@ -244,7 +320,31 @@ export function registerChallengeHandlers(io: Server, socket: Socket) {
       if (fromId !== userId) return;
       await redis.del(challengeKey(parsed.data.challengeId));
       await redis.del(pendingPairKey(fromId, toId));
+      await redis.srem(inboxKey(toId), parsed.data.challengeId);
       io.to(`user:${toId}`).emit('challenge:cancelled', { challengeId: parsed.data.challengeId });
+    }),
+  );
+
+  // The client asks for this once its listeners are up (and after every
+  // reconnect). Anything sent to this player while they were offline, and
+  // still within its lifetime, is delivered now, as if it had just arrived.
+  socket.on(
+    'challenge:sync',
+    safeHandler(socket, async () => {
+      const ids = (await redis.smembers(inboxKey(userId))).slice(0, MAX_REPLAYED_CHALLENGES);
+      for (const id of ids) {
+        const [stored, ttl] = await Promise.all([redis.get(challengeKey(id)), redis.ttl(challengeKey(id))]);
+        if (!stored || ttl <= 0) {
+          // Expired, answered or cancelled: drop the stale inbox entry.
+          await redis.srem(inboxKey(userId), id);
+          continue;
+        }
+        const challenge = JSON.parse(stored) as StoredChallenge;
+        // `queued`: it was waiting for this player (sent while they were offline
+        // or disconnected), so the client keeps it in the bell as well as
+        // toasting it, since a toast alone would be gone long before a day.
+        socket.emit('challenge:received', { ...receivedPayload(id, challenge, ttl), queued: true });
+      }
     }),
   );
 }

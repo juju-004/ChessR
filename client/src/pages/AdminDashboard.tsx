@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   ShieldCheck,
   LogOut,
@@ -27,17 +27,14 @@ import {
   type AdminNairaTournament,
 } from "../api/admin.js";
 import { clearAdminToken } from "../api/adminAuthStore.js";
-import { AdminWithdrawals } from "../components/admin/AdminWithdrawals.js";
-import { AdminDeposits } from "../components/admin/AdminDeposits.js";
-import { AdminOrganizations } from "../components/admin/AdminOrganizations.js";
 import {
   Card,
   Badge,
   CenteredSpinner,
   Button,
-  Tabs,
   RCoinAmount,
 } from "../components/ui/index.js";
+import { cn } from "@/lib/cn.js";
 
 const STATUS_FILTERS: (ReportStatus | "all")[] = [
   "pending",
@@ -84,32 +81,85 @@ const flagStatusVariant: Record<GameFlagStatus, "warning" | "success" | "error">
   actioned: "error",
 };
 
-export function AdminDashboard() {
+// The console's sections are real routes (not in-page tabs), so every one has
+// its own URL that can be bookmarked or sent, e.g. the withdrawal alert links
+// straight to /admin/withdrawals/:id. The signed-in check lives in
+// AdminProtectedRoute, which remembers the URL for the login redirect.
+const NAV_ITEMS = [
+  { to: "/admin/reports", label: "Reports" },
+  { to: "/admin/game-check", label: "Game check" },
+  { to: "/admin/revenue", label: "Revenue" },
+  { to: "/admin/naira-tournaments", label: "Naira tournaments" },
+  { to: "/admin/withdrawals", label: "Withdrawals" },
+  { to: "/admin/deposits", label: "Deposits" },
+  { to: "/admin/organizations", label: "Organisations" },
+];
+
+export function AdminLayout() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<
-    "reports" | "gameCheck" | "revenue" | "naira" | "withdrawals" | "deposits" | "organizations"
-  >("reports");
+
+  function handleLogout() {
+    clearAdminToken();
+    navigate("/admin/login", { replace: true });
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-4xl min-w-0 px-3 py-5 sm:px-4 sm:py-6">
+      <div className="mb-4 flex items-center justify-between gap-2 sm:mb-5">
+        <Link
+          to="/admin"
+          className="flex min-w-0 items-center gap-2 text-base-content"
+        >
+          <ShieldCheck className="h-5 w-5 shrink-0 text-(--primary)" />
+          <h1 className="truncate text-lg font-semibold">Admin console</h1>
+        </Link>
+        <Button
+          variant="glass"
+          size="sm"
+          onClick={handleLogout}
+          className="shrink-0"
+        >
+          <LogOut className="h-4 w-4" /> Sign out
+        </Button>
+      </div>
+
+      {/* Seven links don't fit a 320px screen, so the strip scrolls sideways
+       *  inside its own container (scrollbar hidden) instead of pushing
+       *  the whole page wider than the viewport. */}
+      <nav
+        aria-label="Admin sections"
+        className="mb-4 max-w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        <div className="elevated-flat inline-flex gap-1 rounded-xl p-1">
+          {NAV_ITEMS.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) =>
+                cn(
+                  "relative flex rounded-lg px-3.5 py-1.5 text-sm font-medium whitespace-nowrap transition-colors",
+                  isActive
+                    ? "gradient-brand text-white"
+                    : "text-base-content/60 hover:text-base-content",
+                )
+              }
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </div>
+      </nav>
+
+      <Outlet />
+    </div>
+  );
+}
+
+export function AdminReports() {
   const [status, setStatus] = useState<ReportStatus | "all">("pending");
   const [reports, setReports] = useState<AdminReportListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  const [flagStatus, setFlagStatus] = useState<GameFlagStatus | "all">("pending_review");
-  const [flags, setFlags] = useState<AdminGameFlag[]>([]);
-  const [flagsLoading, setFlagsLoading] = useState(true);
-  const [flagsError, setFlagsError] = useState("");
-  const [flagActionId, setFlagActionId] = useState<string | null>(null);
-
-  const [revenue, setRevenue] = useState<RevenueSummary | null>(null);
-  const [revenueLoading, setRevenueLoading] = useState(true);
-  const [revenueError, setRevenueError] = useState("");
-  const [revenuePage, setRevenuePage] = useState(1);
-
-  const [nairaTournaments, setNairaTournaments] = useState<AdminNairaTournament[]>([]);
-  const [nairaLoading, setNairaLoading] = useState(true);
-  const [nairaError, setNairaError] = useState("");
-  const [nairaPage, setNairaPage] = useState(1);
-  const [nairaTotalPages, setNairaTotalPages] = useState(1);
 
   useEffect(() => {
     setLoading(true);
@@ -120,48 +170,106 @@ export function AdminDashboard() {
       .finally(() => setLoading(false));
   }, [status]);
 
+  return (
+    <>
+      <div className="mb-4 flex flex-wrap gap-2">
+        {STATUS_FILTERS.map((s) => (
+          <button
+            key={s}
+            onClick={() => setStatus(s)}
+            className={`rounded-full px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
+              status === s
+                ? "bg-(--primary) text-white"
+                : "bg-base-200 text-base-content/60 hover:bg-base-300"
+            }`}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+
+      {loading && (
+        <CenteredSpinner className="py-10" />
+      )}
+
+      {error && (
+        <Card
+          variant="solid"
+          className="border-red-900/50 bg-red-950/20 text-red-300"
+        >
+          {error}
+        </Card>
+      )}
+
+      {!loading && !error && reports.length === 0 && (
+        <p className="py-10 text-center text-sm text-base-content/50">
+          No {status !== "all" ? status : ""} reports.
+        </p>
+      )}
+
+      <div className="space-y-2">
+        {reports.map((r) => (
+          <Link key={r.id} to={`/admin/reports/${r.id}`}>
+            <Card variant="solid" interactive className="text-sm">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="font-semibold break-all text-base-content">
+                    {r.reportedUser?.username ?? "Unknown user"}
+                  </span>
+                  <span className="text-base-content/40">reported by</span>
+                  <span className="break-all text-base-content/70">
+                    {r.reporter?.username ?? "Unknown"}
+                  </span>
+                  {r.reporter?.reportingBlocked && (
+                    <Badge variant="neutral" className="gap-1">
+                      Reporter blocked
+                    </Badge>
+                  )}
+                  {r.reportedUser?.withdrawalBlocked && (
+                    <Badge variant="error" className="gap-1">
+                      <AlertTriangle className="h-3 w-3" /> Withdrawals
+                      blocked
+                    </Badge>
+                  )}
+                </div>
+                <Badge
+                  variant={statusVariant[r.status]}
+                  className="shrink-0 capitalize"
+                >
+                  {r.status}
+                </Badge>
+              </div>
+              <p className="mt-1.5 line-clamp-2 break-words text-base-content/60">
+                {r.description}
+              </p>
+              <p className="mt-1.5 text-xs break-words text-base-content/40">
+                {r.reason.replace(/_/g, " ")}
+                {r.gameCode ? ` · game ${r.gameCode}` : ""} ·{" "}
+                {new Date(r.createdAt).toLocaleString()}
+              </p>
+            </Card>
+          </Link>
+        ))}
+      </div>
+    </>
+  );
+}
+
+export function AdminGameCheck() {
+  const [flagStatus, setFlagStatus] = useState<GameFlagStatus | "all">("pending_review");
+  const [flags, setFlags] = useState<AdminGameFlag[]>([]);
+  const [flagsLoading, setFlagsLoading] = useState(true);
+  const [flagsError, setFlagsError] = useState("");
+  const [flagActionId, setFlagActionId] = useState<string | null>(null);
+
   useEffect(() => {
-    if (tab !== "gameCheck") return;
     setFlagsLoading(true);
     setFlagsError("");
     listGameFlags(flagStatus)
       .then((res) => setFlags(res.flags))
       .catch(() => setFlagsError("Could not load flagged games"))
       .finally(() => setFlagsLoading(false));
-  }, [tab, flagStatus]);
-
-  useEffect(() => {
-    if (tab !== "revenue") return;
-    setRevenueLoading(true);
-    setRevenueError("");
-    getRevenueSummary(revenuePage)
-      .then(setRevenue)
-      .catch(() => setRevenueError("Could not load revenue"))
-      .finally(() => setRevenueLoading(false));
-  }, [tab, revenuePage]);
-
-  function loadNairaTournaments() {
-    setNairaLoading(true);
-    setNairaError("");
-    listNairaTournaments(nairaPage)
-      .then((res) => {
-        setNairaTournaments(res.tournaments);
-        setNairaTotalPages(res.totalPages);
-      })
-      .catch(() => setNairaError("Could not load naira tournaments"))
-      .finally(() => setNairaLoading(false));
-  }
-
-  useEffect(() => {
-    if (tab !== "naira") return;
-    loadNairaTournaments();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, nairaPage]);
-
-  function handleLogout() {
-    clearAdminToken();
-    navigate("/admin/login", { replace: true });
-  }
+  }, [flagStatus]);
 
   async function handleFlagReview(flag: AdminGameFlag, newStatus: GameFlagStatus) {
     setFlagActionId(flag.id);
@@ -184,478 +292,397 @@ export function AdminDashboard() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl min-w-0 px-3 py-5 sm:px-4 sm:py-6">
-      <div className="mb-4 flex items-center justify-between gap-2 sm:mb-5">
-        <div className="flex min-w-0 items-center gap-2 text-base-content">
-          <ShieldCheck className="h-5 w-5 shrink-0 text-(--primary)" />
-          <h1 className="truncate text-lg font-semibold">Admin console</h1>
-        </div>
+    <>
+      <div className="mb-4 flex flex-wrap gap-2">
+        {FLAG_STATUS_FILTERS.map((s) => (
+          <button
+            key={s}
+            onClick={() => setFlagStatus(s)}
+            className={`rounded-full px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
+              flagStatus === s
+                ? "bg-(--primary) text-white"
+                : "bg-base-200 text-base-content/60 hover:bg-base-300"
+            }`}
+          >
+            {s.replace(/_/g, " ")}
+          </button>
+        ))}
+      </div>
+
+      {flagsLoading && (
+        <CenteredSpinner className="py-10" />
+      )}
+
+      {flagsError && (
+        <Card
+          variant="solid"
+          className="border-red-900/50 bg-red-950/20 text-red-300"
+        >
+          {flagsError}
+        </Card>
+      )}
+
+      {!flagsLoading && !flagsError && flags.length === 0 && (
+        <p className="py-10 text-center text-sm text-base-content/50">
+          No {flagStatus !== "all" ? flagStatus.replace(/_/g, " ") : ""} flagged games.
+        </p>
+      )}
+
+      <div className="space-y-2">
+        {flags.map((f) => (
+          <Card key={f.id} variant="solid" className="text-sm">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <ShieldQuestion className="h-4 w-4 shrink-0 text-base-content/40" />
+                <span className="font-semibold break-all text-base-content">
+                  {f.flaggedUser?.username ?? "Unknown user"}
+                </span>
+                <span className="text-base-content/40">
+                  · {f.side} · game {f.gameCode}
+                </span>
+                <Badge variant="error" className="gap-1">
+                  Score {f.score}
+                </Badge>
+              </div>
+              <Badge variant={flagStatusVariant[f.status]} className="shrink-0 capitalize">
+                {f.status.replace(/_/g, " ")}
+              </Badge>
+            </div>
+
+            <ul className="mt-1.5 space-y-0.5 break-words text-base-content/60">
+              {f.signals.map((sig, i) => (
+                <li key={i}>
+                  <span className="text-base-content/40">{sig.type.replace(/_/g, " ")}:</span>{" "}
+                  {sig.detail}
+                </li>
+              ))}
+            </ul>
+
+            <p className="mt-1.5 text-xs text-base-content/40">
+              {new Date(f.createdAt).toLocaleString()}
+            </p>
+
+            {f.status === "pending_review" && (
+              <div className="mt-2.5 flex flex-col gap-2 sm:flex-row">
+                <Button
+                  size="sm"
+                  variant="glass"
+                  className="w-full sm:w-auto"
+                  disabled={flagActionId === f.id}
+                  onClick={() => handleFlagReview(f, "cleared")}
+                >
+                  Clear &amp; unfreeze
+                </Button>
+                <Button
+                  size="sm"
+                  variant="glass"
+                  disabled={flagActionId === f.id}
+                  onClick={() => handleFlagReview(f, "actioned")}
+                  className="w-full border-red-900/50 text-red-300 sm:w-auto"
+                >
+                  Confirm cheating
+                </Button>
+              </div>
+            )}
+          </Card>
+        ))}
+      </div>
+    </>
+  );
+}
+
+export function AdminNairaTournaments() {
+  const [nairaTournaments, setNairaTournaments] = useState<AdminNairaTournament[]>([]);
+  const [nairaLoading, setNairaLoading] = useState(true);
+  const [nairaError, setNairaError] = useState("");
+  const [nairaPage, setNairaPage] = useState(1);
+  const [nairaTotalPages, setNairaTotalPages] = useState(1);
+
+  function loadNairaTournaments() {
+    setNairaLoading(true);
+    setNairaError("");
+    listNairaTournaments(nairaPage)
+      .then((res) => {
+        setNairaTournaments(res.tournaments);
+        setNairaTotalPages(res.totalPages);
+      })
+      .catch(() => setNairaError("Could not load naira tournaments"))
+      .finally(() => setNairaLoading(false));
+  }
+
+  useEffect(() => {
+    loadNairaTournaments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nairaPage]);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+        <p className="text-xs text-base-content/50">
+          Finished naira tournaments with prizes still to disburse.
+          Account details are read live, so refresh any time to pick up
+          a late fill-in or a change.
+        </p>
         <Button
           variant="glass"
           size="sm"
-          onClick={handleLogout}
-          className="shrink-0"
+          onClick={loadNairaTournaments}
+          disabled={nairaLoading}
+          className="w-full shrink-0 sm:w-auto"
         >
-          <LogOut className="h-4 w-4" /> Sign out
+          Refresh
         </Button>
       </div>
 
-      {/* Four tabs don't fit a 320px screen, so the strip scrolls sideways
-       *  inside its own container (scrollbar hidden) instead of pushing
-       *  the whole page wider than the viewport. */}
-      <div className="mb-4 max-w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <Tabs
-          value={tab}
-          onChange={(v) => setTab(v as typeof tab)}
-          items={[
-            { value: "reports", label: "Reports" },
-            { value: "gameCheck", label: "Game check" },
-            { value: "revenue", label: "Revenue" },
-            { value: "naira", label: "Naira tournaments" },
-            { value: "withdrawals", label: "Withdrawals" },
-            { value: "deposits", label: "Deposits" },
-            { value: "organizations", label: "Organisations" },
-          ]}
-        />
+      {nairaLoading && (
+        <CenteredSpinner className="py-10" />
+      )}
+
+      {nairaError && (
+        <Card
+          variant="solid"
+          className="border-red-900/50 bg-red-950/20 text-red-300"
+        >
+          {nairaError}
+        </Card>
+      )}
+
+      {!nairaLoading && !nairaError && nairaTournaments.length === 0 && (
+        <p className="py-10 text-center text-sm text-base-content/50">
+          No naira tournaments have finished yet.
+        </p>
+      )}
+
+      <div className="space-y-3">
+        {nairaTournaments.map((t) => (
+          <Card key={t.id} variant="solid" className="text-sm">
+            <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <Trophy className="h-4 w-4 shrink-0 text-base-content/40" />
+                <span className="font-semibold break-words text-base-content">
+                  {t.name}
+                </span>
+                <span className="text-base-content/40">· {t.code}</span>
+              </div>
+              <span className="text-xs text-base-content/40">
+                {new Date(t.finishedAt).toLocaleString()}
+              </span>
+            </div>
+
+            <div className="mt-2.5 space-y-2">
+              {t.winners.map((w) => (
+                <div
+                  key={w.rank}
+                  className="rounded-lg bg-base-100/60 px-3 py-2"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="min-w-0 font-medium break-all text-base-content">
+                      #{w.rank} {w.username}
+                    </span>
+                    <Badge variant="success" className="shrink-0">
+                      ₦{w.naira.toLocaleString()}
+                    </Badge>
+                  </div>
+                  {w.payoutAccount ? (
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-base-content/60">
+                      <span className="flex min-w-0 items-start gap-1 break-words">
+                        <Landmark className="mt-0.5 h-3 w-3 shrink-0" />
+                        <span className="min-w-0">
+                          {w.payoutAccount.bankName} ·{" "}
+                          {w.payoutAccount.accountNumber} ·{" "}
+                          {w.payoutAccount.accountName}
+                        </span>
+                      </span>
+                      <span className="flex min-w-0 items-center gap-1 break-all">
+                        <Phone className="h-3 w-3 shrink-0" /> {w.payoutAccount.phone}
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-xs text-amber-500">
+                      Hasn't submitted account details yet.
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Card>
+        ))}
       </div>
 
-      {tab === "reports" ? (
+      {nairaTotalPages > 1 && (
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 pt-2">
+          <Button
+            variant="glass"
+            size="sm"
+            disabled={nairaPage <= 1}
+            onClick={() => setNairaPage((p) => p - 1)}
+          >
+            Previous
+          </Button>
+          <span className="text-xs text-base-content/50">
+            Page {nairaPage} of {nairaTotalPages}
+          </span>
+          <Button
+            variant="glass"
+            size="sm"
+            disabled={nairaPage >= nairaTotalPages}
+            onClick={() => setNairaPage((p) => p + 1)}
+          >
+            Next
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function AdminRevenue() {
+  const [revenue, setRevenue] = useState<RevenueSummary | null>(null);
+  const [revenueLoading, setRevenueLoading] = useState(true);
+  const [revenueError, setRevenueError] = useState("");
+  const [revenuePage, setRevenuePage] = useState(1);
+
+  useEffect(() => {
+    setRevenueLoading(true);
+    setRevenueError("");
+    getRevenueSummary(revenuePage)
+      .then(setRevenue)
+      .catch(() => setRevenueError("Could not load revenue"))
+      .finally(() => setRevenueLoading(false));
+  }, [revenuePage]);
+
+  return (
+    <div className="space-y-4">
+      {revenueLoading && (
+        <CenteredSpinner className="py-10" />
+      )}
+
+      {revenueError && (
+        <Card
+          variant="solid"
+          className="border-red-900/50 bg-red-950/20 text-red-300"
+        >
+          {revenueError}
+        </Card>
+      )}
+
+      {!revenueLoading && !revenueError && revenue && (
         <>
-          <div className="mb-4 flex flex-wrap gap-2">
-            {STATUS_FILTERS.map((s) => (
-              <button
-                key={s}
-                onClick={() => setStatus(s)}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
-                  status === s
-                    ? "bg-(--primary) text-white"
-                    : "bg-base-200 text-base-content/60 hover:bg-base-300"
-                }`}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
+          {/* Total admin wallet balance, the running sum of every rake
+           *  cut ever recorded (see PlatformRevenue.ts on the server).
+           *  Not a separately-maintained counter, so it can never drift
+           *  out of sync with the ledger below it. */}
+          <Card
+            variant="solid"
+            className="flex flex-wrap items-center justify-between gap-2"
+          >
+            <div className="min-w-0">
+              <p className="text-sm text-(--primary)">
+                Admin wallet balance
+              </p>
+              <p className="text-xl font-bold break-all text-base-content sm:text-2xl">
+                <RCoinAmount
+                  value={revenue.balanceTokens}
+                  size={22}
+                  className="text-xl font-bold sm:text-2xl"
+                />
+              </p>
+            </div>
+            <Badge variant="neutral" className="shrink-0">
+              {revenue.ratePercent}% rake
+            </Badge>
+          </Card>
 
-          {loading && (
-            <CenteredSpinner className="py-10" />
-          )}
-
-          {error && (
-            <Card
-              variant="solid"
-              className="border-red-900/50 bg-red-950/20 text-red-300"
-            >
-              {error}
-            </Card>
-          )}
-
-          {!loading && !error && reports.length === 0 && (
-            <p className="py-10 text-center text-sm text-base-content/50">
-              No {status !== "all" ? status : ""} reports.
-            </p>
-          )}
-
-          <div className="space-y-2">
-            {reports.map((r) => (
-              <Link key={r.id} to={`/admin/reports/${r.id}`}>
-                <Card variant="solid" interactive className="text-sm">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className="font-semibold break-all text-base-content">
-                        {r.reportedUser?.username ?? "Unknown user"}
-                      </span>
-                      <span className="text-base-content/40">reported by</span>
-                      <span className="break-all text-base-content/70">
-                        {r.reporter?.username ?? "Unknown"}
-                      </span>
-                      {r.reporter?.reportingBlocked && (
-                        <Badge variant="neutral" className="gap-1">
-                          Reporter blocked
-                        </Badge>
-                      )}
-                      {r.reportedUser?.withdrawalBlocked && (
-                        <Badge variant="error" className="gap-1">
-                          <AlertTriangle className="h-3 w-3" /> Withdrawals
-                          blocked
-                        </Badge>
-                      )}
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {(Object.keys(SOURCE_LABEL) as RevenueSource[]).map(
+              (source) => {
+                const Icon = SOURCE_ICON[source];
+                const s = revenue.bySource[source];
+                return (
+                  <Card
+                    key={source}
+                    variant="solid"
+                    className="flex items-center gap-3"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-(--primary)/15 text-(--primary)">
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xs text-base-content/50">
+                        {SOURCE_LABEL[source]}
+                      </p>
+                      <p className="text-sm font-semibold text-base-content">
+                        <RCoinAmount value={s.tokens} size={14} />
+                      </p>
                     </div>
-                    <Badge
-                      variant={statusVariant[r.status]}
-                      className="shrink-0 capitalize"
-                    >
-                      {r.status}
-                    </Badge>
-                  </div>
-                  <p className="mt-1.5 line-clamp-2 break-words text-base-content/60">
-                    {r.description}
-                  </p>
-                  <p className="mt-1.5 text-xs break-words text-base-content/40">
-                    {r.reason.replace(/_/g, " ")}
-                    {r.gameCode ? ` · game ${r.gameCode}` : ""} ·{" "}
-                    {new Date(r.createdAt).toLocaleString()}
-                  </p>
-                </Card>
-              </Link>
-            ))}
-          </div>
-        </>
-      ) : tab === "gameCheck" ? (
-        <>
-          <div className="mb-4 flex flex-wrap gap-2">
-            {FLAG_STATUS_FILTERS.map((s) => (
-              <button
-                key={s}
-                onClick={() => setFlagStatus(s)}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
-                  flagStatus === s
-                    ? "bg-(--primary) text-white"
-                    : "bg-base-200 text-base-content/60 hover:bg-base-300"
-                }`}
-              >
-                {s.replace(/_/g, " ")}
-              </button>
-            ))}
+                  </Card>
+                );
+              },
+            )}
           </div>
 
-          {flagsLoading && (
-            <CenteredSpinner className="py-10" />
-          )}
-
-          {flagsError && (
-            <Card
-              variant="solid"
-              className="border-red-900/50 bg-red-950/20 text-red-300"
-            >
-              {flagsError}
-            </Card>
-          )}
-
-          {!flagsLoading && !flagsError && flags.length === 0 && (
+          {revenue.entries.length === 0 ? (
             <p className="py-10 text-center text-sm text-base-content/50">
-              No {flagStatus !== "all" ? flagStatus.replace(/_/g, " ") : ""} flagged games.
+              No rake collected yet.
             </p>
-          )}
-
-          <div className="space-y-2">
-            {flags.map((f) => (
-              <Card key={f.id} variant="solid" className="text-sm">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                    <ShieldQuestion className="h-4 w-4 shrink-0 text-base-content/40" />
-                    <span className="font-semibold break-all text-base-content">
-                      {f.flaggedUser?.username ?? "Unknown user"}
-                    </span>
-                    <span className="text-base-content/40">
-                      · {f.side} · game {f.gameCode}
-                    </span>
-                    <Badge variant="error" className="gap-1">
-                      Score {f.score}
-                    </Badge>
-                  </div>
-                  <Badge variant={flagStatusVariant[f.status]} className="shrink-0 capitalize">
-                    {f.status.replace(/_/g, " ")}
-                  </Badge>
-                </div>
-
-                <ul className="mt-1.5 space-y-0.5 break-words text-base-content/60">
-                  {f.signals.map((sig, i) => (
-                    <li key={i}>
-                      <span className="text-base-content/40">{sig.type.replace(/_/g, " ")}:</span>{" "}
-                      {sig.detail}
-                    </li>
-                  ))}
-                </ul>
-
-                <p className="mt-1.5 text-xs text-base-content/40">
-                  {new Date(f.createdAt).toLocaleString()}
-                </p>
-
-                {f.status === "pending_review" && (
-                  <div className="mt-2.5 flex flex-col gap-2 sm:flex-row">
-                    <Button
-                      size="sm"
-                      variant="glass"
-                      className="w-full sm:w-auto"
-                      disabled={flagActionId === f.id}
-                      onClick={() => handleFlagReview(f, "cleared")}
-                    >
-                      Clear &amp; unfreeze
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="glass"
-                      disabled={flagActionId === f.id}
-                      onClick={() => handleFlagReview(f, "actioned")}
-                      className="w-full border-red-900/50 text-red-300 sm:w-auto"
-                    >
-                      Confirm cheating
-                    </Button>
-                  </div>
-                )}
-              </Card>
-            ))}
-          </div>
-        </>
-      ) : tab === "withdrawals" ? (
-        <AdminWithdrawals />
-      ) : tab === "deposits" ? (
-        <AdminDeposits />
-      ) : tab === "organizations" ? (
-        <AdminOrganizations />
-      ) : tab === "naira" ? (
-        <div className="space-y-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-            <p className="text-xs text-base-content/50">
-              Finished naira tournaments with prizes still to disburse.
-              Account details are read live, so refresh any time to pick up
-              a late fill-in or a change.
-            </p>
-            <Button
-              variant="glass"
-              size="sm"
-              onClick={loadNairaTournaments}
-              disabled={nairaLoading}
-              className="w-full shrink-0 sm:w-auto"
-            >
-              Refresh
-            </Button>
-          </div>
-
-          {nairaLoading && (
-            <CenteredSpinner className="py-10" />
-          )}
-
-          {nairaError && (
-            <Card
-              variant="solid"
-              className="border-red-900/50 bg-red-950/20 text-red-300"
-            >
-              {nairaError}
-            </Card>
-          )}
-
-          {!nairaLoading && !nairaError && nairaTournaments.length === 0 && (
-            <p className="py-10 text-center text-sm text-base-content/50">
-              No naira tournaments have finished yet.
-            </p>
-          )}
-
-          <div className="space-y-3">
-            {nairaTournaments.map((t) => (
-              <Card key={t.id} variant="solid" className="text-sm">
-                <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                    <Trophy className="h-4 w-4 shrink-0 text-base-content/40" />
-                    <span className="font-semibold break-words text-base-content">
-                      {t.name}
-                    </span>
-                    <span className="text-base-content/40">· {t.code}</span>
-                  </div>
-                  <span className="text-xs text-base-content/40">
-                    {new Date(t.finishedAt).toLocaleString()}
-                  </span>
-                </div>
-
-                <div className="mt-2.5 space-y-2">
-                  {t.winners.map((w) => (
-                    <div
-                      key={w.rank}
-                      className="rounded-lg bg-base-100/60 px-3 py-2"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="min-w-0 font-medium break-all text-base-content">
-                          #{w.rank} {w.username}
-                        </span>
-                        <Badge variant="success" className="shrink-0">
-                          ₦{w.naira.toLocaleString()}
-                        </Badge>
-                      </div>
-                      {w.payoutAccount ? (
-                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-base-content/60">
-                          <span className="flex min-w-0 items-start gap-1 break-words">
-                            <Landmark className="mt-0.5 h-3 w-3 shrink-0" />
-                            <span className="min-w-0">
-                              {w.payoutAccount.bankName} ·{" "}
-                              {w.payoutAccount.accountNumber} ·{" "}
-                              {w.payoutAccount.accountName}
-                            </span>
-                          </span>
-                          <span className="flex min-w-0 items-center gap-1 break-all">
-                            <Phone className="h-3 w-3 shrink-0" /> {w.payoutAccount.phone}
-                          </span>
-                        </div>
-                      ) : (
-                        <p className="mt-1 text-xs text-amber-500">
-                          Hasn't submitted account details yet.
-                        </p>
-                      )}
+          ) : (
+            <div className="space-y-2">
+              {revenue.entries.map((e) => {
+                const Icon = SOURCE_ICON[e.source];
+                return (
+                  <Card
+                    key={e.id}
+                    variant="solid"
+                    className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-base-content/70">
+                      <Icon className="h-4 w-4 shrink-0 text-base-content/40" />
+                      <span className="capitalize">
+                        {SOURCE_LABEL[e.source]}
+                      </span>
+                      <span className="flex items-center gap-1 text-base-content/40">
+                        · {e.ratePercent}% of{" "}
+                        <RCoinAmount value={e.grossPotTokens} size={12} />
+                      </span>
                     </div>
-                  ))}
-                </div>
-              </Card>
-            ))}
-          </div>
+                    <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 sm:justify-end">
+                      <span className="font-semibold text-base-content">
+                        <RCoinAmount value={e.tokens} size={14} />
+                      </span>
+                      <span className="text-right text-xs text-base-content/40">
+                        {new Date(e.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
 
-          {nairaTotalPages > 1 && (
+          {revenue.totalPages > 1 && (
             <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 pt-2">
               <Button
                 variant="glass"
                 size="sm"
-                disabled={nairaPage <= 1}
-                onClick={() => setNairaPage((p) => p - 1)}
+                disabled={revenuePage <= 1}
+                onClick={() => setRevenuePage((p) => p - 1)}
               >
                 Previous
               </Button>
               <span className="text-xs text-base-content/50">
-                Page {nairaPage} of {nairaTotalPages}
+                Page {revenue.page} of {revenue.totalPages}
               </span>
               <Button
                 variant="glass"
                 size="sm"
-                disabled={nairaPage >= nairaTotalPages}
-                onClick={() => setNairaPage((p) => p + 1)}
+                disabled={revenuePage >= revenue.totalPages}
+                onClick={() => setRevenuePage((p) => p + 1)}
               >
                 Next
               </Button>
             </div>
           )}
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {revenueLoading && (
-            <CenteredSpinner className="py-10" />
-          )}
-
-          {revenueError && (
-            <Card
-              variant="solid"
-              className="border-red-900/50 bg-red-950/20 text-red-300"
-            >
-              {revenueError}
-            </Card>
-          )}
-
-          {!revenueLoading && !revenueError && revenue && (
-            <>
-              {/* Total admin wallet balance, the running sum of every rake
-               *  cut ever recorded (see PlatformRevenue.ts on the server).
-               *  Not a separately-maintained counter, so it can never drift
-               *  out of sync with the ledger below it. */}
-              <Card
-                variant="solid"
-                className="flex flex-wrap items-center justify-between gap-2"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm text-(--primary)">
-                    Admin wallet balance
-                  </p>
-                  <p className="text-xl font-bold break-all text-base-content sm:text-2xl">
-                    <RCoinAmount
-                      value={revenue.balanceTokens}
-                      size={22}
-                      className="text-xl font-bold sm:text-2xl"
-                    />
-                  </p>
-                </div>
-                <Badge variant="neutral" className="shrink-0">
-                  {revenue.ratePercent}% rake
-                </Badge>
-              </Card>
-
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                {(Object.keys(SOURCE_LABEL) as RevenueSource[]).map(
-                  (source) => {
-                    const Icon = SOURCE_ICON[source];
-                    const s = revenue.bySource[source];
-                    return (
-                      <Card
-                        key={source}
-                        variant="solid"
-                        className="flex items-center gap-3"
-                      >
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-(--primary)/15 text-(--primary)">
-                          <Icon className="h-4 w-4" />
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-xs text-base-content/50">
-                            {SOURCE_LABEL[source]}
-                          </p>
-                          <p className="text-sm font-semibold text-base-content">
-                            <RCoinAmount value={s.tokens} size={14} />
-                          </p>
-                        </div>
-                      </Card>
-                    );
-                  },
-                )}
-              </div>
-
-              {revenue.entries.length === 0 ? (
-                <p className="py-10 text-center text-sm text-base-content/50">
-                  No rake collected yet.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {revenue.entries.map((e) => {
-                    const Icon = SOURCE_ICON[e.source];
-                    return (
-                      <Card
-                        key={e.id}
-                        variant="solid"
-                        className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-base-content/70">
-                          <Icon className="h-4 w-4 shrink-0 text-base-content/40" />
-                          <span className="capitalize">
-                            {SOURCE_LABEL[e.source]}
-                          </span>
-                          <span className="flex items-center gap-1 text-base-content/40">
-                            · {e.ratePercent}% of{" "}
-                            <RCoinAmount value={e.grossPotTokens} size={12} />
-                          </span>
-                        </div>
-                        <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 sm:justify-end">
-                          <span className="font-semibold text-base-content">
-                            <RCoinAmount value={e.tokens} size={14} />
-                          </span>
-                          <span className="text-right text-xs text-base-content/40">
-                            {new Date(e.createdAt).toLocaleString()}
-                          </span>
-                        </div>
-                      </Card>
-                    );
-                  })}
-                </div>
-              )}
-
-              {revenue.totalPages > 1 && (
-                <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 pt-2">
-                  <Button
-                    variant="glass"
-                    size="sm"
-                    disabled={revenuePage <= 1}
-                    onClick={() => setRevenuePage((p) => p - 1)}
-                  >
-                    Previous
-                  </Button>
-                  <span className="text-xs text-base-content/50">
-                    Page {revenue.page} of {revenue.totalPages}
-                  </span>
-                  <Button
-                    variant="glass"
-                    size="sm"
-                    disabled={revenuePage >= revenue.totalPages}
-                    onClick={() => setRevenuePage((p) => p + 1)}
-                  >
-                    Next
-                  </Button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+        </>
       )}
     </div>
   );

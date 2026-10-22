@@ -139,6 +139,8 @@ export function SettingsNumber({
   onChange,
   min,
   max,
+  step = 1,
+  noNote = false,
 }: {
   /** Visible label on desktop (may include an icon). */
   label: ReactNode;
@@ -150,8 +152,15 @@ export function SettingsNumber({
   onChange: (value: string) => void;
   min?: number;
   max?: number;
+  step?: number;
+  /** Don't show the group's error/hint on this field, for number fields that
+   *  aren't the one the group's note is about. */
+  noNote?: boolean;
 }) {
-  const { isDesktop, error, hint } = useContext(Ctx);
+  const ctx = useContext(Ctx);
+  const isDesktop = ctx.isDesktop;
+  const error = noNote ? undefined : ctx.error;
+  const hint = noNote ? undefined : ctx.hint;
   if (isDesktop) {
     return (
       <Input
@@ -159,7 +168,7 @@ export function SettingsNumber({
         type="number"
         min={min}
         max={max}
-        step={1}
+        step={step}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         error={error}
@@ -173,10 +182,10 @@ export function SettingsNumber({
         aria-label={ariaLabel}
         aria-invalid={!!error}
         type="number"
-        inputMode="numeric"
+        inputMode={step < 1 ? "decimal" : "numeric"}
         min={min}
         max={max}
-        step={1}
+        step={step}
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}

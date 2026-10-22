@@ -22,10 +22,14 @@ const VALID_AVATAR_GRADIENTS = [
   'brand', 'sunset', 'ocean', 'forest', 'berry', 'fire', 'midnight', 'gold', 'rose', 'ice',
 ] as const;
 // Mirrors client/src/lib/avatarIcons.tsx. The avatar's look is one string,
-// "<gradient>" or "<gradient>+<icon>" (e.g. "ocean+water"), stored in the
+// "<gradient>" or "<gradient>+<icon>" (e.g. "ocean+drop"), stored in the
 // existing avatarGradient field so everything that already carries it shows
 // the icon too.
-const VALID_AVATAR_ICONS = ['air', 'water', 'earth', 'fire'] as const;
+// The old element names stay valid so previously saved avatars keep working.
+const VALID_AVATAR_ICONS = [
+  'swirl', 'drop', 'peak', 'flame',
+  'air', 'water', 'earth', 'fire',
+] as const;
 
 const avatarStyleSchema = z.string().refine((v) => {
   const parts = v.split('+');
@@ -98,7 +102,7 @@ export const searchUsers = asyncHandler(async (req: AuthedRequest, res) => {
     ...(req.user ? { _id: { $ne: req.user.id } } : {}),
   })
     .select('username avatarUrl avatarGradient rating ratingCategory')
-    .limit(20)
+    .limit(5)
     .lean();
 
   // Presence for the whole result set in one pipelined round trip, so the
@@ -168,16 +172,15 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
   const isSelf = req.user?.id === user._id.toString();
 
   // Follow state + counts for the profile header: whether the viewer follows
-  // this player, whether this player follows the viewer, and both totals.
-  const viewerId = req.user?.id;
-  const [isFollowingRow, followsYouRow, followerCount, followingCount] = await Promise.all([
-    viewerId && !isSelf ? Follow.exists({ follower: viewerId, following: user._id }) : null,
-    viewerId && !isSelf ? Follow.exists({ follower: user._id, following: viewerId }) : null,
+  // this player, and both totals. (Whether this player follows the viewer is
+  // deliberately not exposed.)
+  const meId = req.user?.id;
+  const [isFollowingRow, followerCount, followingCount] = await Promise.all([
+    meId && !isSelf ? Follow.exists({ follower: meId, following: user._id }) : null,
     Follow.countDocuments({ following: user._id }),
     Follow.countDocuments({ follower: user._id }),
   ]);
   const isFollowing = !!isFollowingRow;
-  const followsYou = !!followsYouRow;
 
   // ONE aggregate for the record AND the head-to-head (this used to be 3
   // countDocuments, or 6 when viewing someone else's profile). $match picks
@@ -269,11 +272,10 @@ export const getProfile = asyncHandler(async (req: AuthedRequest, res) => {
     memberSince: user.createdAt,
     rating: user.rating,
     ratingCategory: user.ratingCategory,
-    // All three ladders (bullet / blitz / rapid) for the profile page.
+    // Every ladder (bullet / blitz / rapid / chess960 / crazyhouse) for the profile page.
     ratings: resolveRatings(user),
     stats: { wins, losses, draws, gamesPlayed: wins + losses + draws },
     isFollowing,
-    followsYou,
     followerCount,
     followingCount,
     isSelf,

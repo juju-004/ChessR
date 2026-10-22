@@ -1,4 +1,4 @@
-import { ratingCategoryForMinutes } from "../timeControls.js";
+import { ratingCategoryForGameMinutes } from "../timeControls.js";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Users, X } from "lucide-react";
@@ -156,7 +156,14 @@ export function QuickPairing() {
                       {" "}
                       near{" "}
                       <RatingBadge
-                        rating={user.ratings[ratingCategoryForMinutes(searching.baseMinutes)]}
+                        rating={
+                          user.ratings[
+                            ratingCategoryForGameMinutes(
+                              searching.baseMinutes,
+                              searching.variant,
+                            )
+                          ]
+                        }
                       />
                     </>
                   )}

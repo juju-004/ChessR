@@ -8,7 +8,7 @@ import {
 } from "./game.service.js";
 import { assertNotRestricted } from "./suspension.service.js";
 import { ApiError } from "../utils/ApiError.js";
-import { ratingFor, ratingCategoryForMinutes } from "./ratingCategory.js";
+import { ratingFor, ratingCategoryForGameMinutes } from "./ratingCategory.js";
 
 export interface QuickPairingSegment {
   id: string;
@@ -129,8 +129,9 @@ export async function joinQuickPairingQueue(
 
   const user = await User.findById(userId).select("rating ratings").lean();
   if (!user) throw ApiError.notFound("User not found");
-  // Matched on the rating of THIS lobby's ladder (bullet/blitz/rapid).
-  const queueRating = ratingFor(user, ratingCategoryForMinutes(segment.baseMinutes));
+  // Matched on the rating of THIS lobby's ladder (bullet/blitz/rapid, or
+  // the Chess960 / Crazyhouse ladder for those lobbies).
+  const queueRating = ratingFor(user, ratingCategoryForGameMinutes(segment.baseMinutes, segment.variant));
 
   await leaveQuickPairingQueue(userId);
 

@@ -134,6 +134,7 @@ export const GameBoardArea = memo(function GameBoardArea({
           color={color}
           pocket={color === "white" ? pockets.w : pockets.b}
           pieceTheme={pieceTheme}
+          boardTheme={boardTheme}
           interactive={canDrop && color === myColor}
           selectedRole={drop.selectedRole}
           onPiecePointerDown={drop.handlePocketPointerDown}

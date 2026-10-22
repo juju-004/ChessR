@@ -34,6 +34,13 @@ export interface ITimeControl {
   incrementSeconds: number;
 }
 
+/** Odds games: each player has their own clock. Keyed by colour, so it is
+ *  already resolved to white/black once the colours are drawn. */
+export interface IGameClocks {
+  white: ITimeControl;
+  black: ITimeControl;
+}
+
 export interface IGame extends Document {
   _id: Types.ObjectId;
   joinCode: string;
@@ -48,6 +55,10 @@ export interface IGame extends Document {
   pgn: string;
   moves: IMove[];
   timeControl: ITimeControl;
+  // Only set on odds games (a challenge where the two players have different
+  // clocks). `timeControl` then holds the faster of the two for display and
+  // rating-category purposes; these are the clocks actually played.
+  clocks?: IGameClocks | null;
   // Optional: link back to a friend challenge, for auditability.
   challengeId?: string;
   isPrivate: boolean;
@@ -117,6 +128,14 @@ const timeControlSchema = new Schema<ITimeControl>(
   { _id: false },
 );
 
+const clocksSchema = new Schema<IGameClocks>(
+  {
+    white: { type: timeControlSchema, required: true },
+    black: { type: timeControlSchema, required: true },
+  },
+  { _id: false },
+);
+
 const gameSchema = new Schema<IGame>(
   {
     // Short, shareable, human-typeable identifier, this is what shows up in the
@@ -145,6 +164,7 @@ const gameSchema = new Schema<IGame>(
     },
     pgn: { type: String, default: '' },
     moves: { type: [moveSchema], default: [] },
+    clocks: { type: clocksSchema, default: undefined },
     timeControl: {
       type: timeControlSchema,
       default: () => ({ baseSeconds: 600, incrementSeconds: 0 }),

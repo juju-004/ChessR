@@ -13,6 +13,7 @@ import { analyzeGameForSuspicion } from '../services/anticheat.service.js';
 import { createNotification } from '../services/notification.service.js';
 import {
   listWithdrawalsForAdmin,
+  getWithdrawalForAdmin,
   resolveWithdrawalByAdmin,
   listDepositsForAdmin,
 } from '../services/wallet.service.js';
@@ -459,6 +460,10 @@ const txListQuerySchema = z.object({
 export const listWithdrawals = asyncHandler(async (req, res) => {
   const { status, page, limit } = txListQuerySchema.parse(req.query);
   res.json(await listWithdrawalsForAdmin({ status, page, limit }));
+});
+
+export const getWithdrawal = asyncHandler(async (req, res) => {
+  res.json(await getWithdrawalForAdmin(String(req.params.id)));
 });
 
 const resolveWithdrawalSchema = z.object({

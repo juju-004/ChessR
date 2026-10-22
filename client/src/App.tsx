@@ -165,9 +165,43 @@ const WalletLayout = lazy(() =>
 const AdminLogin = lazy(() =>
   import("./pages/AdminLogin.js").then((m) => ({ default: m.AdminLogin })),
 );
-const AdminDashboard = lazy(() =>
+// The console's sections are real routes (see AdminLayout) rather than
+// in-page tabs, so each one, and each withdrawal, has its own shareable URL.
+const AdminLayout = lazy(() =>
+  import("./pages/AdminDashboard.js").then((m) => ({ default: m.AdminLayout })),
+);
+const AdminReports = lazy(() =>
+  import("./pages/AdminDashboard.js").then((m) => ({ default: m.AdminReports })),
+);
+const AdminGameCheck = lazy(() =>
+  import("./pages/AdminDashboard.js").then((m) => ({ default: m.AdminGameCheck })),
+);
+const AdminRevenue = lazy(() =>
+  import("./pages/AdminDashboard.js").then((m) => ({ default: m.AdminRevenue })),
+);
+const AdminNairaTournaments = lazy(() =>
   import("./pages/AdminDashboard.js").then((m) => ({
-    default: m.AdminDashboard,
+    default: m.AdminNairaTournaments,
+  })),
+);
+const AdminWithdrawals = lazy(() =>
+  import("./components/admin/AdminWithdrawals.js").then((m) => ({
+    default: m.AdminWithdrawals,
+  })),
+);
+const AdminWithdrawalDetail = lazy(() =>
+  import("./components/admin/AdminWithdrawals.js").then((m) => ({
+    default: m.AdminWithdrawalDetail,
+  })),
+);
+const AdminDeposits = lazy(() =>
+  import("./components/admin/AdminDeposits.js").then((m) => ({
+    default: m.AdminDeposits,
+  })),
+);
+const AdminOrganizations = lazy(() =>
+  import("./components/admin/AdminOrganizations.js").then((m) => ({
+    default: m.AdminOrganizations,
   })),
 );
 const AdminReportDetail = lazy(() =>
@@ -225,10 +259,21 @@ function AppBody() {
             path="/admin"
             element={
               <AdminProtectedRoute>
-                <AdminDashboard />
+                <AdminLayout />
               </AdminProtectedRoute>
             }
-          />
+          >
+            <Route index element={<Navigate to="reports" replace />} />
+            <Route path="reports" element={<AdminReports />} />
+            <Route path="game-check" element={<AdminGameCheck />} />
+            <Route path="revenue" element={<AdminRevenue />} />
+            <Route path="naira-tournaments" element={<AdminNairaTournaments />} />
+            <Route path="withdrawals" element={<AdminWithdrawals />} />
+            <Route path="withdrawals/:id" element={<AdminWithdrawalDetail />} />
+            <Route path="deposits" element={<AdminDeposits />} />
+            <Route path="organizations" element={<AdminOrganizations />} />
+            <Route path="*" element={<Navigate to="/admin/reports" replace />} />
+          </Route>
           <Route
             path="/admin/reports/:id"
             element={

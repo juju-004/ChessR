@@ -58,6 +58,8 @@ interface PocketBarProps {
   color: "white" | "black";
   pocket: Pocket;
   pieceTheme: string;
+  /** The active board theme: the pocket borrows its two square colors. */
+  boardTheme: string;
   /** True only for the viewing player's own pocket while a drop is possible. */
   interactive: boolean;
   selectedRole: ZhRole | null;
@@ -66,57 +68,74 @@ interface PocketBarProps {
 
 /** One side's pocket ("pieces in hand"). The row's height is fixed so an
  *  empty pocket and a full one occupy the same space and the board never
- *  jumps when a piece is captured or dropped. */
+ *  jumps when a piece is captured or dropped; an empty pocket is just the
+ *  blank box.
+ *
+ *  Visibility: the backdrop is NOT the app's panel color (which can match
+ *  the pieces, e.g. black pieces on a dark theme). It is one of the active
+ *  board theme's own two square colors, chosen against the pocket's piece
+ *  color: white pieces sit on the dark square color, black pieces on the
+ *  light one. Every piece set is drawn to read on the board's squares, and
+ *  this pairing keeps each piece on the side of the board's palette it
+ *  contrasts with, so it holds for every piece set x board theme x app
+ *  light/dark mode without any per-set special-casing. */
 export function PocketBar({
   color,
   pocket,
   pieceTheme,
+  boardTheme,
   interactive,
   selectedRole,
   onPiecePointerDown,
 }: PocketBarProps) {
   const held = ZH_ROLES.filter((r) => pocket[r] > 0);
+  const onDark = color === "white";
   return (
     <div
       className={cn(
         `piece-theme-${pieceTheme}`,
-        "flex h-12 w-full items-center gap-1.5 rounded-xl bg-base-200/60 px-2",
+        `board-theme-${boardTheme}`,
+        "flex h-12 w-full items-center gap-1.5 rounded-xl px-2",
       )}
+      style={{
+        // Fallbacks are the default (brown) board's squares.
+        backgroundColor: onDark
+          ? "var(--board-dark, #b58863)"
+          : "var(--board-light, #e9d3b0)",
+      }}
       aria-label={`${color} pocket`}
     >
-      {held.length === 0 ? (
-        <span className="text-xs text-base-content/40">
-          {color === "white" ? "White" : "Black"} pocket is empty
-        </span>
-      ) : (
-        held.map((role) => {
-          const selected = interactive && selectedRole === role;
-          return (
-            <div
-              key={role}
-              role={interactive ? "button" : undefined}
-              aria-label={`${ROLE_NAME[role]} x${pocket[role]}`}
-              onPointerDown={
-                interactive ? (e) => onPiecePointerDown(role, e) : undefined
-              }
-              className={cn(
-                "relative h-10 w-10 shrink-0 select-none rounded-lg",
-                interactive
-                  ? "cursor-grab touch-none active:cursor-grabbing"
-                  : "opacity-80",
-                selected && "bg-primary/20 ring-2 ring-primary",
-              )}
-            >
-              <PocketPiece role={role} color={color} className="h-full w-full" />
-              {pocket[role] > 1 && (
-                <span className="pointer-events-none absolute -bottom-0.5 -right-0.5 min-w-4 rounded-full bg-base-content px-1 text-center text-[10px] font-bold leading-4 tabular-nums text-base-100">
-                  {pocket[role]}
-                </span>
-              )}
-            </div>
-          );
-        })
-      )}
+      {held.map((role) => {
+        const selected = interactive && selectedRole === role;
+        return (
+          <div
+            key={role}
+            role={interactive ? "button" : undefined}
+            aria-label={`${ROLE_NAME[role]} x${pocket[role]}`}
+            onPointerDown={
+              interactive ? (e) => onPiecePointerDown(role, e) : undefined
+            }
+            className={cn(
+              // `isolate` gives each tile its own stacking context: the
+              // piece element carries chessground's `z-index: 2`, so the
+              // count badge below needs an explicit z-index above it or
+              // it paints underneath the piece.
+              "relative isolate h-10 w-10 shrink-0 select-none rounded-lg",
+              interactive && "cursor-grab touch-none active:cursor-grabbing",
+              selected &&
+                (onDark ? "bg-white/25" : "bg-black/15") +
+                  " ring-2 ring-primary",
+            )}
+          >
+            <PocketPiece role={role} color={color} className="h-full w-full" />
+            {pocket[role] > 1 && (
+              <span className="pointer-events-none absolute -right-0.5 -bottom-0.5 z-10 min-w-4 rounded-full bg-base-content px-1 text-center text-[10px] leading-4 font-bold tabular-nums text-base-100 shadow-sm">
+                {pocket[role]}
+              </span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

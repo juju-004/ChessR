@@ -49,7 +49,6 @@ export interface SeasonRow {
   wins: number;
   draws: number;
   losses: number;
-  points: number;
   prize: number;
 }
 
@@ -149,7 +148,6 @@ function toRows(entries: Entry[], board: SeasonBoard): SeasonRow[] {
     wins: e.wins,
     draws: e.draws,
     losses: e.games - e.wins - e.draws,
-    points: pointsOf(e),
     prize: prizeByUser.get(String(e._id)) ?? 0,
   }));
 }
@@ -200,7 +198,13 @@ export async function listPastSeasons(limit = 20) {
     season: d.season,
     startsAt: d.startsAt.toISOString(),
     endsAt: d.endsAt.toISOString(),
-    winners: d.winners.map((w) => ({ ...w, user: String(w.user) })),
+    // The raw points score is never sent to clients: on the points board the
+    // value is left out (the order, not the number, is what players see).
+    winners: d.winners.map((w) => ({
+      ...w,
+      user: String(w.user),
+      value: w.board === 'points' ? null : w.value,
+    })),
   }));
 }
 

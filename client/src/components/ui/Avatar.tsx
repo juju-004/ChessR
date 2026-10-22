@@ -6,11 +6,11 @@ import { AvatarIconGlyph, findAvatarIcon } from "@/lib/avatarIcons.js";
 export interface AvatarProps {
   src?: string | null;
   username: string;
-  size?: "xs" | "sm" | "md" | "lg" | "xl";
+  size?: "xs" | "compact" | "sm" | "md" | "lg" | "xl";
   /** Size to switch to from the `md` breakpoint up, for avatars that should
    *  be compact on phone but roomier on desktop (e.g. the game page's
    *  player panels). Omit to keep `size` at every width. */
-  mdSize?: "xs" | "sm" | "md" | "lg" | "xl";
+  mdSize?: "xs" | "compact" | "sm" | "md" | "lg" | "xl";
   /** Small colored dot in the corner, typically online/offline presence. */
   status?: "online" | "offline" | null;
   /** Preset id from avatarGradients.ts. Omit (or "brand") for the default
@@ -22,6 +22,7 @@ export interface AvatarProps {
 
 const SIZE_CLASSES = {
   xs: "h-6 w-6 text-[10px]",
+  compact: "h-7 w-7 text-[11px]",
   sm: "h-8 w-8 text-xs",
   md: "h-10 w-10 text-sm",
   lg: "h-14 w-14 text-lg",
@@ -32,6 +33,7 @@ const SIZE_CLASSES = {
 // can see them.
 const MD_SIZE_CLASSES = {
   xs: "md:h-6 md:w-6 md:text-[10px]",
+  compact: "md:h-7 md:w-7 md:text-[11px]",
   sm: "md:h-8 md:w-8 md:text-xs",
   md: "md:h-10 md:w-10 md:text-sm",
   lg: "md:h-14 md:w-14 md:text-lg",

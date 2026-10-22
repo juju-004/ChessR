@@ -1,4 +1,5 @@
 import { nanoid } from "nanoid";
+import { isValidObjectId } from "mongoose";
 import { User } from "../models/User.js";
 import { Transaction, type ITransaction } from "../models/Transaction.js";
 import { Game } from "../models/Game.js";
@@ -7,7 +8,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { env } from "../config/env.js";
 import { verifyTransaction } from "./paystack.service.js";
 import { createNotification } from "./notification.service.js";
-import { notifyWithdrawalRequested } from "./whatsapp.service.js";
+import { notifyWithdrawalRequested } from "./telegram.service.js";
 
 // --- Token economy constants -------------------------------------------------
 // Deliberately a spread between buy and withdraw rates (standard practice),
@@ -247,9 +248,10 @@ export async function initiateWithdrawal(
       bankName,
       accountName,
     });
-    // Fire-and-forget WhatsApp alert to the admin; never delays or fails the
-    // request (sendWhatsAppMessage swallows its own errors).
+    // Fire-and-forget Telegram alert to the admin; never delays or fails the
+    // request (sendOwnerAlert swallows its own errors).
     void notifyWithdrawalRequested({
+      transactionId: String(transaction._id),
       username: debited.username,
       tokens,
       amountKobo,
@@ -275,6 +277,37 @@ export interface AdminListParams {
   status?: "pending" | "success" | "failed";
   page: number;
   limit: number;
+}
+
+function mapWithdrawalForAdmin(t: any) {
+  return {
+    id: t._id,
+    reference: t.reference,
+    status: t.status,
+    tokens: t.tokens,
+    amountKobo: t.amountKobo,
+    user: t.user
+      ? { id: t.user._id, username: t.user.username, email: t.user.email }
+      : null,
+    bankName: t.bankName ?? null,
+    bankCode: t.bankCode ?? null,
+    accountNumber: t.bankAccountNumber ?? null,
+    accountName: t.accountName ?? null,
+    failureReason: t.failureReason ?? null,
+    adminNote: t.adminNote ?? null,
+    resolvedAt: t.resolvedAt ?? null,
+    createdAt: t.createdAt,
+  };
+}
+
+/** One withdrawal, for the direct-link approval page (/admin/withdrawals/:id). */
+export async function getWithdrawalForAdmin(id: string) {
+  if (!isValidObjectId(id)) throw ApiError.notFound("Withdrawal not found");
+  const t = await Transaction.findOne({ _id: id, type: "withdrawal" })
+    .populate("user", "username email")
+    .lean();
+  if (!t) throw ApiError.notFound("Withdrawal not found");
+  return mapWithdrawalForAdmin(t);
 }
 
 export async function listWithdrawalsForAdmin({
@@ -311,24 +344,7 @@ export async function listWithdrawalsForAdmin({
     summary.find((r) => r._id === s) ?? { amountKobo: 0, count: 0 };
 
   return {
-    withdrawals: rows.map((t: any) => ({
-      id: t._id,
-      reference: t.reference,
-      status: t.status,
-      tokens: t.tokens,
-      amountKobo: t.amountKobo,
-      user: t.user
-        ? { id: t.user._id, username: t.user.username, email: t.user.email }
-        : null,
-      bankName: t.bankName ?? null,
-      bankCode: t.bankCode ?? null,
-      accountNumber: t.bankAccountNumber ?? null,
-      accountName: t.accountName ?? null,
-      failureReason: t.failureReason ?? null,
-      adminNote: t.adminNote ?? null,
-      resolvedAt: t.resolvedAt ?? null,
-      createdAt: t.createdAt,
-    })),
+    withdrawals: rows.map(mapWithdrawalForAdmin),
     summary: {
       pendingCount: stat("pending").count,
       pendingKobo: stat("pending").amountKobo,

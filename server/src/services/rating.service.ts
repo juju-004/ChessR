@@ -2,20 +2,24 @@ import { Game } from "../models/Game.js";
 import { User } from "../models/User.js";
 import { updateOnlineRank } from "./presence.service.js";
 import {
-  ratingCategoryForSeconds,
+  ratingCategoryForGame,
+  isVariantCategory,
   resolveRatings,
   bestOfRatings,
+  TIME_RATING_CATEGORIES,
   type RatingCategory,
 } from "./ratingCategory.js";
 
 export { ratingCategoryForSeconds, type RatingCategory } from "./ratingCategory.js";
 
 // --- Rating ------------------------------------------------------------------
-// Three ladders per player: bullet (base time under 3 min), blitz (under 8
-// min) and rapid (8 min and up, plus untimed), see ratingCategory.ts. Every
+// Five ladders per player: bullet (base time under 3 min), blitz (under 8
+// min) and rapid (8 min and up, plus untimed) for standard chess, plus one
+// ladder each for Chess960 and Crazyhouse, see ratingCategory.ts. Every
 // decisive/drawn game, standalone, cage-match leg or tournament pairing,
-// feeds the ladder its time control belongs to. Chess960 shares the ladder
-// of its time control. `User.rating` is the player's best of the three,
+// feeds exactly one of them: a variant game moves its variant's ladder
+// whatever its time control, a standard game the ladder its time control
+// belongs to. `User.rating` is the player's best of the three TIME ladders,
 // kept in step here so lists/sorts that show "their rating" keep working.
 
 export const RATING_START = 1500;
@@ -107,8 +111,10 @@ export async function applyRatingForGame(
     { $set: { ratingApplied: true } },
   );
   if (!claimed) return null;
+  // Odds games (each player on their own clock) are rated like any other
+  // game, on the ladder of the faster of the two clocks (game.timeControl).
 
-  const category = ratingCategoryForSeconds(claimed.timeControl?.baseSeconds ?? null);
+  const category = ratingCategoryForGame(claimed.timeControl?.baseSeconds ?? null, claimed.variant);
   const fields = "rating ratings ratedGames ratedGamesPlayed";
   const [white, black] = await Promise.all([
     User.findById(whiteId).select(fields).lean(),
@@ -120,8 +126,10 @@ export async function applyRatingForGame(
   const blackBase = resolveRatings(black);
   // Games per category. A pre-split account has no per-category counts yet,
   // so fall back to its old total, which keeps its K-factor unchanged
-  // instead of suddenly treating an established player as a newcomer.
-  const gamesIn = (u: typeof white, c: RatingCategory) => u.ratedGames?.[c] ?? u.ratedGamesPlayed ?? 0;
+  // instead of suddenly treating an established player as a newcomer. The
+  // variant ladders never had a pre-split history, so theirs start at 0.
+  const gamesIn = (u: typeof white, c: RatingCategory) =>
+    u.ratedGames?.[c] ?? (isVariantCategory(c) ? 0 : (u.ratedGamesPlayed ?? 0));
 
   const whiteExpected = expectedScore(whiteBase[category], blackBase[category]);
   const blackExpected = 1 - whiteExpected;
@@ -138,30 +146,53 @@ export async function applyRatingForGame(
     delta: number,
   ) => {
     const seeded = !!u.ratings && !!u.ratedGames;
-    const update = seeded
+    // Does this player already have a stored rating AND game count on THIS
+    // ladder? Always true for the time ladders once seeded; false for a
+    // variant ladder until their first game of that variant.
+    const hasLadder =
+      seeded && u.ratings?.[category] !== undefined && u.ratedGames?.[category] !== undefined;
+    const update = hasLadder
       ? { $inc: { [`ratings.${category}`]: delta, [`ratedGames.${category}`]: 1, ratedGamesPlayed: 1 } }
-      : {
-          // First rated game since the split: persist all three ladders
-          // (seeded from the old single rating) in one go, with this
-          // game's category already advanced.
-          $set: {
-            ratings: { ...base, [category]: base[category] + delta },
-            ratedGames: {
-              bullet: gamesIn(u, "bullet") + (category === "bullet" ? 1 : 0),
-              blitz: gamesIn(u, "blitz") + (category === "blitz" ? 1 : 0),
-              rapid: gamesIn(u, "rapid") + (category === "rapid" ? 1 : 0),
+      : seeded
+        ? {
+            // First game on this ladder (a variant): $inc on a missing
+            // field would start it from 0, so write the real starting
+            // rating plus this game's change explicitly instead.
+            $set: {
+              [`ratings.${category}`]: base[category] + delta,
+              [`ratedGames.${category}`]: gamesIn(u, category) + 1,
             },
-          },
-          $inc: { ratedGamesPlayed: 1 },
-        };
+            $inc: { ratedGamesPlayed: 1 },
+          }
+        : {
+            // First rated game since the split: persist every ladder
+            // (the time ones seeded from the old single rating, the
+            // variants at their starting rating) in one go, with this
+            // game's category already advanced.
+            $set: {
+              ratings: { ...base, [category]: base[category] + delta },
+              ratedGames: {
+                bullet: gamesIn(u, "bullet") + (category === "bullet" ? 1 : 0),
+                blitz: gamesIn(u, "blitz") + (category === "blitz" ? 1 : 0),
+                rapid: gamesIn(u, "rapid") + (category === "rapid" ? 1 : 0),
+                chess960: gamesIn(u, "chess960") + (category === "chess960" ? 1 : 0),
+                crazyhouse: gamesIn(u, "crazyhouse") + (category === "crazyhouse" ? 1 : 0),
+              },
+            },
+            $inc: { ratedGamesPlayed: 1 },
+          };
     const updated = await User.findByIdAndUpdate(id, update, { new: true })
       .select("rating ratings ratedGames ratedGamesPlayed")
       .lean();
     if (!updated) return null;
-    // Keep the denormalized best-of-three in step.
-    const best = bestOfRatings(resolveRatings(updated));
-    await User.updateOne({ _id: id }, { $set: { rating: best.rating, ratingCategory: best.category } });
-    void updateOnlineRank(id, best.rating).catch(() => {});
+    // Keep the denormalized best-of-three in step. A variant game can't
+    // change it (the variant ladders aren't part of it), so skip the
+    // extra write and the online-rank update for those.
+    if (TIME_RATING_CATEGORIES.includes(category as (typeof TIME_RATING_CATEGORIES)[number])) {
+      const best = bestOfRatings(resolveRatings(updated));
+      await User.updateOne({ _id: id }, { $set: { rating: best.rating, ratingCategory: best.category } });
+      void updateOnlineRank(id, best.rating).catch(() => {});
+    }
     return updated;
   };
 

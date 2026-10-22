@@ -1,13 +1,30 @@
-import { useState, type FormEvent } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useState, useSyncExternalStore, type FormEvent } from "react";
+import { Navigate, useLocation } from "react-router-dom";
 import { ShieldCheck } from "lucide-react";
 import { adminLogin } from "../api/admin.js";
+import { getAdminToken, subscribeAdminAuth } from "../api/adminAuthStore.js";
 import { ApiRequestError } from "../api/http.js";
 import { Card, Button } from "../components/ui/index.js";
 
+// Only ever bounce back to a page inside the admin console: anything else
+// (another site, "//evil.com", the login page itself) falls back to /admin, so
+// a crafted login link can't be used as an open redirect.
+function safeAdminPath(from: unknown): string {
+  if (
+    typeof from === "string" &&
+    from.startsWith("/admin") &&
+    !from.startsWith("//") &&
+    !from.startsWith("/admin/login")
+  ) {
+    return from;
+  }
+  return "/admin";
+}
+
 export function AdminLogin() {
-  const navigate = useNavigate();
   const location = useLocation();
+  const token = useSyncExternalStore(subscribeAdminAuth, getAdminToken);
+  const redirectTo = safeAdminPath((location.state as { from?: unknown } | null)?.from);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,15 +35,18 @@ export function AdminLogin() {
     setLoading(true);
     setError("");
     try {
+      // Storing the token flips `token` above, which renders the <Navigate>
+      // back to where the admin was headed.
       await adminLogin(username, password);
-      const redirectTo = (location.state as any)?.from ?? "/admin";
-      navigate(redirectTo, { replace: true });
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Login failed");
     } finally {
       setLoading(false);
     }
   }
+
+  // Already signed in (e.g. opened the login page by hand): go straight on.
+  if (token) return <Navigate to={redirectTo} replace />;
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-base-300 px-3 py-6 sm:px-4">

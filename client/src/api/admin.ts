@@ -288,6 +288,10 @@ export function listWithdrawals(status?: TxStatus | 'all', page = 1, limit = 25)
   return adminFetch<WithdrawalListResponse>(`/withdrawals?${params.toString()}`);
 }
 
+export function getWithdrawal(id: string) {
+  return adminFetch<AdminWithdrawal>(`/withdrawals/${encodeURIComponent(id)}`);
+}
+
 export function resolveWithdrawal(id: string, action: 'paid' | 'decline', note?: string) {
   return adminFetch<{ id: string; status: TxStatus }>(`/withdrawals/${id}`, {
     method: 'PATCH',

@@ -17,7 +17,8 @@ import { pressable } from "@/lib/motion.js";
 import { cn } from "@/lib/cn.js";
 import { Popover } from "./ui/Popover.js";
 import { AcceptDeclineButtons } from "./AcceptDeclineButtons.js";
-import { RCoin, TimeControlIcon } from "./ui/index.js";
+import { RCoin } from "./ui/index.js";
+import { ChallengeSummary } from "./ChallengeSummary.js";
 import {
   useNotificationCenter,
   type NotificationItem,
@@ -109,15 +110,6 @@ function MenuRow({
   return <div className={classes}>{body}</div>;
 }
 
-function timeControlLabel(tc: {
-  baseMinutes: number | null;
-  incrementSeconds: number;
-}): string {
-  return tc.baseMinutes === null
-    ? "Unlimited"
-    : `${tc.baseMinutes}+${tc.incrementSeconds}`;
-}
-
 export function NotificationsMenu({ className }: NotificationsMenuProps) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -187,16 +179,15 @@ export function NotificationsMenu({ className }: NotificationsMenuProps) {
                   leading={<IconBadge tone="primary" icon={Swords} />}
                 >
                   <p className="text-sm text-base-content">
-                    <span className="font-semibold">{item.from.username}</span>{" "}
-                    challenged you to a game (
-                    <span className="inline-flex items-center gap-0.5">
-                      <TimeControlIcon
-                        baseMinutes={item.timeControl.baseMinutes}
-                        size={11}
-                      />
-                      {timeControlLabel(item.timeControl)}
-                    </span>
-                    <WagerNote tokens={item.wagerTokens} />)
+                    <ChallengeSummary
+                      username={item.from.username}
+                      timeControl={item.timeControl}
+                      odds={item.odds}
+                      variant={item.variant}
+                      wagerTokens={item.wagerTokens}
+                      iconSize={11}
+                      boldName
+                    />
                   </p>
                   <AcceptDeclineButtons
                     variant="pill"

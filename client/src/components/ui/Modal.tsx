@@ -56,7 +56,7 @@ export const Modal = memo(function Modal({
   }, [open]);
 
   const header = title && (
-    <div className="mb-5 flex w-full items-center gap-3 pt-2 px-2 pb-3">
+    <div className="flex w-full shrink-0 items-center gap-3 px-4 pb-3 pt-2">
       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
         {icon}
       </div>
@@ -97,9 +97,13 @@ export const Modal = memo(function Modal({
               className,
             )}
           >
-            <div className="max-h-[85vh] overflow-y-auto overscroll-contain px-2 py-3">
+            {/* One scroll only: the header stays put and the content scrolls
+                underneath it, instead of the whole panel scrolling. */}
+            <div className="flex max-h-[85vh] flex-col pt-3">
               {header}
-              {children}
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3 pt-3">
+                {children}
+              </div>
             </div>
           </motion.div>
         </div>

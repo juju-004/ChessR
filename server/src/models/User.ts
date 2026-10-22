@@ -76,22 +76,25 @@ export interface IUser extends Document {
    *  its own user object to show a countdown on Dashboard. */
   suspendedUntil?: Date;
   tokenVersion: number;
-  /** The player's BEST rating across the three ladders (bullet / blitz /
-   *  rapid, see ratingCategory.ts), kept denormalized so every list, sort,
+  /** The player's BEST rating across the three time ladders (bullet / blitz /
+   *  rapid, see ratingCategory.ts; the Chess960 and Crazyhouse ladders are
+   *  not part of it), kept denormalized so every list, sort,
    *  matchmaking hint and "show their rating" spot keeps working off one
    *  number. Recomputed whenever a category rating changes. Elo-like,
    *  starts at 1500. */
   rating: number;
   /** Which ladder `rating` came from, so the badge can be colored to match. */
   ratingCategory: 'bullet' | 'blitz' | 'rapid';
-  /** The three per-category ratings. Deliberately has NO schema defaults:
+  /** The per-category ratings. Deliberately has NO schema defaults:
    *  missing means "not split yet" (a pre-split account), and rating.service
-   *  seeds all three from the old single `rating` the first time it's needed
-   *  (or scripts/splitRatings.ts does it up front). Read via
-   *  ratingCategory.ts's resolveRatings, never directly. */
-  ratings?: { bullet: number; blitz: number; rapid: number };
+   *  seeds the three time ladders from the old single `rating` the first
+   *  time it's needed (or scripts/splitRatings.ts does it up front).
+   *  `chess960` and `crazyhouse` are separate ladders that stay absent
+   *  until the player's first game of that variant (read as 1500 until
+   *  then). Read via ratingCategory.ts's resolveRatings, never directly. */
+  ratings?: { bullet: number; blitz: number; rapid: number; chess960?: number; crazyhouse?: number };
   /** Rated games played per category, drives that category's K-factor. */
-  ratedGames?: { bullet: number; blitz: number; rapid: number };
+  ratedGames?: { bullet: number; blitz: number; rapid: number; chess960?: number; crazyhouse?: number };
   /** Total rated games across all categories (the pre-split counter, kept
    *  as a running total). */
   ratedGamesPlayed: number;
@@ -158,11 +161,17 @@ const userSchema = new Schema<IUser>(
     ratingCategory: { type: String, enum: ['bullet', 'blitz', 'rapid'], default: 'blitz' },
     // No defaults on purpose, see the IUser doc comment on `ratings`.
     ratings: {
-      type: new Schema({ bullet: Number, blitz: Number, rapid: Number }, { _id: false }),
+      type: new Schema(
+        { bullet: Number, blitz: Number, rapid: Number, chess960: Number, crazyhouse: Number },
+        { _id: false },
+      ),
       default: undefined,
     },
     ratedGames: {
-      type: new Schema({ bullet: Number, blitz: Number, rapid: Number }, { _id: false }),
+      type: new Schema(
+        { bullet: Number, blitz: Number, rapid: Number, chess960: Number, crazyhouse: Number },
+        { _id: false },
+      ),
       default: undefined,
     },
     ratedGamesPlayed: { type: Number, default: 0, min: 0 },
