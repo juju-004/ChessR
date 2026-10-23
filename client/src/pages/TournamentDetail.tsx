@@ -131,9 +131,9 @@ function EditTournamentForm({
   const [name, setName] = useState(tournament.name);
   const [description, setDescription] = useState(tournament.description ?? "");
   const [format, setFormat] = useState<TournamentFormat>(tournament.format);
-  const [variant, setVariant] = useState<"standard" | "chess960" | "crazyhouse">(
-    tournament.variant,
-  );
+  const [variant, setVariant] = useState<
+    "standard" | "chess960" | "crazyhouse"
+  >(tournament.variant);
   const [presetIdx, setPresetIdx] = useState(() => {
     const exact = TIME_PRESETS.findIndex(
       (p) =>
@@ -304,7 +304,9 @@ function EditTournamentForm({
               label="Variant"
               value={variant}
               onChange={(e) =>
-                setVariant(e.target.value as "standard" | "chess960" | "crazyhouse")
+                setVariant(
+                  e.target.value as "standard" | "chess960" | "crazyhouse",
+                )
               }
             >
               <option value="standard">Standard</option>
@@ -2009,7 +2011,6 @@ export function TournamentDetail() {
             className="max-md:rounded-none! max-md:border-0! max-md:bg-transparent! max-md:p-0!"
           >
             <CardHeader className="max-md:px-3">
-              <CardTitle>Standings</CardTitle>
               <div className="flex items-center gap-2">
                 {myStandingsIndex !== -1 && (
                   <button
@@ -2069,7 +2070,12 @@ export function TournamentDetail() {
                               : "bg-base-200/50",
                         )}
                       >
-                        <td className={cn(STANDINGS_RANK_TD, "max-md:py-3 max-md:pl-3")}>
+                        <td
+                          className={cn(
+                            STANDINGS_RANK_TD,
+                            "max-md:py-3 max-md:pl-3",
+                          )}
+                        >
                           <RankBadge rank={rank} />
                         </td>
                         <td
