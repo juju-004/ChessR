@@ -1,3 +1,4 @@
+import { isGamePath, isUnderPath } from "../lib/gamePath.js";
 import { memo, useCallback, useEffect, useRef, type CSSProperties } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -79,7 +80,7 @@ export const Sidebar = memo(function Sidebar() {
   // the game page gets the icon-only collapse-on-hover treatment, every
   // other page keeps the rail fully expanded (labels always visible, no
   // hover behavior at all).
-  const collapsible = pathname.startsWith("/game/");
+  const collapsible = isGamePath(pathname);
 
   return (
     <nav
@@ -140,7 +141,7 @@ export const Sidebar = memo(function Sidebar() {
 /**
  * The mobile bottom dock, site navigation, phone only. Renders as a
  * full-width tab bar fixed to the bottom of the screen (see `.dock` in
- * index.css). Deliberately hides itself on `/game/:code`: the game page's
+ * index.css). Deliberately hides itself on a game page (`/:code`): the game page's
  * own action bar (GameActionBarMobile in components/game/GameActionBar.tsx)
  * occupies that same visual slot there instead, sharing the same `.dock`
  * classes so it reads as one dock whose contents change with context
@@ -174,13 +175,13 @@ export function MobileDock() {
     return () => window.removeEventListener("resize", updateFades);
   }, [updateFades]);
   if (!isAuthed) return null;
-  if (pathname.startsWith("/game/")) return null;
+  if (isGamePath(pathname)) return null;
   // Same hand-over for a single tournament's page (TournamentActionBarMobile),
   // but not the list or the create form, which keep the normal nav.
   if (/^\/tournaments\/(?!new$)[^/]+\/?$/.test(pathname)) return null;
 
   const renderItem = (item: NavItem, extra: string) => {
-    const isActive = item.end ? pathname === item.to : pathname.startsWith(item.to);
+    const isActive = item.end ? pathname === item.to : isUnderPath(pathname, item.to);
     const Icon = item.icon;
     return (
       <button

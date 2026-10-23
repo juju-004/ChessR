@@ -1,8 +1,8 @@
 /**
  * Vercel Edge Middleware — runs on Vercel's edge network, in front of the
  * normal static/SPA response, for every request matching `config.matcher`
- * below. This is what makes a shared /game/:code, /replay/:code, or
- * /tournaments/:code, or /puzzles/:code link show a real title/description in WhatsApp,
+ * below. This is what makes a shared /:code (game), /game/:code (legacy),
+ * /replay/:code, /tournaments/:code, or /puzzles/:code link show a real title/description in WhatsApp,
  * Facebook, Twitter/X, Discord, iMessage, etc. (cage match invite and match
  * links included).
  *
@@ -39,8 +39,24 @@
 const CRAWLER_UA_PATTERN =
   /facebookexternalhit|WhatsApp|Twitterbot|Slackbot|Discordbot|LinkedInBot|TelegramBot|Pinterest|redditbot|vkShare|Applebot|SkypeUriPreview/i;
 
+// Game links are chessr.org/AbC123: one top-level segment, exactly 6
+// letters/digits. The matcher only lets that shape through so ordinary pages
+// and static files never reach the function; the reserved-word check inside
+// middleware() then drops the 6-letter page names (/wallet, /signin, ...).
+// KEEP IN SYNC with RESERVED_PATH_WORDS in src/lib/gamePath.ts and
+// server/src/utils/shortCode.ts.
+const RESERVED_PATH_WORDS = new Set([
+  "about", "account-details", "admin", "api", "assets", "cage",
+  "choose-username", "create", "daily", "dashboard", "find", "friends",
+  "game", "invite", "leaderboard", "league", "leagues", "lobby", "logout",
+  "notifications", "organization", "play", "players", "profile", "public",
+  "puzzles", "replay", "report", "search", "settings", "signin", "signup",
+  "static", "terms", "tournaments", "verify-email", "wallet",
+]);
+
 export const config = {
   matcher: [
+    "/:code([0-9A-Za-z]{6})",
     "/game/:code",
     "/replay/:code",
     "/tournaments/:code",
@@ -57,12 +73,16 @@ export default async function middleware(request: Request): Promise<Response | u
   }
 
   const url = new URL(request.url);
-  // /game/:code and /replay/:code both describe a *game* — ReplayRedirect
-  // just forwards old /replay links to /game client-side, but a crawler
-  // never runs that JS, so it needs the same games/code/:code/card as
-  // /game/:code. /tournaments/:code is the only route pointing at a
-  // different resource, hence its own capture group / endpoint below.
-  const gameMatch = url.pathname.match(/^\/(?:game|replay)\/([^/]+)/);
+  // /:code, /game/:code and /replay/:code all describe a *game*. The legacy
+  // /game and /replay forms are only redirected to /:code client-side, and a
+  // crawler never runs that JS, so all three need the same
+  // games/code/:code/card. /tournaments/:code is the only route pointing at
+  // a different resource, hence its own capture group / endpoint below.
+  const rootMatch = url.pathname.match(/^\/([0-9A-Za-z]{6})\/?$/);
+  const rootGameCode =
+    rootMatch && !RESERVED_PATH_WORDS.has(rootMatch[1].toLowerCase()) ? rootMatch[1] : null;
+  const legacyGameMatch = url.pathname.match(/^\/(?:game|replay)\/([^/]+)/);
+  const gameMatch = rootGameCode ? [rootGameCode, rootGameCode] : legacyGameMatch;
   const tournamentMatch = url.pathname.match(/^\/tournaments\/([^/]+)/);
   const puzzleMatch = url.pathname.match(/^\/puzzles\/([^/]+)/);
   // Cage match links: /cage/invite/:linkId is a shareable challenge,

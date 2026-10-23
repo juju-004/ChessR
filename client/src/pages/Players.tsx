@@ -1,3 +1,4 @@
+import { gameHref } from "../lib/gamePath.js";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -236,7 +237,7 @@ export function Players() {
   ) {
     if (p.activeGameCode) {
       return (
-        <Link to={`/game/${p.activeGameCode}`}>
+        <Link to={gameHref(p.activeGameCode)}>
           <Button variant="glass" size="sm">
             <TvMinimalPlay className="h-4 w-4" />{" "}
             <span className="hidden! sm:flex">Watch</span>

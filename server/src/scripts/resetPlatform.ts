@@ -30,7 +30,7 @@
 import readline from "node:readline/promises";
 import mongoose from "mongoose";
 import { connectMongo, disconnectMongo } from "../config/db.js";
-import { redis, disconnectRedis } from "../config/redis.js";
+import { redis, disconnectRedis, initRedis } from "../config/redis.js";
 import { User } from "../models/User.js";
 import { Game } from "../models/Game.js";
 import { Notification } from "../models/Notification.js";
@@ -80,6 +80,7 @@ async function deleteRedisKeys(pattern: string): Promise<number> {
 
 async function main(): Promise<void> {
   await connectMongo();
+  await initRedis(); // picks the active Redis when REDIS_URLS rotates
   const dbName = mongoose.connection.name;
 
   // Defaults come from the schema so this can't drift from User.ts.

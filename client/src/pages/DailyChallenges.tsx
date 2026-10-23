@@ -204,11 +204,7 @@ export function DailyChallenges() {
                     </p>
                     <p className="inline-flex flex-wrap items-center gap-x-1 text-base-content/60">
                       Come back in {formatCountdown(msLeft)} for Day{" "}
-                      {state.tomorrow?.day}, worth{" "}
-                      <span className="inline-flex items-center gap-0.5 font-medium text-amber-400">
-                        {state.tomorrow?.reward} <RCoin size={12} />
-                      </span>
-                      . Skip it and the week starts over.
+                      {state.tomorrow?.day}
                     </p>
                   </>
                 )}

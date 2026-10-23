@@ -1,3 +1,4 @@
+import { gameHref } from "../lib/gamePath.js";
 import { ratingCategoryForGameMinutes } from "../timeControls.js";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -67,7 +68,7 @@ export function QuickPairing() {
     }
     function onMatched(p: MatchedPayload) {
       setSearchingId(null);
-      navigate(`/game/${p.joinCode}`);
+      navigate(gameHref(p.joinCode));
     }
     function onError(p: { message: string }) {
       setError(p.message);

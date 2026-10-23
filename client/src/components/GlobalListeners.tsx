@@ -1,3 +1,4 @@
+import { gameCodeFromPath, gameHref } from "../lib/gamePath.js";
 import { isToastClaimed } from "../lib/toastClaims.js";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -99,7 +100,7 @@ export function GlobalListeners() {
 
     function onChallengeAccepted(payload: { joinCode: string }) {
       setActiveGame(payload.joinCode);
-      navigate(`/game/${payload.joinCode}`);
+      navigate(gameHref(payload.joinCode));
     }
 
     function onChallengeDeclined() {
@@ -146,7 +147,7 @@ export function GlobalListeners() {
 
     function onRematchAccepted(payload: { joinCode: string }) {
       setActiveGame(payload.joinCode);
-      navigate(`/game/${payload.joinCode}`);
+      navigate(gameHref(payload.joinCode));
     }
 
     function onRematchStarted(payload: { joinCode: string }) {
@@ -155,7 +156,7 @@ export function GlobalListeners() {
       // spectatorRoom, so it only ever reaches sockets still actually
       // sitting on that game's page, see game:leave in gameSocket.ts for
       // the room-membership half of that guarantee.
-      navigate(`/game/${payload.joinCode}`);
+      navigate(gameHref(payload.joinCode));
     }
 
     function onRematchDeclined() {
@@ -215,7 +216,7 @@ export function GlobalListeners() {
 
     function onCageAccepted(payload: { firstLeg: { joinCode: string } }) {
       setActiveGame(payload.firstLeg.joinCode);
-      navigate(`/game/${payload.firstLeg.joinCode}`);
+      navigate(gameHref(payload.firstLeg.joinCode));
     }
 
     function onCageDeclined() {
@@ -245,7 +246,7 @@ export function GlobalListeners() {
       // Broadcast to the finished leg's spectatorRoom only, so, like
       // game:rematch_started, this only ever reaches sockets still
       // actually watching that leg (see game:leave in gameSocket.ts).
-      navigate(`/game/${payload.joinCode}`);
+      navigate(gameHref(payload.joinCode));
     }
 
     function onCageMatchOver(payload: { matchCode: string }) {
@@ -343,13 +344,14 @@ export function GlobalListeners() {
       const onThisTournamentPage = path === `/tournaments/${payload.code}`;
       // Arena: a free player who went to watch someone else's game is still
       // in the pool, so being paired pulls them out of that game into theirs.
+      const watchedCode = gameCodeFromPath(path);
       const watchingOtherGame =
         !!payload.pullFromGame &&
-        path.startsWith("/game/") &&
-        path !== `/game/${payload.joinCode}`;
+        watchedCode !== null &&
+        watchedCode !== payload.joinCode;
       if (onThisTournamentPage || watchingOtherGame) {
         try {
-          navigate(`/game/${payload.joinCode}`);
+          navigate(gameHref(payload.joinCode));
         } catch {
           /* the game icon above still leads there */
         }

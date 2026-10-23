@@ -150,7 +150,7 @@ interface PreviewCardInput {
  * chief among them) show a smaller/plainer card without an image, but
  * that's an acceptable tradeoff against the recurring breakage.
  *
- * This alone isn't sufficient to make a shared /game/:code or
+ * This alone isn't sufficient to make a shared /:code (game) or
  * /tournaments/:code link show a rich preview, those links are served by
  * the *frontend's* origin, not this API. Something on the frontend's side
  * (a Vercel Edge Middleware rewrite, for example) needs to detect crawler
@@ -419,7 +419,7 @@ export const getGameOgCard = asyncHandler(async (req, res) => {
     // Game codes are case-sensitive, shown exactly as stored.
     title: `Chessr · Game ${code}`,
     description,
-    url: `${CLIENT_URL}/game/${encodeURIComponent(code)}`,
+    url: `${CLIENT_URL}/${encodeURIComponent(code)}`,
   });
 
   res.set("Content-Type", "text/html; charset=utf-8");

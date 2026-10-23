@@ -1,3 +1,4 @@
+import { gameHref } from "../lib/gamePath.js";
 import {
   useCallback,
   useEffect,
@@ -785,7 +786,7 @@ export function Game() {
         // Codes are case-sensitive; an old (uppercase) code typed in another
         // case resolves server-side, so move to the real code.
         if (game.joinCode && game.joinCode !== code) {
-          navigate(`/game/${game.joinCode}`, { replace: true });
+          navigate(gameHref(game.joinCode), { replace: true });
           return;
         }
         setGameMeta(game);
@@ -1606,7 +1607,7 @@ export function Game() {
   }
 
   const handleShareGame = async () => {
-    const url = `${CLIENT_URL}/game/${code}`;
+    const url = `${CLIENT_URL}${gameHref(code)}`;
     if (navigator.share) {
       try {
         await navigator.share({ title: "Join my chess game on Chessr", url });
@@ -2467,7 +2468,7 @@ export function Game() {
             nextCageLegCode
               ? () => {
                   setGameOverModalDismissed(true);
-                  navigate(`/game/${nextCageLegCode}`);
+                  navigate(gameHref(nextCageLegCode));
                 }
               : null
           }

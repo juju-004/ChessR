@@ -1,3 +1,4 @@
+import { gameHref } from "../lib/gamePath.js";
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
@@ -315,7 +316,7 @@ export function Profile() {
                 )}
 
                 {profile.activeGameCode && (
-                  <Link to={`/game/${profile.activeGameCode}`}>
+                  <Link to={gameHref(profile.activeGameCode)}>
                     <Button
                       variant="glass"
                       size="icon"
@@ -514,7 +515,7 @@ export function Profile() {
             loading={gamesLoading}
             hasMore={hasMoreGames}
             onLoadMore={loadMoreGames}
-            linkFor={(g) => `/game/${g.joinCode}`}
+            linkFor={(g) => gameHref(g.joinCode)}
           />
         </Card>
       </div>

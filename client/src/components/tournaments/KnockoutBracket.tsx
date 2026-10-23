@@ -1,3 +1,4 @@
+import { gameHref } from "../../lib/gamePath.js";
 import { Link } from "react-router-dom";
 import {
   usernameOf,
@@ -70,7 +71,7 @@ function MatchCard({
 
   if (pairing.joinCode) {
     return (
-      <Link to={`/game/${pairing.joinCode}`} className="block">
+      <Link to={gameHref(pairing.joinCode)} className="block">
         {card}
       </Link>
     );

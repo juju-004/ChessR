@@ -1,3 +1,4 @@
+import { gameHref } from "../lib/gamePath.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Plus, Play, Gamepad2 } from "lucide-react";
@@ -107,7 +108,7 @@ export function Lobby() {
         prevMyStatus.current === "waiting"
       ) {
         prevMyStatus.current = "active";
-        navigate(`/game/${mineNow.joinCode}`);
+        navigate(gameHref(mineNow.joinCode));
         return;
       }
       prevMyStatus.current = mineNow?.status ?? null;
@@ -232,7 +233,7 @@ export function Lobby() {
     try {
       const res = await joinGame(game._id);
       refresh().catch(() => {});
-      navigate(`/game/${res.joinCode}`);
+      navigate(gameHref(res.joinCode));
     } catch (err) {
       setRowError({
         id: game._id,
@@ -322,7 +323,7 @@ export function Lobby() {
                 ? myGame.black?.username
                 : myGame.white.username}
             </p>
-            <Link to={`/game/${myGame.joinCode}`} className="shrink-0">
+            <Link to={gameHref(myGame.joinCode)} className="shrink-0">
               <Button size="sm">
                 <Play className="h-4 w-4" /> Resume
               </Button>
@@ -421,7 +422,7 @@ export function Lobby() {
                           >
                             Cancel
                           </Button>
-                          <Link to={`/game/${g.joinCode}`}>
+                          <Link to={gameHref(g.joinCode)}>
                             <Button size="sm">Open</Button>
                           </Link>
                         </div>

@@ -290,9 +290,9 @@ body {
    the bottom edge. Replaces both the old dropdown nav trigger and the old
    floating action pill. Two mutually-exclusive components render into
    this same visual slot and share these classes: MobileDock (site
-   navigation, see components/Sidebar.tsx) hides itself on /game/:code,
+   navigation, see components/Sidebar.tsx) hides itself on a game page (/:code),
    and the in-game action bar (see components/game/GameActionBar.tsx) only
-   ever mounts on /game/:code, so exactly one is ever on screen, and from
+   ever mounts on a game page, so exactly one is ever on screen, and from
    the person's point of view it reads as one dock whose contents change
    with context rather than two competing fixed-position elements.
 
@@ -625,6 +625,24 @@ body:has(.game-page) {
 }
 @media (prefers-reduced-motion: reduce) {
   .clock-hand-sweep {
+    animation: none;
+  }
+}
+
+/* One-shot fade for lazily-mounted decorations (RCoin). Only a `from`
+   keyframe, so it animates up to whatever opacity the element already has
+   (e.g. the dashboard watermark's 7%), and it's opacity-only, so it stays on
+   the compositor. */
+@keyframes rcoin-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+.rcoin-fade-in {
+  animation: rcoin-fade-in 0.2s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rcoin-fade-in {
     animation: none;
   }
 }

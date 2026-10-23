@@ -73,7 +73,7 @@ export function GameActionBarDesktop({
 
 /** In-game mobile action bar, occupies the same fixed-bottom slot as the
  *  site-navigation dock (see `.dock` in index.css and MobileDock in
- *  components/Sidebar.tsx, which hides itself on /game/:code so this is
+ *  components/Sidebar.tsx, which hides itself on a game page so this is
  *  the only thing rendered there).
  *
  *  Three zones so nothing important can get squeezed off-screen: a pinned

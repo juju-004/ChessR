@@ -30,9 +30,12 @@ const DISTINCT_REPORTERS_FREEZE_THRESHOLD = 2;
  *  gets the same behavior, not just the UI. */
 function normalizeGameCode(input: string): string {
   const trimmed = input.trim();
-  const match = trimmed.match(/\/game\/([a-zA-Z0-9]+)/);
+  // A bare code has no slash; a link ("https://chessr.org/AB12CD", or the
+  // legacy ".../game/AB12CD") carries the code as its last path segment.
+  if (!trimmed.includes('/')) return trimmed;
+  const last = trimmed.split(/[?#]/)[0].replace(/\/+$/, '').split('/').pop() ?? '';
   // Join codes are case-sensitive, never change the case.
-  return match ? match[1] : trimmed;
+  return /^[a-zA-Z0-9]+$/.test(last) ? last : trimmed;
 }
 
 export interface CreateReportParams {

@@ -1,7 +1,8 @@
 import { createServer } from 'http';
 import { env } from './config/env.js';
 import { connectMongo, disconnectMongo } from './config/db.js';
-import { disconnectRedis } from './config/redis.js';
+import { disconnectRedis, initRedis } from './config/redis.js';
+import { startRedisRotation } from './services/redisRotation.service.js';
 import { createApp } from './app.js';
 import { initSocketServer } from './sockets/index.js';
 import { getIo } from './sockets/io.js';
@@ -37,6 +38,11 @@ function timed<T>(name: string, fn: () => Promise<T>): Promise<T | void> {
 
 async function main() {
   await connectMongo();
+
+  // Picks which Redis to use (REDIS_URLS rotates daily) and connects. Needs
+  // Mongo, which records the active one, so it comes right after it and
+  // before anything touches Redis. A no-op with a single REDIS_URL.
+  await initRedis();
 
   // Builds the Follow indexes (unique pair + the "who follows me" lookup)
   // on deploy instead of relying on autoIndex alone, then converts any
@@ -211,6 +217,10 @@ async function main() {
   }, 2000);
   quickPairingInterval.unref();
 
+  // Daily Redis rotation (only does anything with several REDIS_URLS): waits
+  // for a moment with no game in progress, then moves everything over.
+  const stopRedisRotation = startRedisRotation();
+
   httpServer.listen(env.PORT, () => {
     console.log(`🚀 Server listening on port ${env.PORT} [${env.NODE_ENV}]`);
   });
@@ -239,6 +249,7 @@ async function main() {
     // a hang rather than only running once the hang is already over.
     const forceExit = setTimeout(() => process.exit(1), 10000);
     forceExit.unref();
+    stopRedisRotation();
     await stopInstancePresenceBeat();
     await Promise.all([disconnectMongo(), disconnectRedis()]);
     clearTimeout(forceExit);

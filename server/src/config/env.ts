@@ -7,7 +7,27 @@ const envSchema = z.object({
   CLIENT_ORIGIN: z.string().default('http://localhost:5173'),
 
   MONGO_URI: z.string().min(1, 'MONGO_URI is required'),
-  REDIS_URL: z.string().min(1, 'REDIS_URL is required'),
+  // Redis connection(s). Either:
+  //   REDIS_URL  = a single URL (original behaviour, no rotation), or
+  //   REDIS_URLS = several URLs, comma-separated (e.g. three free-tier
+  //                instances). The active one changes once a day, never in the
+  //                middle of a game, and the data is carried over each time.
+  //                See config/redis.ts and services/redisRotation.service.ts.
+  // REDIS_URLS wins if both are set. At least one of them is required.
+  REDIS_URL: z.string().optional(),
+  REDIS_URLS: z.string().optional(),
+  // The time zone the daily rotation rolls over in (a new URL starts at
+  // midnight here). Any IANA name. Defaults to DAILY_CHALLENGE_TZ.
+  REDIS_ROTATION_TZ: z.string().optional(),
+  // When a rotation can't read the outgoing Redis (e.g. its monthly command
+  // quota is exhausted, which is a likely reason to rotate), the default is
+  // to switch anyway: Mongo is the source of truth and only transient state
+  // (presence, caches, locks) is lost. Set to 'true' to refuse to switch
+  // unless the copy succeeds.
+  REDIS_ROTATION_STRICT: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
 
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 chars'),
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 chars'),
@@ -82,7 +102,12 @@ const envSchema = z.object({
   TELEGRAM_CHAT_ID: z.string().optional(),
 });
 
-const parsed = envSchema.safeParse(process.env);
+const parsed = envSchema
+  .refine((e) => !!(e.REDIS_URLS?.trim() || e.REDIS_URL?.trim()), {
+    message: 'Set REDIS_URL (one URL) or REDIS_URLS (comma-separated list)',
+    path: ['REDIS_URLS'],
+  })
+  .safeParse(process.env);
 
 if (!parsed.success) {
   console.error('❌ Invalid environment variables:', parsed.error.flatten().fieldErrors);

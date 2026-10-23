@@ -1,3 +1,4 @@
+import { gameHref } from "../lib/gamePath.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
@@ -191,7 +192,7 @@ export function Dashboard() {
         wagerTokens,
       );
       refresh().catch(() => {});
-      navigate(`/game/${joinCode}`);
+      navigate(gameHref(joinCode));
     } catch (err) {
       setError(
         err instanceof ApiRequestError ? err.message : "Could not create game",
@@ -203,7 +204,7 @@ export function Dashboard() {
 
   function handleJoinByCode() {
     const code = extractGameCode(joinCodeInput);
-    if (code) navigate(`/game/${code}`);
+    if (code) navigate(gameHref(code));
   }
 
   return (
@@ -218,9 +219,14 @@ export function Dashboard() {
            *  corner, the kind of restrained brand flourish an actual
            *  fintech balance card leans on instead of a flat, un-styled
            *  block. Purely decorative: aria-hidden, and pointer-events-none
-           *  so it never intercepts the buttons below it. */}
+           *  so it never intercepts the buttons below it. Mounted only after
+           *  the page's fade-in finishes (RCoin defers on the page animation
+           *  gate) and uses the flat artwork: at 7% opacity the drop-shadow
+           *  filter and milled edge are invisible but costly on low-end
+           *  phones. */}
           <RCoin
             size={140}
+            detail="flat"
             className="pointer-events-none absolute -top-8 -right-8 opacity-[0.07]"
           />
 
@@ -326,7 +332,7 @@ export function Dashboard() {
                 moveCount={myGame.moves.length}
                 wagerTokens={myGame.wagerTokens}
                 action={
-                  <Link to={`/game/${myGame.joinCode}`}>
+                  <Link to={gameHref(myGame.joinCode)}>
                     <Button size="sm">Resume</Button>
                   </Link>
                 }
@@ -410,7 +416,7 @@ export function Dashboard() {
                 moveCount={g.moves.length}
                 wagerTokens={g.wagerTokens}
                 action={
-                  <Link to={`/game/${g.joinCode}`}>
+                  <Link to={gameHref(g.joinCode)}>
                     <Button variant="glass" size="sm">
                       Watch
                     </Button>

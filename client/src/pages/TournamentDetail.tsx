@@ -1,3 +1,4 @@
+import { gameHref } from "../lib/gamePath.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
@@ -996,7 +997,7 @@ function PlayerTournamentDetails({
               return pairing.joinCode ? (
                 <Link
                   key={`${roundIndex}-${pairing.index}`}
-                  to={`/game/${pairing.joinCode}`}
+                  to={gameHref(pairing.joinCode)}
                   className="flex items-center justify-between gap-2 rounded-lg px-1.5 py-1.5 text-sm transition-colors hover:bg-base-300/40"
                 >
                   {rowContent}
@@ -1057,7 +1058,7 @@ function PairingRow({
 
   // Any real (non-bye) pairing that's had a game created for it is
   // clickable through to that game, live to actually play/watch it,
-  // finished to review the replay, same joinCode-based /game/:code route
+  // finished to review the replay, same joinCode-based /:code route
   // Game.tsx already uses for both cases.
   const rowClassName = `flex items-center justify-between rounded-xl border px-3 py-2 text-sm transition-colors ${
     involvesMe
@@ -1109,7 +1110,7 @@ function PairingRow({
 
   if (pairing.joinCode) {
     return (
-      <Link to={`/game/${pairing.joinCode}`} className={rowClassName}>
+      <Link to={gameHref(pairing.joinCode)} className={rowClassName}>
         {content}
       </Link>
     );

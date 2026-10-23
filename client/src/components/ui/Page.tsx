@@ -1,9 +1,10 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/cn.js";
 import { fadeInUp, springSnappy } from "@/lib/motion.js";
+import { beginPageAnimation, endPageAnimation } from "@/lib/pageAnimationGate.js";
 
 export interface PageProps {
   children: ReactNode;
@@ -52,6 +53,14 @@ export function Page({
 }: PageProps) {
   const navigate = useNavigate();
 
+  // Open the animation gate during this page's FIRST render (before any child
+  // renders), so decorative children (RCoin, watermarks) see it and defer
+  // their mount until the fade-in has finished. See lib/pageAnimationGate.ts.
+  useState(() => {
+    beginPageAnimation();
+    return 0;
+  });
+
   function handleBack() {
     if (typeof back === "string") navigate(back);
     else navigate(-1);
@@ -64,6 +73,7 @@ export function Page({
       initial="hidden"
       animate="visible"
       variants={fadeInUp}
+      onAnimationComplete={endPageAnimation}
       className={cn(
         bare
           ? "w-full"

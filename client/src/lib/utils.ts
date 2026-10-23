@@ -89,26 +89,24 @@ export async function copyToClipboard(text: string) {
 /**
  * Pulls a game join code out of free-form input on the dashboard's "join"
  * field, a bare code ("7K3M9P"), a pasted game link
- * ("https://chessr.app/game/7K3M9P", "chessr.app/game/7K3M9P/",
- * "/game/7K3M9P?ref=1"), or anything in between. Returns the extracted
- * code, uppercased, or "" if there's nothing usable to join with.
+ * ("https://chessr.org/7K3M9P", "chessr.org/7K3M9P/", "/7K3M9P?ref=1", or
+ * the legacy "https://chessr.org/game/7K3M9P"), or anything in between.
+ * Returns the extracted code with its case untouched (codes are
+ * case-sensitive), or "" if there's nothing usable to join with.
  */
 export function extractGameCode(input: string): string {
   const trimmed = input.trim();
   if (!trimmed) return "";
 
   // Drop a query string/hash and any trailing slash first, so
-  // ".../game/7K3M9P?ref=1" and ".../game/7K3M9P/" resolve the same way
-  // as the bare code below.
+  // ".../7K3M9P?ref=1" and ".../7K3M9P/" resolve the same way as the bare
+  // code below.
   const withoutQuery = trimmed.split(/[?#]/)[0].replace(/\/+$/, "");
-  const match = withoutQuery.match(/\/game\/([a-zA-Z0-9]+)$/i);
-  const raw = match ? match[1] : withoutQuery;
 
-  // Whatever's left, the matched /game/ segment, or (if this wasn't a
-  // game link at all) the last path-like segment of the raw input, keep
-  // only alphanumerics and uppercase it, matching the server's join-code
-  // alphabet.
-  const lastSegment = raw.split("/").pop() ?? raw;
+  // The code is the last path segment, which covers the current
+  // ".../7K3M9P" link and the legacy ".../game/7K3M9P" one alike (or, if
+  // this wasn't a link at all, the whole input). Keep only alphanumerics.
+  const lastSegment = withoutQuery.split("/").pop() ?? withoutQuery;
   // Join codes are case-sensitive (mixed-case letters + digits), so the
   // case is kept exactly as typed.
   return lastSegment.replace(/[^a-zA-Z0-9]/g, "");

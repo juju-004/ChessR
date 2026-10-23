@@ -1,4 +1,4 @@
-import { generateShortCode } from "../utils/shortCode.js";
+import { generateGameCode } from "../utils/shortCode.js";
 import { Game, type IGame } from "../models/Game.js";
 import { Follow } from "../models/Follow.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -144,7 +144,7 @@ function broadcastLobbyChanged(): void {
   lobbyEmitTimer.unref?.();
 }
 
-const generateCode = generateShortCode;
+const generateCode = generateGameCode;
 
 async function uniqueJoinCode(): Promise<string> {
   for (let attempt = 0; attempt < 5; attempt++) {

@@ -1,3 +1,4 @@
+import { gameCodeFromPath, gameHref } from "../lib/gamePath.js";
 import { Link, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Gamepad2 } from "lucide-react";
@@ -19,11 +20,11 @@ import { NotificationsMenu } from "./NotificationsMenu.js";
 export function NavGameOrBell() {
   const location = useLocation();
   const { joinCode } = useMyActiveGame();
-  const onOwnGamePage = !!joinCode && location.pathname === `/game/${joinCode}`;
+  const onOwnGamePage = !!joinCode && gameCodeFromPath(location.pathname) === joinCode;
 
   if (joinCode && !onOwnGamePage) {
     return (
-      <Link to={`/game/${joinCode}`} aria-label="Return to your game" className="relative">
+      <Link to={gameHref(joinCode)} aria-label="Return to your game" className="relative">
         {/* animate-ping draws its own copy of the dot that scales up and
          *  fades, purely decorative, no layout weight of its own, so it
          *  can't interfere with the button's actual hit target. */}

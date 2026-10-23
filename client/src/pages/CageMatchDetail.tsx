@@ -1,3 +1,4 @@
+import { gameHref } from "../lib/gamePath.js";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Pause } from "lucide-react";
@@ -242,14 +243,14 @@ export function CageMatchDetail() {
           </div>
 
           {match.status === "active" && activeLeg?.joinCode && (
-            <Link to={`/game/${activeLeg.joinCode}`} className="mb-2 block">
+            <Link to={gameHref(activeLeg.joinCode)} className="mb-2 block">
               <Button fullWidth>
                 Go to current game (#{activeLeg.index + 1})
               </Button>
             </Link>
           )}
           {match.status === "active" && pausedLeg && (
-            <Link to={`/game/${pausedLeg.joinCode}`} className="mb-2 block">
+            <Link to={gameHref(pausedLeg.joinCode)} className="mb-2 block">
               <Button
                 fullWidth
                 className="border border-amber-800 bg-amber-950/30 text-amber-300 shadow-none hover:bg-amber-950/50 hover:brightness-100"
@@ -299,7 +300,7 @@ export function CageMatchDetail() {
                 <li
                   key={leg.index}
                   onClick={() =>
-                    leg.joinCode && navigate(`/game/${leg.joinCode}`)
+                    leg.joinCode && navigate(gameHref(leg.joinCode))
                   }
                   className="flex items-center cursor-pointer justify-between rounded-lg bg-base-100/60 px-3 py-2 text-sm"
                 >

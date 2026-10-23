@@ -1,3 +1,4 @@
+import { gameHref } from "../lib/gamePath.js";
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
@@ -174,7 +175,7 @@ export function AdminReportDetail() {
             <h2 className="min-w-0 text-base font-semibold break-all text-base-content">
               Game {game.joinCode}
             </h2>
-            <Link to={`/game/${game.joinCode}`} target="_blank">
+            <Link to={gameHref(game.joinCode)} target="_blank">
               <Button variant="glass" size="sm">
                 Open game
               </Button>

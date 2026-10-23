@@ -105,7 +105,7 @@ export interface WagerSettlement {
 /** A game is only ever "live", i.e. worth opening a socket room for, 
  *  while it's waiting for an opponent or actually being played. Once it's
  *  finished or aborted there's nothing left to sync in real time, so
- *  those two statuses are the "stale" side of the fixed /game/:code URL:
+ *  those two statuses are the "stale" side of the fixed /:code game URL:
  *  same page, same layout, just filled in from the one-shot REST payload
  *  instead of a socket connection. See the fetch effect in Game.tsx. */
 export function isLiveStatus(status: GameMeta["status"]) {

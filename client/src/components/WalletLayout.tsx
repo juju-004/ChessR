@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { WalletNav } from "./WalletNav.js";
+import { beginPageAnimation } from "@/lib/pageAnimationGate.js";
 
 /**
  * Wraps the three wallet routes (buy/withdraw/transactions) so `WalletNav`
@@ -21,6 +23,13 @@ import { WalletNav } from "./WalletNav.js";
  */
 export function WalletLayout() {
   const location = useLocation();
+  // WalletNav (and its coin) renders before the child page's own <Page>, so
+  // open the animation gate here too, on first entry, to defer that coin
+  // until the page has finished fading in. The child Page closes the gate.
+  useState(() => {
+    beginPageAnimation();
+    return 0;
+  });
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 md:px-8 md:py-10">
       <WalletNav active={location.pathname} />

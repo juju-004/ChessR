@@ -1,3 +1,4 @@
+import { gameCodeFromPath } from "../lib/gamePath.js";
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { useMyActiveGame } from "../contexts/MyActiveGameContext.js";
@@ -14,7 +15,7 @@ export function useOnOwnGamePageRef() {
   const { joinCode } = useMyActiveGame();
   const ref = useRef(false);
   useEffect(() => {
-    ref.current = !!joinCode && location.pathname === `/game/${joinCode}`;
+    ref.current = !!joinCode && gameCodeFromPath(location.pathname) === joinCode;
   }, [location.pathname, joinCode]);
   return ref;
 }

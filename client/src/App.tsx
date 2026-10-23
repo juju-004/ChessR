@@ -1,3 +1,4 @@
+import { gameHref, isGameCode, isUnderPath } from "./lib/gamePath.js";
 import {
   BrowserRouter,
   Routes,
@@ -29,7 +30,7 @@ import { tryRestoreSession } from "./api/auth.js";
 // chunk, fetched only when that route is actually visited, rather than all
 // of them being bundled into the one script the browser has to download,
 // parse, and execute before anything renders. This matters most for
-// /game and /replay specifically: chessground + chess.js are sizeable,
+// the game page specifically: chessground + chess.js are sizeable,
 // and previously every visitor paid for that JS on first load even if
 // they never played a game. On a low-end device, JS parse/execute time
 // (not just download time) is a real cost, so shrinking the initial
@@ -219,14 +220,29 @@ function GameRoute() {
   return <Game key={code} />;
 }
 
-// GameReplay is gone. Game.tsx now detects whether a game is still live
-// or already finished and renders accordingly, so /game/:code is a single
-// fixed URL for a game's whole lifetime, the same way lichess does it.
-// /replay/:code keeps working as a redirect so old bookmarks/shared links
-// don't break.
-function ReplayRedirect() {
+// A game's URL is just /:code (see lib/gamePath.ts for how that coexists
+// with the fixed pages). Game.tsx detects whether a game is still live or
+// already finished and renders accordingly, so it is a single fixed URL for
+// the game's whole lifetime, the same way lichess does it. The old
+// /game/:code and /replay/:code forms stay as redirects so bookmarks,
+// shared links and old notifications don't break.
+function LegacyGameRedirect() {
   const { code } = useParams<{ code: string }>();
-  return <Navigate to={`/game/${code}`} replace />;
+  const { search, hash } = useLocation();
+  return <Navigate to={`${gameHref(code ?? "")}${search}${hash}`} replace />;
+}
+
+// Catch-all for single-segment URLs, ranked below every fixed route. Only a
+// well-formed, non-reserved code is treated as a game; anything else (a
+// mistyped page name, say) is a real 404 rather than a "game not found".
+function GameCodeRoute() {
+  const { code } = useParams<{ code: string }>();
+  if (!isGameCode(code)) return <NotFound />;
+  return (
+    <ProtectedRoute>
+      <GameRoute />
+    </ProtectedRoute>
+  );
 }
 
 function CageMatchDetailRoute() {
@@ -241,7 +257,7 @@ function TournamentDetailRoute() {
 
 function AppBody() {
   const location = useLocation();
-  const isAdminRoute = location.pathname.startsWith("/admin");
+  const isAdminRoute = isUnderPath(location.pathname, "/admin");
   // Skip the banner on the game page itself, vertical space there is
   // already tight on mobile (board + panels + the in-game action dock),
   // and it'll still show right back up on every other page.
@@ -296,7 +312,7 @@ function AppBody() {
         {/* pb-24 reserves room for the fixed bottom dock (see .dock in
          *  index.css) so it never overlaps page content on phone, the
          *  dock itself is always mounted below (either MobileDock's site
-         *  nav or, on /game/:code, the in-game action bar), so this
+         *  nav or, on a game page, the in-game action bar), so this
          *  padding is needed everywhere on mobile, not just on the game
          *  page. Irrelevant from md up, where the dock doesn't render. */}
         <main className="min-w-0 flex-1 pb-24 md:pb-12">
@@ -427,22 +443,8 @@ function AppBody() {
                   </ProtectedRoute>
                 }
               />
-              <Route
-                path="/game/:code"
-                element={
-                  <ProtectedRoute>
-                    <GameRoute />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/replay/:code"
-                element={
-                  <ProtectedRoute>
-                    <ReplayRedirect />
-                  </ProtectedRoute>
-                }
-              />
+              <Route path="/game/:code" element={<LegacyGameRedirect />} />
+              <Route path="/replay/:code" element={<LegacyGameRedirect />} />
               <Route
                 path="/cage"
                 element={
@@ -536,6 +538,10 @@ function AppBody() {
                   </ProtectedRoute>
                 }
               />
+              {/* A game lives at /:code. Fixed routes above always outrank
+               *  this one (React Router ranks static segments over dynamic
+               *  ones), and GameCodeRoute 404s anything that isn't a code. */}
+              <Route path="/:code" element={<GameCodeRoute />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

@@ -1,3 +1,4 @@
+import { gameHref } from "../lib/gamePath.js";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useSocket } from "../contexts/SocketContext.js";
@@ -157,7 +158,7 @@ export function CageMatchScoreboard({ cageMatchId, legIndex }: Props) {
             <span key={leg.index} className="flex-1">
               {leg.joinCode ? (
                 <Link
-                  to={`/game/${leg.joinCode}`}
+                  to={gameHref(leg.joinCode)}
                   aria-label={pipTitle(leg, p1Name, p2Name)}
                   className="block w-full"
                 >

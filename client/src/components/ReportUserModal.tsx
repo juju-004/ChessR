@@ -14,15 +14,20 @@ const REASONS: { value: ReportReason; label: string }[] = [
 ];
 
 /** Accepts either a bare join code ("AB12CD") or a full game URL
- *  ("https://chessr.app/game/AB12CD", "/game/ab12cd", with or without a
- *  trailing slash/query string) and returns just the code. Falls back to
- *  treating the whole input as a code if it doesn't look like a URL, so a
- *  typo'd/partial paste doesn't just silently disappear. */
+ *  ("https://chessr.org/AB12CD", "/AB12CD", or the legacy
+ *  "/game/AB12CD", with or without a trailing slash/query string) and
+ *  returns just the code. Falls back to treating the whole input as a code
+ *  if it doesn't look like a URL, so a typo'd/partial paste doesn't just
+ *  silently disappear. */
 function extractGameCode(input: string): string {
   const trimmed = input.trim();
-  const match = trimmed.match(/\/game\/([a-zA-Z0-9]+)/);
+  // A bare code has no slash. Otherwise it's a link or path
+  // ("https://chessr.org/AB12CD", "/AB12CD/", legacy "/game/AB12CD", with or
+  // without a query string): the code is the last path segment.
+  if (!trimmed.includes("/")) return trimmed;
+  const last = trimmed.split(/[?#]/)[0].replace(/\/+$/, "").split("/").pop() ?? "";
   // Join codes are case-sensitive, keep the case exactly as pasted.
-  return match ? match[1] : trimmed;
+  return /^[a-zA-Z0-9]+$/.test(last) ? last : trimmed;
 }
 
 export interface ReportUserModalProps {
@@ -127,7 +132,7 @@ export function ReportUserModal({
             type="text"
             value={gameCode}
             onChange={(e) => setGameCode(e.target.value.slice(0, 200))}
-            placeholder="e.g. AB12CD or https://chessr.app/game/AB12CD"
+            placeholder="e.g. AB12CD or https://chessr.org/AB12CD"
             className="w-full rounded-lg border border-base-300 bg-base-200/60 px-3 py-2 text-sm text-base-content outline-none focus:border-(--primary)"
           />
         </div>

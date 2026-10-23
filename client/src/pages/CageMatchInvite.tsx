@@ -1,3 +1,4 @@
+import { gameHref } from "../lib/gamePath.js";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Swords, Trophy, Coins } from "lucide-react";
@@ -89,7 +90,7 @@ export function CageMatchInvite() {
       if (payload.linkId !== linkId) return;
       navigate(
         payload.gameCode
-          ? `/game/${payload.gameCode}`
+          ? gameHref(payload.gameCode)
           : `/cage/${payload.matchCode}`,
         { replace: true },
       );
