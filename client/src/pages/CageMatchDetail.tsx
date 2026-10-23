@@ -249,7 +249,7 @@ export function CageMatchDetail() {
               </Button>
             </Link>
           )}
-          {match.status === "active" && pausedLeg && (
+          {match.status === "active" && pausedLeg?.joinCode && (
             <Link to={gameHref(pausedLeg.joinCode)} className="mb-2 block">
               <Button
                 fullWidth
