@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Trophy } from "lucide-react";
+import { ChevronLeft, ChevronRight, Crown, Trophy } from "lucide-react";
 import {
   getPastSeasons,
   getSeasonLeaderboard,
@@ -112,7 +112,7 @@ function HeaderStrip({ board }: { board: SeasonBoard }) {
     "text-[10px] font-semibold uppercase tracking-wider text-base-content/40";
   return (
     <div className="flex items-center gap-2.5 px-3 py-1.5 sm:px-4">
-      <span className={cn(cell, "w-5 shrink-0 text-center")}>#</span>
+      <span className={cn(cell, "w-6 shrink-0 text-center")}>#</span>
       <span className={cn(cell, "flex-1")}>Player</span>
       {board === "games" ? (
         <span className={cn(cell, "w-12 text-center")}>Games</span>
@@ -125,6 +125,38 @@ function HeaderStrip({ board }: { board: SeasonBoard }) {
     </div>
   );
 }
+
+/** Podium styling for the top five. Index 0 = 1st place. Whole class
+ *  strings (cn() doesn't merge) so each tier is one self-contained look:
+ *  gold / silver / bronze for the podium, a quieter brand tint for 4th
+ *  and 5th. Everyone below falls back to the zebra rows. */
+const PODIUM = [
+  {
+    row: "bg-linear-to-r from-amber-400/25 via-amber-400/10 to-amber-400/0 ring-1 ring-inset ring-amber-400/45 shadow-sm shadow-amber-400/10",
+    badge: "bg-linear-to-br from-amber-300 to-amber-500 text-amber-950",
+    name: "text-base font-bold",
+  },
+  {
+    row: "bg-linear-to-r from-slate-300/25 via-slate-300/10 to-slate-300/0 ring-1 ring-inset ring-slate-300/40",
+    badge: "bg-linear-to-br from-slate-200 to-slate-400 text-slate-900",
+    name: "text-[15px] font-bold",
+  },
+  {
+    row: "bg-linear-to-r from-orange-400/22 via-orange-400/9 to-orange-400/0 ring-1 ring-inset ring-orange-400/40",
+    badge: "bg-linear-to-br from-orange-300 to-orange-500 text-orange-950",
+    name: "text-[15px] font-bold",
+  },
+  {
+    row: "bg-primary/8 ring-1 ring-inset ring-primary/20",
+    badge: "bg-base-content/12 text-base-content",
+    name: "text-sm font-semibold",
+  },
+  {
+    row: "bg-primary/8 ring-1 ring-inset ring-primary/20",
+    badge: "bg-base-content/12 text-base-content",
+    name: "text-sm font-semibold",
+  },
+] as const;
 
 function Row({
   row,
@@ -140,37 +172,44 @@ function Row({
   // The points board shows wins and draws instead of the points score; the
   // tooltip has the full record.
   const record = `${row.wins} won, ${row.draws} drawn, ${row.losses} lost`;
+  // Top five get the podium treatment (by real rank, so your own row shown
+  // under the "..." gap only gets it if you actually placed that high).
+  const podium = row.rank >= 1 && row.rank <= 5 ? PODIUM[row.rank - 1] : null;
   return (
     <li
       className={cn(
-        "flex items-center gap-2.5 rounded-xl px-3 py-2.5 transition-colors sm:px-4 sm:py-3",
-        // Zebra striping instead of divider lines. Done by index (not
-        // odd:/even:) because cn() doesn't merge classes, so a stripe class
-        // would fight the "me" highlight.
-        isMe
-          ? "bg-primary/12 ring-1 ring-inset ring-primary/25"
-          : index % 2 === 1
-            ? "bg-base-content/4"
-            : "bg-transparent",
+        "flex items-center gap-2.5 rounded-xl px-3 transition-colors sm:px-4",
+        podium ? "py-3 sm:py-3.5" : "py-2.5 sm:py-3",
+        // Zebra striping instead of divider lines for everyone below the
+        // podium. Done by index (not odd:/even:) because cn() doesn't merge
+        // classes, so a stripe class would fight the other backgrounds.
+        podium
+          ? podium.row
+          : isMe
+            ? "bg-primary/12 ring-1 ring-inset ring-primary/25"
+            : index % 2 === 1
+              ? "bg-base-content/4"
+              : "bg-transparent",
+        // Your own podium row keeps its colours and gains a brand outline.
+        podium && isMe && "outline-2 -outline-offset-2 outline-primary/60",
       )}
     >
-      {/* The prize replaces the serial number on the places that win one.
-          Kept as narrow as the content allows (a prize tops out at 3
-          digits, a top-20 rank at 2) so the avatar sits close to it. */}
-      {row.prize > 0 ? (
+      {/* Rank. Podium places get a medal-style disc; the rest keep the
+          plain number. Kept narrow so the avatar sits close to it. */}
+      {podium ? (
         <span
-          className="flex w-5 shrink-0 flex-col items-center gap-0.5 leading-none"
-          title={`${row.prize} R prize for place ${row.rank}`}
+          className={cn(
+            "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-extrabold tabular-nums shadow-sm",
+            podium.badge,
+          )}
+          title={`Place ${row.rank}`}
         >
-          <RCoin size={12} />
-          <span className="text-[10px] font-semibold tabular-nums text-amber-300">
-            {row.prize}
-          </span>
+          {row.rank === 1 ? <Crown className="h-3.5 w-3.5" /> : row.rank}
         </span>
       ) : (
         <span
           className={cn(
-            "w-5 shrink-0 text-center font-semibold tabular-nums whitespace-nowrap text-base-content/60",
+            "w-6 shrink-0 text-center font-semibold tabular-nums whitespace-nowrap text-base-content/60",
             // A rank outside the top 20 (your own row) can be 3-4 digits.
             row.rank >= 100 ? "text-[10px]" : "text-sm",
           )}
@@ -181,22 +220,43 @@ function Row({
       <Avatar
         username={row.username}
         gradient={row.avatarGradient}
-        size="xs"
-        mdSize="compact"
+        size={podium ? "compact" : "xs"}
+        mdSize={podium ? "sm" : "compact"}
       />
       <div className="min-w-0 flex-1">
         <Link
           to={`/profile/${row.username}`}
-          className="block truncate text-sm font-medium hover:underline"
+          className={cn(
+            "block truncate hover:underline",
+            podium ? podium.name : "text-sm font-medium",
+          )}
         >
           {row.username}
           {isMe && (
-            <span className="ml-1.5 text-xs text-base-content/50">(you)</span>
+            <span className="ml-1.5 text-xs font-normal text-base-content/50">
+              (you)
+            </span>
           )}
         </Link>
+        {/* The prize sits under the name as a small gold chip, so the rank
+            column stays narrow and the prize places stand out. */}
+        {row.prize > 0 && (
+          <span
+            className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-amber-400/15 px-1.5 py-px text-[11px] font-bold leading-tight tabular-nums text-amber-400"
+            title={`${row.prize} R prize for place ${row.rank}`}
+          >
+            <RCoin size={11} />
+            {row.prize}
+          </span>
+        )}
       </div>
       {board === "games" ? (
-        <span className="w-12 text-center text-base font-semibold tabular-nums whitespace-nowrap">
+        <span
+          className={cn(
+            "w-12 text-center font-semibold tabular-nums whitespace-nowrap",
+            podium ? "text-lg font-extrabold" : "text-base",
+          )}
+        >
           {row.games}
         </span>
       ) : (
@@ -368,7 +428,7 @@ export function Leaderboard() {
                   </h2>
                   {key === "points" && data.minGamesForPointsPrize > 0 && (
                     <HelpTip>
-                      {minGamesText(data.minGamesForPointsPrize)}gjgj
+                      {minGamesText(data.minGamesForPointsPrize)}
                     </HelpTip>
                   )}
                 </div>
@@ -379,7 +439,7 @@ export function Leaderboard() {
                 ) : (
                   <>
                     <HeaderStrip board={key} />
-                    <ul className="space-y-1">
+                    <ul className="space-y-1.5">
                       {rows.map((r, i) => (
                         <Row
                           key={r.user}

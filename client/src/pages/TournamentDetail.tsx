@@ -2002,8 +2002,13 @@ export function TournamentDetail() {
         {isPointsFormat && desktopPrimary}
 
         {isPointsFormat && standings.length > 0 && (
-          <Card variant="solid">
-            <CardHeader>
+          // Phone: no card (no surface, border or padding), so the table
+          // spreads across the page like the leaderboard. md+ keeps the card.
+          <Card
+            variant="solid"
+            className="max-md:rounded-none! max-md:border-0! max-md:bg-transparent! max-md:p-0!"
+          >
+            <CardHeader className="max-md:px-3">
               <CardTitle>Standings</CardTitle>
               <div className="flex items-center gap-2">
                 {myStandingsIndex !== -1 && (
@@ -2027,11 +2032,11 @@ export function TournamentDetail() {
                 />
               </div>
             </CardHeader>
-            <div className="overflow-hidden rounded-xl border border-base-300">
+            <div className="overflow-hidden rounded-xl md:border md:border-base-300">
               <table className="w-full table-fixed text-sm">
                 <thead>
-                  <tr className="bg-base-300/50 text-left text-[11px] font-semibold uppercase tracking-wide text-base-content/50">
-                    <th className={STANDINGS_RANK_TH}>#</th>
+                  <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-base-content/50 max-md:text-[10px] max-md:text-base-content/40 md:bg-base-300/50">
+                    <th className={cn(STANDINGS_RANK_TH, "max-md:pl-3")}>#</th>
                     <th className="px-2 py-2 md:px-3">Player</th>
                     <th className="hidden w-24 px-3 py-2 text-center md:table-cell">
                       Form
@@ -2056,7 +2061,7 @@ export function TournamentDetail() {
                       <tr
                         key={p.user}
                         className={cn(
-                          "border-t border-base-300/60 transition-colors",
+                          "transition-colors md:border-t md:border-base-300/60",
                           isMe
                             ? "bg-(--secondary)/10"
                             : i % 2 === 0
@@ -2064,12 +2069,12 @@ export function TournamentDetail() {
                               : "bg-base-200/50",
                         )}
                       >
-                        <td className={STANDINGS_RANK_TD}>
+                        <td className={cn(STANDINGS_RANK_TD, "max-md:py-3 max-md:pl-3")}>
                           <RankBadge rank={rank} />
                         </td>
                         <td
                           className={cn(
-                            "max-w-0 px-2 py-2 md:px-3",
+                            "max-w-0 px-2 py-2 max-md:py-3 md:px-3",
                             isMe && "font-semibold text-(--secondary)",
                           )}
                         >
@@ -2115,7 +2120,7 @@ export function TournamentDetail() {
                         <td
                           className={cn(
                             isMe ? "text-secondary" : "text-base-content",
-                            "px-3 py-2 text-right font-semibold",
+                            "px-3 py-2 text-right font-semibold max-md:py-3",
                           )}
                         >
                           {tournament.format === "arena" &&
