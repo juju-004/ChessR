@@ -284,7 +284,11 @@ export function Leaderboard() {
             <span className="truncate">{BOARDS[activeBoard].title}</span>
             {BOARDS[activeBoard].key === "points" &&
               data.minGamesForPointsPrize > 0 && (
-                <HelpTip>{minGamesText(data.minGamesForPointsPrize)}</HelpTip>
+                <HelpTip className="">
+                  <span className="whitespace-normal!">
+                    {minGamesText(data.minGamesForPointsPrize)}
+                  </span>
+                </HelpTip>
               )}
           </span>
           <span className="hidden md:inline">Season {data.season}</span>
@@ -364,14 +368,13 @@ export function Leaderboard() {
                   </h2>
                   {key === "points" && data.minGamesForPointsPrize > 0 && (
                     <HelpTip>
-                      {minGamesText(data.minGamesForPointsPrize)}
+                      {minGamesText(data.minGamesForPointsPrize)}gjgj
                     </HelpTip>
                   )}
                 </div>
                 {rows.length === 0 ? (
                   <p className="py-10 text-center text-sm text-base-content/60">
-                    No games finished this season yet. Play one to get on the
-                    board.
+                    No games finished this season yet.
                   </p>
                 ) : (
                   <>
