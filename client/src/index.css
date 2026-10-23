@@ -402,49 +402,19 @@ body {
   min-width: 3.6rem;
 }
 
-/* Site-nav items (MobileDock): each carries its own --item-color. The icon is
-   always tinted with it, the label stays muted until the tab is active, and
-   the active tab gets a pill of its own color. */
-.docker-item-nav {
-  opacity: 1;
-  gap: 0.2rem;
-  font-size: 0.55rem;
-}
-.docker-item-nav svg {
-  color: var(--item-color);
-  transition: transform 0.2s ease;
-}
-.docker-item-nav span {
-  color: color-mix(in srgb, var(--color-base-content) 60%, transparent);
-}
-.docker-item-nav.docker-item-active {
-  background-color: color-mix(in srgb, var(--item-color) 18%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--item-color) 30%, transparent);
-}
-.docker-item-nav.docker-item-active svg {
-  transform: translateY(-1px) scale(1.12);
-}
-.docker-item-nav.docker-item-active span {
-  color: var(--item-color);
-}
-
 /* Dash is pinned and gets a deep dark pill so it reads as home base, apart
    from the scrolling tabs. Active: the brand gradient. */
 .docker-item-pinned {
+  opacity: 1;
+  color: rgba(255, 255, 255, 0.8);
   background-color: #141a33;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   margin-right: 0.2rem;
 }
-.docker-item-pinned span {
-  color: rgba(255, 255, 255, 0.7);
-}
 .docker-item-pinned.docker-item-active {
+  color: #fff;
   background-image: linear-gradient(135deg, var(--primary), #7c3aed);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 40%, transparent);
-}
-.docker-item-pinned.docker-item-active svg,
-.docker-item-pinned.docker-item-active span {
-  color: #fff;
 }
 
 .game .docker-item {

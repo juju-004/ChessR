@@ -195,14 +195,14 @@ export function CageMatchDetail() {
     >
       <div className="mx-auto max-w-2xl space-y-4">
         <Card variant="solid">
-          <div className="mb-3 flex items-center justify-center gap-6 rounded-xl bg-base-100/60 py-4">
-            <div className="text-center">
-              <p className="text-sm text-base-content/60">{meLabel}</p>
+          <div className="mb-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-xl bg-base-100/60 px-3 py-4">
+            <div className="min-w-0 text-center">
+              <p className="truncate text-sm text-base-content/60">{meLabel}</p>
               <p className="text-2xl font-bold text-base-content">{myScore}</p>
             </div>
             <span className="text-base-content/40">–</span>
-            <div className="text-center">
-              <p className="text-sm text-base-content/60">
+            <div className="min-w-0 text-center">
+              <p className="truncate text-sm text-base-content/60">
                 {opponent.username}
               </p>
               <p className="text-2xl font-bold text-base-content">{oppScore}</p>
@@ -276,10 +276,17 @@ export function CageMatchDetail() {
                 leg.status === "finished"
                   ? leg.result === "draw"
                     ? "Draw"
-                    : leg.result === "p1"
-                      ? `${match.player1.username} won`
-                      : leg.result === "p2"
-                        ? `${match.player2.username} won`
+                    : leg.result === "p1" || leg.result === "p2"
+                      ? (
+                          <>
+                            <span className="min-w-0 truncate max-w-24 sm:max-w-48">
+                              {leg.result === "p1"
+                                ? match.player1.username
+                                : match.player2.username}
+                            </span>
+                            <span className="shrink-0">won</span>
+                          </>
+                        )
                         : ""
                   : leg.status === "skipped"
                     ? "Skipped"
@@ -296,14 +303,14 @@ export function CageMatchDetail() {
                   }
                   className="flex items-center cursor-pointer justify-between rounded-lg bg-base-100/60 px-3 py-2 text-sm"
                 >
-                  <span className="flex items-center gap-2 text-base-content/80">
+                  <span className="flex min-w-0 items-center gap-2 text-base-content/80">
                     <span
                       className={`inline-block h-2 w-2 rounded-full ${LEG_STATUS_DOT[leg.status]}`}
                     />
                     #{leg.index + 1} · {formatLegTimeControl(leg)} ·{" "}
                     {CATEGORY_LABEL[leg.category]}
                   </span>
-                  <span className="flex items-center gap-2 text-base-content/50">
+                  <span className="ml-2 flex min-w-0 shrink items-center gap-1 text-base-content/50">
                     {resultLabel}
                   </span>
                 </li>

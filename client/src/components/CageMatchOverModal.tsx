@@ -85,16 +85,16 @@ export const CageMatchOverModal = memo(function CageMatchOverModal({ match, myUs
           {title}
         </h2>
 
-        <p className="mb-1 text-sm text-base-content/60">vs {opponent.username}</p>
+        <p className="mb-1 truncate text-sm text-base-content/60">vs {opponent.username}</p>
 
-        <div className="mx-auto mb-3 mt-2 flex items-center justify-center gap-6 rounded-xl bg-base-100/60 py-3">
-          <div className="text-center">
-            <p className="text-xs text-base-content/50">You</p>
+        <div className="mx-auto mb-3 mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-xl bg-base-100/60 px-3 py-3">
+          <div className="min-w-0 text-center">
+            <p className="truncate text-xs text-base-content/50">You</p>
             <p className="text-xl font-bold text-base-content">{myScore}</p>
           </div>
           <span className="text-base-content/40">–</span>
-          <div className="text-center">
-            <p className="text-xs text-base-content/50">{opponent.username}</p>
+          <div className="min-w-0 text-center">
+            <p className="truncate text-xs text-base-content/50">{opponent.username}</p>
             <p className="text-xl font-bold text-base-content">{oppScore}</p>
           </div>
         </div>

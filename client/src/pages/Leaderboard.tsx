@@ -75,7 +75,7 @@ const BOARDS: { key: SeasonBoard; title: string }[] = [
 
 /** Width of the right-hand stat columns, shared by the header strip and the
  *  rows so the numbers line up exactly. */
-const STAT_COL = "w-11 sm:w-12";
+const STAT_COL = "w-9 sm:w-10";
 
 /** One compact stat pill. Fixed width + tabular numbers keep a column of
  *  them visually aligned from the first row to the last. */
@@ -87,7 +87,7 @@ function StatPill({
 }: {
   value: number;
   suffix: string;
-  tone: "win" | "loss";
+  tone: "win" | "draw";
   title?: string;
 }) {
   return (
@@ -95,10 +95,10 @@ function StatPill({
       title={title}
       className={cn(
         STAT_COL,
-        "inline-flex items-baseline justify-center gap-px rounded-md py-0.5 text-sm font-semibold tabular-nums leading-tight",
+        "inline-flex items-baseline justify-center gap-px rounded-md px-0.5 py-px text-sm font-semibold tabular-nums leading-tight",
         tone === "win"
           ? "bg-emerald-500/12 text-emerald-500"
-          : "bg-rose-500/12 text-rose-500",
+          : "bg-amber-500/12 text-amber-500",
       )}
     >
       {value}
@@ -119,7 +119,7 @@ function HeaderStrip({ board }: { board: SeasonBoard }) {
       ) : (
         <>
           <span className={cn(cell, STAT_COL, "text-center")}>Won</span>
-          <span className={cn(cell, STAT_COL, "text-center")}>Lost</span>
+          <span className={cn(cell, STAT_COL, "text-center")}>Drawn</span>
         </>
       )}
     </div>
@@ -137,9 +137,8 @@ function Row({
   isMe: boolean;
   index: number;
 }) {
-  // The points board shows wins and losses instead of the points score, so
-  // the actual points (which draws feed into) are never visible. Draws are
-  // only in the tooltip.
+  // The points board shows wins and draws instead of the points score; the
+  // tooltip has the full record.
   const record = `${row.wins} won, ${row.draws} drawn, ${row.losses} lost`;
   return (
     <li
@@ -203,7 +202,7 @@ function Row({
       ) : (
         <>
           <StatPill value={row.wins} suffix="W" tone="win" title={record} />
-          <StatPill value={row.losses} suffix="L" tone="loss" title={record} />
+          <StatPill value={row.draws} suffix="D" tone="draw" title={record} />
         </>
       )}
     </li>

@@ -189,8 +189,7 @@ export function MobileDock() {
         onClick={() => navigate(item.to)}
         aria-label={item.label}
         aria-current={isActive ? "page" : undefined}
-        style={{ "--item-color": item.color } as CSSProperties}
-        className={cn("docker-item docker-item-nav", extra, isActive && "docker-item-active")}
+        className={cn("docker-item", extra, isActive && "docker-item-active")}
       >
         <Icon className="h-5 w-5" strokeWidth={isActive ? 2.5 : 2} />
         <span>{item.dockLabel ?? item.label}</span>
