@@ -39,7 +39,7 @@ import {
   Coins,
 } from "lucide-react";
 import { MoveList, MoveStrip } from "../components/MoveLog.js";
-import { PlayerPanelRow, panelMaterial } from "../components/PlayerPanels.js";
+import { PlayerPanelWithClock, panelMaterial } from "../components/PlayerPanels.js";
 import {
   GameOverModal,
   titleFor,
@@ -2364,11 +2364,13 @@ export function Game() {
         <div className="game-area-rightpanel justify-center min-h-0 flex-col gap-3">
           <div>
             <Card variant="solid" className="shrink-0 space-y-2">
-              <PlayerPanelRow
+              <PlayerPanelWithClock
+                position="top"
                 {...(boardFlipped ? myPanelData : opponentPanelData)}
               />
 
-              <PlayerPanelRow
+              <PlayerPanelWithClock
+                position="bottom"
                 {...(boardFlipped ? opponentPanelData : myPanelData)}
               />
             </Card>

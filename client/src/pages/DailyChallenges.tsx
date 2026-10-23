@@ -149,19 +149,6 @@ export function DailyChallenges() {
       back="/"
     >
       <div className="space-y-4">
-        {state.resetNotice && (
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-            <p className="font-medium">Your week started over</p>
-            <p className="mt-0.5 text-amber-200/80">
-              You missed a day, so you're back on Day 1
-              {state.resetNotice.fromDay > 1
-                ? ` (you had reached Day ${state.resetNotice.fromDay})`
-                : ""}
-              . Finish every day this time to reach the big rewards.
-            </p>
-          </div>
-        )}
-
         {/* ---- where you are --------------------------------------------- */}
         <Card variant="solid">
           <CardContent className="space-y-4 py-4">

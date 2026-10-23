@@ -386,11 +386,12 @@ export function Dashboard() {
           )}
         </Card>
 
-        {(gamesError || activeGames === null || activeGames.length > 0) && (
-          <ListCard
-            title="Following currently playing"
-            loading={!gamesError && activeGames === null}
-          >
+        {/* Only games of people you follow, and only once there is
+         *  something to show. Rendering the card while the request was
+         *  still in flight made it flash on the dashboard for users
+         *  whose followed players aren't playing. */}
+        {(gamesError || (activeGames !== null && activeGames.length > 0)) && (
+          <ListCard title="Following currently playing">
             {gamesError && <p className="text-sm text-red-400">{gamesError}</p>}
             {activeGames?.map((g) => (
               <LiveGameRow

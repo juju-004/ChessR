@@ -1,4 +1,4 @@
-import { useEffect, useState, memo } from "react";
+import { useEffect, useState, memo, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Swords, UserRound } from "lucide-react";
 import {
@@ -391,6 +391,8 @@ function ClockBadge({
   clockKnown,
   lowTimeThresholdMs,
   size = "md",
+  className,
+  leading,
 }: {
   baseRemainingMs: number | null;
   turnStartedAtMs: number;
@@ -398,7 +400,12 @@ function ClockBadge({
   isTurn: boolean;
   clockKnown: boolean;
   lowTimeThresholdMs: number;
-  size?: "md" | "sm";
+  /** `bar` = full-width clock that sits flush against a player panel
+   *  (md and up, see PlayerPanelWithClock). */
+  size?: "md" | "sm" | "bar";
+  className?: string;
+  /** Rendered before the digits (the berserk badge, in bar mode). */
+  leading?: ReactNode;
 }) {
   const [, forceTick] = useState(0);
 
@@ -439,7 +446,9 @@ function ClockBadge({
         // low-time pulse were re-triggering constantly during play, not
         // just on the state changes they were meant for. David: flagged
         // as a likely contributor to move lag.
-        size === "sm"
+        size === "bar"
+          ? "flex w-full items-center justify-center gap-2 px-3 py-1.5 font-mono text-2xl font-bold tabular-nums lg:text-3xl"
+          : size === "sm"
           ? "rounded-md px-1.5 py-1 font-mono text-xs font-bold tabular-nums"
           : // A little bigger on phones, much bigger from md up where the
             // right-hand panel has the room (the row grows to match, see
@@ -450,8 +459,10 @@ function ClockBadge({
           : isTurn
             ? "gradient-brand text-white shadow-sm shadow-(--primary)/30"
             : "bg-base-300/60 text-base-content/80",
+        className,
       )}
     >
+      {leading}
       {clockKnown ? formatClock(liveMs ?? 0) : "∞"}
     </div>
   );
@@ -479,9 +490,22 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
   zenMode,
   disconnect,
   score,
-}: PanelData) {
+  hideClock,
+  className,
+}: PanelData & {
+  /** The clock is rendered elsewhere (PlayerPanelWithClock attaches it
+   *  flush above/below this row), so the row gives its space to the name. */
+  hideClock?: boolean;
+  className?: string;
+}) {
   return (
-    <div className="flex h-13.5 items-center gap-3 rounded-xl bg-base-200/70 px-3 py-2 text-base-content md:h-16 lg:h-20">
+    <div
+      className={cn(
+        "flex h-13.5 items-center gap-3 rounded-xl bg-base-200/70 px-3 py-2 text-base-content",
+        hideClock ? "md:h-14 lg:h-16" : "md:h-16 lg:h-20",
+        className,
+      )}
+    >
       <div className="flex shrink-0 items-center gap-1">
       {score != null && <ScoreBadge score={score} />}
       {zenMode ? (
@@ -555,17 +579,55 @@ export const PlayerPanelRow = memo(function PlayerPanelRow({
           )}
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-1.5">
-        {berserked && <BerserkBadge />}
-        <ClockBadge
-          baseRemainingMs={baseRemainingMs}
-          turnStartedAtMs={turnStartedAtMs}
-          isTicking={isTicking}
-          isTurn={isTurn}
-          clockKnown={clockKnown}
-          lowTimeThresholdMs={lowTimeThresholdMs}
-        />
-      </div>
+      {!hideClock && (
+        <div className="flex shrink-0 items-center gap-1.5">
+          {berserked && <BerserkBadge />}
+          <ClockBadge
+            baseRemainingMs={baseRemainingMs}
+            turnStartedAtMs={turnStartedAtMs}
+            isTicking={isTicking}
+            isTurn={isTurn}
+            clockKnown={clockKnown}
+            lowTimeThresholdMs={lowTimeThresholdMs}
+          />
+        </div>
+      )}
+    </div>
+  );
+});
+
+/** Desktop / tablet (md and up) player block: the clock is its own full-width
+ *  bar sitting flush against the panel with NO gap (above the top player's
+ *  panel, below the bottom player's), sharing its width and corner radius so
+ *  it reads as one unit belonging to that player. Taking the clock out of the
+ *  row is what stops a big clock squeezing the username away on narrow
+ *  right-hand columns. Phones keep the inline PlayerPanelRow clock. */
+export const PlayerPanelWithClock = memo(function PlayerPanelWithClock({
+  position,
+  ...panel
+}: PanelData & { position: "top" | "bottom" }) {
+  const bar = (
+    <ClockBadge
+      baseRemainingMs={panel.baseRemainingMs}
+      turnStartedAtMs={panel.turnStartedAtMs}
+      isTicking={panel.isTicking}
+      isTurn={panel.isTurn}
+      clockKnown={panel.clockKnown}
+      lowTimeThresholdMs={panel.lowTimeThresholdMs}
+      size="bar"
+      className={position === "top" ? "rounded-t-xl" : "rounded-b-xl"}
+      leading={panel.berserked ? <BerserkBadge /> : undefined}
+    />
+  );
+  return (
+    <div className="flex flex-col">
+      {position === "top" && bar}
+      <PlayerPanelRow
+        {...panel}
+        hideClock
+        className={position === "top" ? "rounded-t-none" : "rounded-b-none"}
+      />
+      {position === "bottom" && bar}
     </div>
   );
 });

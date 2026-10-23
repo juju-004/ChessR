@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Clock, Trophy } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trophy } from "lucide-react";
 import {
   getPastSeasons,
   getSeasonLeaderboard,
@@ -10,6 +10,7 @@ import {
   type SeasonRow,
 } from "../api/seasonLeaderboard.js";
 import { PageError } from "../components/PageError.js";
+import { HelpTip } from "../components/HelpTip.js";
 import { cn } from "../lib/cn.js";
 import {
   Page,
@@ -29,7 +30,28 @@ function formatLeft(ms: number): string {
   const d = Math.floor(ms / 86_400_000);
   const h = Math.floor((ms % 86_400_000) / 3_600_000);
   const m = Math.floor((ms % 3_600_000) / 60_000);
-  return d > 0 ? `${d}d ${h}h left` : `${h}h ${m}m left`;
+  return d > 0 ? `${d}d ${h}h` : `${h}h ${m}m`;
+}
+
+/** Clock icon with a minute hand that sweeps round forever (see
+ *  .clock-hand-sweep in index.css), so the season countdown visibly runs. */
+function RunningClock({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 12l3.5 2" />
+      <path d="M12 12V6" className="clock-hand-sweep" />
+    </svg>
+  );
 }
 
 const fmtPoints = (n: number) =>
@@ -42,6 +64,9 @@ const fmtDate = (iso: string) =>
 
 /** Each board shows at most this many rows (the server caps it too). */
 const BOARD_LIMIT = 20;
+
+const minGamesText = (n: number) =>
+  `Play at least ${n} games this season to be eligible for a prize.`;
 
 const BOARDS: { key: SeasonBoard; title: string }[] = [
   { key: "games", title: "Most games played" },
@@ -62,7 +87,7 @@ function StatPill({
 }: {
   value: number;
   suffix: string;
-  tone: "win" | "draw";
+  tone: "win" | "loss";
   title?: string;
 }) {
   return (
@@ -73,7 +98,7 @@ function StatPill({
         "inline-flex items-baseline justify-center gap-px rounded-md py-0.5 text-sm font-semibold tabular-nums leading-tight",
         tone === "win"
           ? "bg-emerald-500/12 text-emerald-500"
-          : "bg-amber-500/12 text-amber-500",
+          : "bg-rose-500/12 text-rose-500",
       )}
     >
       {value}
@@ -86,7 +111,7 @@ function HeaderStrip({ board }: { board: SeasonBoard }) {
   const cell =
     "text-[10px] font-semibold uppercase tracking-wider text-base-content/40";
   return (
-    <div className="flex items-center gap-2 border-b border-base-content/5 px-4 py-1.5 sm:px-5">
+    <div className="flex items-center gap-2.5 px-3 py-1.5 sm:px-4">
       <span className={cn(cell, "w-5 shrink-0 text-center")}>#</span>
       <span className={cn(cell, "flex-1")}>Player</span>
       {board === "games" ? (
@@ -94,7 +119,7 @@ function HeaderStrip({ board }: { board: SeasonBoard }) {
       ) : (
         <>
           <span className={cn(cell, STAT_COL, "text-center")}>Won</span>
-          <span className={cn(cell, STAT_COL, "text-center")}>Drawn</span>
+          <span className={cn(cell, STAT_COL, "text-center")}>Lost</span>
         </>
       )}
     </div>
@@ -112,13 +137,14 @@ function Row({
   isMe: boolean;
   index: number;
 }) {
-  // The points board shows wins and draws instead of the points score, so
-  // the actual points are never visible. Losses are only in the tooltip.
+  // The points board shows wins and losses instead of the points score, so
+  // the actual points (which draws feed into) are never visible. Draws are
+  // only in the tooltip.
   const record = `${row.wins} won, ${row.draws} drawn, ${row.losses} lost`;
   return (
     <li
       className={cn(
-        "flex items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors sm:px-3 sm:py-2",
+        "flex items-center gap-2.5 rounded-xl px-3 py-2.5 transition-colors sm:px-4 sm:py-3",
         // Zebra striping instead of divider lines. Done by index (not
         // odd:/even:) because cn() doesn't merge classes, so a stripe class
         // would fight the "me" highlight.
@@ -177,7 +203,7 @@ function Row({
       ) : (
         <>
           <StatPill value={row.wins} suffix="W" tone="win" title={record} />
-          <StatPill value={row.draws} suffix="D" tone="draw" title={record} />
+          <StatPill value={row.losses} suffix="L" tone="loss" title={record} />
         </>
       )}
     </li>
@@ -252,9 +278,19 @@ export function Leaderboard() {
     <Page
       title={
         <span className="flex items-center gap-2.5">
-          Season {data.season}
+          {/* Phone: the header names the board you're looking at (the page
+              swipes between them). md and up show both boards, so it names
+              the season instead. */}
+          <span className="flex min-w-0 items-center gap-1.5 md:hidden">
+            <span className="truncate">{BOARDS[activeBoard].title}</span>
+            {BOARDS[activeBoard].key === "points" &&
+              data.minGamesForPointsPrize > 0 && (
+                <HelpTip>{minGamesText(data.minGamesForPointsPrize)}</HelpTip>
+              )}
+          </span>
+          <span className="hidden md:inline">Season {data.season}</span>
           <Badge variant="neutral" className="shrink-0 text-xs font-medium">
-            <Clock className="mr-1 h-3.5 w-3.5" />
+            <RunningClock className="mr-1 h-3.5 w-3.5" />
             {formatLeft(msLeft)}
           </Badge>
         </span>
@@ -263,7 +299,7 @@ export function Leaderboard() {
       responsiveDescription
       back="/"
     >
-      <div className="space-y-4">
+      <div className="space-y-5">
         {/* Mobile-only swipe hint: arrows show which way there's another
             board, the dots show where you are. Both are tappable. */}
         <div className="flex items-center justify-center gap-3 md:hidden">
@@ -317,31 +353,31 @@ export function Leaderboard() {
               ? rows.some((r) => r.user === b.me!.user)
               : false;
             return (
-              <Card
+              <section
                 key={key}
-                variant="solid"
-                className="min-w-full snap-center self-start overflow-hidden p-0 md:min-w-0"
+                className="min-w-full snap-center self-start md:min-w-0"
               >
-                <div className="border-b border-base-content/5 px-3 py-3 sm:px-4">
-                  <h2 className="text-base font-extrabold tracking-tight sm:text-lg md:text-xl">
+                {/* Phone shows the board's name in the page header instead
+                    (it follows the swipe), so this heading is md+ only. */}
+                <div className="mb-2 hidden items-center gap-1.5 px-3 md:flex">
+                  <h2 className="text-lg font-extrabold tracking-tight md:text-xl">
                     {title}
                   </h2>
                   {key === "points" && data.minGamesForPointsPrize > 0 && (
-                    <p className="mt-0.5 text-xs text-base-content/50">
-                      Play at least {data.minGamesForPointsPrize} games this
-                      season to be eligible for a prize.
-                    </p>
+                    <HelpTip>
+                      {minGamesText(data.minGamesForPointsPrize)}
+                    </HelpTip>
                   )}
                 </div>
                 {rows.length === 0 ? (
-                  <CardContent className="py-10 text-center text-sm text-base-content/60">
+                  <p className="py-10 text-center text-sm text-base-content/60">
                     No games finished this season yet. Play one to get on the
                     board.
-                  </CardContent>
+                  </p>
                 ) : (
                   <>
                     <HeaderStrip board={key} />
-                    <ul className="space-y-0.5 p-1.5 sm:p-2">
+                    <ul className="space-y-1">
                       {rows.map((r, i) => (
                         <Row
                           key={r.user}
@@ -362,7 +398,7 @@ export function Leaderboard() {
                     </ul>
                   </>
                 )}
-              </Card>
+              </section>
             );
           })}
         </div>
@@ -374,7 +410,7 @@ export function Leaderboard() {
             </h2>
             {past.map((s) => (
               <Card key={s.season} variant="solid">
-                <CardContent className="space-y-1 py-3 text-sm">
+                <CardContent className="space-y-1 px-1 py-4 text-sm">
                   <p className="font-medium">Season {s.season}</p>
                   {(["games", "points"] as SeasonBoard[]).map((bd) => {
                     const w = s.winners.find(

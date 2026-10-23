@@ -1,6 +1,9 @@
 import { Link } from "react-router-dom";
 import { CalendarCheck, Check, ChevronRight } from "lucide-react";
-import { useDailyChallenges, formatCountdown } from "../../hooks/useDailyChallenges.js";
+import {
+  useDailyChallenges,
+  formatCountdown,
+} from "../../hooks/useDailyChallenges.js";
 import { CardRow, ProgressBar, RCoin } from "../ui/index.js";
 
 /** A one-glance view of today's daily challenges for the dashboard. Renders
@@ -19,19 +22,26 @@ export function DailySummaryCard() {
           <span
             className={
               "flex h-10 w-10 shrink-0 items-center justify-center rounded-full " +
-              (state.dayCompleted ? "bg-green-500/15 text-green-400" : "bg-(--primary)/15 text-(--primary)")
+              (state.dayCompleted
+                ? "bg-green-500/15 text-green-400"
+                : "bg-(--primary)/15 text-(--primary)")
             }
           >
-            {state.dayCompleted ? <Check className="h-5 w-5" /> : <CalendarCheck className="h-5 w-5" />}
+            {state.dayCompleted ? (
+              <Check className="h-5 w-5" />
+            ) : (
+              <CalendarCheck className="h-5 w-5" />
+            )}
           </span>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-base-content">
-              Daily challenges · Day {state.day} of 7
+              <span className="hidden md:inline-flex">Daily challenges ·</span>{" "}
+              Day {state.day} of 7
             </p>
             {state.dayCompleted ? (
               <p className="truncate text-xs text-base-content/60">
                 {state.weekComplete
-                  ? "Week complete! A new one starts tomorrow."
+                  ? "Week complete!"
                   : `Done! Day ${state.tomorrow?.day} unlocks in ${formatCountdown(msLeft)}.`}
               </p>
             ) : (

@@ -377,6 +377,22 @@ body {
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  /* Fade the edges that still have more to scroll to (the widths are set
+     from MobileDock's scroll handler; 0px = no fade on that side). */
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--fade-l, 0px),
+    #000 calc(100% - var(--fade-r, 0px)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--fade-l, 0px),
+    #000 calc(100% - var(--fade-r, 0px)),
+    transparent 100%
+  );
 }
 .docker-scroll::-webkit-scrollbar {
   display: none;
@@ -384,6 +400,51 @@ body {
 .docker-item-scroll {
   flex: 1 0 auto;
   min-width: 3.6rem;
+}
+
+/* Site-nav items (MobileDock): each carries its own --item-color. The icon is
+   always tinted with it, the label stays muted until the tab is active, and
+   the active tab gets a pill of its own color. */
+.docker-item-nav {
+  opacity: 1;
+  gap: 0.2rem;
+  font-size: 0.55rem;
+}
+.docker-item-nav svg {
+  color: var(--item-color);
+  transition: transform 0.2s ease;
+}
+.docker-item-nav span {
+  color: color-mix(in srgb, var(--color-base-content) 60%, transparent);
+}
+.docker-item-nav.docker-item-active {
+  background-color: color-mix(in srgb, var(--item-color) 18%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--item-color) 30%, transparent);
+}
+.docker-item-nav.docker-item-active svg {
+  transform: translateY(-1px) scale(1.12);
+}
+.docker-item-nav.docker-item-active span {
+  color: var(--item-color);
+}
+
+/* Dash is pinned and gets a deep dark pill so it reads as home base, apart
+   from the scrolling tabs. Active: the brand gradient. */
+.docker-item-pinned {
+  background-color: #141a33;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  margin-right: 0.2rem;
+}
+.docker-item-pinned span {
+  color: rgba(255, 255, 255, 0.7);
+}
+.docker-item-pinned.docker-item-active {
+  background-image: linear-gradient(135deg, var(--primary), #7c3aed);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 40%, transparent);
+}
+.docker-item-pinned.docker-item-active svg,
+.docker-item-pinned.docker-item-active span {
+  color: #fff;
 }
 
 .game .docker-item {
@@ -577,5 +638,23 @@ body:has(.game-page) {
     grid-template-columns: 220px 520px minmax(240px, 360px);
     grid-template-rows: 1fr;
     grid-template-areas: "leftinfo board rightpanel";
+  }
+}
+
+/* A clock icon whose minute hand sweeps round forever, to show time running
+   down (season countdown badge on the Ranks page). Transform-only, so it
+   stays on the compositor. */
+@keyframes clock-hand-sweep {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.clock-hand-sweep {
+  transform-origin: 12px 12px;
+  animation: clock-hand-sweep 4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .clock-hand-sweep {
+    animation: none;
   }
 }

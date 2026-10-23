@@ -54,11 +54,15 @@ export function PocketPiece({
   );
 }
 
+const POCKET_BG_FOR_WHITE = "#1c1c1f";
+const POCKET_BG_FOR_BLACK = "#f1f1f3";
+
 interface PocketBarProps {
   color: "white" | "black";
   pocket: Pocket;
   pieceTheme: string;
-  /** The active board theme: the pocket borrows its two square colors. */
+  /** The active board theme (no longer drives the tray color; kept so callers
+   *  don't change). */
   boardTheme: string;
   /** True only for the viewing player's own pocket while a drop is possible. */
   interactive: boolean;
@@ -71,14 +75,11 @@ interface PocketBarProps {
  *  jumps when a piece is captured or dropped; an empty pocket is just the
  *  blank box.
  *
- *  Visibility: the backdrop is NOT the app's panel color (which can match
- *  the pieces, e.g. black pieces on a dark theme). It is one of the active
- *  board theme's own two square colors, chosen against the pocket's piece
- *  color: white pieces sit on the dark square color, black pieces on the
- *  light one. Every piece set is drawn to read on the board's squares, and
- *  this pairing keeps each piece on the side of the board's palette it
- *  contrasts with, so it holds for every piece set x board theme x app
- *  light/dark mode without any per-set special-casing. */
+ *  Visibility: the backdrop is the OPPOSITE color of the pieces it holds,
+ *  white pieces sit on a near-black tray and black pieces on a near-white
+ *  one. Every piece set is drawn to read against its opposite color, so this
+ *  holds for every piece set x board theme x app light/dark mode without any
+ *  per-set special-casing. */
 export function PocketBar({
   color,
   pocket,
@@ -89,6 +90,7 @@ export function PocketBar({
   onPiecePointerDown,
 }: PocketBarProps) {
   const held = ZH_ROLES.filter((r) => pocket[r] > 0);
+  // White pieces go on a dark tray, black pieces on a light one.
   const onDark = color === "white";
   return (
     <div
@@ -98,10 +100,7 @@ export function PocketBar({
         "flex h-12 w-full items-center gap-1.5 rounded-xl px-2",
       )}
       style={{
-        // Fallbacks are the default (brown) board's squares.
-        backgroundColor: onDark
-          ? "var(--board-dark, #b58863)"
-          : "var(--board-light, #e9d3b0)",
+        backgroundColor: onDark ? POCKET_BG_FOR_WHITE : POCKET_BG_FOR_BLACK,
       }}
       aria-label={`${color} pocket`}
     >
