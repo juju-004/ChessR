@@ -6,6 +6,7 @@ import {
   getTournamentByCodeHandler,
   getTournamentRoundHandler,
   getTournamentPlayerHandler,
+  getTournamentLiveGamesHandler,
 } from "../controllers/tournament.controller.js";
 import { getTournamentOgCard } from "../controllers/og.controller.js";
 
@@ -19,6 +20,7 @@ router.get("/mine", requireAuth, getMyTournaments);
 router.get("/code/:code/card", getTournamentOgCard);
 router.get("/code/:code", optionalAuth, getTournamentByCodeHandler);
 router.get("/code/:code/rounds/:index", optionalAuth, getTournamentRoundHandler);
+router.get("/code/:code/live-games", optionalAuth, getTournamentLiveGamesHandler);
 router.get("/code/:code/players/:userId", optionalAuth, getTournamentPlayerHandler);
 
 export default router;

@@ -34,6 +34,8 @@ export interface PuzzleRace {
   potTokens: number;
   rakeTokens: number;
   payoutTokens: number;
+  /** Code of the rematch race once anyone has started one. */
+  rematchCode: string | null;
   createdAt: number;
 }
 
@@ -108,4 +110,10 @@ export function cancelRace(id: string) {
 
 export function startRace(id: string) {
   return apiFetch<void>(`/puzzle-races/${id}/start`, { method: 'POST' });
+}
+
+/** Rematch a finished race: opens the new race if nobody has yet, otherwise
+ *  joins the one already opened. Resolves to the race to go to. */
+export function rematchRace(id: string) {
+  return apiFetch<{ id: string; code: string }>(`/puzzle-races/${id}/rematch`, { method: 'POST' });
 }

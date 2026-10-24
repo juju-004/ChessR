@@ -3,6 +3,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import {
   getTournamentSummaryByCode,
   getTournamentRound,
+  getTournamentLiveGames,
   getTournamentPlayerDetails,
   listTournaments,
   listMyTournaments,
@@ -58,4 +59,15 @@ const playerParamSchema = z.object({
 export const getTournamentPlayerHandler = asyncHandler(async (req, res) => {
   const { code, userId } = playerParamSchema.parse(req.params);
   res.json(await getTournamentPlayerDetails(code, userId));
+});
+
+const liveGamesQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(2).optional().default(1),
+});
+
+/** The tournament's top live game(s), for the page's live board panel. */
+export const getTournamentLiveGamesHandler = asyncHandler(async (req, res) => {
+  const { code } = codeParamSchema.parse(req.params);
+  const { limit } = liveGamesQuerySchema.parse(req.query);
+  res.json({ games: await getTournamentLiveGames(code, limit) });
 });

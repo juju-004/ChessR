@@ -1,10 +1,11 @@
+import { CageIcon } from "../components/ui/CageIcon.js";
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
+  type LucideIcon,
   ShieldCheck,
   LogOut,
   AlertTriangle,
-  Swords,
   Trophy,
   Gamepad2,
   Puzzle,
@@ -61,9 +62,9 @@ const SOURCE_LABEL: Record<RevenueSource, string> = {
   puzzle_race: "Puzzle races",
 };
 
-const SOURCE_ICON: Record<RevenueSource, typeof Gamepad2> = {
+const SOURCE_ICON: Record<RevenueSource, LucideIcon> = {
   game: Gamepad2,
-  cage_match: Swords,
+  cage_match: CageIcon,
   tournament: Trophy,
   puzzle_race: Puzzle,
 };

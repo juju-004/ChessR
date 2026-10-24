@@ -14,7 +14,8 @@ import {
 } from '../services/tournament.service.js';
 import { User } from '../models/User.js';
 import { Tournament } from '../models/Tournament.js';
-import { watchTournament, unwatchTournament, getArenaPresentUserIds } from '../services/presence.service.js';
+import { Game } from '../models/Game.js';
+import { watchTournament, unwatchTournament } from '../services/presence.service.js';
 import { addChatMessage, getChatHistory, isChatRateLimited, isRepeatMessage } from '../services/chat.service.js';
 import { assertNotRestricted } from '../services/suspension.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
@@ -136,43 +137,20 @@ function safeHandler<T>(socket: Socket, fn: (payload: T) => Promise<void>): (pay
 }
 
 export const tournamentRoom = (id: string) => `tournament:${id}`;
+/** Sockets showing one tournament game on the page's live board. Separate from
+ *  the game's own room on purpose: joining that one makes you a spectator
+ *  (spectator count, chat history, arena presence), a board panel shouldn't. */
+export const tournamentLiveRoom = (gameId: string) => `tournament_live:${gameId}`;
+const MAX_LIVE_SUBSCRIPTIONS = 2;
+const liveSubscribeSchema = z.object({
+  gameIds: z.array(z.string().refine(mongoose.isValidObjectId)).max(MAX_LIVE_SUBSCRIPTIONS),
+});
 
-/** Pushes the current "who's actually got this page open" list to
- *  everyone in the room, so every client's Pairing pool section (arena
- *  format) stays in sync without polling. Called after anything that
- *  changes who's watching: tournament:watch, tournament:unwatch, and
- *  socket disconnect (see presenceSocket.ts). */
-// Each emit carries the FULL watcher list to the whole room, so a crowd
-// opening the page at once (everyone returning after a round) used to cost
-// N emits of N ids to N viewers. Calls inside the window now collapse into
-// one trailing emit, which reads the list fresh when it fires, so it always
-// reflects every change made before it.
-const WATCHERS_BROADCAST_DELAY_MS = 400;
-const watcherBroadcastTimers = new Map<string, ReturnType<typeof setTimeout>>();
-
-export function broadcastWatchers(io: Server, tournamentId: string): Promise<void> {
-  if (watcherBroadcastTimers.has(tournamentId)) return Promise.resolve();
-  const timer = setTimeout(() => {
-    watcherBroadcastTimers.delete(tournamentId);
-    getArenaPresentUserIds(tournamentId)
-      .then((userIds) => io.to(tournamentRoom(tournamentId)).emit('tournament:watchers', { tournamentId, userIds }))
-      .catch((err) => console.error('broadcastWatchers failed:', err));
-  }, WATCHERS_BROADCAST_DELAY_MS);
-  timer.unref?.();
-  watcherBroadcastTimers.set(tournamentId, timer);
-  return Promise.resolve();
-}
-
-/** A player who is free to be paired went to watch (or stopped watching) a
- *  game instead of sitting on the tournament page. They stay in the pool while
- *  spectating, so refresh every active arena they're in: the pool display
- *  everyone sees, and an immediate pairing attempt on their behalf. */
-export async function onSpectatingChanged(io: Server, userId: string, tryPair: boolean): Promise<void> {
-  const tournaments = await Tournament.find({ status: 'active', format: 'arena', 'players.user': userId })
-    .select('_id')
-    .lean();
-  for (const t of tournaments) await broadcastWatchers(io, String(t._id));
-  if (tryPair) await retryArenaPairingsForUser(userId, { force: true });
+/** A player who is free to be paired started watching a game instead of
+ *  sitting on the tournament page. They stay eligible for pairing while they
+ *  spectate (see markSpectating), so try to pair them right away. */
+export async function retryPairingForSpectator(userId: string): Promise<void> {
+  await retryArenaPairingsForUser(userId, { force: true });
 }
 
 export function registerTournamentHandlers(io: Server, socket: Socket) {
@@ -191,6 +169,31 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
     presenceQueue = run.catch(() => undefined);
     return run;
   };
+
+  // The live board panel on the tournament page: replaces this socket's set of
+  // followed games (the panel's top games change as games finish).
+  const liveGameIds = new Set<string>();
+  socket.on(
+    'tournament:live_subscribe',
+    safeHandler(socket, async (raw: unknown) => {
+      const parsed = liveSubscribeSchema.safeParse(raw);
+      if (!parsed.success) return emitError(socket, 'Invalid payload');
+      const next = new Set(parsed.data.gameIds);
+      for (const id of [...liveGameIds]) {
+        if (next.has(id)) continue;
+        liveGameIds.delete(id);
+        await socket.leave(tournamentLiveRoom(id));
+      }
+      for (const id of next) {
+        if (liveGameIds.has(id)) continue;
+        // Only tournament games, so this can't be used to tail any game.
+        const game = await Game.exists({ _id: id, tournamentId: { $ne: null } });
+        if (!game) continue;
+        liveGameIds.add(id);
+        await socket.join(tournamentLiveRoom(id));
+      }
+    }),
+  );
 
   socket.on(
     'tournament:create',
@@ -259,7 +262,6 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
       await inPresenceOrder(async () => {
         await socket.join(tournamentRoom(watchId));
         await watchTournament(watchId, socket.id);
-        await broadcastWatchers(io, watchId);
       });
       // Tournament chat only exists when the organiser turned it on (see
       // Tournament.chatEnabled); nothing to load or send otherwise, and
@@ -303,7 +305,6 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
       await inPresenceOrder(async () => {
         await socket.leave(tournamentRoom(unwatchId));
         await unwatchTournament(socket.id, unwatchId);
-        await broadcastWatchers(io, unwatchId);
       });
     }),
   );

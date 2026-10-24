@@ -28,6 +28,9 @@ export interface PageProps {
   bare?: boolean;
   playersPage?: boolean;
   responsiveDescription?: boolean;
+  /** Smaller gap between the header and the content on phones (md+ keeps
+   *  the normal gap). */
+  tightHeader?: boolean;
 }
 
 /**
@@ -50,6 +53,7 @@ export function Page({
   className,
   bare = false,
   playersPage,
+  tightHeader,
 }: PageProps) {
   const navigate = useNavigate();
 
@@ -84,7 +88,8 @@ export function Page({
       {hasHeader && (
         <header
           className={cn(
-            "mb-6 flex items-start justify-between gap-4",
+            "flex items-start justify-between gap-4",
+            tightHeader ? "mb-2 md:mb-6" : "mb-6",
             playersPage ? "hidden sm:flex" : "flex",
           )}
         >

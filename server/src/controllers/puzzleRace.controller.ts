@@ -7,6 +7,7 @@ import {
   joinRace,
   leaveRace,
   cancelRace,
+  rematchRace,
   requestStart,
   listOpenRaces,
   getMyCurrentRace,
@@ -61,6 +62,11 @@ export const cancelPuzzleRace = asyncHandler(async (req: AuthedRequest, res) => 
   const { id } = idParamSchema.parse(req.params);
   await cancelRace(id, req.user!.id);
   res.status(204).send();
+});
+
+export const rematchPuzzleRace = asyncHandler(async (req: AuthedRequest, res) => {
+  const { id } = idParamSchema.parse(req.params);
+  res.json(await rematchRace(id, req.user!.id));
 });
 
 export const startPuzzleRace = asyncHandler(async (req: AuthedRequest, res) => {

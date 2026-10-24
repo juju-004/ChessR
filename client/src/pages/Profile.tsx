@@ -164,7 +164,11 @@ export function Profile() {
       await followUser(profile.id);
       setProfile((prev) =>
         prev
-          ? { ...prev, isFollowing: true, followerCount: prev.followerCount + 1 }
+          ? {
+              ...prev,
+              isFollowing: true,
+              followerCount: prev.followerCount + 1,
+            }
           : prev,
       );
     } catch {
@@ -214,7 +218,10 @@ export function Profile() {
       incrementSeconds: tc.incrementSeconds,
       // Odds: the other player's clock, when it differs from yours.
       odds: odds
-        ? { baseMinutes: odds.baseMinutes, incrementSeconds: odds.incrementSeconds }
+        ? {
+            baseMinutes: odds.baseMinutes,
+            incrementSeconds: odds.incrementSeconds,
+          }
         : null,
       variant,
       wagerTokens,
@@ -310,8 +317,7 @@ export function Profile() {
                     onClick={handleFollow}
                     aria-label={`Follow ${profile.username}`}
                   >
-                    <UserPlus className="h-4 w-4" />{" "}
-                    Follow
+                    <UserPlus className="h-4 w-4" /> Follow
                   </Button>
                 )}
 
@@ -330,45 +336,43 @@ export function Profile() {
                     allows it, see challenge:send). Being in a game right
                     now doesn't hide it, see handleChallenge for that case. */}
                 <ResponsiveOverlay
-                    title={`Challenge ${profile.username}`}
-                    align="end"
-                    className="w-72 max-w-[calc(100vw-2rem)]"
-                    open={challengeOpen}
-                    onOpenChange={setChallengeOpen}
-                    icon={<Swords />}
-                    trigger={
-                      <Button
-                        variant="glass"
-                        size="icon"
-                        aria-label={`Challenge ${profile.username}`}
-                      >
-                        <Swords className="h-4 w-4" />
-                      </Button>
-                    }
-                  >
-                    <div className="space-y-3 px-4 md:px-2">
-                      {profile.activeGameCode && (
-                        <p className="text-xs text-base-content/50">
-                          {profile.username} is currently in a game — you can
-                          still send this, they'll see it once they're free.
-                        </p>
-                      )}
-                      {!profile.online && !profile.activeGameCode && (
-                        <p className="text-xs text-base-content/50">
-                          {profile.username} is offline. They'll see your
-                          challenge as soon as they come back online.
-                        </p>
-                      )}
-                      <GameSettingsFields settings={gameSettings} challenge />
-                      <Button
-                        className="w-full"
-                        variant="secondary"
-                        onClick={handleChallenge}
-                        disabled={gameSettings.wagerBelowFloor || gameSettings.clockInvalid}
-                      >
-                        Send
-                      </Button>
-                    </div>
+                  title={`Challenge ${profile.username}`}
+                  align="end"
+                  className="w-72 max-w-[calc(100vw-2rem)]"
+                  open={challengeOpen}
+                  onOpenChange={setChallengeOpen}
+                  icon={<Swords />}
+                  trigger={
+                    <Button
+                      variant="glass"
+                      size="icon"
+                      aria-label={`Challenge ${profile.username}`}
+                    >
+                      <Swords className="h-4 w-4" />
+                    </Button>
+                  }
+                >
+                  <div className="space-y-3 px-4 md:px-2">
+                    {profile.activeGameCode && (
+                      <p className="text-xs text-base-content/50">
+                        {profile.username} is currently in a game — you can
+                        still send this, they'll see it once they're free.
+                      </p>
+                    )}
+
+                    <GameSettingsFields settings={gameSettings} challenge />
+                    <Button
+                      className="w-full"
+                      variant="secondary"
+                      onClick={handleChallenge}
+                      disabled={
+                        gameSettings.wagerBelowFloor ||
+                        gameSettings.clockInvalid
+                      }
+                    >
+                      Send
+                    </Button>
+                  </div>
                 </ResponsiveOverlay>
 
                 <Dropdown
@@ -404,7 +408,7 @@ export function Profile() {
               From sm up: wider tiles with the icon in a round chip beside
               the label and number. */}
           {profile.ratings && (
-            <div className="mt-4 flex snap-x snap-proximity gap-2 overflow-x-auto overscroll-x-contain border-t border-base-300 pt-4 pb-1.5 [scrollbar-width:thin] sm:gap-3">
+            <div className="mt-4 flex snap-x snap-proximity gap-2 overflow-x-auto overscroll-x-contain border-t border-base-300 pt-4 pb-1.5 scrollbar-thin sm:gap-3">
               {RATING_CATEGORIES.map((c) => {
                 const rating = profile.ratings![c];
                 return (

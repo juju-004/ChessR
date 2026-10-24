@@ -30,9 +30,11 @@ export interface TournamentPlayer {
   // Always 0 for every other format.
   currentWinStreak?: number;
   streakWins?: number;
-  // Last 3 finished game results, oldest first (standings "Form" column).
-  // Missing on players whose games predate the field.
-  form?: ("W" | "D" | "L")[];
+  // Score of each of the last 15 finished games, oldest first, as compact
+  // tokens: points then "s" (streak score) and/or "b" (berserk bonus), e.g.
+  // "2", "4s", "5sb", "0.5" (see parseScore). Drives the score strip in the
+  // standings. Missing on players whose games predate the field.
+  scores?: string[];
   hadBye?: boolean;
   // Arena-only, see the server's ITournamentPlayer doc comment. Always
   // false for every other format.
@@ -202,6 +204,20 @@ export function isOnArenaStreak(
   p: { currentWinStreak?: number } | null | undefined,
 ): boolean {
   return (p?.currentWinStreak ?? 0) >= ARENA_STREAK_START_WINS;
+}
+
+/** One entry of a player's score strip, decoded from its stored token. */
+export interface ParsedScore {
+  points: number;
+  streak: boolean;
+  berserk: boolean;
+}
+export function parseScore(token: string): ParsedScore {
+  return {
+    points: parseFloat(token) || 0,
+    streak: token.includes("s"),
+    berserk: token.includes("b"),
+  };
 }
 
 /** Sorted standings for swiss/robin/round_robin formats, for 'normal'
@@ -419,4 +435,29 @@ export function parsePrizePoolText(text: string): PrizePoolParseResult {
 
   tiers.sort((a, b) => a.fromRank - b.fromRank);
   return { tiers, errors };
+}
+
+/** One game on the tournament page's live board panel. Mirrors the server's
+ *  TournamentLiveGame (tournament.service.ts). */
+export interface TournamentLiveGame {
+  gameId: string;
+  joinCode: string | null;
+  variant: "standard" | "chess960" | "crazyhouse";
+  fen: string;
+  lastMove: [string, string] | null;
+  white: { id: string; username: string; rating: number; points: number };
+  black: { id: string; username: string; rating: number; points: number };
+  whiteRemainingMs: number | null;
+  blackRemainingMs: number | null;
+  turnStartedAtMs: number;
+  turn: "white" | "black";
+  paused: boolean;
+}
+
+/** The tournament's top live game(s): the ones whose players have the most
+ *  points between them. */
+export function getTournamentLiveGames(code: string, limit: 1 | 2) {
+  return apiFetch<{ games: TournamentLiveGame[] }>(
+    `/tournaments/code/${encodeURIComponent(code)}/live-games?limit=${limit}`,
+  );
 }

@@ -360,9 +360,11 @@ export function Leaderboard() {
       }
       description={`${fmtDate(data.startsAt)} to ${fmtDate(data.endsAt)}. Win = 1 point, draw = 0.5.`}
       responsiveDescription
+      tightHeader
       back="/"
+      className="max-md:py-3!"
     >
-      <div className="space-y-5">
+      <div className="space-y-2 md:space-y-5">
         {/* Mobile-only swipe hint: arrows show which way there's another
             board, the dots show where you are. Both are tappable. */}
         <div className="flex items-center justify-center gap-3 md:hidden">

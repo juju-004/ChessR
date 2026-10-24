@@ -84,6 +84,8 @@ export interface PublicRace {
   potTokens: number;
   rakeTokens: number;
   payoutTokens: number;
+  /** Code of the rematch race once anyone has started one, else null. */
+  rematchCode: string | null;
   createdAt: number;
 }
 
@@ -148,6 +150,7 @@ export function toPublicRace(r: PopulatedRace): PublicRace {
     potTokens: r.status === 'finished' || r.status === 'cancelled' ? r.potTokens : r.wagerTokens * r.players.length,
     rakeTokens: r.rakeTokens,
     payoutTokens: r.payoutTokens,
+    rematchCode: r.rematchCode ?? null,
     createdAt: new Date(r.createdAt).getTime(),
   };
 }
@@ -231,7 +234,12 @@ async function countPuzzlesFor(difficulty: PuzzleRaceDifficulty): Promise<number
   return Puzzle.countDocuments({ rating: { $gte: min, $lte: max } });
 }
 
-export async function createRace(userId: string, input: CreateRaceInput): Promise<IPuzzleRace> {
+export async function createRace(
+  userId: string,
+  input: CreateRaceInput,
+  /** Rematches only: the new race's id, claimed on the old race beforehand. */
+  presetId?: mongoose.Types.ObjectId,
+): Promise<IPuzzleRace> {
   await assertNotRestricted(userId);
   await assertNotInRace(userId);
 
@@ -243,6 +251,7 @@ export async function createRace(userId: string, input: CreateRaceInput): Promis
   for (let attempt = 0; attempt < 5 && !race; attempt++) {
     try {
       race = await PuzzleRace.create({
+        ...(presetId ? { _id: presetId } : {}),
         code: newCode(),
         creator: userId,
         status: 'waiting',
@@ -320,6 +329,77 @@ export async function joinRace(raceId: string, userId: string): Promise<IPuzzleR
     await startRace(claimed.id).catch((err) => console.error('auto-start puzzle race failed:', err));
   }
   return claimed;
+}
+
+/** Rematch of a finished race. The first player to ask opens a new race with
+ *  the same settings (and is its host); everyone who asks after that joins it,
+ *  so the whole table ends up on one new race page. Returns where to go. */
+export async function rematchRace(raceId: string, userId: string, depth = 0): Promise<{ id: string; code: string }> {
+  const old = await PuzzleRace.findById(raceId).lean();
+  if (!old) throw ApiError.notFound('Race not found');
+  if (old.status !== 'finished') throw ApiError.conflict('Only a finished race can be rematched');
+  if (!old.players.some((p) => p.user.toString() === userId)) {
+    throw ApiError.forbidden('Only players of this race can ask for a rematch');
+  }
+
+  // Someone may have started it already: join theirs. The claim below is made
+  // before the race exists, so give a just-claimed one a moment to appear.
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const current = await PuzzleRace.findById(raceId).select('rematchRace').lean();
+    if (!current?.rematchRace) break;
+    const target = await PuzzleRace.findById(current.rematchRace).lean();
+    if (!target) {
+      await new Promise((r) => setTimeout(r, 150));
+      continue;
+    }
+    if (target.status === 'cancelled') {
+      // The host closed it: the slot is free for a fresh rematch.
+      await PuzzleRace.updateOne(
+        { _id: raceId, rematchRace: target._id },
+        { $set: { rematchRace: null, rematchCode: null } },
+      );
+      break;
+    }
+    if (target.players.some((p) => p.user.toString() === userId)) return { id: String(target._id), code: target.code };
+    if (target.status !== 'waiting') throw ApiError.conflict('The rematch has already started');
+    const joined = await joinRace(String(target._id), userId);
+    return { id: joined.id, code: joined.code };
+  }
+
+  // First to ask. Claim the slot (with the id the new race will have) so two
+  // simultaneous clicks can't open two races.
+  const newId = new mongoose.Types.ObjectId();
+  const claimed = await PuzzleRace.findOneAndUpdate(
+    { _id: raceId, status: 'finished', rematchRace: null },
+    { $set: { rematchRace: newId } },
+  );
+  if (!claimed) {
+    // Lost the race: join the winner's.
+    if (depth >= 2) throw ApiError.conflict('A rematch is being set up, try again in a moment');
+    return rematchRace(raceId, userId, depth + 1);
+  }
+
+  let created: IPuzzleRace;
+  try {
+    created = await createRace(
+      userId,
+      {
+        difficulty: old.difficulty,
+        puzzleCount: old.puzzleCount,
+        maxPlayers: old.maxPlayers,
+        wagerTokens: old.wagerTokens,
+      },
+      newId,
+    );
+  } catch (err) {
+    // Couldn't open it (not enough puzzles, balance, already in a race...):
+    // free the slot so somebody else can try.
+    await PuzzleRace.updateOne({ _id: raceId, rematchRace: newId }, { $set: { rematchRace: null } });
+    throw err;
+  }
+  await PuzzleRace.updateOne({ _id: raceId }, { $set: { rematchCode: created.code } });
+  void broadcastRaceState(raceId);
+  return { id: created.id, code: created.code };
 }
 
 export async function leaveRace(raceId: string, userId: string): Promise<void> {

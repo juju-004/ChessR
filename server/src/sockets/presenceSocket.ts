@@ -10,7 +10,6 @@ import {
   unmarkOnlineRanked,
 } from '../services/presence.service.js';
 import { retryArenaPairingsForUser } from '../services/tournament.service.js';
-import { broadcastWatchers, onSpectatingChanged } from './tournamentSocket.js';
 import { broadcastLobbyCounts } from './quickPairingSocket.js';
 import { leaveQuickPairingQueue } from '../services/quickPairing.service.js';
 import type { AuthedSocketData } from './socketAuth.js';
@@ -49,13 +48,8 @@ export function registerPresenceHandlers(io: Server, socket: Socket) {
       // normal tournament:unwatch, clean up here instead so this socket
       // doesn't linger as a phantom "watcher" of whatever tournament page
       // it last had open (see unwatchTournament's own doc comment).
-      const unwatchedTournamentId = await unwatchTournament(socket.id);
-      if (unwatchedTournamentId) {
-        await broadcastWatchers(io, unwatchedTournamentId);
-      }
-      if (await clearSpectating(socket.id)) {
-        await onSpectatingChanged(io, userId, false);
-      }
+      await unwatchTournament(socket.id);
+      await clearSpectating(socket.id);
       if (wasLast) {
         // Nobody's left to be matched: drop them from any quick-pairing lobby
         // so they can't be paired into a game they'll never see.

@@ -1,3 +1,4 @@
+import { CageIcon } from "../components/ui/CageIcon.js";
 import { gameHref } from "../lib/gamePath.js";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -153,7 +154,10 @@ export function Players() {
       incrementSeconds: tc.incrementSeconds,
       // Odds: the other player's clock, when it differs from yours.
       odds: odds
-        ? { baseMinutes: odds.baseMinutes, incrementSeconds: odds.incrementSeconds }
+        ? {
+            baseMinutes: odds.baseMinutes,
+            incrementSeconds: odds.incrementSeconds,
+          }
         : null,
       variant,
       wagerTokens,
@@ -263,17 +267,14 @@ export function Players() {
       >
         <div className="space-y-3 px-4 md:px-2">
           <GameSettingsFields settings={gameSettings} challenge />
-          {!p.online && (
-            <p className="text-xs text-base-content/50">
-              {p.username} is offline. They'll see your challenge as soon as they
-              come back online.
-            </p>
-          )}
+
           <span className="w-full gap-2 grid grid-cols-2">
             <Button
               variant="secondary"
               onClick={() => handleChallenge(p.id, p.online)}
-              disabled={gameSettings.wagerBelowFloor || gameSettings.clockInvalid}
+              disabled={
+                gameSettings.wagerBelowFloor || gameSettings.clockInvalid
+              }
             >
               Send
             </Button>
@@ -283,7 +284,7 @@ export function Players() {
               onClick={() => setChallengingKey(null)}
             >
               <Button variant="glass" className="w-full">
-                <Swords className="h-4 w-4" /> Cage
+                <CageIcon className="h-4 w-4" /> Cage
               </Button>
             </Link>
           </span>

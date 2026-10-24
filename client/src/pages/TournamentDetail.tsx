@@ -1,5 +1,11 @@
 import { gameHref } from "../lib/gamePath.js";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   Clock,
@@ -13,6 +19,9 @@ import {
   LocateFixed,
   Ban,
   Flame,
+  Users,
+  Swords,
+  ArrowLeft,
 } from "lucide-react";
 import {
   getTournamentByCode,
@@ -20,6 +29,7 @@ import {
   getTournamentPlayerDetails,
   rankTournamentPlayers,
   isOnArenaStreak,
+  parseScore,
   usernameOf,
   gradientOf,
   timeControlSpeed,
@@ -67,7 +77,9 @@ import {
 import { Pagination } from "../components/Pagination.js";
 import { HelpTip } from "../components/HelpTip.js";
 import { PageError } from "../components/PageError.js";
+import { BerserkIcon } from "../components/ui/BerserkIcon.js";
 import { RatingBadge } from "../components/RatingBadge.js";
+import { LiveGames } from "../components/tournaments/LiveGames.js";
 import { NairaWinnerBanner } from "../components/tournaments/NairaWinnerBanner.js";
 import { TIME_CONTROLS as TIME_PRESETS } from "../timeControls.js";
 import {
@@ -468,44 +480,6 @@ function EditTournamentForm({
   );
 }
 
-/** Live "next round starts in Ns" countdown, shown while the tournament is
- *  sitting in its inter-round break (see scheduleRoundStart in
- *  tournament.service.ts, nextRoundStartsAt is only ever set during that
- *  window). Ticks locally rather than waiting on the server; the round
- *  activating for real sends its own tournament:update/tournament:pairing_ready
- *  events, so this never needs to do anything beyond just counting down. */
-function BreakCountdown({ nextRoundStartsAt }: { nextRoundStartsAt: string }) {
-  const [, forceTick] = useState(0);
-
-  useEffect(() => {
-    const interval = window.setInterval(() => forceTick((n) => n + 1), 1000);
-    return () => window.clearInterval(interval);
-  }, []);
-
-  const remainingMs = new Date(nextRoundStartsAt).getTime() - Date.now();
-
-  return (
-    <Card
-      variant="solid"
-      className="border-(--secondary)/30 bg-(--secondary)/10"
-    >
-      <p className="flex items-center justify-center gap-1.5 text-center text-sm font-medium text-base-content">
-        <Clock className="h-4 w-4 text-(--secondary)" />
-        {remainingMs > 0 ? (
-          <>
-            Next round starts in{" "}
-            <span className="font-extrabold tabular-nums">
-              {Math.ceil(remainingMs / 1000)}s
-            </span>
-          </>
-        ) : (
-          "Starting the next round…"
-        )}
-      </p>
-    </Card>
-  );
-}
-
 /** Formats a millisecond duration as HH:MM:SS (always all three segments,
  *  even for a countdown under an hour, easier to scan at a glance than a
  *  segment count that changes shape as it ticks down). Clamps negative
@@ -519,71 +493,189 @@ function formatHms(ms: number): string {
   return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 }
 
-/** Live HH:MM:SS countdown to a tournament's scheduled auto-start, shown
- *  while it's still pending. Purely a display timer, the actual starting
- *  happens server-side (see scheduleAutoStart in tournament.service.ts);
- *  this just counts down to the same timestamp the server is watching. */
-function StartCountdown({ scheduledStartAt }: { scheduledStartAt: string }) {
+/** Re-renders its component every second while `active`, so a countdown
+ *  derived from Date.now() keeps ticking. */
+function useSecondTick(active: boolean) {
   const [, forceTick] = useState(0);
-
   useEffect(() => {
+    if (!active) return;
     const interval = window.setInterval(() => forceTick((n) => n + 1), 1000);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [active]);
+}
 
-  const remainingMs = new Date(scheduledStartAt).getTime() - Date.now();
-
-  return (
-    <p className="flex items-center gap-1.5 text-xs text-base-content/50">
-      <Clock className="h-3.5 w-3.5" />
-      {remainingMs > 0 ? (
-        <>
-          Starts in{" "}
-          <span className="font-mono font-extrabold text-base-content">
-            {formatHms(remainingMs)}
-          </span>{" "}
-          ({new Date(scheduledStartAt).toLocaleString()})
-        </>
-      ) : (
-        "Starting…"
-      )}
-    </p>
+/** One cell of the top card's scoreboard strip: a small caps label over a
+ *  big tabular value. Optionally a button (the prize cell toggles the
+ *  prize breakdown). */
+function StatTile({
+  label,
+  children,
+  onClick,
+  expanded,
+  tone = "default",
+}: {
+  label: string;
+  children: ReactNode;
+  onClick?: () => void;
+  expanded?: boolean;
+  tone?: "default" | "live" | "gold";
+}) {
+  const inner = (
+    <>
+      <span className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-base-content/45 md:text-[10px]">
+        {label}
+        {onClick && (
+          <ChevronDown
+            className={cn(
+              "h-3 w-3 transition-transform",
+              expanded && "rotate-180",
+            )}
+          />
+        )}
+      </span>
+      <span
+        className={cn(
+          "flex min-h-5 items-center gap-1 text-sm font-extrabold leading-tight tabular-nums md:text-lg",
+          tone === "live" && "text-(--secondary)",
+          tone === "gold" && "text-amber-400",
+        )}
+      >
+        {children}
+      </span>
+    </>
+  );
+  const cls =
+    "flex min-w-0 flex-col bg-base-200 px-2.5 py-1.5 text-left md:px-3 md:py-2";
+  return onClick ? (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={expanded}
+      className={cn(cls, "transition-colors hover:bg-base-300/60")}
+    >
+      {inner}
+    </button>
+  ) : (
+    <div className={cls}>{inner}</div>
   );
 }
 
-/** Live "arena ends in HH:MM:SS" countdown, shown while an arena
- *  tournament is active, purely a display timer counting down to the same
- *  arenaEndsAt timestamp the server checks in advanceAfterRound before
- *  deciding whether to generate another round or finish the event. */
-function ArenaCountdown({ arenaEndsAt }: { arenaEndsAt: string }) {
-  const [, forceTick] = useState(0);
+/** The "time" tile: what the clock means depends on the tournament's state.
+ *  Upcoming: countdown to the scheduled start. Arena running: nothing (the
+ *  time left lives in FormatTile). Swiss / round-robin / knockout running: the round (and a seconds
+ *  countdown during the break before the next one). Display-only; the real
+ *  timers live server-side. */
+function EventClockTile({ tournament }: { tournament: Tournament }) {
+  const ticking =
+    (tournament.status === "pending" && !!tournament.scheduledStartAt) ||
+    (tournament.status === "active" && !!tournament.nextRoundStartsAt);
+  useSecondTick(ticking);
 
-  useEffect(() => {
-    const interval = window.setInterval(() => forceTick((n) => n + 1), 1000);
-    return () => window.clearInterval(interval);
-  }, []);
+  if (tournament.status === "pending") {
+    if (!tournament.scheduledStartAt) {
+      return (
+        <StatTile label="Starts">
+          <span className="text-sm text-base-content/70">On organizer</span>
+        </StatTile>
+      );
+    }
+    const left = new Date(tournament.scheduledStartAt).getTime() - Date.now();
+    return (
+      <StatTile label="Starts in" tone="live">
+        <Clock className="h-4 w-4 shrink-0" />
+        <span className="font-mono">
+          {left > 0 ? formatHms(left) : "Starting…"}
+        </span>
+      </StatTile>
+    );
+  }
 
-  const remainingMs = new Date(arenaEndsAt).getTime() - Date.now();
-
-  return (
-    <Card
-      variant="solid"
-      className="border-(--secondary)/30 bg-(--secondary)/10"
-    >
-      <p className="flex items-center justify-center gap-1.5 text-center text-sm font-medium text-base-content">
-        <Clock className="h-4 w-4 text-(--secondary)" />
-        {remainingMs > 0 ? (
+  if (tournament.status === "active") {
+    // A running arena has no tile here: its countdown is the format tile
+    // next to the clock (see FormatTile), the tournament has no rounds to
+    // report either.
+    if (tournament.format === "arena") return null;
+    if (tournament.nextRoundStartsAt) {
+      const left =
+        new Date(tournament.nextRoundStartsAt).getTime() - Date.now();
+      return (
+        <StatTile label="Next round" tone="live">
+          <Clock className="h-4 w-4 shrink-0" />
+          {left > 0 ? `${Math.ceil(left / 1000)}s` : "Starting…"}
+        </StatTile>
+      );
+    }
+    const total =
+      tournament.format === "swiss"
+        ? tournament.swissRounds
+        : tournament.rounds.length;
+    return (
+      <StatTile label="Round">
+        {tournament.format === "normal" ? (
+          <span className="truncate text-sm">
+            {roundLabel(tournament.currentRoundIndex, tournament.rounds.length)}
+          </span>
+        ) : (
           <>
-            Arena ends in{" "}
-            <span className="font-mono font-extrabold text-base-content">
-              {formatHms(remainingMs)}
+            {tournament.currentRoundIndex + 1}
+            <span className="text-sm text-base-content/40">
+              / {total ?? "-"}
             </span>
           </>
-        ) : (
-          "Finishing up…"
         )}
-      </p>
-    </Card>
+      </StatTile>
+    );
+  }
+
+  // Finished / cancelled: the status pill already says so.
+  return null;
+}
+
+/** Whether the top card's clock tile has anything to show. A running arena
+ *  doesn't (its countdown is the FormatTile), and a finished or cancelled
+ *  event never does. */
+function hasClockTile(tournament: Tournament): boolean {
+  if (tournament.status === "pending") return true;
+  return tournament.status === "active" && tournament.format !== "arena";
+}
+
+/** The top card's second tile, in the spot that used to always read
+ *  "Players": what matters most for this format. A running arena counts down
+ *  the time left, swiss shows how many rounds it runs. Everything else (and
+ *  an arena that hasn't started or has ended) still shows the player count. */
+function FormatTile({ tournament }: { tournament: Tournament }) {
+  const counting =
+    tournament.format === "arena" &&
+    tournament.status === "active" &&
+    !!tournament.arenaEndsAt;
+  useSecondTick(counting);
+
+  if (counting) {
+    const left = new Date(tournament.arenaEndsAt!).getTime() - Date.now();
+    return (
+      <StatTile label="Ends in" tone="live">
+        <Clock className="h-4 w-4 shrink-0" />
+        <span className="font-mono">
+          {left > 0 ? formatHms(left) : "Finishing…"}
+        </span>
+      </StatTile>
+    );
+  }
+
+  if (tournament.format === "swiss" && tournament.swissRounds) {
+    return (
+      <StatTile label="Rounds">
+        <Swords className="h-4 w-4 shrink-0 text-base-content/40" />
+        {tournament.swissRounds}
+      </StatTile>
+    );
+  }
+
+  return (
+    <StatTile label="Players">
+      <Users className="h-4 w-4 shrink-0 text-base-content/40" />
+      {tournament.players.length}
+    </StatTile>
   );
 }
 
@@ -620,123 +712,64 @@ function LateJoinRow({ tournament }: { tournament: Tournament }) {
   );
 }
 
-/** The arena "Pairing pool" as seen by ONE player: up to ARENA_POOL_MAX of
- *  the free players that player could actually be paired with right now,
- *  closest to them in the standings first (the order the server's matcher
- *  prefers, matchArenaPairsSmart in tournament.service.ts).
- *
- *  A player is listed only if they are: not paused, not mid-game, present
- *  (on the tournament page or watching a game, `presentUserIds` comes from the
- *  server's 'tournament:watchers' broadcast), not someone either side just
- *  played (no immediate rematch), and not a pairing that would hand either
- *  side a 3rd game in a row as the same color (the server's two hard rules).
- *  Everyone else is left out, so the list can differ from person to person. */
-const ARENA_POOL_MAX = 6;
-
-function arenaPairingPool(
-  tournament: Tournament,
-  presentUserIds: Set<string>,
-  myId: string,
-): TournamentPlayer[] {
-  const busy = new Set<string>();
-  const lastOpponent = new Map<string, string>();
-  const colors = new Map<
-    string,
-    { last: "white" | "black" | null; streak: number }
-  >();
-  for (const round of tournament.rounds) {
-    for (const pairing of round.pairings) {
-      if (pairing.status === "active") {
-        busy.add(pairing.player1);
-        if (pairing.player2) busy.add(pairing.player2);
-      }
-      for (const [id, color] of [
-        [pairing.whiteId, "white"],
-        [pairing.blackId, "black"],
-      ] as const) {
-        if (!id) continue;
-        const c = colors.get(id) ?? { last: null, streak: 0 };
-        c.streak = c.last === color ? c.streak + 1 : 1;
-        c.last = color;
-        colors.set(id, c);
-      }
-    }
-  }
-  // Newest round first, same as the server's computeLastArenaOpponents.
-  for (let i = tournament.rounds.length - 1; i >= 0; i--) {
-    const pairing = tournament.rounds[i].pairings[0];
-    if (!pairing?.player2) continue;
-    if (!lastOpponent.has(pairing.player1))
-      lastOpponent.set(pairing.player1, pairing.player2);
-    if (!lastOpponent.has(pairing.player2))
-      lastOpponent.set(pairing.player2, pairing.player1);
-  }
-  const threeInARow = (id: string, color: "white" | "black") => {
-    const c = colors.get(id);
-    return !!c && c.last === color && c.streak >= 2;
-  };
-
-  const me = tournament.players.find((p) => p.user === myId);
-  if (!me || me.paused) return [];
-  const ranked = rankTournamentPlayers(tournament);
-  const rankOf = new Map(ranked.map((p, i) => [p.user, i]));
-  const myRank = rankOf.get(myId) ?? 0;
-
-  return tournament.players
-    .filter((p) => {
-      if (p.user === myId) return false;
-      if (p.paused || busy.has(p.user) || !presentUserIds.has(p.user))
-        return false;
-      if (
-        lastOpponent.get(myId) === p.user ||
-        lastOpponent.get(p.user) === myId
-      )
-        return false;
-      // Both color assignments would give someone a 3rd same color in a row.
-      const orientation1 =
-        (threeInARow(myId, "white") ? 1 : 0) +
-        (threeInARow(p.user, "black") ? 1 : 0);
-      const orientation2 =
-        (threeInARow(p.user, "white") ? 1 : 0) +
-        (threeInARow(myId, "black") ? 1 : 0);
-      return !(orientation1 > 0 && orientation2 > 0);
-    })
-    .sort(
-      (a, b) =>
-        Math.abs((rankOf.get(a.user) ?? 0) - myRank) -
-          Math.abs((rankOf.get(b.user) ?? 0) - myRank) ||
-        (rankOf.get(a.user) ?? 0) - (rankOf.get(b.user) ?? 0),
-    )
-    .slice(0, ARENA_POOL_MAX);
-}
-
 /** The full "player tournament details" content, shared verbatim between
  *  the desktop popover and the mobile bottom sheet (see the standings
  *  table below, via ResponsiveOverlay) so the two surfaces can never drift
  *  out of sync with each other. */
-/** Last (up to) 3 results as small rounded badges, oldest first so the
- *  rightmost one is the latest. Desktop standings only. */
-function FormBadges({ form }: { form?: ("W" | "D" | "L")[] }) {
-  if (!form || form.length === 0) {
-    return <span className="block text-center text-base-content/30">-</span>;
+/** How many of a player's most recent games the score strip shows. The
+ *  server keeps the same number. */
+const SCORE_STRIP_LENGTH = 15;
+
+/** Lichess-style score strip: the points each of a player's last 15 games
+ *  earned, newest first so the latest result is always in the same spot,
+ *  e.g. "2 3 5 5 0 2 2 4 4". Streak scores (doubled) are orange, berserk
+ *  wins are bold, losses fade out. On a draw in swiss / round-robin the
+ *  half point shows as ½. */
+function ScoreStrip({
+  scores,
+  className,
+}: {
+  scores?: string[];
+  className?: string;
+}) {
+  if (!scores || scores.length === 0) {
+    return <span className={cn("text-base-content/30", className)}>-</span>;
   }
+  const items = scores.slice(-SCORE_STRIP_LENGTH).map(parseScore);
   return (
-    <div className="flex items-center justify-center gap-1">
-      {form.map((r, i) => (
+    <span
+      className={cn(
+        "inline-flex items-center  font-mono text-[12px] leading-none tabular-nums",
+        className,
+      )}
+    >
+      {items.map((sc, i) => (
         <span
           key={i}
-          title={r === "W" ? "Win" : r === "D" ? "Draw" : "Loss"}
+          title={
+            sc.streak
+              ? `${sc.points} (streak score)`
+              : sc.berserk
+                ? `${sc.points} (berserk win)`
+                : `${sc.points}`
+          }
           className={cn(
-            "inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold leading-none",
-            r === "W" && "bg-green-500/20 text-green-400",
-            r === "D" && "bg-base-content/10 text-base-content/60",
-            r === "L" && "bg-red-500/20 text-red-400",
+            "inline-block min-w-[0.55rem] text-center",
+            sc.streak
+              ? "font-extrabold text-orange-400"
+              : sc.points === 0
+                ? "text-base-content/25"
+                : sc.points > 1
+                  ? "text-green-400"
+                  : sc.berserk
+                    ? "font-extrabold text-base-content"
+                    : "font-semibold text-base-content/65",
           )}
         >
-          {r}
+          {sc.points === 0.5 ? "½" : sc.points}
         </span>
       ))}
-    </div>
+    </span>
   );
 }
 
@@ -936,8 +969,17 @@ function PlayerTournamentDetails({
                     ? pairing.pointsAwarded.p1
                     : pairing.pointsAwarded.p2;
                   resultText = `${myPoints}`;
-                  resultColor =
-                    pairing.result === "draw"
+                  // A streak score is a doubled one: a win worth 4+ (4, or
+                  // 5 berserked) or a draw worth 2. Those read orange, the
+                  // same as the flame and the standings strip.
+                  const streakGame =
+                    isArena &&
+                    (pairing.result === "draw"
+                      ? myPoints === 2
+                      : myPoints >= 4);
+                  resultColor = streakGame
+                    ? "text-orange-400"
+                    : pairing.result === "draw"
                       ? "text-base-content/70"
                       : myPoints > 0
                         ? "text-green-400"
@@ -979,7 +1021,12 @@ function PlayerTournamentDetails({
                     )}
                     <span className="truncate">
                       {opponentId === null ? "-" : oppName}
-                      {berserked && " ⚔"}
+                      {berserked && (
+                        <BerserkIcon
+                          className="ml-1 inline h-3.5 w-3.5 align-[-2px] text-red-400"
+                          title="Berserked"
+                        />
+                      )}
                     </span>
                   </span>
                   <span
@@ -1078,7 +1125,12 @@ function PairingRow({
         />
         <span className="truncate">
           {p1Name}
-          {pairing.berserk.p1 && " ⚔"}
+          {pairing.berserk.p1 && (
+            <BerserkIcon
+              className="ml-1 inline h-3.5 w-3.5 align-[-2px] text-red-400"
+              title="Berserked"
+            />
+          )}
         </span>
         {pairing.player2 && (
           <>
@@ -1090,7 +1142,12 @@ function PairingRow({
             />
             <span className="truncate">
               {p2Name}
-              {pairing.berserk.p2 && " ⚔"}
+              {pairing.berserk.p2 && (
+                <BerserkIcon
+                  className="ml-1 inline h-3.5 w-3.5 align-[-2px] text-red-400"
+                  title="Berserked"
+                />
+              )}
             </span>
           </>
         )}
@@ -1150,14 +1207,6 @@ export function TournamentDetail() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatSheetOpen, setChatSheetOpen] = useState(false);
   const [chatHasUnread, setChatHasUnread] = useState(false);
-  // Who's actually got this tournament's page open right now (server-pushed
-  // via 'tournament:watchers', see presence.service.ts's getWatchingUserIds).
-  // Drives the arena "Pairing pool" section below — a player only shows up
-  // there once their own client is watching, not just because they're a
-  // non-busy, non-paused tournament entrant.
-  const [watchingUserIds, setWatchingUserIds] = useState<Set<string>>(
-    new Set(),
-  );
   const chatSheetOpenRef = useRef(chatSheetOpen);
   const passwordModalOpenRef = useRef(passwordModalOpen);
   useEffect(() => {
@@ -1243,10 +1292,6 @@ export function TournamentDetail() {
     function onUpdate(payload: { code: string }) {
       if (payload.code === code) refresh();
     }
-    function onWatchers(payload: { tournamentId: string; userIds: string[] }) {
-      if (payload.tournamentId !== tournamentId) return;
-      setWatchingUserIds(new Set(payload.userIds));
-    }
     function onChatHistory(payload: {
       tournamentId: string;
       history: ChatMessage[];
@@ -1280,7 +1325,6 @@ export function TournamentDetail() {
     socket.on("tournament:started", onUpdate);
     socket.on("tournament:cancelled", onUpdate);
     socket.on("tournament:finished", onUpdate);
-    socket.on("tournament:watchers", onWatchers);
     socket.on("tournament:chat_history", onChatHistory);
     socket.on("tournament:chat_message", onChatMessage);
     // Covers the common case where the socket is already connected by the
@@ -1294,7 +1338,6 @@ export function TournamentDetail() {
       socket.off("tournament:started", onUpdate);
       socket.off("tournament:cancelled", onUpdate);
       socket.off("tournament:finished", onUpdate);
-      socket.off("tournament:watchers", onWatchers);
       socket.off("tournament:chat_history", onChatHistory);
       socket.off("tournament:chat_message", onChatMessage);
       // The other half of tournament:watch, without this, leaving the
@@ -1451,10 +1494,7 @@ export function TournamentDetail() {
         b.points - a.points || a.leagueRank - b.leagueRank || a.idx - b.idx,
     );
   }
-  const pairingPool =
-    tournament.format === "arena" && myId
-      ? arenaPairingPool(tournament, watchingUserIds, myId)
-      : [];
+  const showLiveGames = isPointsFormat && tournament.status === "active";
   // 10 rows per page rather than the full field, arena/swiss standings can
   // run into the dozens of players, and rendering all of them as one table
   // was the thing making the page unwieldy to scan on a real field.
@@ -1658,7 +1698,7 @@ export function TournamentDetail() {
   // just above the standings table (or the roster for knockout).
   const desktopPrimary =
     dockPrimary || tournament.chatEnabled ? (
-      <div className="hidden items-center justify-end gap-2 md:flex">
+      <div className="hidden shrink-0 items-center gap-2 md:flex">
         {tournament.chatEnabled && (
           <Button
             variant="glass"
@@ -1695,25 +1735,52 @@ export function TournamentDetail() {
       </div>
     ) : null;
 
+  // The prize pool total shown on the top card's prize tile.
+  const prizeTotal =
+    tournament.prizeSchedule.length > 0 ? (
+      tournament.prizePoolCurrency === "naira" ? (
+        <>
+          ₦
+          {tournament.prizeSchedule
+            .reduce(
+              (sum, tier) =>
+                sum + tier.tokens * (tier.toRank - tier.fromRank + 1),
+              0,
+            )
+            .toLocaleString()}
+        </>
+      ) : (
+        <>
+          {tournament.prizePoolTokens} <RCoin size={16} />
+        </>
+      )
+    ) : null;
+
+  const statusPill =
+    tournament.status === "active" ? (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/15 shrink-0 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-red-400">
+        <span className="relative flex h-2 w-2">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-60" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+        </span>
+        Live
+      </span>
+    ) : tournament.status === "pending" ? (
+      <span className="inline-flex items-center rounded-full bg-amber-400/15 shrink-0 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-amber-400">
+        Upcoming
+      </span>
+    ) : tournament.status === "finished" ? (
+      <span className="inline-flex items-center rounded-full bg-base-content/10 shrink-0 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-base-content/60">
+        Finished
+      </span>
+    ) : (
+      <span className="inline-flex items-center rounded-full bg-red-500/15 shrink-0 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-red-400">
+        Cancelled
+      </span>
+    );
+
   return (
-    <Page
-      title={tournament.name}
-      back="/tournaments"
-      actions={
-        <div className="hidden items-center gap-2 md:flex">
-          <Button variant="glass" size="sm" onClick={handleShare}>
-            <Share2 className="h-3.5 w-3.5" />{" "}
-            <span className="sm:flex hidden">Share</span>
-          </Button>
-          {canEdit && !editing && (
-            <Button variant="glass" size="sm" onClick={() => setEditing(true)}>
-              <Pencil className="h-3.5 w-3.5" />{" "}
-              <span className="sm:flex hidden">Edit</span>
-            </Button>
-          )}
-        </div>
-      }
-    >
+    <Page className="py-3! md:py-6!">
       <div className="mx-auto space-y-4">
         <NairaWinnerBanner tournament={tournament} myId={myId} />
 
@@ -1724,138 +1791,236 @@ export function TournamentDetail() {
             onCancel={() => setEditing(false)}
           />
         ) : (
-          <Card variant="solid" className="pb-2.5!">
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full gradient-brand px-3 py-1 text-sm font-bold text-white shadow-sm shadow-(--primary)/25">
-                {speed && (
-                  <CategoryIcon
-                    category={SPEED_CATEGORY[speed]}
-                    size={14}
-                    monochrome="text-white"
-                  />
-                )}
-                {headline}
-              </span>
-            </div>
-            <div className="mb-4 flex flex-wrap gap-1.5 last:mb-0">
-              {tournament.cumulative && tournament.cumulativeName && (
-                <Link to={`/leagues/${tournament.cumulative}`}>
-                  <Badge variant="primary">
-                    League · {tournament.cumulativeName}
-                  </Badge>
-                </Link>
-              )}
-              {tournament.format === "swiss" && (
-                <Badge variant="neutral">{tournament.swissRounds} rounds</Badge>
-              )}
-              {tournament.format === "round_robin" &&
-                tournament.robinRounds &&
-                tournament.robinRounds > 1 && (
-                  <Badge variant="neutral">{tournament.robinRounds}x</Badge>
-                )}
-              {tournament.format === "arena" && tournament.arenaMinutes && (
-                <Badge variant="neutral">
-                  {tournament.arenaMinutes} min arena
-                </Badge>
-              )}
-              {tournament.regFeeTokens > 0 && (
-                <Badge variant="neutral">
-                  {tournament.regFeeTokens}{" "}
-                  <RCoin size={11} className="inline align-[-1px]" /> to join
-                </Badge>
-              )}
-              {tournament.berserkAllowed && tournament.format === "arena" && (
-                <Badge variant="neutral">Berserk allowed ⚔</Badge>
-              )}
-              {tournament.hasPassword && (
-                <Badge variant="neutral">
-                  <Lock className="inline h-3 w-3 align-[-1px]" /> Password
-                  protected
-                </Badge>
-              )}
-            </div>
-
-            {tournament.status === "pending" && (
-              <div className="space-y-3">
-                {tournament.scheduledStartAt && (
-                  <StartCountdown
-                    scheduledStartAt={tournament.scheduledStartAt}
-                  />
-                )}
-                {isCreator && (
-                  <div className="hidden flex-wrap items-end gap-2 md:flex">
-                    <Button variant="danger" size="sm" onClick={cancel}>
-                      Cancel
+          // One card holds everything about the event: name, status, what
+          // it is, the clock, the field, the prize pool and the description.
+          // No separate page header or countdown/prize cards, so the
+          // standings start right below it.
+          <Card variant="solid" className="overflow-hidden p-0!">
+            <div className="h-0.5 gradient-brand" />
+            <div className="space-y-2 p-3 md:space-y-2.5 md:p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <Link
+                    to="/tournaments"
+                    aria-label="Back to tournaments"
+                    className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-base-300/60 text-base-content/70 transition-colors hover:text-base-content md:flex"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </Link>
+                  <h1 className="min-w-0 wrap-break-word text-base font-bold leading-tight tracking-tight md:text-xl">
+                    {tournament.name}
+                  </h1>
+                  {statusPill}
+                </div>
+                <div className="hidden items-center gap-2 md:flex">
+                  <Button variant="glass" size="sm" onClick={handleShare}>
+                    <Share2 className="h-3.5 w-3.5" /> Share
+                  </Button>
+                  {canEdit && (
+                    <Button
+                      variant="glass"
+                      size="sm"
+                      onClick={() => setEditing(true)}
+                    >
+                      <Pencil className="h-3.5 w-3.5" /> Edit
                     </Button>
-                  </div>
+                  )}
+                  {desktopPrimary}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="inline-flex items-center gap-1.5 rounded-full gradient-brand px-2.5 py-0.5 text-xs font-bold md:px-3 md:py-1 md:text-sm text-white shadow-sm shadow-(--primary)/25">
+                  {speed && (
+                    <CategoryIcon
+                      category={SPEED_CATEGORY[speed]}
+                      size={14}
+                      monochrome="text-white"
+                    />
+                  )}
+                  {headline}
+                </span>
+                {tournament.cumulative && tournament.cumulativeName && (
+                  <Link to={`/leagues/${tournament.cumulative}`}>
+                    <Badge variant="primary">
+                      League · {tournament.cumulativeName}
+                    </Badge>
+                  </Link>
+                )}
+                {tournament.format === "round_robin" &&
+                  tournament.robinRounds &&
+                  tournament.robinRounds > 1 && (
+                    <Badge variant="neutral">{tournament.robinRounds}x</Badge>
+                  )}
+                {tournament.format === "arena" && tournament.arenaMinutes && (
+                  <Badge variant="neutral">
+                    {tournament.arenaMinutes} min arena
+                  </Badge>
+                )}
+                {tournament.regFeeTokens > 0 && prizeTotal && (
+                  <Badge variant="neutral">
+                    {tournament.regFeeTokens}{" "}
+                    <RCoin size={11} className="inline align-[-1px]" /> to join
+                  </Badge>
+                )}
+                {tournament.berserkAllowed && tournament.format === "arena" && (
+                  <Badge variant="neutral">
+                    Berserk allowed{" "}
+                    <BerserkIcon className="inline h-3 w-3 align-[-1px] text-red-400" />
+                  </Badge>
+                )}
+                {tournament.hasPassword && (
+                  <Badge variant="neutral">
+                    <Lock className="inline h-3 w-3 align-[-1px]" /> Password
+                    protected
+                  </Badge>
                 )}
               </div>
-            )}
 
-            {tournament.status === "active" && !isPlayer && (
-              <LateJoinRow tournament={tournament} />
-            )}
+              {/* Scoreboard strip: clock / field / prize. gap-px over a
+                  darker background draws the hairline dividers. */}
+              <div
+                className={cn(
+                  "grid gap-px overflow-hidden rounded-xl border border-base-300 bg-base-300",
+                  hasClockTile(tournament) ? "grid-cols-3" : "grid-cols-2",
+                )}
+              >
+                <EventClockTile tournament={tournament} />
+                <FormatTile tournament={tournament} />
+                {prizeTotal ? (
+                  <StatTile
+                    label="Prize pool"
+                    tone="gold"
+                    expanded={prizePoolOpen}
+                    onClick={() => setPrizePoolOpen((v) => !v)}
+                  >
+                    {prizeTotal}
+                  </StatTile>
+                ) : (
+                  <StatTile label="Entry">
+                    {tournament.regFeeTokens > 0 ? (
+                      <>
+                        {tournament.regFeeTokens} <RCoin size={16} />
+                      </>
+                    ) : (
+                      <span className="text-sm text-base-content/70">Free</span>
+                    )}
+                  </StatTile>
+                )}
+              </div>
 
-            {tournament.status === "active" &&
-              isPlayer &&
-              (tournament.format === "arena" ||
-                tournament.format === "swiss") && (
-                <div className="flex flex-wrap items-center gap-2">
-                  {tournament.format === "swiss" && (
-                    <p className="w-full text-xs text-base-content/50">
-                      {myPlayer?.paused
-                        ? "You're paused: you'll be skipped when the next round is paired. Resume any time and you'll be paired in the next round."
-                        : "Need a break? Pause to be skipped when the next round is paired. A game you're already in this round still counts."}
-                    </p>
-                  )}
-                </div>
-              )}
+              {tournament.status === "pending" &&
+                tournament.scheduledStartAt && (
+                  <p className="text-xs text-base-content/50">
+                    Scheduled for{" "}
+                    {new Date(tournament.scheduledStartAt).toLocaleString()}
+                  </p>
+                )}
 
-            {tournament.status === "cancelled" && (
-              <p className="text-sm text-red-400">
-                This tournament was cancelled
-                {tournament.cancelReason
-                  ? `, ${tournament.cancelReason}.`
-                  : "."}
-              </p>
-            )}
-
-            {tournament.description && (
-              <div className="mt-3 border-t border-base-300 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setDescriptionOpen((v) => !v)}
-                  className="flex w-full items-center justify-between text-left"
-                  aria-expanded={descriptionOpen}
-                >
-                  <span className="text-sm font-semibold text-base-content/70">
-                    Description
-                  </span>
-                  <ChevronDown
-                    className={`h-4 w-4 shrink-0 text-base-content/40 transition-transform ${
-                      descriptionOpen ? "rotate-180" : ""
-                    }`}
-                  />
-                </button>
-                {/* Same CSS-only grid-template-rows collapse as the prize
-                 *  pool card below rather than Framer Motion's
-                 *  height: "auto". */}
+              {/* Prize breakdown. grid-template-rows 0fr->1fr instead of
+               *  Framer Motion's height:"auto": animating to "auto" isn't
+               *  GPU-accelerated (it remeasures every frame), this
+               *  CSS-only version transitions one layout property
+               *  natively. */}
+              {tournament.prizeSchedule.length > 0 && (
                 <div
                   className="grid overflow-hidden transition-[grid-template-rows] duration-200 ease-in-out"
-                  style={{ gridTemplateRows: descriptionOpen ? "1fr" : "0fr" }}
+                  style={{ gridTemplateRows: prizePoolOpen ? "1fr" : "0fr" }}
                 >
-                  <div className="min-h-0 pt-2 pb-1 text-sm whitespace-pre-wrap text-base-content/70">
-                    {tournament.description}
+                  <div className="min-h-0">
+                    <div className="space-y-1.5 rounded-xl border border-base-300 bg-base-100/40 p-3 text-sm text-base-content/70">
+                      {tournament.prizeSchedule.map((tier, i) => (
+                        <div key={i} className="flex justify-between">
+                          <span>
+                            {tier.fromRank === tier.toRank
+                              ? `${tier.fromRank}${ordinalSuffix(tier.fromRank)} place`
+                              : `${tier.fromRank}${ordinalSuffix(tier.fromRank)}–${tier.toRank}${ordinalSuffix(tier.toRank)} place`}
+                          </span>
+                          <span className="flex items-center font-medium text-base-content">
+                            {tournament.prizePoolCurrency === "naira" ? (
+                              <>₦{tier.tokens.toLocaleString()}</>
+                            ) : (
+                              <>
+                                {tier.tokens}{" "}
+                                <RCoin size={12} className="ml-1" />
+                              </>
+                            )}
+                            <span className="ml-1 text-xs opacity-85">
+                              {tournament.prizePoolCurrency === "naira"
+                                ? tier.fromRank === tier.toRank
+                                  ? ""
+                                  : "each"
+                                : tokensLabel(tier).slice(1)}
+                            </span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+
+              {tournament.status === "pending" && isCreator && (
+                <div className="hidden flex-wrap items-end gap-2 md:flex">
+                  <Button variant="danger" size="sm" onClick={cancel}>
+                    Cancel
+                  </Button>
+                </div>
+              )}
+
+              {tournament.status === "active" && !isPlayer && (
+                <LateJoinRow tournament={tournament} />
+              )}
+
+              {tournament.status === "active" &&
+                isPlayer &&
+                tournament.format === "swiss" && (
+                  <p className="text-xs text-base-content/50">
+                    {myPlayer?.paused
+                      ? "You're paused: you'll be skipped when the next round is paired. Resume any time and you'll be paired in the next round."
+                      : "Need a break? Pause to be skipped when the next round is paired. A game you're already in this round still counts."}
+                  </p>
+                )}
+
+              {tournament.status === "cancelled" && tournament.cancelReason && (
+                <p className="text-sm text-red-400">
+                  {tournament.cancelReason}
+                </p>
+              )}
+
+              {tournament.description && (
+                <div className="border-t border-base-300 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setDescriptionOpen((v) => !v)}
+                    className="flex w-full items-center justify-between text-left"
+                    aria-expanded={descriptionOpen}
+                  >
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/50">
+                      About this tournament
+                    </span>
+                    <ChevronDown
+                      className={`h-4 w-4 shrink-0 text-base-content/40 transition-transform ${
+                        descriptionOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+                  <div
+                    className="grid overflow-hidden transition-[grid-template-rows] duration-200 ease-in-out"
+                    style={{
+                      gridTemplateRows: descriptionOpen ? "1fr" : "0fr",
+                    }}
+                  >
+                    <div className="min-h-0 pt-2 pb-1 text-sm whitespace-pre-wrap text-base-content/70">
+                      {tournament.description}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </Card>
         )}
 
-        {tournament.format === "normal" &&
-          tournament.status === "pending" &&
-          desktopPrimary}
         {tournament.status === "pending" && tournament.format === "normal" && (
           <Card variant="solid">
             <CardHeader>
@@ -1905,276 +2070,196 @@ export function TournamentDetail() {
           </Card>
         )}
 
-        {tournament.prizeSchedule.length > 0 && (
-          <Card variant="solid" className="pb-2.5!">
-            <button
-              type="button"
-              onClick={() => setPrizePoolOpen((v) => !v)}
-              className="flex w-full  items-center justify-between text-left"
-              aria-expanded={prizePoolOpen}
-            >
-              <CardTitle className="inline-flex items-center gap-1">
-                Prize pool <span className="text-secondary">{"->"}</span>{" "}
-                {tournament.prizePoolCurrency === "naira" ? (
-                  <>
-                    ₦
-                    {tournament.prizeSchedule
-                      .reduce(
-                        (sum, tier) =>
-                          sum + tier.tokens * (tier.toRank - tier.fromRank + 1),
-                        0,
-                      )
-                      .toLocaleString()}
-                  </>
-                ) : (
-                  <>
-                    {tournament.prizePoolTokens} <RCoin size={14} />
-                  </>
-                )}
-              </CardTitle>
-              <ChevronDown
-                className={`h-4 w-4 shrink-0 text-base-content/40 transition-transform ${
-                  prizePoolOpen ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-            {/* grid-template-rows 0fr->1fr instead of Framer Motion's
-             *  height:"auto": animating to "auto" isn't a GPU-accelerated
-             *  property, Framer Motion approximates it by remeasuring the
-             *  content's real height on every frame, which is what made
-             *  this feel laggy. This CSS-only version transitions a single
-             *  layout property natively instead. */}
-            <div
-              className="grid overflow-hidden transition-[grid-template-rows] duration-200 ease-in-out"
-              style={{ gridTemplateRows: prizePoolOpen ? "1fr" : "0fr" }}
-            >
-              <div
-                className={cn(
-                  "min-h-0 space-y-1 text-sm text-base-content/70",
-                  prizePoolOpen && "pt-2",
-                )}
-              >
-                {tournament.prizeSchedule.map((tier, i) => (
-                  <div key={i} className="flex justify-between">
-                    <span>
-                      {tier.fromRank === tier.toRank
-                        ? `${tier.fromRank}${ordinalSuffix(tier.fromRank)} place`
-                        : `${tier.fromRank}${ordinalSuffix(tier.fromRank)}–${tier.toRank}${ordinalSuffix(tier.toRank)} place`}
-                    </span>
-                    <span className="font-medium text-base-content flex items-center">
-                      {tournament.prizePoolCurrency === "naira" ? (
-                        <>₦{tier.tokens.toLocaleString()}</>
-                      ) : (
-                        <>
-                          {tier.tokens} <RCoin size={12} className="ml-1" />
-                        </>
-                      )}
-                      <span className="ml-1 opacity-85 text-xs">
-                        {tournament.prizePoolCurrency === "naira"
-                          ? tier.fromRank === tier.toRank
-                            ? ""
-                            : "each"
-                          : tokensLabel(tier).slice(1)}
-                      </span>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Card>
-        )}
-
-        {tournament.status === "active" && tournament.nextRoundStartsAt && (
-          <BreakCountdown nextRoundStartsAt={tournament.nextRoundStartsAt} />
-        )}
-
-        {tournament.status === "active" &&
-          tournament.format === "arena" &&
-          tournament.arenaEndsAt && (
-            <ArenaCountdown arenaEndsAt={tournament.arenaEndsAt} />
-          )}
-
-        {tournament.format === "normal" &&
-          tournament.status !== "pending" &&
-          desktopPrimary}
         {tournament.format === "normal" && (
           <KnockoutBracket tournament={tournament} myId={myId} />
         )}
 
-        {isPointsFormat && desktopPrimary}
-
         {isPointsFormat && standings.length > 0 && (
-          // Phone: no card (no surface, border or padding), so the table
-          // spreads across the page like the leaderboard. md+ keeps the card.
-          <Card
-            variant="solid"
-            className="max-md:rounded-none! max-md:border-0! max-md:bg-transparent! max-md:p-0!"
+          // Standings on the left; on desktop the live board(s) sit beside them,
+          // on phones the board falls below. Only while games are being played.
+          <div
+            className={cn(
+              "space-y-4",
+              showLiveGames && "xl:grid xl:grid-cols-[minmax(0,1fr)_19rem] xl:items-start xl:gap-4 xl:space-y-0",
+            )}
           >
-            <CardHeader className="max-md:px-3">
-              <div className="flex items-center gap-2">
-                {myStandingsIndex !== -1 && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setStandingsPage(
-                        Math.floor(myStandingsIndex / STANDINGS_PAGE_SIZE),
-                      )
-                    }
-                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-(--secondary) transition-colors hover:bg-(--secondary)/10"
-                  >
-                    <LocateFixed className="h-3.5 w-3.5" /> Me
-                  </button>
-                )}
-                <Pagination
-                  badge
-                  page={safeStandingsPage}
-                  pageCount={standingsPageCount}
-                  onPageChange={setStandingsPage}
-                />
-              </div>
-            </CardHeader>
-            <div className="overflow-hidden rounded-xl md:border md:border-base-300">
-              <table className="w-full table-fixed text-sm">
-                <thead>
-                  <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-base-content/50 max-md:text-[10px] max-md:text-base-content/40 md:bg-base-300/50">
-                    <th className={cn(STANDINGS_RANK_TH, "max-md:pl-3")}>#</th>
-                    <th className="px-2 py-2 md:px-3">Player</th>
-                    <th className="hidden w-24 px-3 py-2 text-center md:table-cell">
-                      Form
-                    </th>
-                    <th
-                      className={cn(
-                        "px-3 py-2 text-right",
-                        tournament.format === "arena" ? "w-20" : "w-14",
-                      )}
+            // Card on every size; on phones it just has tighter padding.
+            <Card variant="solid" className="max-md:p-1.5!">
+              <CardHeader className="max-md:mb-2 max-md:px-1.5">
+                <CardTitle className="flex items-baseline gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-base-content/60">
+                  {tournament.status === "pending" ? "Entrants" : "Standings"}
+                  <span className="font-semibold tabular-nums text-base-content/35">
+                    {standings.length}
+                  </span>
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  {myStandingsIndex !== -1 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setStandingsPage(
+                          Math.floor(myStandingsIndex / STANDINGS_PAGE_SIZE),
+                        )
+                      }
+                      className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-(--secondary) transition-colors hover:bg-(--secondary)/10"
                     >
-                      Pts
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pagedStandings.map((row, i) => {
-                    const p = row.p;
-                    const rank =
-                      safeStandingsPage * STANDINGS_PAGE_SIZE + i + 1;
-                    const isMe = p.user === myId;
-                    return (
-                      <tr
-                        key={p.user}
+                      <LocateFixed className="h-3.5 w-3.5" /> Me
+                    </button>
+                  )}
+                  <Pagination
+                    badge
+                    page={safeStandingsPage}
+                    pageCount={standingsPageCount}
+                    onPageChange={setStandingsPage}
+                  />
+                </div>
+              </CardHeader>
+              <div className="overflow-hidden rounded-xl border border-base-300">
+                <table className="w-full table-fixed text-sm">
+                  <thead>
+                    <tr className="text-left text-[11px] font-semibold uppercase tracking-wider text-base-content/50 max-md:text-[10px] max-md:text-base-content/40 md:bg-base-300/60">
+                      <th className={STANDINGS_RANK_TH}>#</th>
+                      <th className="px-2 py-2 md:px-3">Player</th>
+                      <th className="hidden w-56 px-3 py-2 md:table-cell">
+                        Last 15 games
+                      </th>
+                      <th
                         className={cn(
-                          "transition-colors md:border-t md:border-base-300/60",
-                          isMe
-                            ? "bg-(--secondary)/10"
-                            : i % 2 === 0
-                              ? "bg-base-100/50"
-                              : "bg-base-200/50",
+                          "px-3 py-2 text-right",
+                          tournament.format === "arena" ? "w-20" : "w-14",
                         )}
                       >
-                        <td
+                        Pts
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedStandings.map((row, i) => {
+                      const p = row.p;
+                      const rank =
+                        safeStandingsPage * STANDINGS_PAGE_SIZE + i + 1;
+                      const isMe = p.user === myId;
+                      const hasScores = !!p.scores && p.scores.length > 0;
+                      return (
+                        <tr
+                          key={p.user}
                           className={cn(
-                            STANDINGS_RANK_TD,
-                            "max-md:py-3 max-md:pl-3",
+                            "transition-colors md:border-t md:border-base-300/60",
+                            isMe
+                              ? "bg-(--secondary)/10"
+                              : i % 2 === 0
+                                ? "bg-base-100/50"
+                                : "bg-base-200/50",
                           )}
                         >
-                          <RankBadge rank={rank} />
-                        </td>
-                        <td
-                          className={cn(
-                            "max-w-0 px-2 py-2 max-md:py-3 md:px-3",
-                            isMe && "font-semibold text-(--secondary)",
-                          )}
-                        >
-                          <ResponsiveOverlay
-                            align="start"
-                            trigger={
-                              <button className="flex w-full min-w-0 items-center gap-1.5 text-left hover:scale-95 duration-150">
-                                <Avatar
-                                  username={p.username}
-                                  gradient={p.avatarGradient}
-                                  size="xs"
-                                />
-                                <span className="min-w-0 truncate">
-                                  {p.username}
-                                </span>
-                                <RatingBadge
-                                  className="shrink-0"
-                                  rating={p.rating}
-                                />
-                                {p.paused && (
-                                  <Pause
-                                    className="h-3.5 w-3.5 shrink-0 text-base-content/50"
-                                    aria-label="Paused"
-                                  />
-                                )}
-                                {tournament.cumulative && (
-                                  <span className="shrink-0">
-                                    <Movement movement={row.movement} />
-                                  </span>
-                                )}
-                              </button>
-                            }
+                          <td
+                            className={cn(
+                              STANDINGS_RANK_TD,
+                              "max-md:py-2.5",
+                              // Podium accent bar once the order means something.
+                              "border-l-3",
+                              tournament.status !== "pending" && rank === 1
+                                ? "border-l-amber-400"
+                                : tournament.status !== "pending" && rank === 2
+                                  ? "border-l-slate-400"
+                                  : tournament.status !== "pending" && rank === 3
+                                    ? "border-l-orange-500"
+                                    : "border-l-transparent",
+                            )}
                           >
-                            <PlayerTournamentDetails
-                              tournament={tournament}
-                              player={p}
-                            />
-                          </ResponsiveOverlay>
-                        </td>
-                        <td className="hidden px-3 py-2 md:table-cell">
-                          <FormBadges form={p.form} />
-                        </td>
-                        <td
-                          className={cn(
-                            isMe ? "text-secondary" : "text-base-content",
-                            "px-3 py-2 text-right font-semibold max-md:py-3",
-                          )}
-                        >
-                          {tournament.format === "arena" &&
-                          tournament.status === "active" &&
-                          isOnArenaStreak(p) ? (
-                            <span
-                              className="inline-flex items-center justify-end gap-0.5 text-orange-400"
-                              title="On a win streak: next game is worth double"
+                            <RankBadge rank={rank} />
+                          </td>
+                          <td
+                            className={cn(
+                              "max-w-0 px-2 py-2 max-md:py-2.5 md:px-3",
+                              isMe && "font-semibold text-(--secondary)",
+                            )}
+                          >
+                            <ResponsiveOverlay
+                              align="start"
+                              trigger={
+                                <button className="flex w-full min-w-0 items-center gap-2 text-left hover:scale-95 duration-150">
+                                  <Avatar
+                                    username={p.username}
+                                    gradient={p.avatarGradient}
+                                    size="xs"
+                                    mdSize="compact"
+                                  />
+                                  <span className="min-w-0 flex-1">
+                                    <span className="flex min-w-0 items-center gap-1.5">
+                                      <span className="min-w-0 truncate">
+                                        {p.username}
+                                      </span>
+                                      <RatingBadge
+                                        className="shrink-0"
+                                        rating={p.rating}
+                                      />
+                                      {p.paused && (
+                                        <Pause
+                                          className="h-3.5 w-3.5 shrink-0 text-base-content/50"
+                                          aria-label="Paused"
+                                        />
+                                      )}
+                                      {tournament.cumulative && (
+                                        <span className="shrink-0">
+                                          <Movement movement={row.movement} />
+                                        </span>
+                                      )}
+                                    </span>
+                                    {/* Phone: the score strip sits under the
+                                        name (PC has its own column). */}
+                                    {hasScores && (
+                                      <ScoreStrip
+                                        scores={p.scores}
+                                        className="mt-1.5 flex md:hidden"
+                                      />
+                                    )}
+                                  </span>
+                                </button>
+                              }
                             >
-                              <Flame
-                                className="h-3.5 w-3.5 shrink-0"
-                                aria-label="On a win streak"
+                              <PlayerTournamentDetails
+                                tournament={tournament}
+                                player={p}
                               />
-                              {row.points}
-                            </span>
-                          ) : (
-                            row.points
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        )}
-
-        {tournament.format === "arena" &&
-          tournament.status === "active" &&
-          isPlayer && (
-            <Card variant="solid">
-              {pairingPool.length > 0 ? (
-                <p className="text-center text-sm leading-relaxed text-base-content/80">
-                  {pairingPool.map((p, i) => (
-                    <span key={p.user}>
-                      <span className="font-medium">{p.username}</span>
-                      {i < pairingPool.length - 1 && (
-                        <span className="text-base-content/30">, </span>
-                      )}
-                    </span>
-                  ))}
-                </p>
-              ) : (
-                <p className="text-sm text-base-content/50">{"-"}</p>
-              )}
+                            </ResponsiveOverlay>
+                          </td>
+                          <td className="hidden px-3 py-2 md:table-cell">
+                            <ScoreStrip scores={p.scores} />
+                          </td>
+                          <td
+                            className={cn(
+                              isMe ? "text-secondary" : "text-base-content",
+                              "px-3 py-2 text-right text-base font-extrabold tabular-nums max-md:py-2.5 max-md:pr-2",
+                            )}
+                          >
+                            {tournament.format === "arena" &&
+                            tournament.status === "active" &&
+                            isOnArenaStreak(p) ? (
+                              <span
+                                className="inline-flex items-center justify-end gap-0.5 text-orange-400"
+                                title="On a win streak: next game is worth double"
+                              >
+                                <Flame
+                                  className="h-3.5 w-3.5 shrink-0"
+                                  aria-label="On a win streak"
+                                />
+                                {row.points}
+                              </span>
+                            ) : (
+                              row.points
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </Card>
-          )}
+            {showLiveGames && <LiveGames code={tournament.code} />}
+          </div>
+        )}
 
         {tournament.format !== "arena" &&
           tournament.rounds.length > 0 &&

@@ -80,10 +80,12 @@ export interface ITournamentPlayer {
   // input" role berserkWins plays for the berserk bonus.
   currentWinStreak: number;
   streakWins: number;
-  // Result of each of this player's last PLAYER_FORM_LENGTH finished games
-  // (arena/swiss/round-robin), oldest first. Shown as the "Form" badges in
-  // the standings. Byes and knockout games aren't recorded.
-  form: ("W" | "D" | "L")[];
+  // Score of each of this player's last PLAYER_SCORES_LENGTH finished games
+  // (arena/swiss/round-robin), oldest first, as compact tokens: the points
+  // then "s" (streak score) and/or "b" (berserk bonus), e.g. "2", "4s",
+  // "5sb", "0.5". Shown as the Lichess-style score strip in the standings.
+  // Byes and knockout games aren't recorded.
+  scores: string[];
   // Knockout-only: null while still alive, otherwise the round index they
   // were knocked out in (or -1 if they never got placed into the bracket at
   // all, which only happens if someone leaves before the bracket is drawn).
@@ -362,7 +364,7 @@ const playerSchema = new Schema<ITournamentPlayer>(
     berserkWins: { type: Number, default: 0 },
     currentWinStreak: { type: Number, default: 0 },
     streakWins: { type: Number, default: 0 },
-    form: { type: [String], default: [] },
+    scores: { type: [String], default: [] },
     eliminatedRound: { type: Number, default: null },
     hadBye: { type: Boolean, default: false },
     paused: { type: Boolean, default: false },

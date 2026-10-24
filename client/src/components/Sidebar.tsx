@@ -1,3 +1,4 @@
+import { CageIcon } from "./ui/CageIcon.js";
 import { isGamePath, isUnderPath } from "../lib/gamePath.js";
 import { memo, useCallback, useEffect, useRef, type CSSProperties } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
@@ -5,7 +6,6 @@ import { motion } from "framer-motion";
 import {
   LayoutDashboard,
   Users,
-  Swords,
   Trophy,
   Medal,
   Puzzle,
@@ -48,7 +48,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Play",
     items: [
-      { to: "/cage", label: "Cage", icon: Swords, color: "#fb7185" },
+      { to: "/cage", label: "Cage", icon: CageIcon, color: "#fb7185" },
       { to: "/tournaments", label: "Tournaments", icon: Trophy, color: "#fbbf24" },
       { to: "/puzzles", label: "Puzzles", icon: Puzzle, color: "#34d399" },
     ],

@@ -1,3 +1,5 @@
+import { CageIcon } from "../components/ui/CageIcon.js";
+import { BerserkIcon } from "../components/ui/BerserkIcon.js";
 import { gameHref } from "../lib/gamePath.js";
 import {
   useCallback,
@@ -1864,7 +1866,7 @@ export function Game() {
           aria-label="Playing in a cage match — view details"
         >
           <Badge variant="glass" className="hover:brightness-110" title="View cage match">
-            <Swords className="h-3 w-3" />
+            <CageIcon className="h-3 w-3" />
           </Badge>
         </Link>,
       );
@@ -2149,7 +2151,7 @@ export function Game() {
       ? [
           {
             label: "Berserk: halve your clock, +1 point if you win",
-            icon: Swords,
+            icon: BerserkIcon,
             onClick: handleBerserk,
             danger: true,
             mobilePrimary: true,

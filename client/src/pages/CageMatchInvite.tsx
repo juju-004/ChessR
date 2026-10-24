@@ -1,7 +1,8 @@
+import { CageIcon } from "../components/ui/CageIcon.js";
 import { gameHref } from "../lib/gamePath.js";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Swords, Trophy, Coins } from "lucide-react";
+import { Trophy, Coins } from "lucide-react";
 import {
   formatLegTimeControl,
   legCategory,
@@ -158,7 +159,7 @@ export function CageMatchInvite() {
               <>
                 {error && <p className="text-sm text-red-400">{error}</p>}
                 <Button fullWidth disabled={accepting} onClick={handleAccept}>
-                  <Swords className="h-4 w-4" />
+                  <CageIcon className="h-4 w-4" />
                   {accepting ? "Starting…" : "Accept and start"}
                 </Button>
               </>

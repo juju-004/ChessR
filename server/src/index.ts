@@ -9,6 +9,7 @@ import { getIo } from './sockets/io.js';
 import { reconcileActiveGames, sweepAbortedGames, sweepStaleWaitingGames } from './services/game.service.js';
 import { reconcileActiveTournaments, sweepCancelledTournaments, resolveDesyncedPairings, sweepActiveArenaPairings } from './services/tournament.service.js';
 import { reconcilePresence } from './services/presence.service.js';
+import { backfillScores } from './services/backfillScores.js'; // TEMP: delete with the call below
 import {
   runAllQuickPairingPasses,
   activateAllQuickPairingSegments,
@@ -117,6 +118,14 @@ async function main() {
       if (resolved) console.log(`🔧 Repaired ${resolved} desynced arena pairing(s) on boot.`);
     })
     .catch((err) => console.error('resolveDesyncedPairings failed on boot:', err));
+
+  // TEMP: fills the standings score strip for tournaments played before it
+  // existed. Delete this call and services/backfillScores.ts once done.
+  backfillScores()
+    .then((n) => {
+      if (n) console.log(`Backfilled scores for ${n} tournament player(s).`);
+    })
+    .catch((err) => console.error('backfillScores failed on boot:', err));
 
   // Cancelled tournaments carry no lasting value (no games were ever
   // played), so they're deleted a short while after cancellation rather

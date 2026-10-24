@@ -53,7 +53,7 @@ import {
   setFirstMoveTimeoutHandler,
 } from '../services/clock.service.js';
 import { markSpectating, clearSpectating } from '../services/presence.service.js';
-import { onSpectatingChanged } from './tournamentSocket.js';
+import { retryPairingForSpectator, tournamentLiveRoom } from './tournamentSocket.js';
 import type { AuthedSocketData } from './socketAuth.js';
 
 const gameRoom = (gameId: string) => `game:${gameId}`;
@@ -204,6 +204,7 @@ async function endGameAndBroadcast(
     whiteRemainingMs: finalState.whiteRemainingMs,
     blackRemainingMs: finalState.blackRemainingMs,
   });
+  io.to(tournamentLiveRoom(gameId)).emit('tournament:live_over', { gameId, result });
   notifyGameEnded(gameId);
 
   const wagerSettlement = await settleWager(
@@ -534,7 +535,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         // Keeps a free tournament player in the arena pairing pool while they
         // watch (see markSpectating).
         void markSpectating(socket.id, gameId)
-          .then(() => onSpectatingChanged(io, userId, true))
+          .then(() => retryPairingForSpectator(userId))
           .catch((err) => console.error('markSpectating failed:', err));
       } else {
         // The two participants' own room, so their chat traffic never
@@ -684,7 +685,6 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       const wasSpectator = socket.rooms.has(spectatorRoom(gameId));
       if (wasSpectator) {
         void clearSpectating(socket.id, gameId)
-          .then((cleared) => (cleared ? onSpectatingChanged(io, userId, false) : undefined))
           .catch((err) => console.error('clearSpectating failed:', err));
       }
       await socket.leave(gameRoom(gameId));
@@ -754,6 +754,17 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           // per-move clock/think-time reading without a full refetch, same
           // as it already can for a finished game's persisted moves.
           timestampMs: moveTimestampMs,
+        });
+        // Feed for the tournament page's live board (a no-op when nobody has
+        // this game on one).
+        io.to(tournamentLiveRoom(gameId)).emit('tournament:live_move', {
+          gameId,
+          from: result.from,
+          to: result.to,
+          fen: result.fenAfter,
+          whiteRemainingMs: result.whiteRemainingMs,
+          blackRemainingMs: result.blackRemainingMs,
+          turnStartedAtMs: result.turnStartedAtMs,
         });
 
         if (result.isGameOver) {

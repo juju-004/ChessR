@@ -1,6 +1,7 @@
 import { useEffect, useState, memo, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { Swords, UserRound } from "lucide-react";
+import { UserRound } from "lucide-react";
+import { BerserkIcon } from "./ui/BerserkIcon.js";
 import {
   formatClock,
   msUntilClockRepaint,
@@ -350,7 +351,7 @@ function BerserkBadge({ size = "md" }: { size?: "md" | "sm" }) {
       )}
       title="Berserked: clock halved for a bonus point if they win"
     >
-      <Swords className={size === "sm" ? "h-2.5 w-2.5" : "h-3 w-3"} />
+      <BerserkIcon className={size === "sm" ? "h-2.5 w-2.5" : "h-3 w-3"} />
     </span>
   );
 }

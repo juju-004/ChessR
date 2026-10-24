@@ -93,10 +93,6 @@ export async function getTopOnlineUserIds(excludeUserId: string, limit: number):
   return result;
 }
 
-export async function getUserSocketIds(userId: string): Promise<string[]> {
-  return redis.smembers(userSocketsKey(userId));
-}
-
 /** Which of `userIds` are online, in ONE pipelined round trip (one SCARD
  *  each, sent together) instead of a separate Redis call per user. */
 export async function getOnlineUserIds(userIds: string[]): Promise<Set<string>> {
@@ -236,8 +232,7 @@ export async function watchTournament(tournamentId: string, socketId: string): P
  *  to send that event). Looks up which tournament this socket was
  *  watching itself, so callers don't need to already know it. Returns the
  *  tournamentId it just unwatched from (or null if it wasn't watching
- *  anything), so callers can re-broadcast the updated watcher list to that
- *  tournament's room without needing to track it separately themselves. */
+ *  anything). */
 export async function unwatchTournament(
   socketId: string,
   onlyTournamentId?: string,
@@ -258,11 +253,7 @@ export async function unwatchTournament(
 
 /** Every userId currently watching a tournament's detail page, deduped
  *  across however many sockets each of them has open on it (multiple
- *  tabs/devices). Used to drive the client's "Pairing pool" section, which
- *  should only ever show players who actually have the page open right
- *  now, not every non-busy/non-paused player in the tournament regardless
- *  of whether they're looking at it (see arenaPairingPool in
- *  TournamentDetail.tsx). */
+ *  tabs/devices). One half of getArenaPresentUserIds. */
 export async function getWatchingUserIds(tournamentId: string): Promise<string[]> {
   const socketIds = await redis.smembers(tournamentWatchersKey(tournamentId));
   if (socketIds.length === 0) return [];
@@ -310,31 +301,11 @@ async function getSpectatingUserIds(): Promise<string[]> {
 
 /** Everyone who is "here to play" for a tournament right now: on its detail
  *  page, or watching some game instead. This is the presence set both the
- *  arena pairing pool and the client's pool display are built from. */
+ *  arena pairing is built from. */
 export async function getArenaPresentUserIds(tournamentId: string): Promise<string[]> {
   const [watching, spectating] = await Promise.all([
     getWatchingUserIds(tournamentId),
     getSpectatingUserIds(),
   ]);
   return [...new Set([...watching, ...spectating])];
-}
-
-/** True if any of this user's currently-connected sockets (they can have
- *  several, multiple tabs, phone + desktop) currently has the given
- *  tournament's detail page open. General online status (isUserOnline)
- *  answers "is this user connected at all", which isn't the same
- *  question, someone idling on Game.tsx or Settings with the app open in
- *  the background is "online" but not watching this tournament, and
- *  shouldn't be eligible for arena/swiss pairing into it (see
- *  arenaAvailablePlayers / buildSwissRound in tournament.service.ts). */
-export async function isUserWatchingTournament(
-  userId: string,
-  tournamentId: string,
-): Promise<boolean> {
-  const socketIds = await getUserSocketIds(userId);
-  if (socketIds.length === 0) return false;
-  const watchers = await redis.smembers(tournamentWatchersKey(tournamentId));
-  if (watchers.length === 0) return false;
-  const watcherSet = new Set(watchers);
-  return socketIds.some((id) => watcherSet.has(id));
 }

@@ -26,6 +26,9 @@ import {
 import {
   applyBerserk,
   BerserkNotAllowedError,
+  getLiveState,
+  getLiveMoves,
+  getSideToMove,
 } from "./gameState.service.js";
 import {
   debitTournamentRegFee,
@@ -2264,7 +2267,7 @@ async function healTournament(tournamentId: string): Promise<number> {
  *  pairing, joined, not paused (see the ITournamentPlayer.paused doc
  *  comment), not already sitting in a still-active pairing themselves, AND
  *  currently watching this tournament's detail page (not just online
- *  somewhere else in the app, see isUserWatchingTournament). That last
+ *  somewhere else in the app, see getArenaPresentUserIds). That last
  *  check is what stops the arena from ever pairing someone against an
  *  opponent who isn't actually looking at the tournament to play: a
  *  player idling on Game.tsx or Settings with the app open in the
@@ -2292,9 +2295,8 @@ async function arenaAvailablePlayers(
   if (candidates.length === 0) return [];
   // The watcher list is read ONCE for the whole pool (two Redis calls total:
   // the tournament's watcher set, then one MGET to turn those sockets into
-  // user ids). This used to call isUserWatchingTournament per candidate,
-  // which made two Redis calls each and re-read the same watcher set every
-  // time: ~2N calls per pairing pass for an N-player arena, on every game end.
+  // user ids), rather than two Redis calls per candidate: ~2N calls per
+  // pairing pass for an N-player arena, on every game end.
   // "Present" = on the tournament page OR watching some game instead (a free
   // player who goes to spectate stays in the pool, see markSpectating).
   const watching = new Set(await getArenaPresentUserIds(tournament.id));
@@ -2758,11 +2760,13 @@ function applyArenaPairingScore(
   result: "p1" | "p2" | "draw",
   berserk: { p1: boolean; p2: boolean },
   moveCount: number | undefined,
-): { p1: number; p2: number } {
+): ArenaScoreResult {
   if (result === "draw") {
     // Streak status is read before the reset below.
-    const p1Points = isOnArenaStreak(p1) ? 2 : 1;
-    const p2Points = isOnArenaStreak(p2) ? 2 : 1;
+    const p1Streak = isOnArenaStreak(p1);
+    const p2Streak = isOnArenaStreak(p2);
+    const p1Points = p1Streak ? 2 : 1;
+    const p2Points = p2Streak ? 2 : 1;
     if (p1) {
       p1.points += p1Points;
       p1.gamesPlayed += 1;
@@ -2773,18 +2777,27 @@ function applyArenaPairingScore(
       p2.gamesPlayed += 1;
       p2.currentWinStreak = 0;
     }
-    return { p1: p1Points, p2: p2Points };
+    return {
+      p1: p1Points,
+      p2: p2Points,
+      streak: { p1: p1Streak, p2: p2Streak },
+      berserk: { p1: false, p2: false },
+    };
   }
 
   const winner = result === "p1" ? p1 : p2;
   const loser = result === "p1" ? p2 : p1;
   const winnerBerserked = result === "p1" ? berserk.p1 : berserk.p2;
   let winnerPoints = 0;
+  let winnerStreak = false;
+  let winnerBonus = false;
 
   if (winner) {
     const onStreak = isOnArenaStreak(winner); // before this win is counted
     const berserkQualifies = winnerBerserked && (moveCount ?? 0) >= ARENA_BERSERK_MIN_PLIES;
     winnerPoints = (onStreak ? 4 : 2) + (berserkQualifies ? 1 : 0);
+    winnerStreak = onStreak;
+    winnerBonus = berserkQualifies;
     winner.points += winnerPoints;
     winner.gamesPlayed += 1;
     winner.currentWinStreak += 1;
@@ -2796,15 +2809,41 @@ function applyArenaPairingScore(
     loser.currentWinStreak = 0;
   }
 
-  return result === "p1" ? { p1: winnerPoints, p2: 0 } : { p1: 0, p2: winnerPoints };
+  const p1Won = result === "p1";
+  return {
+    p1: p1Won ? winnerPoints : 0,
+    p2: p1Won ? 0 : winnerPoints,
+    streak: { p1: p1Won && winnerStreak, p2: !p1Won && winnerStreak },
+    berserk: { p1: p1Won && winnerBonus, p2: !p1Won && winnerBonus },
+  };
 }
 
-const PLAYER_FORM_LENGTH = 3;
+/** What applyArenaPairingScore reports back: the points each side earned,
+ *  plus whether each side's score was a streak score (doubled) and whether
+ *  it carried the berserk bonus, so the standings can style them. */
+interface ArenaScoreResult {
+  p1: number;
+  p2: number;
+  streak: { p1: boolean; p2: boolean };
+  berserk: { p1: boolean; p2: boolean };
+}
 
-/** Appends one result to a player's rolling form, keeping the newest
- *  PLAYER_FORM_LENGTH (oldest first). */
-function pushForm(p: ITournamentPlayer, r: "W" | "D" | "L"): void {
-  p.form = [...(p.form ?? []), r].slice(-PLAYER_FORM_LENGTH);
+/** How many of a player's most recent games the standings score strip keeps. */
+const PLAYER_SCORES_LENGTH = 15;
+
+/** Appends one finished game's score to a player's rolling score strip
+ *  (oldest first, capped at PLAYER_SCORES_LENGTH). Stored as a compact token:
+ *  the points, then "s" if it was a streak score and/or "b" if it carried the
+ *  berserk bonus, e.g. "2", "4s", "3b", "5sb", "0.5". Byes and knockout games
+ *  aren't recorded. */
+function pushScore(
+  p: ITournamentPlayer | null | undefined,
+  points: number,
+  flags: { streak?: boolean; berserk?: boolean } = {},
+): void {
+  if (!p) return;
+  const token = `${points}${flags.streak ? "s" : ""}${flags.berserk ? "b" : ""}`;
+  p.scores = [...(p.scores ?? []), token].slice(-PLAYER_SCORES_LENGTH);
 }
 
 function applyPairingScore(
@@ -2846,14 +2885,11 @@ function applyPairingScore(
     return;
   }
 
-  // Form badges (last 3 results) for every points-based format.
-  if (p1 && p2) {
-    pushForm(p1, result === "draw" ? "D" : result === "p1" ? "W" : "L");
-    pushForm(p2, result === "draw" ? "D" : result === "p2" ? "W" : "L");
-  }
-
   if (tournament.format === "arena") {
-    pairing.pointsAwarded = applyArenaPairingScore(p1, p2, result, berserk, moveCount);
+    const scored = applyArenaPairingScore(p1, p2, result, berserk, moveCount);
+    pairing.pointsAwarded = { p1: scored.p1, p2: scored.p2 };
+    pushScore(p1, scored.p1, { streak: scored.streak.p1, berserk: scored.berserk.p1 });
+    pushScore(p2, scored.p2, { streak: scored.streak.p2, berserk: scored.berserk.p2 });
     if (p1 && p2) p1.tiebreak += p2.points;
     if (p1 && p2) p2.tiebreak += p1.points;
     return;
@@ -2869,6 +2905,8 @@ function applyPairingScore(
       p2.gamesPlayed += 1;
     }
     pairing.pointsAwarded = { p1: 0.5, p2: 0.5 };
+    pushScore(p1, 0.5);
+    pushScore(p2, 0.5);
   } else {
     // No berserk bonus here — berserk only exists for arena now (see
     // applyArenaPairingScore above and berserkInTournamentGame's format
@@ -2882,6 +2920,8 @@ function applyPairingScore(
     }
     if (loser) loser.gamesPlayed += 1;
     pairing.pointsAwarded = result === "p1" ? { p1: 1, p2: 0 } : { p1: 0, p2: 1 };
+    pushScore(p1, pairing.pointsAwarded.p1);
+    pushScore(p2, pairing.pointsAwarded.p2);
   }
 
   // Simplified Buchholz-style tiebreaker: accumulate each opponent's points
@@ -3733,7 +3773,7 @@ const PLAYER_SUMMARY_FIELDS = [
   "points",
   "tiebreak",
   "currentWinStreak",
-  "form",
+  "scores",
   "paused",
   "eliminatedRound",
 ];
@@ -3826,6 +3866,123 @@ export async function getTournamentSummaryByCode(codeOrId: string) {
   if (!doc) throw ApiError.notFound("Tournament not found");
   const withRatings = await withLiveRatings(doc);
   return sanitizeForClient(withRatings);
+}
+
+/** Most boards the tournament page's "live games" panel ever shows (PC
+ *  shows two, phones one, the client asks for what it needs). */
+export const MAX_LIVE_GAMES = 2;
+
+export interface TournamentLiveGame {
+  gameId: string;
+  joinCode: string | null;
+  variant: "standard" | "chess960" | "crazyhouse";
+  fen: string;
+  lastMove: [string, string] | null;
+  white: { id: string; username: string; rating: number; points: number };
+  black: { id: string; username: string; rating: number; points: number };
+  whiteRemainingMs: number | null;
+  blackRemainingMs: number | null;
+  turnStartedAtMs: number;
+  turn: "white" | "black";
+  paused: boolean;
+}
+
+/** The "top" game(s) being played right now: of every pairing that has a live
+ *  game, the ones whose two players have the most tournament points between
+ *  them (combined rating breaks a tie). Position and clocks come from the live
+ *  game state, so this is a snapshot the client then keeps current from the
+ *  `tournament:live_move` feed (see tournamentSocket.ts). */
+export async function getTournamentLiveGames(
+  codeOrId: string,
+  limit = MAX_LIVE_GAMES,
+): Promise<TournamentLiveGame[]> {
+  const want = Math.max(1, Math.min(MAX_LIVE_GAMES, Math.floor(limit)));
+  const [doc] = await Tournament.aggregate<any>([
+    { $match: tournamentMatch(codeOrId) },
+    { $limit: 1 },
+    {
+      $project: {
+        status: 1,
+        format: 1,
+        players: {
+          $map: {
+            input: { $ifNull: ["$players", []] },
+            as: "p",
+            in: {
+              user: "$$p.user",
+              username: "$$p.username",
+              rating: "$$p.rating",
+              points: "$$p.points",
+            },
+          },
+        },
+        // Only rounds that still have something running, an arena can hold
+        // thousands of finished ones.
+        rounds: {
+          $filter: {
+            input: { $ifNull: ["$rounds", []] },
+            as: "r",
+            cond: { $ne: ["$$r.status", "finished"] },
+          },
+        },
+      },
+    },
+  ]);
+  if (!doc) throw ApiError.notFound("Tournament not found");
+  if (doc.status !== "active") return [];
+
+  const playerById = new Map<string, any>(
+    (doc.players ?? []).map((p: any) => [String(p.user), p]),
+  );
+  const strength = (id: string | null | undefined) => {
+    const p = id ? playerById.get(String(id)) : undefined;
+    return { points: p?.points ?? 0, rating: p?.rating ?? 0 };
+  };
+
+  const candidates: { pairing: any; points: number; rating: number }[] = [];
+  for (const round of doc.rounds ?? []) {
+    for (const pairing of round.pairings ?? []) {
+      if (pairing.status !== "active" || !pairing.gameId || !pairing.player2) continue;
+      const a = strength(pairing.player1);
+      const b = strength(pairing.player2);
+      candidates.push({
+        pairing,
+        points: a.points + b.points,
+        rating: a.rating + b.rating,
+      });
+    }
+  }
+  candidates.sort((x, y) => y.points - x.points || y.rating - x.rating);
+
+  const out: TournamentLiveGame[] = [];
+  // Look a little past `want`: a pairing can be mid-setup (no live state yet).
+  for (const { pairing } of candidates.slice(0, want * 3)) {
+    if (out.length >= want) break;
+    const gameId = String(pairing.gameId);
+    const state = await getLiveState(gameId);
+    if (!state || state.status !== "active") continue;
+    const moves = await getLiveMoves(gameId);
+    const last = moves[moves.length - 1];
+    const whiteId = String(state.whiteId);
+    const blackId = String(state.blackId);
+    const w = playerById.get(whiteId);
+    const b = playerById.get(blackId);
+    out.push({
+      gameId,
+      joinCode: pairing.joinCode ?? null,
+      variant: state.variant,
+      fen: state.fen,
+      lastMove: last && !last.drop ? [last.from, last.to] : null,
+      white: { id: whiteId, username: w?.username ?? "White", rating: w?.rating ?? 0, points: w?.points ?? 0 },
+      black: { id: blackId, username: b?.username ?? "Black", rating: b?.rating ?? 0, points: b?.points ?? 0 },
+      whiteRemainingMs: state.whiteRemainingMs,
+      blackRemainingMs: state.blackRemainingMs,
+      turnStartedAtMs: state.turnStartedAtMs,
+      turn: getSideToMove(state.fen),
+      paused: state.paused,
+    });
+  }
+  return out;
 }
 
 /** One round with all its pairings, for opening a round tab the summary only

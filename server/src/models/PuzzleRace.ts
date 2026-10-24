@@ -54,6 +54,12 @@ export interface IPuzzleRace extends Document {
   potTokens: number;
   rakeTokens: number;
   payoutTokens: number;
+  /** Set once somebody starts a rematch of this (finished) race: the new
+   *  race, which everyone else's "Rematch" then joins. `rematchRace` is
+   *  claimed atomically before the race exists, `rematchCode` filled in once
+   *  it does. */
+  rematchRace: Types.ObjectId | null;
+  rematchCode: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -107,6 +113,8 @@ const puzzleRaceSchema = new Schema<IPuzzleRace>(
     potTokens: { type: Number, default: 0 },
     rakeTokens: { type: Number, default: 0 },
     payoutTokens: { type: Number, default: 0 },
+    rematchRace: { type: Schema.Types.ObjectId, ref: 'PuzzleRace', default: null },
+    rematchCode: { type: String, default: null },
   },
   { timestamps: true },
 );

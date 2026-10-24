@@ -1,6 +1,7 @@
+import { CageIcon } from "../components/ui/CageIcon.js";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Swords, Link2, Share2 } from "lucide-react";
+import { Link2, Share2 } from "lucide-react";
 import { listFollowing, type PlayerSummary } from "../api/follows.js";
 import {
   type CageLegPlan,
@@ -368,7 +369,7 @@ export function CreateCageMatch() {
                 {useLinkInvite ? (
                   <Link2 className="h-4 w-4" />
                 ) : (
-                  <Swords className="h-4 w-4" />
+                  <CageIcon className="h-4 w-4" />
                 )}
                 {submitting
                   ? useLinkInvite
