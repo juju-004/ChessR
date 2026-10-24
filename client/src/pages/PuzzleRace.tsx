@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Check, Copy, Crown, Puzzle, RotateCcw, Timer, Users } from "lucide-react";
+import { Check, Copy, Crown, Puzzle, Timer, Users } from "lucide-react";
 import {
   cancelRace,
   DIFFICULTY_LABEL,
   getRaceByCode,
   joinRace,
   leaveRace,
-  rematchRace,
   startRace,
   type MoveResult,
   type PuzzleRace as Race,
@@ -76,9 +75,7 @@ export function PuzzleRacePage() {
   const [puzzle, setPuzzle] = useState<PuzzleView | null>(null);
   const [lockUntil, setLockUntil] = useState(0);
   const [nonce, setNonce] = useState(0);
-  const [busy, setBusy] = useState<
-    "join" | "start" | "leave" | "rematch" | null
-  >(null);
+  const [busy, setBusy] = useState<"join" | "start" | "leave" | null>(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   // server clock minus ours; every state message refreshes it
@@ -98,13 +95,6 @@ export function PuzzleRacePage() {
   // Initial load over REST so the page works before the socket is up.
   useEffect(() => {
     let cancelled = false;
-    // A new code (e.g. a rematch) is a different race: don't show the old one
-    // while it loads.
-    setRace(null);
-    setNotFound(false);
-    setPuzzle(null);
-    setLockUntil(0);
-    setError("");
     getRaceByCode(code)
       .then(({ race }) => {
         if (cancelled) return;
@@ -241,7 +231,7 @@ export function PuzzleRacePage() {
   }, [sync]);
 
   async function run(
-    kind: "join" | "start" | "leave" | "rematch",
+    kind: "join" | "start" | "leave",
     fn: () => Promise<unknown>,
     after?: () => void,
   ) {
@@ -276,23 +266,6 @@ export function PuzzleRacePage() {
       if (a.finished !== b.finished) return a.finished ? -1 : 1;
       if (b.solved !== a.solved) return b.solved - a.solved;
       return (a.lastSolveMs ?? Infinity) - (b.lastSolveMs ?? Infinity);
-    });
-  }, [race]);
-
-  // The final order, for the podium: the recorded winner first (a time-limit
-  // finish ranks by solves), then the rest the same way the live standings do.
-  const finalRanked = useMemo(() => {
-    if (!race) return [];
-    return [...race.players].sort((a, b) => {
-      const aw = a.userId === race.winnerId;
-      const bw = b.userId === race.winnerId;
-      if (aw !== bw) return aw ? -1 : 1;
-      if (a.finished !== b.finished) return a.finished ? -1 : 1;
-      if (b.solved !== a.solved) return b.solved - a.solved;
-      return (
-        (a.lastSolveMs ?? Infinity) - (b.lastSolveMs ?? Infinity) ||
-        a.mistakes - b.mistakes
-      );
     });
   }, [race]);
 
@@ -416,12 +389,6 @@ export function PuzzleRacePage() {
               </span>
             </p>
           </div>
-        ) : phase === "finished" && race.winnerId ? (
-          <Card variant="solid">
-            <CardContent className="p-3 sm:p-4">
-              <Podium race={race} ranked={finalRanked} userId={user?.id} />
-            </CardContent>
-          </Card>
         ) : (
           <Card variant="solid">
             <CardContent className="p-3 sm:p-4">
@@ -508,21 +475,7 @@ export function PuzzleRacePage() {
           )}
 
           {(phase === "finished" || phase === "cancelled") && (
-            <Results
-              race={race}
-              me={me}
-              userId={user?.id}
-              rematching={busy === "rematch"}
-              onRematch={() =>
-                run(
-                  "rematch",
-                  async () => {
-                    const next = await rematchRace(race.id);
-                    navigate(`/puzzles/${next.code}`);
-                  },
-                )
-              }
-            />
+            <Results race={race} me={me} userId={user?.id} />
           )}
 
           {error && <p className="text-sm text-red-400">{error}</p>}
@@ -839,14 +792,10 @@ function Results({
   race,
   me,
   userId,
-  rematching,
-  onRematch,
 }: {
   race: Race;
   me?: RacePlayer;
   userId?: string;
-  rematching: boolean;
-  onRematch: () => void;
 }) {
   const iWon = !!userId && race.winnerId === userId;
   const winner = race.players.find((p) => p.userId === race.winnerId);
@@ -887,157 +836,12 @@ function Results({
       <CardContent className="space-y-3 py-4 text-center">
         <p className={cn("text-xl font-bold", tone)}>{headline}</p>
         {detail && <p className="text-sm text-base-content/60">{detail}</p>}
-        {race.status === "finished" && me && (
-          <div className="space-y-1.5">
-            <Button className="w-full" onClick={onRematch} loading={rematching}>
-              <RotateCcw className="h-4 w-4" />
-              {race.rematchCode ? "Join rematch" : "Rematch"}
-              {race.wagerTokens > 0 && ` · ${race.wagerTokens} R`}
-            </Button>
-            {race.rematchCode && (
-              <p className="text-xs text-base-content/50">
-                A rematch is open, join the others.
-              </p>
-            )}
-          </div>
-        )}
         <div className="flex gap-2">
           <Link to="/puzzles" className="flex-1">
-            <Button
-              variant={race.status === "finished" && me ? "ghost" : undefined}
-              className="w-full"
-            >
-              Back to races
-            </Button>
+            <Button className="w-full">Back to races</Button>
           </Link>
         </div>
       </CardContent>
     </Card>
   );
-}
-
-const PODIUM_STYLE = [
-  {
-    // 1st
-    ring: "ring-amber-400",
-    bar: "from-amber-400/40 to-amber-400/5 border-amber-400/50",
-    text: "text-amber-400",
-    height: "h-32 sm:h-40",
-  },
-  {
-    // 2nd
-    ring: "ring-slate-300",
-    bar: "from-slate-300/35 to-slate-300/5 border-slate-300/40",
-    text: "text-slate-300",
-    height: "h-24 sm:h-28",
-  },
-  {
-    // 3rd
-    ring: "ring-orange-500",
-    bar: "from-orange-500/35 to-orange-500/5 border-orange-500/40",
-    text: "text-orange-400",
-    height: "h-20 sm:h-24",
-  },
-] as const;
-
-/** Top three of a finished race, laid out as a podium (2nd, 1st, 3rd). */
-function Podium({
-  race,
-  ranked,
-  userId,
-}: {
-  race: Race;
-  ranked: RacePlayer[];
-  userId?: string;
-}) {
-  const top = ranked.slice(0, 3);
-  // Left to right: 2nd, 1st, 3rd (only the places that exist).
-  const order = [1, 0, 2].filter((i) => i < top.length);
-  const myIndex = ranked.findIndex((p) => p.userId === userId);
-
-  return (
-    <div className="flex w-full flex-col items-center justify-center gap-5 rounded-xl border border-base-300 bg-base-100/40 px-3 py-6 text-center sm:px-6 lg:min-h-[28rem]">
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-base-content/50">
-          Race over
-        </p>
-        <p className="text-sm text-base-content/60">
-          {race.endReason === "completed"
-            ? "First to solve every puzzle"
-            : "Most puzzles when time ran out"}
-        </p>
-      </div>
-
-      <div className="flex w-full max-w-md items-end justify-center gap-2 sm:gap-3">
-        {order.map((i) => {
-          const p = top[i];
-          const style = PODIUM_STYLE[i];
-          const isMe = p.userId === userId;
-          return (
-            <div
-              key={p.userId}
-              className="flex min-w-0 flex-1 flex-col items-center"
-            >
-              <div className="relative mb-2">
-                {i === 0 && (
-                  <Crown className="absolute -top-5 left-1/2 h-5 w-5 -translate-x-1/2 text-amber-400" />
-                )}
-                <div className={cn("rounded-full ring-2 ring-offset-2 ring-offset-base-200", style.ring)}>
-                  <Avatar
-                    username={p.username}
-                    gradient={p.avatarGradient}
-                    size={i === 0 ? "xl" : "lg"}
-                  />
-                </div>
-              </div>
-              <p
-                className={cn(
-                  "w-full truncate text-sm font-semibold",
-                  isMe ? "text-(--secondary)" : "text-base-content",
-                )}
-              >
-                {p.username}
-              </p>
-              <p className="mb-2 text-xs tabular-nums text-base-content/55">
-                {p.solved}/{race.puzzleCount}
-                {p.lastSolveMs != null && ` · ${formatRaceTime(p.lastSolveMs)}`}
-              </p>
-              <div
-                className={cn(
-                  "flex w-full items-start justify-center rounded-t-xl border border-b-0 bg-linear-to-b pt-2",
-                  style.bar,
-                  style.height,
-                )}
-              >
-                <span
-                  className={cn("text-3xl font-black leading-none", style.text)}
-                >
-                  {i + 1}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {myIndex >= 3 && (
-        <p className="text-sm text-base-content/60">
-          You finished{" "}
-          <span className="font-semibold text-base-content">
-            {myIndex + 1}
-            {ordinalSuffix(myIndex + 1)}
-          </span>{" "}
-          with {ranked[myIndex].solved}/{race.puzzleCount}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/** m:ss.t for a time into the race. */
-function formatRaceTime(ms: number): string {
-  const total = Math.max(0, ms) / 1000;
-  const m = Math.floor(total / 60);
-  const s = total - m * 60;
-  return `${m}:${s.toFixed(1).padStart(4, "0")}`;
 }
