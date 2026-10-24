@@ -1,9 +1,9 @@
+import { GameIcon } from "./ui/GameIcon.js";
 import { useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import {
   Bell,
-  Swords,
   Shield,
   Maximize2,
   PartyPopper,
@@ -176,7 +176,7 @@ export function NotificationsMenu({ className }: NotificationsMenuProps) {
               return (
                 <MenuRow
                   key={`ch-${item.id}`}
-                  leading={<IconBadge tone="primary" icon={Swords} />}
+                  leading={<IconBadge tone="primary" icon={GameIcon} />}
                 >
                   <p className="text-sm text-base-content">
                     <ChallengeSummary

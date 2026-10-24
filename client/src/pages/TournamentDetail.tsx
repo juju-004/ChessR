@@ -19,8 +19,7 @@ import {
   LocateFixed,
   Ban,
   Flame,
-  Users,
-  Swords,
+  Flag,
   ArrowLeft,
 } from "lucide-react";
 import {
@@ -560,15 +559,61 @@ function StatTile({
   );
 }
 
-/** The "time" tile: what the clock means depends on the tournament's state.
- *  Upcoming: countdown to the scheduled start. Arena running: nothing (the
- *  time left lives in FormatTile). Swiss / round-robin / knockout running: the round (and a seconds
- *  countdown during the break before the next one). Display-only; the real
- *  timers live server-side. */
+/** The "round" tile, only for a running swiss / round-robin / knockout:
+ *  the round (and a seconds countdown during the break before the next
+ *  one). The tournament's own timer (start countdown, time left, ended)
+ *  lives in TimerTile. Display-only; the real timers live server-side. */
 function EventClockTile({ tournament }: { tournament: Tournament }) {
   const ticking =
+    tournament.status === "active" && !!tournament.nextRoundStartsAt;
+  useSecondTick(ticking);
+
+  if (tournament.status !== "active" || tournament.format === "arena")
+    return null;
+
+  if (tournament.nextRoundStartsAt) {
+    const left = new Date(tournament.nextRoundStartsAt).getTime() - Date.now();
+    return (
+      <StatTile label="Next round" tone="live">
+        <Clock className="h-4 w-4 shrink-0" />
+        {left > 0 ? `${Math.ceil(left / 1000)}s` : "Starting…"}
+      </StatTile>
+    );
+  }
+  const total =
+    tournament.format === "swiss"
+      ? tournament.swissRounds
+      : tournament.rounds.length;
+  return (
+    <StatTile label="Round">
+      {tournament.format === "normal" ? (
+        <span className="truncate text-sm">
+          {roundLabel(tournament.currentRoundIndex, tournament.rounds.length)}
+        </span>
+      ) : (
+        <>
+          {tournament.currentRoundIndex + 1}
+          <span className="text-sm text-base-content/40">/ {total ?? "-"}</span>
+        </>
+      )}
+    </StatTile>
+  );
+}
+
+/** Whether the top card has a round tile next to the timer: only a running
+ *  swiss / round-robin / knockout does. */
+function hasClockTile(tournament: Tournament): boolean {
+  return tournament.status === "active" && tournament.format !== "arena";
+}
+
+/** The top card's timer tile, in the spot that used to read "Players".
+ *  Upcoming: countdown to the scheduled start. Running: an arena counts down
+ *  the time left; the other formats have no fixed end, so they show how long
+ *  the event has been running. Finished / cancelled: says so. */
+function TimerTile({ tournament }: { tournament: Tournament }) {
+  const ticking =
     (tournament.status === "pending" && !!tournament.scheduledStartAt) ||
-    (tournament.status === "active" && !!tournament.nextRoundStartsAt);
+    tournament.status === "active";
   useSecondTick(ticking);
 
   if (tournament.status === "pending") {
@@ -591,90 +636,48 @@ function EventClockTile({ tournament }: { tournament: Tournament }) {
   }
 
   if (tournament.status === "active") {
-    // A running arena has no tile here: its countdown is the format tile
-    // next to the clock (see FormatTile), the tournament has no rounds to
-    // report either.
-    if (tournament.format === "arena") return null;
-    if (tournament.nextRoundStartsAt) {
-      const left =
-        new Date(tournament.nextRoundStartsAt).getTime() - Date.now();
+    if (tournament.format === "arena" && tournament.arenaEndsAt) {
+      const left = new Date(tournament.arenaEndsAt).getTime() - Date.now();
       return (
-        <StatTile label="Next round" tone="live">
+        <StatTile label="Ends in" tone="live">
           <Clock className="h-4 w-4 shrink-0" />
-          {left > 0 ? `${Math.ceil(left / 1000)}s` : "Starting…"}
+          <span className="font-mono">
+            {left > 0 ? formatHms(left) : "Finishing…"}
+          </span>
         </StatTile>
       );
     }
-    const total =
-      tournament.format === "swiss"
-        ? tournament.swissRounds
-        : tournament.rounds.length;
+    if (tournament.startedAt) {
+      const elapsed = Date.now() - new Date(tournament.startedAt).getTime();
+      return (
+        <StatTile label="Running for" tone="live">
+          <Clock className="h-4 w-4 shrink-0" />
+          <span className="font-mono">{formatHms(elapsed)}</span>
+        </StatTile>
+      );
+    }
     return (
-      <StatTile label="Round">
-        {tournament.format === "normal" ? (
-          <span className="truncate text-sm">
-            {roundLabel(tournament.currentRoundIndex, tournament.rounds.length)}
-          </span>
-        ) : (
-          <>
-            {tournament.currentRoundIndex + 1}
-            <span className="text-sm text-base-content/40">
-              / {total ?? "-"}
-            </span>
-          </>
-        )}
-      </StatTile>
-    );
-  }
-
-  // Finished / cancelled: the status pill already says so.
-  return null;
-}
-
-/** Whether the top card's clock tile has anything to show. A running arena
- *  doesn't (its countdown is the FormatTile), and a finished or cancelled
- *  event never does. */
-function hasClockTile(tournament: Tournament): boolean {
-  if (tournament.status === "pending") return true;
-  return tournament.status === "active" && tournament.format !== "arena";
-}
-
-/** The top card's second tile, in the spot that used to always read
- *  "Players": what matters most for this format. A running arena counts down
- *  the time left, swiss shows how many rounds it runs. Everything else (and
- *  an arena that hasn't started or has ended) still shows the player count. */
-function FormatTile({ tournament }: { tournament: Tournament }) {
-  const counting =
-    tournament.format === "arena" &&
-    tournament.status === "active" &&
-    !!tournament.arenaEndsAt;
-  useSecondTick(counting);
-
-  if (counting) {
-    const left = new Date(tournament.arenaEndsAt!).getTime() - Date.now();
-    return (
-      <StatTile label="Ends in" tone="live">
+      <StatTile label="Status" tone="live">
         <Clock className="h-4 w-4 shrink-0" />
-        <span className="font-mono">
-          {left > 0 ? formatHms(left) : "Finishing…"}
-        </span>
+        Live
       </StatTile>
     );
   }
 
-  if (tournament.format === "swiss" && tournament.swissRounds) {
+  if (tournament.status === "finished") {
     return (
-      <StatTile label="Rounds">
-        <Swords className="h-4 w-4 shrink-0 text-base-content/40" />
-        {tournament.swissRounds}
+      <StatTile label="Status">
+        <Flag className="h-4 w-4 shrink-0 text-base-content/40" />
+        <span className="truncate text-sm md:text-base">Tournament ended</span>
       </StatTile>
     );
   }
 
   return (
-    <StatTile label="Players">
-      <Users className="h-4 w-4 shrink-0 text-base-content/40" />
-      {tournament.players.length}
+    <StatTile label="Status">
+      <span className="truncate text-sm text-red-400 md:text-base">
+        Cancelled
+      </span>
     </StatTile>
   );
 }
@@ -1023,7 +1026,7 @@ function PlayerTournamentDetails({
                       {opponentId === null ? "-" : oppName}
                       {berserked && (
                         <BerserkIcon
-                          className="ml-1 inline h-3.5 w-3.5 align-[-2px] text-red-400"
+                          className="ml-1 inline h-3.5 w-3.5 align-[-2px]"
                           title="Berserked"
                         />
                       )}
@@ -1127,7 +1130,7 @@ function PairingRow({
           {p1Name}
           {pairing.berserk.p1 && (
             <BerserkIcon
-              className="ml-1 inline h-3.5 w-3.5 align-[-2px] text-red-400"
+              className="ml-1 inline h-3.5 w-3.5 align-[-2px]"
               title="Berserked"
             />
           )}
@@ -1144,7 +1147,7 @@ function PairingRow({
               {p2Name}
               {pairing.berserk.p2 && (
                 <BerserkIcon
-                  className="ml-1 inline h-3.5 w-3.5 align-[-2px] text-red-400"
+                  className="ml-1 inline h-3.5 w-3.5 align-[-2px]"
                   title="Berserked"
                 />
               )}
@@ -1866,7 +1869,7 @@ export function TournamentDetail() {
                 {tournament.berserkAllowed && tournament.format === "arena" && (
                   <Badge variant="neutral">
                     Berserk allowed{" "}
-                    <BerserkIcon className="inline h-3 w-3 align-[-1px] text-red-400" />
+                    <BerserkIcon className="inline h-3 w-3 align-[-1px]" />
                   </Badge>
                 )}
                 {tournament.hasPassword && (
@@ -1885,8 +1888,8 @@ export function TournamentDetail() {
                   hasClockTile(tournament) ? "grid-cols-3" : "grid-cols-2",
                 )}
               >
+                <TimerTile tournament={tournament} />
                 <EventClockTile tournament={tournament} />
-                <FormatTile tournament={tournament} />
                 {prizeTotal ? (
                   <StatTile
                     label="Prize pool"
@@ -2083,7 +2086,7 @@ export function TournamentDetail() {
               showLiveGames && "xl:grid xl:grid-cols-[minmax(0,1fr)_19rem] xl:items-start xl:gap-4 xl:space-y-0",
             )}
           >
-            // Card on every size; on phones it just has tighter padding.
+            {/* Card on every size; on phones it just has tighter padding. */}
             <Card variant="solid" className="max-md:p-1.5!">
               <CardHeader className="max-md:mb-2 max-md:px-1.5">
                 <CardTitle className="flex items-baseline gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-base-content/60">

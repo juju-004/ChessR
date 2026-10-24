@@ -1,15 +1,16 @@
+import { GameIcon } from "../components/ui/GameIcon.js";
 import { gameHref } from "../lib/gamePath.js";
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   Swords,
-  Eye,
   UserPlus,
   UserMinus,
   Pencil,
   Scale,
   Flag,
   MoreHorizontal,
+  TvMinimalPlay,
 } from "lucide-react";
 import {
   getProfile,
@@ -328,7 +329,7 @@ export function Profile() {
                       size="icon"
                       aria-label={`Watch ${profile.username}'s game`}
                     >
-                      <Eye className="h-4 w-4" />
+                      <TvMinimalPlay className="h-4 w-4" />
                     </Button>
                   </Link>
                 )}
@@ -341,14 +342,14 @@ export function Profile() {
                   className="w-72 max-w-[calc(100vw-2rem)]"
                   open={challengeOpen}
                   onOpenChange={setChallengeOpen}
-                  icon={<Swords />}
+                  icon={<GameIcon />}
                   trigger={
                     <Button
                       variant="glass"
                       size="icon"
                       aria-label={`Challenge ${profile.username}`}
                     >
-                      <Swords className="h-4 w-4" />
+                      <GameIcon className="h-4 w-4" />
                     </Button>
                   }
                 >

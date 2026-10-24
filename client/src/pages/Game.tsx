@@ -1,4 +1,5 @@
 import { CageIcon } from "../components/ui/CageIcon.js";
+import { GameIcon } from "../components/ui/GameIcon.js";
 import { BerserkIcon } from "../components/ui/BerserkIcon.js";
 import { gameHref } from "../lib/gamePath.js";
 import {
@@ -26,7 +27,6 @@ import { useNotify } from "../contexts/NotificationContext.js";
 import { useSettings } from "../contexts/SettingsContext.js";
 import { useConfirm } from "../contexts/ConfirmContext.js";
 import {
-  Swords,
   Flag,
   Handshake,
   Ban,
@@ -1992,7 +1992,7 @@ export function Game() {
                 <p className="text-sm text-red-400">{loadError}</p>
               )}
               <Button onClick={handleJoin} fullWidth>
-                <Swords className="h-4 w-4" />
+                <GameIcon className="h-4 w-4" />
                 Join this game
               </Button>
             </>

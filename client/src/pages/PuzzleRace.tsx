@@ -396,6 +396,7 @@ export function PuzzleRacePage() {
                 phase={phase}
                 race={race}
                 me={me}
+                ranked={ranked}
                 isPlayer={isPlayer}
                 serverNow={serverNow}
                 timeLeft={timeLeft}
@@ -589,6 +590,7 @@ function Stage({
   phase,
   race,
   me,
+  ranked,
   isPlayer,
   serverNow,
   timeLeft,
@@ -597,6 +599,7 @@ function Stage({
   phase: Phase;
   race: Race;
   me?: RacePlayer;
+  ranked: RacePlayer[];
   isPlayer: boolean;
   serverNow: number;
   timeLeft: number;
@@ -676,16 +679,12 @@ function Stage({
       body = <CenteredSpinner />;
     }
   } else if (phase === "finished") {
-    body = (
-      <>
-        <Crown className="h-10 w-10 text-amber-400" />
-        <p className="text-lg font-semibold text-base-content">Race over</p>
-        <p className="text-sm text-base-content/60">
-          {race.endReason === "completed"
-            ? "Someone solved every puzzle first."
-            : "Time ran out."}
-        </p>
-      </>
+    return (
+      <Podium
+        race={race}
+        ranked={ranked}
+        myId={me?.userId}
+      />
     );
   } else {
     body = (
@@ -703,6 +702,136 @@ function Stage({
   return (
     <div className="flex aspect-square w-full flex-col items-center justify-center gap-2 rounded-xl border border-base-300 bg-base-100/40 p-6 text-center">
       {body}
+    </div>
+  );
+}
+
+/** The finished race's main card: the top three on a podium (2nd, 1st, 3rd
+ *  left to right, the winner tallest and crowned). Fewer than three racers
+ *  just fills fewer steps. Ordering is the page's own `ranked` list, the
+ *  same one the standings use. */
+const PODIUM_STEPS = [
+  {
+    // index into the top three, in display order: 2nd, 1st, 3rd
+    place: 1,
+    height: "h-16 sm:h-20",
+    ring: "ring-slate-300/70",
+    step: "from-slate-300/25 to-slate-300/5 border-slate-300/40",
+    label: "text-slate-300",
+    medal: "🥈",
+  },
+  {
+    place: 0,
+    height: "h-24 sm:h-32",
+    ring: "ring-amber-400/80",
+    step: "from-amber-400/30 to-amber-400/5 border-amber-400/50",
+    label: "text-amber-400",
+    medal: "🥇",
+  },
+  {
+    place: 2,
+    height: "h-12 sm:h-16",
+    ring: "ring-orange-400/60",
+    step: "from-orange-400/25 to-orange-400/5 border-orange-400/40",
+    label: "text-orange-400",
+    medal: "🥉",
+  },
+] as const;
+
+function Podium({
+  race,
+  ranked,
+  myId,
+}: {
+  race: Race;
+  ranked: RacePlayer[];
+  myId?: string;
+}) {
+  const top = ranked.slice(0, 3);
+  const nobodySolved = !race.winnerId;
+
+  return (
+    <div className="flex w-full flex-col items-center justify-center gap-4 rounded-xl border border-base-300 bg-base-100/40 px-3 py-6 text-center sm:px-6">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-base-content/50">
+          Final standings
+        </p>
+        <p className="mt-0.5 text-xs text-base-content/45">
+          {race.endReason === "completed"
+            ? "First to solve every puzzle"
+            : "Time ran out"}
+        </p>
+      </div>
+
+      {nobodySolved ? (
+        <div className="space-y-2 py-4">
+          <Crown className="mx-auto h-10 w-10 text-base-content/30" />
+          <p className="text-sm text-base-content/60">
+            Nobody solved a puzzle this time.
+          </p>
+        </div>
+      ) : (
+        <div className="grid w-full max-w-sm grid-cols-3 items-end gap-2 sm:gap-3">
+          {PODIUM_STEPS.map((step) => {
+            const p = top[step.place];
+            // Keep the grid's three columns even with fewer racers.
+            if (!p) return <div key={step.place} />;
+            const isWinner = step.place === 0;
+            const isMe = p.userId === myId;
+            return (
+              <div
+                key={p.userId}
+                className="flex min-w-0 flex-col items-center gap-1"
+              >
+                {isWinner && (
+                  <Crown className="h-6 w-6 text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.55)]" />
+                )}
+                <Avatar
+                  username={p.username}
+                  gradient={p.avatarGradient}
+                  size={isWinner ? "lg" : "md"}
+                  className={cn("ring-2 ring-offset-2 ring-offset-base-100", step.ring)}
+                />
+                <p
+                  className={cn(
+                    "w-full truncate text-xs font-semibold sm:text-sm",
+                    isMe ? "text-(--primary)" : "text-base-content",
+                  )}
+                  title={p.username}
+                >
+                  {p.username}
+                  {isMe && " (you)"}
+                </p>
+                <p className="text-[11px] tabular-nums text-base-content/50">
+                  {p.solved}/{race.puzzleCount} solved
+                </p>
+                <div
+                  className={cn(
+                    "mt-1 flex w-full flex-col items-center justify-start gap-0.5 rounded-t-xl border border-b-0 bg-linear-to-b pt-2",
+                    step.height,
+                    step.step,
+                  )}
+                >
+                  <span className="text-lg leading-none">{step.medal}</span>
+                  <span
+                    className={cn("text-sm font-extrabold", step.label)}
+                  >
+                    {step.place + 1}
+                    {ordinalSuffix(step.place + 1)}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {race.wagerTokens > 0 && race.winnerId && (
+        <p className="flex items-center justify-center gap-1 text-xs text-base-content/55">
+          Winner took <span className="font-semibold text-amber-400">{race.payoutTokens}</span>
+          <RCoin size={12} />
+        </p>
+      )}
     </div>
   );
 }

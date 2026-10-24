@@ -1,4 +1,5 @@
 import { CageIcon } from "../components/ui/CageIcon.js";
+import { GameIcon } from "../components/ui/GameIcon.js";
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
@@ -7,7 +8,6 @@ import {
   LogOut,
   AlertTriangle,
   Trophy,
-  Gamepad2,
   Puzzle,
   ShieldQuestion,
   Phone,
@@ -63,7 +63,7 @@ const SOURCE_LABEL: Record<RevenueSource, string> = {
 };
 
 const SOURCE_ICON: Record<RevenueSource, LucideIcon> = {
-  game: Gamepad2,
+  game: GameIcon,
   cage_match: CageIcon,
   tournament: Trophy,
   puzzle_race: Puzzle,

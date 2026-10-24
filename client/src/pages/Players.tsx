@@ -1,10 +1,10 @@
 import { CageIcon } from "../components/ui/CageIcon.js";
+import { GameIcon } from "../components/ui/GameIcon.js";
 import { gameHref } from "../lib/gamePath.js";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Search,
-  Swords,
   UserPlus,
   UserMinus,
   Check,
@@ -257,10 +257,10 @@ export function Players() {
         className="w-72 max-w-[calc(100vw-2rem)]"
         open={challengingKey === key}
         onOpenChange={(open) => setChallengingKey(open ? key : null)}
-        icon={<Swords></Swords>}
+        icon={<GameIcon />}
         trigger={
           <Button size="sm" variant="secondary">
-            <Swords className="size-3" />
+            <GameIcon className="size-3" />
             <span className="sm:flex hidden">Challenge</span>
           </Button>
         }

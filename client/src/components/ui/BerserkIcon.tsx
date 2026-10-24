@@ -1,8 +1,11 @@
 import { cn } from "@/lib/cn.js";
 
-/** Hand-drawn berserk mark: a flame with a lightning bolt cut out of it
- *  (the bolt is a hole, so it shows whatever is behind). Filled, so it
- *  takes its colour from `currentColor`; size it with h-/w- classes. */
+/** Berserk mark: a spiky, horned hourglass (your clock is halved). Always
+ *  red, it doesn't follow the surrounding text colour; size it with h-/w-
+ *  classes. The glass outline is a thin stroke so it stays readable at the
+ *  12px badge size. */
+const RED = "#f87171";
+
 export function BerserkIcon({
   className,
   title,
@@ -13,7 +16,9 @@ export function BerserkIcon({
   return (
     <svg
       viewBox="0 0 24 24"
-      fill="currentColor"
+      fill="none"
+      strokeLinejoin="miter"
+      strokeLinecap="round"
       className={cn("shrink-0", className)}
       role={title ? "img" : undefined}
       aria-label={title}
@@ -21,8 +26,19 @@ export function BerserkIcon({
     >
       {title && <title>{title}</title>}
       <path
-        fillRule="evenodd"
-        d="M12 1.5C12.2 4.4 13.7 6.2 15.6 8.1C17.6 10.1 19 12 19 14.8C19 18.7 15.9 22 12 22C8.1 22 5 18.7 5 14.8C5 12.8 5.8 11.1 7 9.8C7.3 11.4 8 12.4 9.2 12.9C8.6 9 9.8 4.8 12 1.5ZM13.4 9.6L8.8 15.2H11.6L10.6 19.6L15.4 13.4H12.5Z"
+        d="M5.5 5H18.5L13.2 12L18.5 19H5.5L10.8 12Z"
+        fill={RED}
+        fillOpacity={0.18}
+        stroke={RED}
+        strokeWidth={1}
+      />
+      <path d="M1.5 1L6 3H18L22.5 1L20.5 5H3.5Z" fill={RED} />
+      <path d="M1.5 23L3.5 19H20.5L22.5 23L18 21H6Z" fill={RED} />
+      <path d="M8.5 6.4H15.5L12 10.6Z" fill={RED} />
+      <path d="M12 10.6V14" stroke={RED} strokeWidth={0.9} />
+      <path
+        d="M7 18.2L9.5 15.2L11 17L12 13.8L13 17L14.5 15.2L17 18.2Z"
+        fill={RED}
       />
     </svg>
   );
