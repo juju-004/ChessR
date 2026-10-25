@@ -76,7 +76,10 @@ const FLAG_STATUS_FILTERS: (GameFlagStatus | "all")[] = [
   "all",
 ];
 
-const flagStatusVariant: Record<GameFlagStatus, "warning" | "success" | "error"> = {
+const flagStatusVariant: Record<
+  GameFlagStatus,
+  "warning" | "success" | "error"
+> = {
   pending_review: "warning",
   cleared: "success",
   actioned: "error",
@@ -129,7 +132,7 @@ export function AdminLayout() {
        *  the whole page wider than the viewport. */}
       <nav
         aria-label="Admin sections"
-        className="mb-4 max-w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="mb-4 max-w-full overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden"
       >
         <div className="elevated-flat inline-flex gap-1 rounded-xl p-1">
           {NAV_ITEMS.map((item) => (
@@ -189,9 +192,7 @@ export function AdminReports() {
         ))}
       </div>
 
-      {loading && (
-        <CenteredSpinner className="py-10" />
-      )}
+      {loading && <CenteredSpinner className="py-10" />}
 
       {error && (
         <Card
@@ -228,8 +229,7 @@ export function AdminReports() {
                   )}
                   {r.reportedUser?.withdrawalBlocked && (
                     <Badge variant="error" className="gap-1">
-                      <AlertTriangle className="h-3 w-3" /> Withdrawals
-                      blocked
+                      <AlertTriangle className="h-3 w-3" /> Withdrawals blocked
                     </Badge>
                   )}
                 </div>
@@ -240,10 +240,10 @@ export function AdminReports() {
                   {r.status}
                 </Badge>
               </div>
-              <p className="mt-1.5 line-clamp-2 break-words text-base-content/60">
+              <p className="mt-1.5 line-clamp-2 wrap-break-word text-base-content/60">
                 {r.description}
               </p>
-              <p className="mt-1.5 text-xs break-words text-base-content/40">
+              <p className="mt-1.5 text-xs wrap-break-word text-base-content/40">
                 {r.reason.replace(/_/g, " ")}
                 {r.gameCode ? ` · game ${r.gameCode}` : ""} ·{" "}
                 {new Date(r.createdAt).toLocaleString()}
@@ -257,7 +257,9 @@ export function AdminReports() {
 }
 
 export function AdminGameCheck() {
-  const [flagStatus, setFlagStatus] = useState<GameFlagStatus | "all">("pending_review");
+  const [flagStatus, setFlagStatus] = useState<GameFlagStatus | "all">(
+    "pending_review",
+  );
   const [flags, setFlags] = useState<AdminGameFlag[]>([]);
   const [flagsLoading, setFlagsLoading] = useState(true);
   const [flagsError, setFlagsError] = useState("");
@@ -272,7 +274,10 @@ export function AdminGameCheck() {
       .finally(() => setFlagsLoading(false));
   }, [flagStatus]);
 
-  async function handleFlagReview(flag: AdminGameFlag, newStatus: GameFlagStatus) {
+  async function handleFlagReview(
+    flag: AdminGameFlag,
+    newStatus: GameFlagStatus,
+  ) {
     setFlagActionId(flag.id);
     try {
       // Clearing (not "actioned") also lifts the withdrawal freeze this
@@ -310,9 +315,7 @@ export function AdminGameCheck() {
         ))}
       </div>
 
-      {flagsLoading && (
-        <CenteredSpinner className="py-10" />
-      )}
+      {flagsLoading && <CenteredSpinner className="py-10" />}
 
       {flagsError && (
         <Card
@@ -325,7 +328,8 @@ export function AdminGameCheck() {
 
       {!flagsLoading && !flagsError && flags.length === 0 && (
         <p className="py-10 text-center text-sm text-base-content/50">
-          No {flagStatus !== "all" ? flagStatus.replace(/_/g, " ") : ""} flagged games.
+          No {flagStatus !== "all" ? flagStatus.replace(/_/g, " ") : ""} flagged
+          games.
         </p>
       )}
 
@@ -345,15 +349,20 @@ export function AdminGameCheck() {
                   Score {f.score}
                 </Badge>
               </div>
-              <Badge variant={flagStatusVariant[f.status]} className="shrink-0 capitalize">
+              <Badge
+                variant={flagStatusVariant[f.status]}
+                className="shrink-0 capitalize"
+              >
                 {f.status.replace(/_/g, " ")}
               </Badge>
             </div>
 
-            <ul className="mt-1.5 space-y-0.5 break-words text-base-content/60">
+            <ul className="mt-1.5 space-y-0.5 wrap-break-word text-base-content/60">
               {f.signals.map((sig, i) => (
                 <li key={i}>
-                  <span className="text-base-content/40">{sig.type.replace(/_/g, " ")}:</span>{" "}
+                  <span className="text-base-content/40">
+                    {sig.type.replace(/_/g, " ")}:
+                  </span>{" "}
                   {sig.detail}
                 </li>
               ))}
@@ -393,7 +402,9 @@ export function AdminGameCheck() {
 }
 
 export function AdminNairaTournaments() {
-  const [nairaTournaments, setNairaTournaments] = useState<AdminNairaTournament[]>([]);
+  const [nairaTournaments, setNairaTournaments] = useState<
+    AdminNairaTournament[]
+  >([]);
   const [nairaLoading, setNairaLoading] = useState(true);
   const [nairaError, setNairaError] = useState("");
   const [nairaPage, setNairaPage] = useState(1);
@@ -420,9 +431,9 @@ export function AdminNairaTournaments() {
     <div className="space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
         <p className="text-xs text-base-content/50">
-          Finished naira tournaments with prizes still to disburse.
-          Account details are read live, so refresh any time to pick up
-          a late fill-in or a change.
+          Finished naira tournaments with prizes still to disburse. Account
+          details are read live, so refresh any time to pick up a late fill-in
+          or a change.
         </p>
         <Button
           variant="glass"
@@ -435,9 +446,7 @@ export function AdminNairaTournaments() {
         </Button>
       </div>
 
-      {nairaLoading && (
-        <CenteredSpinner className="py-10" />
-      )}
+      {nairaLoading && <CenteredSpinner className="py-10" />}
 
       {nairaError && (
         <Card
@@ -460,7 +469,7 @@ export function AdminNairaTournaments() {
             <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
               <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                 <Trophy className="h-4 w-4 shrink-0 text-base-content/40" />
-                <span className="font-semibold break-words text-base-content">
+                <span className="font-semibold wrap-break-word text-base-content">
                   {t.name}
                 </span>
                 <span className="text-base-content/40">· {t.code}</span>
@@ -486,7 +495,7 @@ export function AdminNairaTournaments() {
                   </div>
                   {w.payoutAccount ? (
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-base-content/60">
-                      <span className="flex min-w-0 items-start gap-1 break-words">
+                      <span className="flex min-w-0 items-start gap-1 wrap-break-word">
                         <Landmark className="mt-0.5 h-3 w-3 shrink-0" />
                         <span className="min-w-0">
                           {w.payoutAccount.bankName} ·{" "}
@@ -495,7 +504,8 @@ export function AdminNairaTournaments() {
                         </span>
                       </span>
                       <span className="flex min-w-0 items-center gap-1 break-all">
-                        <Phone className="h-3 w-3 shrink-0" /> {w.payoutAccount.phone}
+                        <Phone className="h-3 w-3 shrink-0" />{" "}
+                        {w.payoutAccount.phone}
                       </span>
                     </div>
                   ) : (
@@ -554,9 +564,7 @@ export function AdminRevenue() {
 
   return (
     <div className="space-y-4">
-      {revenueLoading && (
-        <CenteredSpinner className="py-10" />
-      )}
+      {revenueLoading && <CenteredSpinner className="py-10" />}
 
       {revenueError && (
         <Card
@@ -578,9 +586,7 @@ export function AdminRevenue() {
             className="flex flex-wrap items-center justify-between gap-2"
           >
             <div className="min-w-0">
-              <p className="text-sm text-(--primary)">
-                Admin wallet balance
-              </p>
+              <p className="text-sm text-(--primary)">Admin wallet balance</p>
               <p className="text-xl font-bold break-all text-base-content sm:text-2xl">
                 <RCoinAmount
                   value={revenue.balanceTokens}
@@ -595,31 +601,29 @@ export function AdminRevenue() {
           </Card>
 
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-            {(Object.keys(SOURCE_LABEL) as RevenueSource[]).map(
-              (source) => {
-                const Icon = SOURCE_ICON[source];
-                const s = revenue.bySource?.[source] ?? { tokens: 0, count: 0 };
-                return (
-                  <Card
-                    key={source}
-                    variant="solid"
-                    className="flex items-center gap-3"
-                  >
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-(--primary)/15 text-(--primary)">
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-xs text-base-content/50">
-                        {SOURCE_LABEL[source]}
-                      </p>
-                      <p className="text-sm font-semibold text-base-content">
-                        <RCoinAmount value={s.tokens} size={14} />
-                      </p>
-                    </div>
-                  </Card>
-                );
-              },
-            )}
+            {(Object.keys(SOURCE_LABEL) as RevenueSource[]).map((source) => {
+              const Icon = SOURCE_ICON[source];
+              const s = revenue.bySource?.[source] ?? { tokens: 0, count: 0 };
+              return (
+                <Card
+                  key={source}
+                  variant="solid"
+                  className="flex items-center gap-3"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-(--primary)/15 text-(--primary)">
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs text-base-content/50">
+                      {SOURCE_LABEL[source]}
+                    </p>
+                    <p className="text-sm font-semibold text-base-content">
+                      <RCoinAmount value={s.tokens} size={14} />
+                    </p>
+                  </div>
+                </Card>
+              );
+            })}
           </div>
 
           {revenue.entries.length === 0 ? (

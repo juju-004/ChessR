@@ -746,6 +746,8 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           moveNumber: result.moveNumber,
           whiteRemainingMs: result.whiteRemainingMs,
           blackRemainingMs: result.blackRemainingMs,
+          // The mover's clock after this move, as stored on the move.
+          clockMs: result.clockMs,
           // The value the server's own clock math uses (see MoveResult),
           // NOT a fresh Date.now() taken after the Redis write.
           turnStartedAtMs: result.turnStartedAtMs,

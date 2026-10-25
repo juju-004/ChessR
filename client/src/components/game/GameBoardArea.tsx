@@ -125,7 +125,7 @@ export const GameBoardArea = memo(function GameBoardArea({
   const pocketRow = (color: "white" | "black") =>
     pockets ? (
       <div
-        className="mx-auto w-[95%] md:w-full"
+        className="mx-auto flex w-[95%] justify-center md:w-full"
         style={{
           maxWidth: squareSize > 0 ? squareSize : undefined,
         }}

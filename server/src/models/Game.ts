@@ -23,9 +23,18 @@ export interface IMove {
   /** Crazyhouse: role letter (p/n/b/r/q) of the piece dropped by this move.
    *  For a drop, `from` and `to` are both the target square. */
   drop?: string;
-  fenAfter: string;
+  /** Position after this move. Always present on live (Redis) moves; only
+   *  PERSISTED for Crazyhouse, whose pockets chess.js can't replay. Standard
+   *  and Chess960 games drop it when they end (clients replay the SAN) which
+   *  roughly halves a game's stored size. */
+  fenAfter?: string;
   moveNumber: number;
   timestampMs: number;
+  /** The mover's own remaining clock (ms) right after this move, increment
+   *  included, exactly as the server charged it (lag compensation, berserk,
+   *  odds clocks and the free first move all already applied). Absent for
+   *  untimed games and for games played before this field existed. */
+  clockMs?: number;
 }
 
 export interface ITimeControl {
@@ -113,9 +122,10 @@ const moveSchema = new Schema<IMove>(
     to: { type: String, required: true },
     promotion: { type: String },
     drop: { type: String, enum: ['p', 'n', 'b', 'r', 'q'] },
-    fenAfter: { type: String, required: true },
+    fenAfter: { type: String },
     moveNumber: { type: Number, required: true },
     timestampMs: { type: Number, required: true },
+    clockMs: { type: Number },
   },
   { _id: false },
 );

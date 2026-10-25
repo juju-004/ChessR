@@ -29,7 +29,8 @@ const stateKey = (gameId: string) => `game:${gameId}:state`;
 const movesKey = (gameId: string) => `game:${gameId}:moves`;
 
 /** One played move, same shape as the entries of Game.moves in Mongo. */
-export type LiveMove = IMove;
+/** A move as held in Redis while the game is live: always carries its FEN. */
+export type LiveMove = IMove & { fenAfter: string };
 
 export interface LiveTimeControl {
   baseMs: number | null; // null = unlimited
@@ -298,10 +299,17 @@ export async function deleteLiveMoves(gameId: string): Promise<void> {
 /** Mongo's list plus the live one. Normally Mongo has none of a live game's
  *  moves and this is just the live list; the filter only matters for a game
  *  that was already part-way through when per-move Mongo writes were removed. */
-export function mergeLiveMoves(mongoMoves: ReadonlyArray<LiveMove>, liveMoves: LiveMove[]): LiveMove[] {
+export function mergeLiveMoves(mongoMoves: ReadonlyArray<IMove>, liveMoves: LiveMove[]): IMove[] {
   if (liveMoves.length === 0) return [...mongoMoves];
   const first = liveMoves[0].moveNumber;
   return [...mongoMoves.filter((m) => m.moveNumber < first), ...liveMoves];
+}
+
+/** Drops the per-move FEN before a finished game is written to Mongo. Not
+ *  used for Crazyhouse, whose clients read the position straight off each
+ *  move. */
+export function stripMoveFens(moves: ReadonlyArray<IMove>): IMove[] {
+  return moves.map(({ fenAfter: _dropped, ...rest }) => rest);
 }
 
 export interface MoveResult {
@@ -318,6 +326,9 @@ export interface MoveResult {
   moveNumber: number;
   whiteRemainingMs: number | null;
   blackRemainingMs: number | null;
+  /** The mover's remaining clock after this move (same value stored on the
+   *  move as `clockMs`), null for an untimed game. */
+  clockMs: number | null;
   /** The exact turnStartedAtMs persisted in the live state for the NEW
    *  side to move. The socket layer must broadcast THIS value rather than
    *  calling Date.now() again after the Redis write, otherwise clients
@@ -432,6 +443,7 @@ async function finalizeMove(
     castlingRights: updatedRights,
     positionHistory: newPositionHistory,
   };
+  const clockMs = moverSide === 'white' ? whiteRemainingMs : blackRemainingMs;
   const liveMove: LiveMove = {
     san,
     from,
@@ -441,6 +453,7 @@ async function finalizeMove(
     fenAfter: newFen,
     moveNumber: newState.moveCount,
     timestampMs: moveTimestampMs,
+    ...(clockMs !== null ? { clockMs: Math.round(clockMs) } : {}),
   };
   await writeStateIfUnchanged(gameId, state, newState, liveMove);
   // Not awaited: the move must not wait on Mongo. A game-ending move is
@@ -462,6 +475,7 @@ async function finalizeMove(
     moveNumber: newState.moveCount,
     whiteRemainingMs,
     blackRemainingMs,
+    clockMs: clockMs !== null ? Math.round(clockMs) : null,
     turnStartedAtMs: newState.turnStartedAtMs,
   };
 }

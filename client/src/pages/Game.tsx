@@ -42,7 +42,11 @@ import {
   Coins,
 } from "lucide-react";
 import { MoveList, MoveStrip } from "../components/MoveLog.js";
-import { PlayerPanelWithClock, panelMaterial } from "../components/PlayerPanels.js";
+import {
+  PlayerClockPill,
+  PlayerPanelRow,
+  panelMaterial,
+} from "../components/PlayerPanels.js";
 import {
   GameOverModal,
   titleFor,
@@ -105,7 +109,6 @@ import {
   setSoundEnabled,
   installAudioUnlock,
 } from "../sounds.js";
-import { haptics, setVibrationEnabled } from "../haptics.js";
 import { createGameChatStore, useGameChat } from "../lib/gameChatStore.js";
 import type { ChatMessage } from "../lib/chatTypes.js";
 import { copyToClipboard } from "@/lib/utils.js";
@@ -138,9 +141,6 @@ export function Game() {
   useEffect(() => {
     setSoundEnabled(settings.soundEnabled);
   }, [settings.soundEnabled]);
-  useEffect(() => {
-    setVibrationEnabled(settings.vibration);
-  }, [settings.vibration]);
   // Resume the AudioContext on the first tap/click/key anywhere, so sounds
   // fired by timers or socket events (low time, opponent's move) aren't
   // silently dropped when the context is still suspended.
@@ -450,6 +450,23 @@ export function Game() {
   const plyClocks = useMemo(() => {
     if (!gameMeta || moves.length === 0) return null;
     if (!moves.every((m) => typeof m.timestampMs === "number")) return null;
+    // Preferred: the clock the server actually stored on each move. Exact,
+    // and right for odds games, berserk and lag compensation, none of which
+    // can be rebuilt from timestamps. Think time is still a timestamp delta
+    // (the first move of each side is free, so no think time there).
+    if (
+      gameMeta.timeControl.baseSeconds !== null &&
+      moves.every((m) => typeof m.clockMs === "number")
+    ) {
+      return moves.map((m, i) => ({
+        remainingMs: m.clockMs as number,
+        thinkTimeMs:
+          i >= 2
+            ? Math.max(0, (m.timestampMs as number) - (moves[i - 1].timestampMs as number))
+            : null,
+      }));
+    }
+    // Older games (no stored clocks): rebuild an approximation.
     return reconstructPlyClocks({
       baseSeconds: gameMeta.timeControl.baseSeconds,
       incrementSeconds: gameMeta.timeControl.incrementSeconds,
@@ -676,9 +693,6 @@ export function Game() {
       if (lowTimeWarnedRef.current) return;
       lowTimeWarnedRef.current = true;
       playLowTimeSound();
-      // The sound alone is enough in fast games; the vibration is only for
-      // 5+ minute time controls.
-      if ((gameMeta?.timeControl.baseSeconds ?? 0) >= 300) haptics.lowTime();
     }
 
     function arm(): (() => void) | undefined {
@@ -1057,26 +1071,11 @@ export function Game() {
           ...(payload.drop ? { drop: payload.drop } : {}),
           ...(payload.fen ? { fenAfter: payload.fen } : {}),
           timestampMs: payload.timestampMs,
+          ...(typeof payload.clockMs === "number" ? { clockMs: payload.clockMs } : {}),
         },
       ]);
 
       playSoundForMove(payload.san);
-
-      // Haptics for players only (a spectator isn't the one being checked
-      // or captured), mirroring playSoundForMove's rules: a mating "#" gets
-      // no check buzz since game over follows immediately. After a move,
-      // the side to move is the one in check, so it's "me" if the FEN's
-      // turn field matches my colour.
-      const viewerRole = roleRef.current;
-      if (viewerRole !== "spectator") {
-        const san: string = payload.san ?? "";
-        const sideToMove = String(payload.fen).split(" ")[1] === "w" ? "white" : "black";
-        if (san.includes("+") && !san.includes("#") && sideToMove === viewerRole) {
-          haptics.check();
-        } else if (san.includes("x")) {
-          haptics.capture();
-        }
-      }
     }
 
     function onOver(payload: {
@@ -2366,17 +2365,27 @@ export function Game() {
          *  markup near the end of the component. */}
         <div className="game-area-rightpanel justify-center min-h-0 flex-col gap-3">
           <div>
+            {/* Clocks are their own pills flanking the panels: the top
+             *  player's above the card, the bottom player's below it. */}
+            <PlayerClockPill
+              className="pb-2"
+              {...(boardFlipped ? myPanelData : opponentPanelData)}
+            />
             <Card variant="solid" className="shrink-0 space-y-2">
-              <PlayerPanelWithClock
-                position="top"
+              <PlayerPanelRow
+                hideClock
                 {...(boardFlipped ? myPanelData : opponentPanelData)}
               />
 
-              <PlayerPanelWithClock
-                position="bottom"
+              <PlayerPanelRow
+                hideClock
                 {...(boardFlipped ? opponentPanelData : myPanelData)}
               />
             </Card>
+            <PlayerClockPill
+              className="pt-2"
+              {...(boardFlipped ? opponentPanelData : myPanelData)}
+            />
 
             {!settings.zenMode && gameMeta?.cageMatchId && (
               <div className="mt-auto hidden md:block pt-2">

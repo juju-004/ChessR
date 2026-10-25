@@ -55,7 +55,8 @@ export function PocketPiece({
 }
 
 const POCKET_BG_FOR_WHITE = "#1c1c1f";
-const POCKET_BG_FOR_BLACK = "#f1f1f3";
+// Softened: a fully opaque near-white tray glared against dark UI.
+const POCKET_BG_FOR_BLACK = "rgba(241, 241, 243, 0.55)";
 
 interface PocketBarProps {
   color: "white" | "black";
@@ -70,10 +71,10 @@ interface PocketBarProps {
   onPiecePointerDown: (role: ZhRole, e: ReactPointerEvent<HTMLElement>) => void;
 }
 
-/** One side's pocket ("pieces in hand"). The row's height is fixed so an
- *  empty pocket and a full one occupy the same space and the board never
- *  jumps when a piece is captured or dropped; an empty pocket is just the
- *  blank box.
+/** One side's pocket ("pieces in hand"). The row's height is fixed so the
+ *  board never jumps when a piece is captured or dropped; its width has a
+ *  minimum and expands as more piece types are held (max 5 types, so it
+ *  never outgrows the board). An empty pocket is just the blank tray.
  *
  *  Visibility: the backdrop is the OPPOSITE color of the pieces it holds,
  *  white pieces sit on a near-black tray and black pieces on a near-white
@@ -97,7 +98,9 @@ export function PocketBar({
       className={cn(
         `piece-theme-${pieceTheme}`,
         `board-theme-${boardTheme}`,
-        "flex h-12 w-full items-center gap-1.5 rounded-xl px-2",
+        // Fixed height, but width hugs the pieces: a floor so an empty or
+        // near-empty pocket still reads as a tray, growing as pieces arrive.
+        "flex h-12 w-fit min-w-36 max-w-full items-center gap-1.5 rounded-xl px-2",
       )}
       style={{
         backgroundColor: onDark ? POCKET_BG_FOR_WHITE : POCKET_BG_FOR_BLACK,

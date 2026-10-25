@@ -59,7 +59,11 @@ export function Avatar({
   const hasIcon = !!findAvatarIcon(iconId);
 
   return (
-    <span className={cn("relative inline-flex shrink-0", className)}>
+    // rounded-full on the wrapper itself, not just the inner disc: callers pass
+    // rings / offsets / shadows via `className`, and those paint on THIS
+    // element's box. Without a radius here they rendered as a square frame
+    // around the round avatar (puzzle podium, invite landing).
+    <span className={cn("relative inline-flex shrink-0 rounded-full", className)}>
       <span
         style={customStyle}
         className={cn(

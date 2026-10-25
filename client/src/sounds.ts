@@ -237,31 +237,90 @@ export function playGameStartSound() {
   ]);
 }
 
-/** Berserk: a heavy "war drum" declaration instead of the old rising
- *  power-up chirp. Two low drum hits in quick succession (boom-BOOM, the
- *  second one bigger), each a pitch-dropping sine for the deep body plus a
- *  short noise knock, with a rasping low sawtooth growl underneath and a
- *  high-passed noise swell between the hits that reads as a blade being
- *  drawn. Deliberately dark and weighty so it can't be mistaken for the
- *  bright check/low-time alerts. Still the loudest sound in this file on
- *  purpose, it's a one-off declaration, not a per-move cue. */
+/** Hard-clipping curve for the berserk growl. */
+function makeGrowlCurve() {
+  const n = 1024;
+  const curve = new Float32Array(n);
+  const k = 60;
+  for (let i = 0; i < n; i++) {
+    const x = (i * 2) / n - 1;
+    curve[i] = ((1 + k) * x) / (1 + k * Math.abs(x));
+  }
+  return curve;
+}
+// Built once, reused (return type inferred so it matches the DOM typings
+// of whichever TypeScript version is installed).
+let growlCurve: ReturnType<typeof makeGrowlCurve> | null = null;
+function getGrowlCurve() {
+  return (growlCurve ??= makeGrowlCurve());
+}
+
+/** Berserk: an aggressive snarl in the spirit of lichess's berserk cue. A
+ *  steel "shing" (high-passed noise sweeping up) cuts in first, then a hard
+ *  slam lands while a heavily distorted, tremolo-chopped sawtooth growl
+ *  drops underneath it. Dark, gritty and loud on purpose, a one-off
+ *  declaration that can't be mistaken for the bright check/low-time
+ *  alerts. */
 export function playBerserkSound() {
-  // Drum bodies: sine sweeping down hard, the way a struck drum head settles.
+  if (!soundEnabled) return;
+  const audioCtx = ensureAudioContext();
+  const now = audioCtx.currentTime;
+
+  // Growl: two detuned saws -> hard clip -> low-pass, amplitude chopped by a
+  // fast LFO so it snarls instead of droning.
+  const growlStart = now + 0.1;
+  const growlLen = 0.6;
+  const shaper = audioCtx.createWaveShaper();
+  shaper.curve = getGrowlCurve();
+  shaper.oversample = "2x";
+  const lowpass = audioCtx.createBiquadFilter();
+  lowpass.type = "lowpass";
+  lowpass.frequency.setValueAtTime(1800, growlStart);
+  lowpass.frequency.exponentialRampToValueAtTime(400, growlStart + growlLen);
+  const growlGain = audioCtx.createGain();
+  growlGain.gain.setValueAtTime(0, growlStart);
+  growlGain.gain.linearRampToValueAtTime(0.5, growlStart + 0.02);
+  growlGain.gain.exponentialRampToValueAtTime(0.0001, growlStart + growlLen);
+  const chop = audioCtx.createGain();
+  chop.gain.value = 0.7;
+  const lfo = audioCtx.createOscillator();
+  lfo.type = "square";
+  lfo.frequency.value = 32;
+  const lfoDepth = audioCtx.createGain();
+  lfoDepth.gain.value = 0.3;
+  lfo.connect(lfoDepth);
+  lfoDepth.connect(chop.gain);
+  for (const [f0, f1] of [
+    [118, 62],
+    [124, 66],
+  ]) {
+    const osc = audioCtx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(f0, growlStart);
+    osc.frequency.exponentialRampToValueAtTime(f1, growlStart + growlLen);
+    osc.connect(shaper);
+    osc.start(growlStart);
+    osc.stop(growlStart + growlLen + 0.02);
+  }
+  shaper.connect(lowpass);
+  lowpass.connect(chop);
+  chop.connect(growlGain);
+  growlGain.connect(audioCtx.destination);
+  lfo.start(growlStart);
+  lfo.stop(growlStart + growlLen + 0.02);
+
+  // Slam: low pitch-dropping thump under the growl's attack.
   playTones([
-    { freq: 130, freqEnd: 48, startOffset: 0, duration: 0.22, type: "sine", gain: 0.38 },
-    { freq: 105, freqEnd: 34, startOffset: 0.15, duration: 0.42, type: "sine", gain: 0.5 },
-    // Growl: low saw, slowly falling, just enough grit to feel aggressive.
-    { freq: 85, freqEnd: 55, startOffset: 0.15, duration: 0.38, type: "sawtooth", gain: 0.05 },
+    { freq: 150, freqEnd: 40, startOffset: 0.1, duration: 0.3, type: "sine", gain: 0.55 },
+    // Rising stab: the "RAAH" in front of the growl.
+    { freq: 180, freqEnd: 360, startOffset: 0, duration: 0.12, type: "sawtooth", gain: 0.1 },
   ]);
   playImpact([
-    // Hit 1: knock + body
-    { startOffset: 0, duration: 0.025, gain: 0.3, freq: 1800, q: 3, attack: 0.001 },
-    { startOffset: 0, duration: 0.16, gain: 0.45, freq: 140, q: 1.5, attack: 0.002 },
-    // Blade-draw swell between the hits (noise rising into the second hit)
-    { startOffset: 0.05, duration: 0.14, gain: 0.1, freq: 5200, q: 0.7, filterType: "highpass", attack: 0.1 },
-    // Hit 2: bigger knock + longer body
-    { startOffset: 0.15, duration: 0.03, gain: 0.4, freq: 2200, q: 3, attack: 0.001 },
-    { startOffset: 0.15, duration: 0.3, gain: 0.6, freq: 110, q: 1.5, attack: 0.002 },
+    // Steel shing: bright noise sweeping up into the hit.
+    { startOffset: 0, duration: 0.14, gain: 0.22, freq: 6500, q: 0.8, filterType: "highpass", attack: 0.09 },
+    // Slam: sharp crack + heavy body.
+    { startOffset: 0.1, duration: 0.03, gain: 0.5, freq: 2400, q: 3, attack: 0.001 },
+    { startOffset: 0.1, duration: 0.28, gain: 0.7, freq: 120, q: 1.5, attack: 0.002 },
   ]);
 }
 

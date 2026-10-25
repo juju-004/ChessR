@@ -75,6 +75,10 @@ export interface MoveLogEntry {
    *  older live session before this field existed to persist, treat as
    *  optional everywhere it's consumed (see reconstructPlyClocks). */
   timestampMs?: number;
+  /** The mover's own remaining clock right after this move, exactly as the
+   *  server charged it. Preferred over reconstructPlyClocks, which can only
+   *  approximate. Absent for untimed and older games. */
+  clockMs?: number;
 }
 
 export type Role = "white" | "black" | "spectator";

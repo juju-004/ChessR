@@ -352,9 +352,13 @@ export function PuzzleRacePage() {
                 >
                   <span className="text-lg font-extrabold leading-none text-primary">
                     {myPlace}
-                    <sup className="text-[10px] font-bold">{ordinalSuffix(myPlace)}</sup>
+                    <sup className="text-[10px] font-bold">
+                      {ordinalSuffix(myPlace)}
+                    </sup>
                   </span>
-                  <span className="text-sm font-semibold">/{race.players.length}</span>
+                  <span className="text-sm font-semibold">
+                    /{race.players.length}
+                  </span>
                 </span>
               )}
               <span className="inline-flex items-center gap-1 font-mono text-base-content/70">
@@ -679,13 +683,7 @@ function Stage({
       body = <CenteredSpinner />;
     }
   } else if (phase === "finished") {
-    return (
-      <Podium
-        race={race}
-        ranked={ranked}
-        myId={me?.userId}
-      />
-    );
+    return <Podium race={race} ranked={ranked} myId={me?.userId} />;
   } else {
     body = (
       <>
@@ -790,7 +788,10 @@ function Podium({
                   username={p.username}
                   gradient={p.avatarGradient}
                   size={isWinner ? "lg" : "md"}
-                  className={cn("ring-2 ring-offset-2 ring-offset-base-100", step.ring)}
+                  className={cn(
+                    "ring-2 ring-offset-2 ring-offset-base-100",
+                    step.ring,
+                  )}
                 />
                 <p
                   className={cn(
@@ -800,7 +801,6 @@ function Podium({
                   title={p.username}
                 >
                   {p.username}
-                  {isMe && " (you)"}
                 </p>
                 <p className="text-[11px] tabular-nums text-base-content/50">
                   {p.solved}/{race.puzzleCount} solved
@@ -813,9 +813,7 @@ function Podium({
                   )}
                 >
                   <span className="text-lg leading-none">{step.medal}</span>
-                  <span
-                    className={cn("text-sm font-extrabold", step.label)}
-                  >
+                  <span className={cn("text-sm font-extrabold", step.label)}>
                     {step.place + 1}
                     {ordinalSuffix(step.place + 1)}
                   </span>
@@ -828,7 +826,10 @@ function Podium({
 
       {race.wagerTokens > 0 && race.winnerId && (
         <p className="flex items-center justify-center gap-1 text-xs text-base-content/55">
-          Winner took <span className="font-semibold text-amber-400">{race.payoutTokens}</span>
+          Winner took{" "}
+          <span className="font-semibold text-amber-400">
+            {race.payoutTokens}
+          </span>
           <RCoin size={12} />
         </p>
       )}

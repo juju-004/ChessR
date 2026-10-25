@@ -1,5 +1,5 @@
 import { generateGameCode } from "../utils/shortCode.js";
-import { Game, type IGame } from "../models/Game.js";
+import { Game, type IGame, type IMove } from "../models/Game.js";
 import { Follow } from "../models/Follow.js";
 import { ApiError } from "../utils/ApiError.js";
 import {
@@ -11,6 +11,7 @@ import {
   getLiveMoves,
   deleteLiveMoves,
   mergeLiveMoves,
+  stripMoveFens,
   type LiveTimeControl,
 } from "./gameState.service.js";
 import {
@@ -613,6 +614,14 @@ export async function finalizeGame(
   // The move list exists only in Redis until now. This one write is the
   // game's single move-list write to Mongo.
   const liveMoves = await getLiveMoves(gameId);
+  // Crazyhouse keeps each move's FEN (clients can't replay pockets); every
+  // other variant drops it, the client replays the SAN.
+  const keepFens =
+    liveMoves.length === 0
+      ? true
+      : (await Game.findById(gameId).select('variant').lean())?.variant === 'crazyhouse';
+  const forStorage = <T extends IMove>(moves: ReadonlyArray<T>): IMove[] =>
+    keepFens ? [...moves] : stripMoveFens(moves);
   if (liveMoves.length > 0 && liveMoves[0].moveNumber > 1) {
     // Redis holds only the tail of the list: a game that was under way when
     // per-move Mongo writes were removed, or one whose Redis list was lost
@@ -621,7 +630,7 @@ export async function finalizeGame(
     // by move number, which is also safe to retry.
     const existing = await Game.findById(gameId).select('moves').lean();
     const merged = mergeLiveMoves(existing?.moves ?? [], liveMoves);
-    await Game.updateOne({ _id: gameId }, { $set: { moves: merged } });
+    await Game.updateOne({ _id: gameId }, { $set: { moves: forStorage(merged) } });
   }
   const updated = await Game.findByIdAndUpdate(
     gameId,
@@ -639,7 +648,7 @@ export async function finalizeGame(
         // thread one through just to satisfy the signature.
         whiteRemainingMs: finalClock?.whiteRemainingMs ?? null,
         blackRemainingMs: finalClock?.blackRemainingMs ?? null,
-        ...(liveMoves.length > 0 && liveMoves[0].moveNumber === 1 ? { moves: liveMoves } : {}),
+        ...(liveMoves.length > 0 && liveMoves[0].moveNumber === 1 ? { moves: forStorage(liveMoves) } : {}),
       },
     },
     { select: 'cageMatchId white black wagerTokens variant timeControl moves.moveNumber' },

@@ -19,7 +19,6 @@ import {
   LocateFixed,
   Ban,
   Flame,
-  Flag,
   ArrowLeft,
 } from "lucide-react";
 import {
@@ -667,8 +666,7 @@ function TimerTile({ tournament }: { tournament: Tournament }) {
   if (tournament.status === "finished") {
     return (
       <StatTile label="Status">
-        <Flag className="h-4 w-4 shrink-0 text-base-content/40" />
-        <span className="truncate text-sm md:text-base">Tournament ended</span>
+        <span className="truncate text-sm md:text-base">Ended</span>
       </StatTile>
     );
   }
@@ -1759,29 +1757,6 @@ export function TournamentDetail() {
       )
     ) : null;
 
-  const statusPill =
-    tournament.status === "active" ? (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/15 shrink-0 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-red-400">
-        <span className="relative flex h-2 w-2">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-60" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
-        </span>
-        Live
-      </span>
-    ) : tournament.status === "pending" ? (
-      <span className="inline-flex items-center rounded-full bg-amber-400/15 shrink-0 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-amber-400">
-        Upcoming
-      </span>
-    ) : tournament.status === "finished" ? (
-      <span className="inline-flex items-center rounded-full bg-base-content/10 shrink-0 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-base-content/60">
-        Finished
-      </span>
-    ) : (
-      <span className="inline-flex items-center rounded-full bg-red-500/15 shrink-0 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-red-400">
-        Cancelled
-      </span>
-    );
-
   return (
     <Page className="py-3! md:py-6!">
       <div className="mx-auto space-y-4">
@@ -1813,7 +1788,6 @@ export function TournamentDetail() {
                   <h1 className="min-w-0 wrap-break-word text-base font-bold leading-tight tracking-tight md:text-xl">
                     {tournament.name}
                   </h1>
-                  {statusPill}
                 </div>
                 <div className="hidden items-center gap-2 md:flex">
                   <Button variant="glass" size="sm" onClick={handleShare}>
@@ -1856,9 +1830,7 @@ export function TournamentDetail() {
                     <Badge variant="neutral">{tournament.robinRounds}x</Badge>
                   )}
                 {tournament.format === "arena" && tournament.arenaMinutes && (
-                  <Badge variant="neutral">
-                    {tournament.arenaMinutes} min arena
-                  </Badge>
+                  <Badge variant="neutral">{tournament.arenaMinutes} min</Badge>
                 )}
                 {tournament.regFeeTokens > 0 && prizeTotal && (
                   <Badge variant="neutral">
@@ -1868,7 +1840,6 @@ export function TournamentDetail() {
                 )}
                 {tournament.berserkAllowed && tournament.format === "arena" && (
                   <Badge variant="neutral">
-                    Berserk allowed{" "}
                     <BerserkIcon className="inline h-3 w-3 align-[-1px]" />
                   </Badge>
                 )}
@@ -2083,7 +2054,8 @@ export function TournamentDetail() {
           <div
             className={cn(
               "space-y-4",
-              showLiveGames && "xl:grid xl:grid-cols-[minmax(0,1fr)_19rem] xl:items-start xl:gap-4 xl:space-y-0",
+              showLiveGames &&
+                "xl:grid xl:grid-cols-[minmax(0,1fr)_19rem] xl:items-start xl:gap-4 xl:space-y-0",
             )}
           >
             {/* Card on every size; on phones it just has tighter padding. */}
@@ -2165,7 +2137,8 @@ export function TournamentDetail() {
                                 ? "border-l-amber-400"
                                 : tournament.status !== "pending" && rank === 2
                                   ? "border-l-slate-400"
-                                  : tournament.status !== "pending" && rank === 3
+                                  : tournament.status !== "pending" &&
+                                      rank === 3
                                     ? "border-l-orange-500"
                                     : "border-l-transparent",
                             )}
