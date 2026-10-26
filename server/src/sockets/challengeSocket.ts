@@ -32,7 +32,7 @@ const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
 // in sync with MIN_STAKE_TOKENS in client/src/lib/limits.ts. Wagers are
 // opt-in now, not required — 0 means a free game, see the `wagerTokens > 0`
 // branching this flows into in game.service.ts's createDirectGame.
-const MIN_STAKE_TOKENS = 20;
+const MIN_STAKE_TOKENS = 10;
 
 const clockSchema = z.object({
   baseMinutes: z.number().min(0.5).max(180),

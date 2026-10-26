@@ -19,7 +19,7 @@ import {
 
 // Same limits as game.controller.ts (keep in sync with client/src/lib/limits.ts).
 const MAX_WAGER_TOKENS = 9_999_999;
-const MIN_STAKE_TOKENS = 20;
+const MIN_STAKE_TOKENS = 10;
 
 const createSchema = z.object({
   difficulty: z.enum(['easy', 'medium', 'hard', 'mixed']).default('mixed'),

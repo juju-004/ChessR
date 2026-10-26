@@ -22,7 +22,7 @@ const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
 // in sync with MIN_STAKE_TOKENS in client/src/lib/limits.ts. 0 is also
 // allowed (a free, unwagered game) — wagers are opt-in, not required, see
 // createOpenGame's existing `wagerTokens > 0` branching in game.service.ts.
-const MIN_STAKE_TOKENS = 20;
+const MIN_STAKE_TOKENS = 10;
 
 const createSchema = z.object({
   isPrivate: z.boolean().optional().default(false),

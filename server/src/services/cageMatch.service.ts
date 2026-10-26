@@ -21,7 +21,7 @@ const MAX_LEGS = 30;
 const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
 // Floor on any single wager/stake/fee amount, kept in sync with
 // MIN_STAKE_TOKENS in client/src/lib/limits.ts.
-const MIN_STAKE_TOKENS = 20;
+const MIN_STAKE_TOKENS = 10;
 
 async function uniqueMatchCode(): Promise<string> {
   for (let attempt = 0; attempt < 5; attempt++) {

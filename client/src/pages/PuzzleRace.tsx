@@ -414,50 +414,6 @@ export function PuzzleRacePage() {
 
         {/* ---- side column ------------------------------------------------- */}
         <div className="space-y-4">
-          <Card variant="solid">
-            <CardHeader>
-              <CardTitle>Race</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-3 text-sm">
-              <Stat icon={<Puzzle className="h-4 w-4" />} label="Puzzles">
-                {race.puzzleCount} · {DIFFICULTY_LABEL[race.difficulty]}
-              </Stat>
-              <Stat icon={<Timer className="h-4 w-4" />} label="Time limit">
-                {Math.round(race.timeLimitSeconds / 60)} min
-              </Stat>
-              <Stat icon={<Users className="h-4 w-4" />} label="Players">
-                {race.players.length}/{race.maxPlayers}
-              </Stat>
-              <Stat
-                icon={<RCoin size={14} />}
-                label={race.wagerTokens > 0 ? "Pot" : "Wager"}
-              >
-                {race.wagerTokens > 0 ? (
-                  <span className="inline-flex items-center gap-1">
-                    {race.wagerTokens * race.players.length} <RCoin size={12} />
-                    <span className="text-xs text-base-content/50">
-                      ({race.wagerTokens} each)
-                    </span>
-                  </span>
-                ) : (
-                  "Free"
-                )}
-              </Stat>
-              {race.wagerTokens > 0 &&
-                takes !== null &&
-                phase !== "finished" &&
-                phase !== "cancelled" && (
-                  <p className="col-span-2 text-xs text-base-content/50">
-                    Winner takes {takes} R
-                    {rakePercent
-                      ? ` (after the ${rakePercent}% platform fee)`
-                      : ""}
-                    .
-                  </p>
-                )}
-            </CardContent>
-          </Card>
-
           {phase === "waiting" && (
             <WaitingActions
               race={race}
@@ -558,6 +514,50 @@ export function PuzzleRacePage() {
                     </div>
                   ))}
               </div>
+            </CardContent>
+          </Card>
+
+          <Card variant="solid">
+            <CardHeader>
+              <CardTitle>Race</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-3 text-sm">
+              <Stat icon={<Puzzle className="h-4 w-4" />} label="Puzzles">
+                {race.puzzleCount} · {DIFFICULTY_LABEL[race.difficulty]}
+              </Stat>
+              <Stat icon={<Timer className="h-4 w-4" />} label="Time limit">
+                {Math.round(race.timeLimitSeconds / 60)} min
+              </Stat>
+              <Stat icon={<Users className="h-4 w-4" />} label="Players">
+                {race.players.length}/{race.maxPlayers}
+              </Stat>
+              <Stat
+                icon={<RCoin size={14} />}
+                label={race.wagerTokens > 0 ? "Pot" : "Wager"}
+              >
+                {race.wagerTokens > 0 ? (
+                  <span className="inline-flex items-center gap-1">
+                    {race.wagerTokens * race.players.length} <RCoin size={12} />
+                    <span className="text-xs text-base-content/50">
+                      ({race.wagerTokens} each)
+                    </span>
+                  </span>
+                ) : (
+                  "Free"
+                )}
+              </Stat>
+              {race.wagerTokens > 0 &&
+                takes !== null &&
+                phase !== "finished" &&
+                phase !== "cancelled" && (
+                  <p className="col-span-2 text-xs text-base-content/50">
+                    Winner takes {takes} R
+                    {rakePercent
+                      ? ` (after the ${rakePercent}% platform fee)`
+                      : ""}
+                    .
+                  </p>
+                )}
             </CardContent>
           </Card>
         </div>
@@ -860,61 +860,76 @@ function WaitingActions({
   onStart: () => void;
   onLeave: () => void;
 }) {
+  const joinLabel = full
+    ? "Full"
+    : race.wagerTokens > 0
+      ? `Join · ${race.wagerTokens} R`
+      : "Join";
   return (
-    <Card variant="solid">
-      <CardContent className="space-y-2 py-4">
-        {!isPlayer && (
-          <Button
-            className="w-full"
-            onClick={onJoin}
-            loading={busy === "join"}
-            disabled={full}
-          >
-            {full
-              ? "Race is full"
-              : race.wagerTokens > 0
-                ? `Join for ${race.wagerTokens} R`
-                : "Join race"}
-          </Button>
-        )}
-        {isCreator && (
-          <Button
-            className="w-full"
-            onClick={onStart}
-            loading={busy === "start"}
-            disabled={race.players.length < 2}
-          >
-            {race.players.length < 2
-              ? "Waiting for a second player"
-              : "Start race now"}
-          </Button>
-        )}
-        <Button variant="glass" className="w-full" onClick={onCopy}>
+    <div className="space-y-2">
+      {/* Share : Join (or Start, for the host) : Cancel, in one line. */}
+      <div className="flex items-center gap-2">
+        <Button
+          variant="glass"
+          className="min-w-0 flex-1"
+          onClick={onCopy}
+          title="Copy invite link"
+        >
           {copied ? (
             <Check className="h-4 w-4" />
           ) : (
             <Copy className="h-4 w-4" />
           )}
-          {copied ? "Link copied" : "Copy invite link"}
+          {copied ? "Copied" : "Share"}
         </Button>
+        {!isPlayer && (
+          <Button
+            className="min-w-0 flex-1"
+            onClick={onJoin}
+            loading={busy === "join"}
+            disabled={full}
+          >
+            {joinLabel}
+          </Button>
+        )}
+        {isCreator && (
+          <Button
+            className="min-w-0 flex-1"
+            onClick={onStart}
+            loading={busy === "start"}
+            disabled={race.players.length < 2}
+            title={
+              race.players.length < 2
+                ? "Waiting for a second player"
+                : "Start the race now"
+            }
+          >
+            Start
+          </Button>
+        )}
         {isPlayer && (
           <Button
             variant="ghost"
-            className="w-full"
+            className="min-w-0 flex-1"
             onClick={onLeave}
             loading={busy === "leave"}
           >
-            {isCreator ? "Cancel race" : "Leave race"}
+            {isCreator ? "Cancel" : "Leave"}
           </Button>
         )}
-        {isPlayer && race.wagerTokens > 0 && (
-          <p className="text-center text-xs text-base-content/50">
-            Your {race.wagerTokens} R is held and refunded if you leave or the
-            race is cancelled.
-          </p>
-        )}
-      </CardContent>
-    </Card>
+      </div>
+      {isCreator && race.players.length < 2 && (
+        <p className="text-center text-xs text-base-content/50">
+          Waiting for a second player. Share the link to invite someone.
+        </p>
+      )}
+      {isPlayer && race.wagerTokens > 0 && (
+        <p className="text-center text-xs text-base-content/50">
+          Your {race.wagerTokens} R is held and refunded if you leave or the
+          race is cancelled.
+        </p>
+      )}
+    </div>
   );
 }
 

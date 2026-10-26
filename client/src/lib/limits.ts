@@ -17,7 +17,7 @@ export const MAX_WAGER_TOKENS = 9_999_999;
  *  registration fees). Keep in sync with the server's MIN_STAKE_TOKENS
  *  (game.controller.ts, cageMatch.service.ts, tournament.service.ts, and
  *  the socket handler files). */
-export const MIN_STAKE_TOKENS = 20;
+export const MIN_STAKE_TOKENS = 10;
 
 /** Matches the server's username schema (min 3, max 24, alphanumeric +
  *  underscore only), see auth.controller.ts's signupSchema and

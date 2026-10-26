@@ -29,7 +29,7 @@ export const WEEK_BONUS = 0;
  *  resigning on move one. */
 export const MIN_GAME_PLIES = 10;
 /** Stake floor, mirrors game.controller.ts / the client's lib/limits.ts. */
-const MIN_STAKE = 20;
+const MIN_STAKE = 10;
 
 // --- Events ------------------------------------------------------------------
 export type DailyEventType =
@@ -309,17 +309,26 @@ export const SCHEDULE: string[][][] = [
   [['play_1', 'play_blitz_1'], ['join_race', 'friend_request'], ['challenge_send', 'join_tournament']],
   // Day 2
   [['win_1', 'play_960_1'], ['solve_3', 'join_tournament'], ['play_3', 'challenge_send']],
-  // Day 3: first wager
-  [['play_wagered_1', 'win_2'], ['solve_5', 'complete_race'], ['play_3', 'win_blitz_1']],
+  // Day 3
+  [['win_2', 'win_by_mate'], ['solve_5', 'complete_race'], ['play_3', 'win_blitz_1']],
   // Day 4
-  [['play_wagered_2', 'win_2'], ['join_wagered_race', 'join_tournament', 'solve_5'], ['win_by_mate', 'start_cage']],
+  [['win_2', 'win_3'], ['solve_5', 'join_tournament', 'win_race'], ['win_by_mate', 'start_cage']],
   // Day 5
-  [['play_wagered_3', 'win_wagered_1', 'win_3'], ['solve_8', 'win_race'], ['win_streak_2', 'win_by_mate']],
-  // Day 6
+  [['win_3', 'win_streak_2'], ['solve_8', 'win_race'], ['win_streak_2', 'win_by_mate']],
+  // Day 6: wagered challenges start here
   [['play_wagered_3', 'high_stake_1', 'win_3'], ['win_race', 'complete_wagered_race', 'solve_10'], ['win_3', 'win_streak_2']],
   // Day 7: the hardest
   [['win_wagered_2', 'win_4'], ['win_wagered_race', 'solve_15', 'win_race'], ['win_streak_3', 'win_4']],
 ];
+
+/** Wagered challenges (anything that needs a stake) are only offered from this
+ *  day of the week onward. Days 1 to 5 are stake-free. */
+export const FIRST_WAGER_DAY = 6;
+
+/** True for any challenge that needs the player to put coins on the line. */
+export function isWageredChallenge(d: ChallengeDef): boolean {
+  return d.id.includes('wagered') || d.id === 'high_stake_1';
+}
 
 /** Fails loudly at startup if the schedule references a missing challenge or
  *  a slot could leave a player with nothing they can do. */
@@ -328,7 +337,12 @@ export function assertCatalog(): void {
   SCHEDULE.forEach((day, d) => {
     if (day.length !== 3) throw new Error(`daily challenges: day ${d + 1} needs exactly 3 slots`);
     day.forEach((pool, s) => {
-      for (const id of pool) if (!CATALOG[id]) throw new Error(`daily challenges: unknown challenge "${id}"`);
+      for (const id of pool) {
+        if (!CATALOG[id]) throw new Error(`daily challenges: unknown challenge "${id}"`);
+        if (d + 1 < FIRST_WAGER_DAY && isWageredChallenge(CATALOG[id])) {
+          throw new Error(`daily challenges: "${id}" is wagered, so it can't be on day ${d + 1} (wagers start on day ${FIRST_WAGER_DAY})`);
+        }
+      }
       if (!pool.some((id) => !CATALOG[id].needs)) {
         throw new Error(`daily challenges: day ${d + 1} slot ${s + 1} has no challenge anyone can do`);
       }
@@ -360,16 +374,29 @@ function hash(s: string): number {
   return h >>> 0;
 }
 
+/** Picks one slot of a day, never repeating something already `chosen` today. */
+export function pickForSlot(
+  userId: string,
+  cycle: number,
+  day: number,
+  slot: number,
+  ctx: PickContext,
+  chosen: string[],
+): string {
+  const pool = SCHEDULE[day - 1][slot];
+  let options = pool.filter((id) => isAvailable(CATALOG[id], ctx) && !chosen.includes(id));
+  if (options.length === 0) {
+    // Always exists thanks to assertCatalog (unless an earlier slot took it).
+    options = pool.filter((id) => !CATALOG[id].needs && !chosen.includes(id));
+  }
+  if (options.length === 0) options = pool.filter((id) => !CATALOG[id].needs);
+  return options[hash(`${userId}:${cycle}:${day}:${slot}`) % options.length];
+}
+
 export function pickChallenges(userId: string, cycle: number, day: number, ctx: PickContext): string[] {
   const chosen: string[] = [];
-  SCHEDULE[day - 1].forEach((pool, slot) => {
-    let options = pool.filter((id) => isAvailable(CATALOG[id], ctx) && !chosen.includes(id));
-    if (options.length === 0) {
-      // Always exists thanks to assertCatalog (unless an earlier slot took it).
-      options = pool.filter((id) => !CATALOG[id].needs && !chosen.includes(id));
-    }
-    if (options.length === 0) options = pool.filter((id) => !CATALOG[id].needs);
-    chosen.push(options[hash(`${userId}:${cycle}:${day}:${slot}`) % options.length]);
+  SCHEDULE[day - 1].forEach((_pool, slot) => {
+    chosen.push(pickForSlot(userId, cycle, day, slot, ctx, chosen));
   });
   return chosen;
 }

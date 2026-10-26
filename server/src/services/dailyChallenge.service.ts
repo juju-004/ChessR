@@ -139,6 +139,48 @@ async function payReward(doc: IDailyChallengeProgress): Promise<void> {
   }
 }
 
+// --- Marking challenges done ---------------------------------------------------------------
+/** Marks anything that has reached its target as done (once, atomically), and
+ *  when all three are done, flips the day to completed and pays the reward
+ *  (exactly one caller wins that). Shared by live play and admin scripts. */
+async function settleCompletions(doc: IDailyChallengeProgress): Promise<void> {
+  // Mark anything that just reached its target as done (once, atomically).
+  let anyDone = false;
+  for (const [i, c] of doc.challenges.entries()) {
+    const d = CATALOG[c.id];
+    if (!d || c.completedAt || c.progress < d.target) continue;
+    const res = await DailyChallengeProgress.updateOne(
+      { _id: doc._id, dateKey: doc.dateKey, [`challenges.${i}.completedAt`]: null },
+      { $set: { [`challenges.${i}.completedAt`]: new Date() } },
+    );
+    if (res.modifiedCount) anyDone = true;
+  }
+
+  if (anyDone) {
+    // All three done? Exactly one caller flips dayCompleted and pays.
+    const finished = await DailyChallengeProgress.findOneAndUpdate(
+      {
+        _id: doc._id,
+        dateKey: doc.dateKey,
+        dayCompleted: false,
+        challenges: { $not: { $elemMatch: { completedAt: null } } },
+      },
+      {
+        $set: { dayCompleted: true },
+        $addToSet: { completedDays: doc.day },
+        $inc: { streak: 1, daysCompleted: 1, ...(doc.day === 7 ? { weeksCompleted: 1 } : {}) },
+      },
+      { new: true },
+    );
+    if (finished) {
+      if (finished.streak > finished.bestStreak) {
+        await DailyChallengeProgress.updateOne({ _id: finished._id }, { $set: { bestStreak: finished.streak } });
+      }
+      await payReward(finished);
+    }
+  }
+}
+
 // --- Recording what players do ---------------------------------------------------------
 function notifyClient(userId: string): void {
   try {
@@ -196,41 +238,7 @@ export async function recordDailyEvent(userId: string, event: DailyEvent): Promi
   if (!updated) return; // duplicate event, or the day rolled over mid-flight
   doc = updated;
 
-  // Mark anything that just reached its target as done (once, atomically).
-  let anyDone = false;
-  for (const [i, c] of doc.challenges.entries()) {
-    const d = CATALOG[c.id];
-    if (!d || c.completedAt || c.progress < d.target) continue;
-    const res = await DailyChallengeProgress.updateOne(
-      { _id: doc._id, dateKey: doc.dateKey, [`challenges.${i}.completedAt`]: null },
-      { $set: { [`challenges.${i}.completedAt`]: new Date() } },
-    );
-    if (res.modifiedCount) anyDone = true;
-  }
-
-  if (anyDone) {
-    // All three done? Exactly one caller flips dayCompleted and pays.
-    const finished = await DailyChallengeProgress.findOneAndUpdate(
-      {
-        _id: doc._id,
-        dateKey: doc.dateKey,
-        dayCompleted: false,
-        challenges: { $not: { $elemMatch: { completedAt: null } } },
-      },
-      {
-        $set: { dayCompleted: true },
-        $addToSet: { completedDays: doc.day },
-        $inc: { streak: 1, daysCompleted: 1, ...(doc.day === 7 ? { weeksCompleted: 1 } : {}) },
-      },
-      { new: true },
-    );
-    if (finished) {
-      if (finished.streak > finished.bestStreak) {
-        await DailyChallengeProgress.updateOne({ _id: finished._id }, { $set: { bestStreak: finished.streak } });
-      }
-      await payReward(finished);
-    }
-  }
+  await settleCompletions(doc);
 
   notifyClient(userId);
 }
@@ -240,6 +248,60 @@ export async function recordDailyEvent(userId: string, event: DailyEvent): Promi
 export function trackDaily(userId: string | null | undefined, event: DailyEvent): void {
   if (!userId) return;
   recordDailyEvent(userId, event).catch((err) => console.error('daily challenge tracking failed:', err));
+}
+
+// --- Admin / one-off script helpers -----------------------------------------------------------
+/** Today's calendar day key, in the challenges' time zone. */
+export const todayKey = () => dateKeyOf(Date.now());
+
+/** Rolls the player's record forward to today (same rules as opening the
+ *  page) and returns it. For admin scripts. */
+export const rollToToday = ensureCurrent;
+
+/** Context for picking a challenge for this player right now. */
+export async function currentPickContext(userId: string) {
+  const [user, openTournament] = await Promise.all([
+    User.findById(userId).select('tokenBalance').lean(),
+    Tournament.exists({ status: 'pending', passwordHash: null, regFeeTokens: { $lte: 0 } }),
+  ]);
+  return { balance: user?.tokenBalance ?? 0, openTournament: !!openTournament };
+}
+
+/** Completes ONE of today's unfinished challenges for the player: the one with
+ *  the smallest target (ties go to the earlier slot). If that was their last
+ *  one, the day is completed and its reward paid, exactly as if they had
+ *  played it. Idempotent per `key`: calling again with the same key does
+ *  nothing, so a script can be re-run safely. */
+export async function completeOneChallenge(
+  userId: string,
+  key: string,
+): Promise<{ status: 'completed' | 'already' | 'nothing_left'; challengeId?: string; dayCompleted?: boolean }> {
+  const doc = await ensureCurrent(userId);
+  if (doc.seenKeys.includes(key)) return { status: 'already' };
+
+  const open = doc.challenges
+    .map((c, i) => ({ c, i, d: CATALOG[c.id] }))
+    .filter(({ c, d }) => d && !c.completedAt)
+    .sort((x, y) => x.d.target - y.d.target || x.i - y.i);
+  if (doc.dayCompleted || open.length === 0) return { status: 'nothing_left' };
+
+  const { c, i, d } = open[0];
+  const updated = await DailyChallengeProgress.findOneAndUpdate(
+    { _id: doc._id, dateKey: doc.dateKey, seenKeys: { $ne: key }, [`challenges.${i}.completedAt`]: null },
+    {
+      // Only lift the progress to the target; settleCompletions() below then
+      // stamps completedAt and, if it was the last one, finishes + pays the day.
+      $max: { [`challenges.${i}.progress`]: d.target },
+      $push: { seenKeys: key },
+    },
+    { new: true },
+  );
+  if (!updated) return { status: 'already' };
+
+  await settleCompletions(updated);
+  notifyClient(userId);
+  const after = await DailyChallengeProgress.findById(doc._id).select('dayCompleted').lean();
+  return { status: 'completed', challengeId: c.id, dayCompleted: !!after?.dayCompleted };
 }
 
 // --- What the page shows ---------------------------------------------------------------------

@@ -54,7 +54,7 @@ const generateCode = customAlphabet("ABCDEFGHJKMNPQRSTUVWXYZ23456789", 6);
 const MAX_WAGER_TOKENS = 9_999_999; // 7-digit cap on any single wager/fee input
 // Floor on any single wager/stake/fee amount, kept in sync with
 // MIN_STAKE_TOKENS in client/src/lib/limits.ts.
-const MIN_STAKE_TOKENS = 20;
+const MIN_STAKE_TOKENS = 10;
 const PASSWORD_BCRYPT_ROUNDS = 10;
 const MIN_START_DELAY_MS = 10_000; // scheduled start must be at least 10s out
 const MAX_START_DELAY_MS = 30 * 24 * 60 * 60 * 1000; // and at most 30 days
