@@ -1,15 +1,14 @@
-import { Chess } from "chess.js";
-import { parseZhFen } from "./crazyhouse.js";
+import { Chess } from 'chess.js';
+import { parseZhFen } from './crazyhouse.js';
 
 /**
- *
  * The FEN chess.js and chessground can understand. A Crazyhouse position is
  * stored as an extended FEN (`...[Qp]` pockets, `~` on promoted pieces, see
  * crazyhouse.ts); everything else passes through untouched, so this is safe
  * to call on any FEN.
  */
 export function chessFen(fen: string): string {
-  return fen.includes("[") || fen.includes("~") ? parseZhFen(fen).clean : fen;
+  return fen.includes('[') || fen.includes('~') ? parseZhFen(fen).clean : fen;
 }
 
 export function computeDests(chess: Chess): Map<string, string[]> {
@@ -23,17 +22,13 @@ export function computeDests(chess: Chess): Map<string, string[]> {
   return dests;
 }
 
-export function needsPromotion(
-  chess: Chess,
-  from: string,
-  to: string,
-): boolean {
+export function needsPromotion(chess: Chess, from: string, to: string): boolean {
   const moves = chess.moves({ square: from as any, verbose: true });
   return moves.some((m) => m.to === to && m.promotion);
 }
 
-export function turnColor(chess: Chess): "white" | "black" {
-  return chess.turn() === "w" ? "white" : "black";
+export function turnColor(chess: Chess): 'white' | 'black' {
+  return chess.turn() === 'w' ? 'white' : 'black';
 }
 
 /** Fixed cutoff for switching the clock display into deciseconds, this one
@@ -55,8 +50,8 @@ export function formatClock(ms: number): string {
   const totalDeciseconds = Math.floor(clamped / 100);
   const minutes = Math.floor(totalDeciseconds / 600);
   const seconds = Math.floor(totalDeciseconds / 10) % 60;
-  const mm = minutes.toString().padStart(2, "0");
-  const ss = seconds.toString().padStart(2, "0");
+  const mm = minutes.toString().padStart(2, '0');
+  const ss = seconds.toString().padStart(2, '0');
   if (clamped < DECISECONDS_DISPLAY_MS) {
     const deciseconds = totalDeciseconds % 10;
     return `${mm}:${ss}:${deciseconds}`;
@@ -112,7 +107,7 @@ export function computeLowTimeThresholdMs(baseSeconds: number | null): number {
 
 /**
  * How long a player gets to make their first move before it counts against
- * them. Deliberately a flat window rather than scaled to time control,
+ * them. Deliberately a flat window rather than scaled to time control, 
  * simpler to reason about and communicate than the old per-time-control
  * scaling, and 25/30s is generous even for bullet while still catching a
  * genuinely absent player quickly. Plain games get the shorter window since
@@ -130,7 +125,7 @@ export function isInCheck(chess: Chess): boolean {
 }
 
 // ================= MATERIAL DIFF =================
-type MaterialPieceType = "p" | "n" | "b" | "r" | "q";
+type MaterialPieceType = 'p' | 'n' | 'b' | 'r' | 'q';
 
 export interface CapturedPieceCount {
   type: MaterialPieceType;
@@ -175,7 +170,7 @@ const MATERIAL_PIECE_VALUE: Record<MaterialPieceType, number> = {
 
 /** Display order, most valuable first, matches how lichess/chess.com lay
  *  out the captured-pieces tray. */
-const MATERIAL_DISPLAY_ORDER: MaterialPieceType[] = ["q", "r", "b", "n", "p"];
+const MATERIAL_DISPLAY_ORDER: MaterialPieceType[] = ['q', 'r', 'b', 'n', 'p'];
 
 /**
  * Derives per-side captured pieces + point advantage purely from the current
@@ -193,26 +188,14 @@ const MATERIAL_DISPLAY_ORDER: MaterialPieceType[] = ["q", "r", "b", "n", "p"];
  * directly from what's actually on the board, not by tallying captures.
  */
 export function computeMaterialDiff(fen: string): MaterialDiff {
-  const boardPart = fen.split(" ")[0];
-  const whiteCounts: Record<MaterialPieceType, number> = {
-    p: 0,
-    n: 0,
-    b: 0,
-    r: 0,
-    q: 0,
-  };
-  const blackCounts: Record<MaterialPieceType, number> = {
-    p: 0,
-    n: 0,
-    b: 0,
-    r: 0,
-    q: 0,
-  };
+  const boardPart = fen.split(' ')[0];
+  const whiteCounts: Record<MaterialPieceType, number> = { p: 0, n: 0, b: 0, r: 0, q: 0 };
+  const blackCounts: Record<MaterialPieceType, number> = { p: 0, n: 0, b: 0, r: 0, q: 0 };
 
   for (const ch of boardPart) {
-    if (ch === "/" || (ch >= "1" && ch <= "8")) continue;
-    const lower = ch.toLowerCase() as MaterialPieceType | "k";
-    if (lower === "k" || !(lower in whiteCounts)) continue;
+    if (ch === '/' || (ch >= '1' && ch <= '8')) continue;
+    const lower = ch.toLowerCase() as MaterialPieceType | 'k';
+    if (lower === 'k' || !(lower in whiteCounts)) continue;
     if (ch === lower) blackCounts[lower]++;
     else whiteCounts[lower]++;
   }
@@ -230,10 +213,8 @@ export function computeMaterialDiff(fen: string): MaterialDiff {
 
     const missingFromBlack = MATERIAL_START_COUNTS[type] - blackCounts[type];
     const missingFromWhite = MATERIAL_START_COUNTS[type] - whiteCounts[type];
-    if (missingFromBlack > 0)
-      capturedByWhite.push({ type, count: missingFromBlack });
-    if (missingFromWhite > 0)
-      capturedByBlack.push({ type, count: missingFromWhite });
+    if (missingFromBlack > 0) capturedByWhite.push({ type, count: missingFromBlack });
+    if (missingFromWhite > 0) capturedByBlack.push({ type, count: missingFromWhite });
 
     const net = missingFromBlack - missingFromWhite;
     if (net > 0) netCapturedByWhite.push({ type, count: net });
@@ -295,9 +276,7 @@ export interface PlyClock {
  * the moment. Cosmetic only; doesn't change which move actually cost the
  * most time.
  */
-export function reconstructPlyClocks(
-  input: ClockReconstructionInput,
-): PlyClock[] {
+export function reconstructPlyClocks(input: ClockReconstructionInput): PlyClock[] {
   const { baseSeconds, incrementSeconds, moveTimestampsMs, berserk } = input;
   const baseMs = baseSeconds === null ? null : baseSeconds * 1000;
   const incrementMs = incrementSeconds * 1000;
@@ -313,15 +292,11 @@ export function reconstructPlyClocks(
     if (clockIsLive) {
       const prevTimestampMs = moveTimestampsMs[i - 1];
       thinkTimeMs = Math.max(0, timestampMs - prevTimestampMs);
-      const increment = (isWhite ? berserk?.white : berserk?.black)
-        ? 0
-        : incrementMs;
+      const increment = (isWhite ? berserk?.white : berserk?.black) ? 0 : incrementMs;
       if (isWhite) {
-        whiteRemainingMs =
-          Math.max(0, (whiteRemainingMs ?? 0) - thinkTimeMs) + increment;
+        whiteRemainingMs = Math.max(0, (whiteRemainingMs ?? 0) - thinkTimeMs) + increment;
       } else {
-        blackRemainingMs =
-          Math.max(0, (blackRemainingMs ?? 0) - thinkTimeMs) + increment;
+        blackRemainingMs = Math.max(0, (blackRemainingMs ?? 0) - thinkTimeMs) + increment;
       }
     }
 
@@ -333,7 +308,7 @@ export function reconstructPlyClocks(
 }
 // =============== END PER-MOVE CLOCK RECONSTRUCTION ================
 
-const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
+const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 
 interface Chess960StartingFiles {
   kingFile: number;
@@ -342,20 +317,16 @@ interface Chess960StartingFiles {
 }
 
 function getChess960StartingFiles(initialFen: string): Chess960StartingFiles {
-  const backRank = initialFen.split(" ")[0].split("/")[0];
+  const backRank = initialFen.split(' ')[0].split('/')[0];
   let kingFile = -1;
   const rookFiles: number[] = [];
   for (let i = 0; i < backRank.length; i++) {
     const c = backRank[i].toLowerCase();
-    if (c === "k") kingFile = i;
-    if (c === "r") rookFiles.push(i);
+    if (c === 'k') kingFile = i;
+    if (c === 'r') rookFiles.push(i);
   }
   rookFiles.sort((a, b) => a - b);
-  return {
-    kingFile,
-    queensideRookFile: rookFiles[0],
-    kingsideRookFile: rookFiles[1],
-  };
+  return { kingFile, queensideRookFile: rookFiles[0], kingsideRookFile: rookFiles[1] };
 }
 
 /**
@@ -378,20 +349,19 @@ export function addChess960CastlingDests(
   initialFen: string,
 ): Map<string, string[]> {
   const color = chess.turn(); // 'w' | 'b'
-  const rank = color === "w" ? "1" : "8";
+  const rank = color === 'w' ? '1' : '8';
   const files = getChess960StartingFiles(initialFen);
   const kingSquare = `${FILES[files.kingFile]}${rank}`;
 
   const king = chess.get(kingSquare as any);
-  if (!king || king.type !== "k" || king.color !== color) return dests; // king already moved off its start square
+  if (!king || king.type !== 'k' || king.color !== color) return dests; // king already moved off its start square
   if (chess.inCheck()) return dests; // can't castle out of check, don't offer it as a hint
 
   const extra: string[] = [];
   for (const rookFile of [files.queensideRookFile, files.kingsideRookFile]) {
     const rookSquare = `${FILES[rookFile]}${rank}`;
     const rook = chess.get(rookSquare as any);
-    if (rook && rook.type === "r" && rook.color === color)
-      extra.push(rookSquare);
+    if (rook && rook.type === 'r' && rook.color === color) extra.push(rookSquare);
   }
   extra.push(`g${rank}`, `c${rank}`);
 
@@ -426,35 +396,33 @@ export function addChess960CastlingDests(
 export function replayMove(
   chess: Chess,
   san: string,
-  variant: "standard" | "chess960" | "crazyhouse" | undefined,
+  variant: 'standard' | 'chess960' | 'crazyhouse' | undefined,
   initialFen: string,
 ): void {
-  if (variant === "chess960" && (san === "O-O" || san === "O-O-O")) {
+  if (variant === 'chess960' && (san === 'O-O' || san === 'O-O-O')) {
     const color = chess.turn(); // 'w' | 'b' — whoever's move this is
-    const rank = color === "w" ? "1" : "8";
+    const rank = color === 'w' ? '1' : '8';
     const files = getChess960StartingFiles(initialFen);
-    const side: "kingside" | "queenside" =
-      san === "O-O" ? "kingside" : "queenside";
-    const rookFile =
-      side === "kingside" ? files.kingsideRookFile : files.queensideRookFile;
-    const kingDestFile = side === "kingside" ? 6 : 2; // g-file / c-file
-    const rookDestFile = side === "kingside" ? 5 : 3; // f-file / d-file
+    const side: 'kingside' | 'queenside' = san === 'O-O' ? 'kingside' : 'queenside';
+    const rookFile = side === 'kingside' ? files.kingsideRookFile : files.queensideRookFile;
+    const kingDestFile = side === 'kingside' ? 6 : 2; // g-file / c-file
+    const rookDestFile = side === 'kingside' ? 5 : 3; // f-file / d-file
     const sq = (file: number) => `${FILES[file]}${rank}`;
 
     chess.remove(sq(files.kingFile) as any);
     chess.remove(sq(rookFile) as any);
-    chess.put({ type: "k", color }, sq(kingDestFile) as any);
-    chess.put({ type: "r", color }, sq(rookDestFile) as any);
+    chess.put({ type: 'k', color }, sq(kingDestFile) as any);
+    chess.put({ type: 'r', color }, sq(rookDestFile) as any);
 
     // chess.js's remove/put don't advance the turn or move counters
     // themselves, so patch the FEN fields a real .move() would have.
-    const parts = chess.fen().split(" ");
-    parts[1] = color === "w" ? "b" : "w"; // turn
-    parts[2] = "-"; // castling rights (already '-' for every 960 game)
-    parts[3] = "-"; // en passant target (a castle never sets one)
+    const parts = chess.fen().split(' ');
+    parts[1] = color === 'w' ? 'b' : 'w'; // turn
+    parts[2] = '-'; // castling rights (already '-' for every 960 game)
+    parts[3] = '-'; // en passant target (a castle never sets one)
     parts[4] = String(Number(parts[4]) + 1); // halfmove clock (not a pawn move/capture)
-    if (color === "b") parts[5] = String(Number(parts[5]) + 1); // fullmove
-    chess.load(parts.join(" "));
+    if (color === 'b') parts[5] = String(Number(parts[5]) + 1); // fullmove
+    chess.load(parts.join(' '));
     return;
   }
 
@@ -490,9 +458,9 @@ export function applyChess960CastleMove(
   initialFen: string,
 ): boolean {
   const piece = chess.get(from as any);
-  if (!piece || piece.type !== "k") return false;
+  if (!piece || piece.type !== 'k') return false;
   const color = piece.color; // 'w' | 'b'
-  const rank = color === "w" ? "1" : "8";
+  const rank = color === 'w' ? '1' : '8';
   if (to[1] !== rank) return false;
 
   const files = getChess960StartingFiles(initialFen);
@@ -500,36 +468,34 @@ export function applyChess960CastleMove(
   const fromFile = FILES.indexOf(from[0]);
 
   const targetPiece = chess.get(to as any);
-  let side: "kingside" | "queenside" | null = null;
-  if (targetPiece && targetPiece.type === "r" && targetPiece.color === color) {
-    if (toFile === files.kingsideRookFile) side = "kingside";
-    else if (toFile === files.queensideRookFile) side = "queenside";
+  let side: 'kingside' | 'queenside' | null = null;
+  if (targetPiece && targetPiece.type === 'r' && targetPiece.color === color) {
+    if (toFile === files.kingsideRookFile) side = 'kingside';
+    else if (toFile === files.queensideRookFile) side = 'queenside';
     else return false;
   } else if (fromFile === files.kingFile) {
-    if (toFile === 6)
-      side = "kingside"; // g-file
-    else if (toFile === 2) side = "queenside"; // c-file
+    if (toFile === 6) side = 'kingside'; // g-file
+    else if (toFile === 2) side = 'queenside'; // c-file
   }
   if (!side) return false;
 
-  const rookFile =
-    side === "kingside" ? files.kingsideRookFile : files.queensideRookFile;
-  const kingDestFile = side === "kingside" ? 6 : 2;
-  const rookDestFile = side === "kingside" ? 5 : 3;
+  const rookFile = side === 'kingside' ? files.kingsideRookFile : files.queensideRookFile;
+  const kingDestFile = side === 'kingside' ? 6 : 2;
+  const rookDestFile = side === 'kingside' ? 5 : 3;
   const sq = (file: number) => `${FILES[file]}${rank}`;
 
   chess.remove(sq(files.kingFile) as any);
   chess.remove(sq(rookFile) as any);
-  chess.put({ type: "k", color }, sq(kingDestFile) as any);
-  chess.put({ type: "r", color }, sq(rookDestFile) as any);
+  chess.put({ type: 'k', color }, sq(kingDestFile) as any);
+  chess.put({ type: 'r', color }, sq(rookDestFile) as any);
 
-  const parts = chess.fen().split(" ");
-  parts[1] = color === "w" ? "b" : "w";
-  parts[2] = "-";
-  parts[3] = "-";
+  const parts = chess.fen().split(' ');
+  parts[1] = color === 'w' ? 'b' : 'w';
+  parts[2] = '-';
+  parts[3] = '-';
   parts[4] = String(Number(parts[4]) + 1);
-  if (color === "b") parts[5] = String(Number(parts[5]) + 1);
-  chess.load(parts.join(" "));
+  if (color === 'b') parts[5] = String(Number(parts[5]) + 1);
+  chess.load(parts.join(' '));
   return true;
 }
 
@@ -560,24 +526,18 @@ export function applyChess960CastleMove(
  * movable.dests) the instant the turn actually comes around, and silently
  * cancels it if it's no longer legal. Same tradeoff lichess makes.
  */
-export function computePremoveDests(
-  chess: Chess,
-  color: "white" | "black",
-): Map<string, string[]> {
+export function computePremoveDests(chess: Chess, color: 'white' | 'black'): Map<string, string[]> {
   try {
     const board = chess.board(); // 8 ranks (8th → 1st), 8 files (a → h) each
     const dests = new Map<string, string[]>();
-    const fenColor = color === "white" ? "w" : "b";
+    const fenColor = color === 'white' ? 'w' : 'b';
     const castleTargets = castlingPremoveTargets(chess, color);
 
     const diff = (a: number, b: number) => Math.abs(a - b);
-    const reachable: Record<
-      string,
-      (x1: number, y1: number, x2: number, y2: number) => boolean
-    > = {
+    const reachable: Record<string, (x1: number, y1: number, x2: number, y2: number) => boolean> = {
       p: (x1, y1, x2, y2) =>
         diff(x1, x2) < 2 &&
-        (color === "white"
+        (color === 'white'
           ? y2 === y1 + 1 || (y1 === 2 && y2 === 4 && x1 === x2)
           : y2 === y1 - 1 || (y1 === 7 && y2 === 5 && x1 === x2)),
       n: (x1, y1, x2, y2) => {
@@ -586,13 +546,11 @@ export function computePremoveDests(
         return (xd === 1 && yd === 2) || (xd === 2 && yd === 1);
       },
       b: (x1, y1, x2, y2) => diff(x1, x2) === diff(y1, y2) && diff(x1, x2) > 0,
-      r: (x1, y1, x2, y2) =>
-        (x1 === x2 || y1 === y2) && !(x1 === x2 && y1 === y2),
+      r: (x1, y1, x2, y2) => (x1 === x2 || y1 === y2) && !(x1 === x2 && y1 === y2),
       q: (x1, y1, x2, y2) =>
         (diff(x1, x2) === diff(y1, y2) && diff(x1, x2) > 0) ||
         ((x1 === x2 || y1 === y2) && !(x1 === x2 && y1 === y2)),
-      k: (x1, y1, x2, y2) =>
-        diff(x1, x2) <= 1 && diff(y1, y2) <= 1 && !(x1 === x2 && y1 === y2),
+      k: (x1, y1, x2, y2) => diff(x1, x2) <= 1 && diff(y1, y2) <= 1 && !(x1 === x2 && y1 === y2),
     };
 
     for (let r = 0; r < 8; r++) {
@@ -613,9 +571,8 @@ export function computePremoveDests(
           }
         }
 
-        if (piece.type === "k") {
-          for (const t of castleTargets)
-            if (!targets.includes(t)) targets.push(t);
+        if (piece.type === 'k') {
+          for (const t of castleTargets) if (!targets.includes(t)) targets.push(t);
         }
 
         if (targets.length > 0) dests.set(from, targets);
@@ -632,18 +589,15 @@ export function computePremoveDests(
  *  still has the corresponding castling right in the FEN, same speculative
  *  spirit as the rest of premove: we don't check whether the path is
  *  currently clear, only whether castling hasn't already been forfeited. */
-function castlingPremoveTargets(
-  chess: Chess,
-  color: "white" | "black",
-): string[] {
-  const rights = chess.fen().split(" ")[2] ?? "-";
+function castlingPremoveTargets(chess: Chess, color: 'white' | 'black'): string[] {
+  const rights = chess.fen().split(' ')[2] ?? '-';
   const targets: string[] = [];
-  if (color === "white") {
-    if (rights.includes("K")) targets.push("g1");
-    if (rights.includes("Q")) targets.push("c1");
+  if (color === 'white') {
+    if (rights.includes('K')) targets.push('g1');
+    if (rights.includes('Q')) targets.push('c1');
   } else {
-    if (rights.includes("k")) targets.push("g8");
-    if (rights.includes("q")) targets.push("c8");
+    if (rights.includes('k')) targets.push('g8');
+    if (rights.includes('q')) targets.push('c8');
   }
   return targets;
 }

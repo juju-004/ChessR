@@ -7,6 +7,7 @@ import {
   getRaceByCode,
   joinRace,
   leaveRace,
+  rematchRace,
   startRace,
   type MoveResult,
   type PuzzleRace as Race,
@@ -37,6 +38,9 @@ import {
   CenteredSpinner,
   ProgressBar,
 } from "../components/ui/index.js";
+
+/** Keep in sync with PUZZLE_RACE_LATE_JOIN_CUTOFF_MS on the server. */
+const LATE_JOIN_CUTOFF_MS = 10_000;
 
 function formatClock(ms: number): string {
   const total = Math.max(0, Math.ceil(ms / 1000));
@@ -75,7 +79,9 @@ export function PuzzleRacePage() {
   const [puzzle, setPuzzle] = useState<PuzzleView | null>(null);
   const [lockUntil, setLockUntil] = useState(0);
   const [nonce, setNonce] = useState(0);
-  const [busy, setBusy] = useState<"join" | "start" | "leave" | null>(null);
+  const [busy, setBusy] = useState<
+    "join" | "start" | "leave" | "rematch" | null
+  >(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   // server clock minus ours; every state message refreshes it
@@ -95,6 +101,12 @@ export function PuzzleRacePage() {
   // Initial load over REST so the page works before the socket is up.
   useEffect(() => {
     let cancelled = false;
+    // Same component, new race (e.g. heading into a rematch): start clean.
+    setRace(null);
+    setPuzzle(null);
+    setLockUntil(0);
+    setNotFound(false);
+    setError("");
     getRaceByCode(code)
       .then(({ race }) => {
         if (cancelled) return;
@@ -231,7 +243,7 @@ export function PuzzleRacePage() {
   }, [sync]);
 
   async function run(
-    kind: "join" | "start" | "leave",
+    kind: "join" | "start" | "leave" | "rematch",
     fn: () => Promise<unknown>,
     after?: () => void,
   ) {
@@ -265,6 +277,8 @@ export function PuzzleRacePage() {
     return [...race.players].sort((a, b) => {
       if (a.finished !== b.finished) return a.finished ? -1 : 1;
       if (b.solved !== a.solved) return b.solved - a.solved;
+      // Same points: fewer misses ranks higher.
+      if (a.mistakes !== b.mistakes) return a.mistakes - b.mistakes;
       return (a.lastSolveMs ?? Infinity) - (b.lastSolveMs ?? Infinity);
     });
   }, [race]);
@@ -278,6 +292,7 @@ export function PuzzleRacePage() {
       if (p.userId === me.userId) return false;
       if (p.finished !== me.finished) return p.finished;
       if (p.solved !== me.solved) return p.solved > me.solved;
+      if (p.mistakes !== me.mistakes) return p.mistakes < me.mistakes;
       return (p.lastSolveMs ?? Infinity) < (me.lastSolveMs ?? Infinity);
     }).length;
     return ahead + 1;
@@ -299,6 +314,7 @@ export function PuzzleRacePage() {
   }
 
   const lockLeft = Math.max(0, lockUntil - now);
+  const live = phase === "countdown" || phase === "running";
   const locked = lockLeft > 0;
   const full = race.players.length >= race.maxPlayers;
   const takes = winnerTakes(
@@ -308,6 +324,33 @@ export function PuzzleRacePage() {
   const timeLeft = race.endsAt
     ? race.endsAt - serverNow
     : race.timeLimitSeconds * 1000;
+
+  // Seats stay open while the race runs (until its last 10s), so people can
+  // jump in mid-race; a full race can only be watched.
+  const canJoin =
+    !isPlayer &&
+    !full &&
+    (phase === "waiting" || (live && timeLeft > LATE_JOIN_CUTOFF_MS));
+
+  function onRematch() {
+    if (isCreator) {
+      void run("rematch", async () => {
+        const next = race!.rematchCode
+          ? { code: race!.rematchCode }
+          : await rematchRace(race!.id);
+        navigate(`/puzzles/${next.code}`);
+      });
+    } else if (race!.rematchCode) {
+      const rematchCode = race!.rematchCode;
+      void run("rematch", async () => {
+        const { race: next } = await getRaceByCode(rematchCode);
+        if (!next.players.some((p) => p.userId === user?.id)) {
+          await joinRace(next.id);
+        }
+        navigate(`/puzzles/${next.code}`);
+      });
+    }
+  }
 
   const statusBadge =
     phase === "waiting" ? (
@@ -404,6 +447,7 @@ export function PuzzleRacePage() {
                 isPlayer={isPlayer}
                 serverNow={serverNow}
                 timeLeft={timeLeft}
+                full={full}
                 loadingPuzzle={
                   phase === "running" && isPlayer && !me?.finished && !puzzle
                 }
@@ -412,34 +456,36 @@ export function PuzzleRacePage() {
           </Card>
         )}
 
-        {/* ---- side column ------------------------------------------------- */}
+        {/* ---- side column: actions, standings, then the race details ------- */}
         <div className="space-y-4">
-          {phase === "waiting" && (
-            <WaitingActions
-              race={race}
-              isPlayer={isPlayer}
-              isCreator={isCreator}
-              full={full}
-              busy={busy}
-              copied={copied}
-              onCopy={copyLink}
-              onJoin={() => run("join", () => joinRace(race.id), sync)}
-              onStart={() => run("start", () => startRace(race.id))}
-              onLeave={() =>
-                run(
-                  "leave",
-                  () => (isCreator ? cancelRace(race.id) : leaveRace(race.id)),
-                  () => navigate("/puzzles"),
-                )
-              }
-            />
-          )}
+          {/* One straight line of buttons, no card around it. */}
+          <RaceActions
+            race={race}
+            phase={phase}
+            isPlayer={isPlayer}
+            isCreator={isCreator}
+            full={full}
+            canJoin={canJoin}
+            busy={busy}
+            copied={copied}
+            onCopy={copyLink}
+            onJoin={() => run("join", () => joinRace(race.id), sync)}
+            onStart={() => run("start", () => startRace(race.id))}
+            onLeave={() =>
+              run(
+                "leave",
+                () => (isCreator ? cancelRace(race.id) : leaveRace(race.id)),
+                () => navigate("/puzzles"),
+              )
+            }
+            onRematch={onRematch}
+          />
+
+          {error && <p className="text-sm text-red-400">{error}</p>}
 
           {(phase === "finished" || phase === "cancelled") && (
             <Results race={race} me={me} userId={user?.id} />
           )}
-
-          {error && <p className="text-sm text-red-400">{error}</p>}
 
           <Card variant="solid">
             <CardHeader>
@@ -598,6 +644,7 @@ function Stage({
   isPlayer,
   serverNow,
   timeLeft,
+  full,
   loadingPuzzle,
 }: {
   phase: Phase;
@@ -607,6 +654,7 @@ function Stage({
   isPlayer: boolean;
   serverNow: number;
   timeLeft: number;
+  full: boolean;
   loadingPuzzle: boolean;
 }) {
   let body: React.ReactNode;
@@ -649,6 +697,11 @@ function Stage({
         <>
           <p className="text-lg font-semibold text-base-content">
             You're watching this race
+          </p>
+          <p className="max-w-xs text-sm text-base-content/60">
+            {full
+              ? "It's full, so follow the standings live."
+              : "There's still a seat. Hit Join to jump in."}
           </p>
           <p className="font-mono text-2xl text-base-content/70">
             {formatClock(timeLeft)}
@@ -837,62 +890,73 @@ function Podium({
   );
 }
 
-function WaitingActions({
+function RaceActions({
   race,
+  phase,
   isPlayer,
   isCreator,
   full,
+  canJoin,
   busy,
   copied,
   onCopy,
   onJoin,
   onStart,
   onLeave,
+  onRematch,
 }: {
   race: Race;
+  phase: Phase;
   isPlayer: boolean;
   isCreator: boolean;
   full: boolean;
-  busy: "join" | "start" | "leave" | null;
+  canJoin: boolean;
+  busy: "join" | "start" | "leave" | "rematch" | null;
   copied: boolean;
   onCopy: () => void;
   onJoin: () => void;
   onStart: () => void;
   onLeave: () => void;
+  onRematch: () => void;
 }) {
-  const joinLabel = full
-    ? "Full"
-    : race.wagerTokens > 0
-      ? `Join · ${race.wagerTokens} R`
-      : "Join";
+  const waiting = phase === "waiting";
+  const over = phase === "finished" || phase === "cancelled";
+  const live = phase === "countdown" || phase === "running" || phase === "timeup";
+  const joinLabel =
+    race.wagerTokens > 0 ? `Join · ${race.wagerTokens} R` : "Join";
+  // Rematch: the host opens it, everyone else who raced joins it.
+  const showRematch =
+    phase === "finished" && isPlayer && (isCreator || !!race.rematchCode);
+  const rematchLabel = isCreator
+    ? race.rematchCode
+      ? "Go to rematch"
+      : "Rematch"
+    : "Join rematch";
+
   return (
     <div className="space-y-2">
-      {/* Share : Join (or Start, for the host) : Cancel, in one line. */}
       <div className="flex items-center gap-2">
-        <Button
-          variant="glass"
-          className="min-w-0 flex-1"
-          onClick={onCopy}
-          title="Copy invite link"
-        >
-          {copied ? (
-            <Check className="h-4 w-4" />
-          ) : (
-            <Copy className="h-4 w-4" />
-          )}
-          {copied ? "Copied" : "Share"}
-        </Button>
-        {!isPlayer && (
+        {phase !== "cancelled" && (
+          <Button
+            variant="glass"
+            className="min-w-0 flex-1"
+            onClick={onCopy}
+            title="Copy invite link"
+          >
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            {copied ? "Copied" : "Share"}
+          </Button>
+        )}
+        {canJoin && (
           <Button
             className="min-w-0 flex-1"
             onClick={onJoin}
             loading={busy === "join"}
-            disabled={full}
           >
             {joinLabel}
           </Button>
         )}
-        {isCreator && (
+        {waiting && isCreator && (
           <Button
             className="min-w-0 flex-1"
             onClick={onStart}
@@ -907,7 +971,7 @@ function WaitingActions({
             Start
           </Button>
         )}
-        {isPlayer && (
+        {waiting && isPlayer && (
           <Button
             variant="ghost"
             className="min-w-0 flex-1"
@@ -917,16 +981,49 @@ function WaitingActions({
             {isCreator ? "Cancel" : "Leave"}
           </Button>
         )}
+        {showRematch && (
+          <Button
+            className="min-w-0 flex-1"
+            onClick={onRematch}
+            loading={busy === "rematch"}
+          >
+            {rematchLabel}
+          </Button>
+        )}
+        {over && (
+          <Link to="/puzzles" className="min-w-0 flex-1">
+            <Button variant="ghost" className="w-full">
+              Back
+            </Button>
+          </Link>
+        )}
       </div>
-      {isCreator && race.players.length < 2 && (
+      {waiting && isCreator && race.players.length < 2 && (
         <p className="text-center text-xs text-base-content/50">
           Waiting for a second player. Share the link to invite someone.
         </p>
       )}
-      {isPlayer && race.wagerTokens > 0 && (
+      {(waiting || live) && isPlayer && race.wagerTokens > 0 && (
         <p className="text-center text-xs text-base-content/50">
-          Your {race.wagerTokens} R is held and refunded if you leave or the
-          race is cancelled.
+          {waiting
+            ? `Your ${race.wagerTokens} R is held and refunded if you leave or the race is cancelled.`
+            : `Your ${race.wagerTokens} R is staked in this race.`}
+        </p>
+      )}
+      {live && !isPlayer && canJoin && (
+        <p className="text-center text-xs text-base-content/50">
+          The race is under way. You'd start from the first puzzle with the
+          clock already running.
+        </p>
+      )}
+      {live && !isPlayer && full && (
+        <p className="text-center text-xs text-base-content/50">
+          This race is full. You're watching the standings live.
+        </p>
+      )}
+      {phase === "finished" && isPlayer && !isCreator && !race.rematchCode && (
+        <p className="text-center text-xs text-base-content/50">
+          If the host starts a rematch, you can join it from here.
         </p>
       )}
     </div>
@@ -981,11 +1078,6 @@ function Results({
       <CardContent className="space-y-3 py-4 text-center">
         <p className={cn("text-xl font-bold", tone)}>{headline}</p>
         {detail && <p className="text-sm text-base-content/60">{detail}</p>}
-        <div className="flex gap-2">
-          <Link to="/puzzles" className="flex-1">
-            <Button className="w-full">Back to races</Button>
-          </Link>
-        </div>
       </CardContent>
     </Card>
   );

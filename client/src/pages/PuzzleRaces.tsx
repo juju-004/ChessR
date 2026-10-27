@@ -272,7 +272,7 @@ export function PuzzleRaces() {
             <p className="font-medium text-base-content">How a race works</p>
             <p>
               Everyone in the race gets the same puzzles, easiest first. Find the
-              best move each time; a wrong move locks you out for 2 seconds.
+              best move each time; a wrong move locks you out for 5 seconds.
             </p>
             <p>
               The first player to solve them all wins. If time runs out, whoever

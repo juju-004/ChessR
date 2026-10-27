@@ -12,6 +12,7 @@ export interface Settings {
   showCoordinates: boolean;
   showLegalMoves: boolean;
   soundEnabled: boolean;
+  vibration: boolean;
   confirmResign: boolean;
 }
 
@@ -27,6 +28,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showCoordinates: true,
   showLegalMoves: true,
   soundEnabled: true,
+  vibration: true,
   confirmResign: true,
 };
 

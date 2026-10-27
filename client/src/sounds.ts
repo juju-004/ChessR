@@ -10,16 +10,62 @@ export function setSoundEnabled(enabled: boolean) {
   soundEnabled = enabled;
 }
 
+const isIOS =
+  typeof navigator !== "undefined" &&
+  (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+
+/** iOS plays Web Audio as "ambient" audio by default: the hardware silent
+ *  switch mutes it completely (users who hear nothing) and it follows the
+ *  quiet ringer volume (users who hear it very low). Declaring the page's
+ *  audio as "playback" makes it behave like media: silent switch ignored,
+ *  media volume used. Supported on iOS 16.4+; a no-op everywhere else. */
+function setPlaybackAudioSession() {
+  try {
+    const session = (navigator as any).audioSession;
+    if (session && session.type !== "playback") session.type = "playback";
+  } catch {
+    /* unsupported, nothing to do */
+  }
+}
+
+let outputNode: AudioNode | null = null;
+let outputCtx: AudioContext | null = null;
+
+/** Every sound connects here instead of straight to ctx.destination. iOS
+ *  renders Web Audio noticeably quieter than the same file played by a
+ *  media element, so on iOS a master gain lifts everything and a limiter
+ *  right behind it keeps the boost from clipping. */
+function getOutput(audioCtx: AudioContext): AudioNode {
+  if (outputNode && outputCtx === audioCtx) return outputNode;
+  const master = audioCtx.createGain();
+  master.gain.value = isIOS ? 2 : 1;
+  const limiter = audioCtx.createDynamicsCompressor();
+  limiter.threshold.value = -8;
+  limiter.knee.value = 6;
+  limiter.ratio.value = 12;
+  limiter.attack.value = 0.002;
+  limiter.release.value = 0.12;
+  master.connect(limiter);
+  limiter.connect(audioCtx.destination);
+  outputNode = master;
+  outputCtx = audioCtx;
+  return master;
+}
+
 function getCtx(): AudioContext {
-  if (!ctx) ctx = new AudioContext();
+  setPlaybackAudioSession();
+  // A closed context can never be reopened; make a fresh one.
+  if (!ctx || ctx.state === "closed") ctx = new AudioContext();
   return ctx;
 }
 
 function ensureAudioContext(): AudioContext {
   const audioCtx = getCtx();
-  // Browsers suspend AudioContext until a user gesture; every sound call is
-  // triggered by one (a drag, a click), so resuming here is safe and cheap.
-  if (audioCtx.state === "suspended") void audioCtx.resume();
+  // Not just "suspended": iOS also parks the context in a non-standard
+  // "interrupted" state after a call, Siri, or backgrounding the app, and
+  // it stays silent until resumed.
+  if ((audioCtx.state as string) !== "running") void audioCtx.resume().catch(() => {});
   return audioCtx;
 }
 
@@ -63,7 +109,7 @@ function playTones(tones: Tone[]) {
     gainNode.gain.exponentialRampToValueAtTime(0.0001, start + tone.duration);
 
     osc.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
+    gainNode.connect(getOutput(audioCtx));
     osc.start(start);
     osc.stop(start + tone.duration + 0.02);
   }
@@ -126,7 +172,7 @@ function playImpactLayer(layer: ImpactLayer) {
 
   source.connect(filter);
   filter.connect(gainNode);
-  gainNode.connect(audioCtx.destination);
+  gainNode.connect(getOutput(audioCtx));
   source.start(start);
   source.stop(start + layer.duration + 0.02);
 }
@@ -192,7 +238,7 @@ function playSoundFile(url: string, gain = 0.85) {
       const gainNode = audioCtx.createGain();
       gainNode.gain.value = gain;
       source.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
+      gainNode.connect(getOutput(audioCtx));
       source.start();
     })
     .catch((err) => console.error(`Failed to play sound ${url}:`, err));
@@ -305,7 +351,7 @@ export function playBerserkSound() {
   shaper.connect(lowpass);
   lowpass.connect(chop);
   chop.connect(growlGain);
-  growlGain.connect(audioCtx.destination);
+  growlGain.connect(getOutput(audioCtx));
   lfo.start(growlStart);
   lfo.stop(growlStart + growlLen + 0.02);
 
@@ -370,25 +416,37 @@ export function installAudioUnlock() {
   // touchend, not just touchstart/pointerdown: iOS only counts a completed
   // touch as an activation gesture.
   const events = ['pointerdown', 'touchend', 'click', 'keydown'] as const;
-  const remove = () => {
-    for (const e of events) document.removeEventListener(e, unlock, true);
-  };
+  // The listeners are deliberately never removed: iOS can suspend or
+  // "interrupt" the context again later (app switched away, phone call,
+  // lock screen), and the next tap has to be able to wake it back up.
   function unlock() {
     try {
       const audioCtx = getCtx();
-      if (audioCtx.state === 'running') {
-        remove();
-        return;
-      }
-      void audioCtx
-        .resume()
-        .then(() => {
-          if (audioCtx.state === 'running') remove();
-        })
-        .catch(() => {});
+      if ((audioCtx.state as string) === 'running') return;
+      void audioCtx.resume().catch(() => {});
+      // Playing one silent sample inside the gesture is the classic iOS
+      // unlock, it makes sure output is really live for later sounds.
+      const silent = audioCtx.createBuffer(1, 1, 22050);
+      const src = audioCtx.createBufferSource();
+      src.buffer = silent;
+      src.connect(getOutput(audioCtx));
+      src.start(0);
     } catch {
       /* AudioContext unavailable; nothing to unlock */
     }
   }
   for (const e of events) document.addEventListener(e, unlock, { capture: true, passive: true });
+  // Try to recover on return to the app too (works when iOS allows it, and
+  // otherwise the next tap does it).
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      try {
+        const audioCtx = getCtx();
+        if ((audioCtx.state as string) !== 'running') void audioCtx.resume().catch(() => {});
+      } catch {
+        /* ignore */
+      }
+    }
+  });
+  window.addEventListener('pageshow', unlock);
 }

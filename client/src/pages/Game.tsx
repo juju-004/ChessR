@@ -22,7 +22,7 @@ import {
 import { ApiRequestError } from "../api/http.js";
 import { serverNow } from "../lib/clockSync.js";
 import { useAuth } from "../contexts/AuthContext.js";
-import { useSocket } from "../contexts/SocketContext.js";
+import { useSocket, useSocketStatus } from "../contexts/SocketContext.js";
 import { useNotify } from "../contexts/NotificationContext.js";
 import { useSettings } from "../contexts/SettingsContext.js";
 import { useConfirm } from "../contexts/ConfirmContext.js";
@@ -109,6 +109,7 @@ import {
   setSoundEnabled,
   installAudioUnlock,
 } from "../sounds.js";
+import { haptics, setVibrationEnabled } from "../haptics.js";
 import { createGameChatStore, useGameChat } from "../lib/gameChatStore.js";
 import type { ChatMessage } from "../lib/chatTypes.js";
 import { copyToClipboard } from "@/lib/utils.js";
@@ -133,6 +134,7 @@ export function Game() {
   const { user } = useAuth();
   const { setActiveGame, clearActiveGame } = useMyActiveGame();
   const socket = useSocket();
+  const socketStatus = useSocketStatus();
   const navigate = useNavigate();
   const { notify, dismiss } = useNotify();
   const { settings } = useSettings();
@@ -141,6 +143,9 @@ export function Game() {
   useEffect(() => {
     setSoundEnabled(settings.soundEnabled);
   }, [settings.soundEnabled]);
+  useEffect(() => {
+    setVibrationEnabled(settings.vibration);
+  }, [settings.vibration]);
   // Resume the AudioContext on the first tap/click/key anywhere, so sounds
   // fired by timers or socket events (low time, opponent's move) aren't
   // silently dropped when the context is still suspended.
@@ -693,6 +698,9 @@ export function Game() {
       if (lowTimeWarnedRef.current) return;
       lowTimeWarnedRef.current = true;
       playLowTimeSound();
+      // The sound alone is enough in fast games; the vibration is only for
+      // 5+ minute time controls.
+      if ((gameMeta?.timeControl.baseSeconds ?? 0) >= 300) haptics.lowTime();
     }
 
     function arm(): (() => void) | undefined {
@@ -1076,6 +1084,22 @@ export function Game() {
       ]);
 
       playSoundForMove(payload.san);
+
+      // Haptics for players only (a spectator isn't the one being checked
+      // or captured), mirroring playSoundForMove's rules: a mating "#" gets
+      // no check buzz since game over follows immediately. After a move,
+      // the side to move is the one in check, so it's "me" if the FEN's
+      // turn field matches my colour.
+      const viewerRole = roleRef.current;
+      if (viewerRole !== "spectator") {
+        const san: string = payload.san ?? "";
+        const sideToMove = String(payload.fen).split(" ")[1] === "w" ? "white" : "black";
+        if (san.includes("+") && !san.includes("#") && sideToMove === viewerRole) {
+          haptics.check();
+        } else if (san.includes("x")) {
+          haptics.capture();
+        }
+      }
     }
 
     function onOver(payload: {
@@ -1492,6 +1516,35 @@ export function Game() {
     },
     [socket, gameMeta, fen],
   );
+
+  // Crazyhouse drop premove: queued while it's the opponent's turn, played the
+  // moment the turn comes back if it's still legal (see the effect below).
+  // Only one premove exists at a time: a drop replaces an on-board premove
+  // (premoveClear cancels it on the board) and the other way round.
+  const [dropPremove, setDropPremove] = useState<{
+    role: ZhRole;
+    square: string;
+  } | null>(null);
+  const [premoveClear, setPremoveClear] = useState(0);
+  const handlePremoveDrop = useCallback((role: ZhRole, square: string) => {
+    setDropPremove({ role, square });
+    setPremoveClear((n) => n + 1);
+  }, []);
+  const clearDropPremove = useCallback(() => setDropPremove(null), []);
+
+  useEffect(() => {
+    if (status !== "active") setDropPremove(null);
+  }, [status]);
+  useEffect(() => setDropPremove(null), [code]);
+  useEffect(() => {
+    if (!dropPremove) return;
+    if (!isCrazyhouse || !myColor || status !== "active" || pausedLeg) return;
+    if (sideToMove !== myColor) return;
+    setDropPremove(null);
+    // zhApply inside handleDrop re-checks legality against the position the
+    // opponent's move produced: an illegal drop is simply not played.
+    handleDrop(dropPremove.role, dropPremove.square);
+  }, [dropPremove, isCrazyhouse, myColor, status, pausedLeg, sideToMove, handleDrop]);
 
   function handlePromotionPick(piece: "q" | "r" | "b" | "n") {
     if (!promoPending || !socket || !gameMeta) return;
@@ -2355,6 +2408,21 @@ export function Game() {
             sideToMove === myColor
           }
           onDrop={handleDrop}
+          canPremoveDrop={
+            isCrazyhouse &&
+            isPlayer &&
+            status === "active" &&
+            !pausedLeg &&
+            !isViewingHistory &&
+            !promoPending &&
+            sideToMove !== myColor
+          }
+          dropPremove={isViewingHistory ? null : dropPremove}
+          onPremoveDrop={handlePremoveDrop}
+          onClearDropPremove={clearDropPremove}
+          clearPremoveSignal={premoveClear}
+          onPremoveSet={clearDropPremove}
+          reconnecting={socketStatus === "reconnecting"}
         />
 
         {/* Right panel, tablet & desktop. Player panels, the cage match

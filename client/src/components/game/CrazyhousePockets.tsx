@@ -12,6 +12,7 @@ import { cn } from "../../lib/cn.js";
 import {
   ZH_ROLES,
   legalDropSquares,
+  parseZhFen,
   type Pocket,
   type ZhRole,
 } from "../../crazyhouse.js";
@@ -142,6 +143,33 @@ export function PocketBar({
   );
 }
 
+/** Squares a piece may be PREMOVED onto while it's the opponent's turn: every
+ *  empty square (no pawns on the back ranks). Real legality (check, a square
+ *  the opponent just took) can only be judged once their move lands, so the
+ *  drop is re-validated then and quietly dropped if it no longer works. */
+function premoveDropSquares(fen: string, role: ZhRole): Set<string> {
+  const placement = parseZhFen(fen).clean.split(" ")[0];
+  const out = new Set<string>();
+  let rank = 8;
+  let file = 0;
+  for (const ch of placement) {
+    if (ch === "/") {
+      rank -= 1;
+      file = 0;
+    } else if (ch >= "1" && ch <= "8") {
+      for (let i = 0; i < Number(ch); i++) {
+        if (!(role === "p" && (rank === 1 || rank === 8))) {
+          out.add(`${"abcdefgh"[file + i]}${rank}`);
+        }
+      }
+      file += Number(ch);
+    } else {
+      file += 1;
+    }
+  }
+  return out;
+}
+
 const DRAG_THRESHOLD_PX = 6;
 
 interface DropControllerArgs {
@@ -151,7 +179,10 @@ interface DropControllerArgs {
   /** The LIVE position (never a history position): drops are only ever
    *  made against it. */
   liveFen: string;
+  /** True while a piece may be picked up (a real drop, or a premove). */
   canDrop: boolean;
+  /** True when that is a premove: it's the opponent's turn. */
+  premoveMode?: boolean;
   onDrop: (role: ZhRole, square: string) => void;
 }
 
@@ -165,6 +196,7 @@ export function useDropController({
   orientation,
   liveFen,
   canDrop,
+  premoveMode = false,
   onDrop,
 }: DropControllerArgs) {
   const [selectedRole, setSelectedRole] = useState<ZhRole | null>(null);
@@ -185,9 +217,11 @@ export function useDropController({
   const legalSquares = useMemo(
     () =>
       canDrop && activeRole
-        ? new Set(legalDropSquares(liveFen, activeRole))
+        ? premoveMode
+          ? premoveDropSquares(liveFen, activeRole)
+          : new Set(legalDropSquares(liveFen, activeRole))
         : new Set<string>(),
-    [canDrop, activeRole, liveFen],
+    [canDrop, premoveMode, activeRole, liveFen],
   );
 
   // The turn passing (or the position changing under us) cancels a pending
@@ -318,13 +352,26 @@ export function DropOverlay({
   legalSquares,
   captureTaps,
   onPointerDown,
+  premoveMode = false,
+  premove = null,
 }: {
   orientation: "white" | "black";
   legalSquares: Set<string>;
   captureTaps: boolean;
   onPointerDown: (e: ReactPointerEvent<HTMLElement>) => void;
+  /** Dots use the premove colour while queueing a premove. */
+  premoveMode?: boolean;
+  /** The drop premove already queued, drawn as a ghost piece. */
+  premove?: { role: ZhRole; square: string; color: "white" | "black" } | null;
 }) {
-  if (legalSquares.size === 0 && !captureTaps) return null;
+  if (legalSquares.size === 0 && !captureTaps && !premove) return null;
+  const cell = (sq: string) => {
+    const file = "abcdefgh".indexOf(sq[0]);
+    const rank = Number(sq[1]);
+    const col = orientation === "white" ? file : 7 - file;
+    const row = orientation === "white" ? 8 - rank : rank - 1;
+    return { left: `${col * 12.5}%`, top: `${row * 12.5}%`, width: "12.5%", height: "12.5%" };
+  };
   return (
     <div
       className={cn(
@@ -349,10 +396,27 @@ export function DropOverlay({
               height: "12.5%",
             }}
           >
-            <span className="h-[30%] w-[30%] rounded-full bg-black/30" />
+            <span
+              className={cn(
+                "h-[30%] w-[30%] rounded-full",
+                premoveMode ? "bg-[rgba(20,30,85,0.5)]" : "bg-black/30",
+              )}
+            />
           </span>
         );
       })}
+      {premove && (
+        <span
+          className="pointer-events-none absolute flex items-center justify-center"
+          style={{ ...cell(premove.square), backgroundColor: "rgba(20,30,85,0.5)" }}
+        >
+          <PocketPiece
+            role={premove.role}
+            color={premove.color}
+            className="h-full w-full opacity-70"
+          />
+        </span>
+      )}
     </div>
   );
 }

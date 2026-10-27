@@ -6,16 +6,28 @@ import { tryRestoreSession } from '../api/auth.js';
 
 const SocketContext = createContext<Socket | null>(null);
 
+/** 'reconnecting' = the socket had been connected and dropped (a first
+ *  connect that is still in flight is just 'connecting'). Kept in its own
+ *  context so a status flip doesn't re-render everything that only needs the
+ *  socket itself. */
+export type SocketStatus = 'connecting' | 'connected' | 'reconnecting';
+const SocketStatusContext = createContext<SocketStatus>('connecting');
+
 export function SocketProvider({ children }: { children: ReactNode }) {
   const { isAuthed, accessToken } = useAuth();
   const socketRef = useRef<Socket | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [status, setStatus] = useState<SocketStatus>('connecting');
+  const everConnectedRef = useRef(false);
 
   useEffect(() => {
     if (!isAuthed) {
+      (socketRef.current as (Socket & { __cleanup?: () => void }) | null)?.__cleanup?.();
       socketRef.current?.disconnect();
       socketRef.current = null;
+      everConnectedRef.current = false;
       setSocket(null);
+      setStatus('connecting');
       return;
     }
     if (socketRef.current) return; // already connected for this session
@@ -28,6 +40,32 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       withCredentials: true,
       transports: ['websocket', 'polling'],
     });
+
+    s.on('connect', () => {
+      everConnectedRef.current = true;
+      setStatus('connected');
+    });
+    s.on('disconnect', (reason: string) => {
+      setStatus('reconnecting');
+      // socket.io only retries on its own for transport drops. When the
+      // server closed the connection on purpose it never does, so retry here.
+      if (reason === 'io server disconnect') s.connect();
+    });
+    s.on('connect_error', () => {
+      setStatus(everConnectedRef.current ? 'reconnecting' : 'connecting');
+    });
+
+    // Phones freeze background sockets. Don't wait out the backoff timer when
+    // the tab comes back or the network returns: try straight away.
+    const retryNow = () => {
+      if (!s.connected && document.visibilityState !== 'hidden') s.connect();
+    };
+    window.addEventListener('online', retryNow);
+    document.addEventListener('visibilitychange', retryNow);
+    (s as Socket & { __cleanup?: () => void }).__cleanup = () => {
+      window.removeEventListener('online', retryNow);
+      document.removeEventListener('visibilitychange', retryNow);
+    };
 
     s.on('connect_error', async (err: Error) => {
       // Access token likely expired between page load and socket connect, refresh once and retry.
@@ -56,7 +94,16 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthed]);
 
-  return <SocketContext.Provider value={socket}>{children}</SocketContext.Provider>;
+  return (
+    <SocketContext.Provider value={socket}>
+      <SocketStatusContext.Provider value={status}>{children}</SocketStatusContext.Provider>
+    </SocketContext.Provider>
+  );
+}
+
+/** Connection state, for UI that should react to a dropped connection. */
+export function useSocketStatus(): SocketStatus {
+  return useContext(SocketStatusContext);
 }
 
 /** Returns the current socket, or null while it's still connecting / user is signed out. */

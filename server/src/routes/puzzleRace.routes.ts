@@ -6,6 +6,7 @@ import {
   leavePuzzleRace,
   cancelPuzzleRace,
   startPuzzleRace,
+  rematchPuzzleRace,
   listOpenPuzzleRaces,
   getMyPuzzleRace,
   getPuzzleRaceByCode,
@@ -24,5 +25,6 @@ router.post('/:id/join', requireAuth, joinPuzzleRace);
 router.post('/:id/leave', requireAuth, leavePuzzleRace);
 router.post('/:id/cancel', requireAuth, cancelPuzzleRace);
 router.post('/:id/start', requireAuth, startPuzzleRace);
+router.post('/:id/rematch', requireAuth, rematchPuzzleRace);
 
 export default router;

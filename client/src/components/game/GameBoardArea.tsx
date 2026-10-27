@@ -15,6 +15,7 @@ import {
   DragGhost,
   useDropController,
 } from "./CrazyhousePockets.js";
+import { ReconnectingPill } from "./ReconnectingPill.js";
 
 interface GameBoardAreaProps {
   opponentPanelData: PanelData;
@@ -47,6 +48,18 @@ interface GameBoardAreaProps {
   /** True only while the viewing player may drop right now. */
   canDrop?: boolean;
   onDrop?: (role: ZhRole, square: string) => void;
+  /** Crazyhouse: true while it's the opponent's turn and the player may queue
+   *  a drop to be played the moment it's theirs again. */
+  canPremoveDrop?: boolean;
+  dropPremove?: { role: ZhRole; square: string } | null;
+  onPremoveDrop?: (role: ZhRole, square: string) => void;
+  onClearDropPremove?: () => void;
+  /** Bump to cancel a queued on-board premove (a drop premove replaces it). */
+  clearPremoveSignal?: number;
+  /** An on-board premove was queued (it replaces a drop premove). */
+  onPremoveSet?: () => void;
+  /** The socket dropped and is trying to get back: shows the pill. */
+  reconnecting?: boolean;
 }
 
 /** The board itself plus everything that visually anchors to it: the
@@ -88,6 +101,13 @@ export const GameBoardArea = memo(function GameBoardArea({
   liveFen,
   canDrop = false,
   onDrop,
+  canPremoveDrop = false,
+  dropPremove = null,
+  onPremoveDrop,
+  onClearDropPremove,
+  clearPremoveSignal,
+  onPremoveSet,
+  reconnecting = false,
 }: GameBoardAreaProps) {
   const squareWrapperRef = useRef<HTMLDivElement | null>(null);
   const squareSize = useSquareSize(squareWrapperRef);
@@ -115,12 +135,16 @@ export const GameBoardArea = memo(function GameBoardArea({
   const topPocketColor: "white" | "black" =
     orientation === "white" ? "black" : "white";
   const bottomPocketColor = orientation;
+  // A piece can be picked up for a real drop, or (opponent's turn) a premove.
+  const dropActive = canDrop || canPremoveDrop;
   const drop = useDropController({
     boardRef: boardBoxRef,
     orientation,
     liveFen: liveFen ?? displayFen,
-    canDrop: isZh && canDrop,
-    onDrop: onDrop ?? (() => undefined),
+    canDrop: isZh && dropActive,
+    premoveMode: !canDrop,
+    onDrop: (role, square) =>
+      canDrop ? onDrop?.(role, square) : onPremoveDrop?.(role, square),
   });
   const pocketRow = (color: "white" | "black") =>
     pockets ? (
@@ -135,7 +159,7 @@ export const GameBoardArea = memo(function GameBoardArea({
           pocket={color === "white" ? pockets.w : pockets.b}
           pieceTheme={pieceTheme}
           boardTheme={boardTheme}
-          interactive={canDrop && color === myColor}
+          interactive={dropActive && color === myColor}
           selectedRole={drop.selectedRole}
           onPiecePointerDown={drop.handlePocketPointerDown}
         />
@@ -167,7 +191,13 @@ export const GameBoardArea = memo(function GameBoardArea({
             height: squareSize || undefined,
           }}
         >
+          <ReconnectingPill active={reconnecting} />
           <div
+            // Any tap on the board (while no pocket piece is in hand) cancels
+            // a queued drop premove, the same as it does an ordinary one.
+            onPointerDownCapture={() => {
+              if (dropPremove && drop.selectedRole === null) onClearDropPremove?.();
+            }}
             className={`relative rounded-md lg:rounded-2xl flex items-center shadow- overflow-hidden board-theme-${boardTheme} piece-theme-${pieceTheme} justify-center h-full w-full`}
           >
             <ChessBoard
@@ -185,6 +215,8 @@ export const GameBoardArea = memo(function GameBoardArea({
               animationDurationMs={animationDurationMs}
               showCoordinates={showCoordinates}
               showLegalMoves={showLegalMoves}
+              clearPremoveSignal={clearPremoveSignal}
+              onPremoveSet={onPremoveSet}
             />
             {isPlayer && status === "waiting" && (
               <div className="pointer-events-none absolute bg-base-200/10 inset-0 px-3 justify-center items-center top-2 z-30 mx-auto flex">
@@ -212,6 +244,10 @@ export const GameBoardArea = memo(function GameBoardArea({
                 legalSquares={drop.legalSquares}
                 captureTaps={drop.selectedRole !== null && drop.drag === null}
                 onPointerDown={drop.handleBoardPointerDown}
+                premoveMode={!canDrop && canPremoveDrop}
+                premove={
+                  dropPremove && myColor ? { ...dropPremove, color: myColor } : null
+                }
               />
             )}
           </div>

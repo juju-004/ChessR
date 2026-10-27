@@ -17,10 +17,10 @@
 
 // --- Tuning ------------------------------------------------------------------
 /** Paid when that day of the week is completed. Day 1 first. A full week pays
- *  exactly 200 R (= N1,000 at the N5-per-R rate): Days 1-5 climb by 4 R
- *  (6, 10, 14, 18, 22 = 70 R), Day 6 pays 30 R and Day 7 pays 100 R, so the
+ *  exactly 170 R (= N850 at the N5-per-R rate): Days 1-5 climb by 4 R
+ *  (6, 10, 14, 18, 22 = 70 R), Day 6 pays 30 R and Day 7 pays 70 R, so the
  *  big money goes to people who never skipped a day. */
-export const DAY_REWARDS = [6, 10, 14, 18, 22, 30, 100];
+export const DAY_REWARDS = [6, 10, 14, 18, 22, 30, 70];
 /** Optional extra paid on top of Day 7's reward for finishing the whole week.
  *  0 = off (Day 7's reward already is the big prize). */
 export const WEEK_BONUS = 0;
@@ -315,15 +315,15 @@ export const SCHEDULE: string[][][] = [
   [['win_2', 'win_3'], ['solve_5', 'join_tournament', 'win_race'], ['win_by_mate', 'start_cage']],
   // Day 5
   [['win_3', 'win_streak_2'], ['solve_8', 'win_race'], ['win_streak_2', 'win_by_mate']],
-  // Day 6: wagered challenges start here
-  [['play_wagered_3', 'high_stake_1', 'win_3'], ['win_race', 'complete_wagered_race', 'solve_10'], ['win_3', 'win_streak_2']],
-  // Day 7: the hardest
+  // Day 6: stake-free, wagered challenges only start on Day 7
+  [['win_3', 'win_by_mate'], ['win_race', 'solve_10'], ['win_3', 'win_streak_2']],
+  // Day 7: the hardest, the only day with a wagered challenge
   [['win_wagered_2', 'win_4'], ['win_wagered_race', 'solve_15', 'win_race'], ['win_streak_3', 'win_4']],
 ];
 
 /** Wagered challenges (anything that needs a stake) are only offered from this
- *  day of the week onward. Days 1 to 5 are stake-free. */
-export const FIRST_WAGER_DAY = 6;
+ *  day of the week onward. Days 1 to 6 are stake-free. */
+export const FIRST_WAGER_DAY = 7;
 
 /** True for any challenge that needs the player to put coins on the line. */
 export function isWageredChallenge(d: ChallengeDef): boolean {

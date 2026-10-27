@@ -8,6 +8,7 @@ import {
   leaveRace,
   cancelRace,
   requestStart,
+  createRematch,
   listOpenRaces,
   getMyCurrentRace,
   getPublicRaceByCode,
@@ -67,6 +68,12 @@ export const startPuzzleRace = asyncHandler(async (req: AuthedRequest, res) => {
   const { id } = idParamSchema.parse(req.params);
   await requestStart(id, req.user!.id);
   res.status(204).send();
+});
+
+export const rematchPuzzleRace = asyncHandler(async (req: AuthedRequest, res) => {
+  const { id } = idParamSchema.parse(req.params);
+  const rematch = await createRematch(id, req.user!.id);
+  res.status(201).json(rematch);
 });
 
 export const listOpenPuzzleRaces = asyncHandler(async (_req, res) => {

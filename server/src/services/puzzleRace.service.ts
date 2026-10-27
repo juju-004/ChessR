@@ -28,7 +28,12 @@ export const PUZZLE_RACE_MAX_PUZZLES = 10;
 /** Pause between the race starting and the first puzzle being playable. */
 export const PUZZLE_RACE_COUNTDOWN_MS = 5_000;
 /** A wrong move locks the player out for this long, so guessing isn't free. */
-export const PUZZLE_RACE_MISTAKE_LOCK_MS = 2_000;
+export const PUZZLE_RACE_MISTAKE_LOCK_MS = 5_000;
+/** Seats can be taken after the race has started, but not in its last moments
+ *  (a joiner would have no time to play and would just lose their stake). */
+export const PUZZLE_RACE_LATE_JOIN_CUTOFF_MS = 10_000;
+/** Stored in `rematchCode` while a rematch is being created. */
+const REMATCH_PENDING = 'pending';
 /** Time budget per puzzle; the whole race ends after puzzleCount × this. */
 export const PUZZLE_RACE_SECONDS_PER_PUZZLE = 60;
 /** A race nobody started is cancelled (and refunded) after this long. */
@@ -81,6 +86,8 @@ export interface PublicRace {
   serverNow: number;
   winnerId: string | null;
   endReason: IPuzzleRace['endReason'];
+  /** The rematch the host opened, once they have (finished races only). */
+  rematchCode: string | null;
   potTokens: number;
   rakeTokens: number;
   payoutTokens: number;
@@ -145,6 +152,7 @@ export function toPublicRace(r: PopulatedRace): PublicRace {
     serverNow: Date.now(),
     winnerId: r.winner ? r.winner.toString() : null,
     endReason: r.endReason,
+    rematchCode: r.rematchCode && r.rematchCode !== REMATCH_PENDING ? r.rematchCode : null,
     potTokens: r.status === 'finished' || r.status === 'cancelled' ? r.potTokens : r.wagerTokens * r.players.length,
     rakeTokens: r.rakeTokens,
     payoutTokens: r.payoutTokens,
@@ -275,16 +283,20 @@ export async function createRace(userId: string, input: CreateRaceInput): Promis
   return race;
 }
 
+/** Seats are open while the race is waiting AND while it is running (until its
+ *  last few seconds), as long as there is a free one. A player who joins late
+ *  starts from the first puzzle with the clock already running. */
 export async function joinRace(raceId: string, userId: string): Promise<IPuzzleRace> {
   await assertNotRestricted(userId);
   await assertNotInRace(userId);
 
   // Claim the seat FIRST (atomically), pay second. Two simultaneous joins from
   // the same user can then never both reach the wallet.
+  const lateCutoff = new Date(Date.now() + PUZZLE_RACE_LATE_JOIN_CUTOFF_MS);
   const claimed = await PuzzleRace.findOneAndUpdate(
     {
       _id: raceId,
-      status: 'waiting',
+      $or: [{ status: 'waiting' }, { status: 'active', endsAt: { $gt: lateCutoff } }],
       'players.user': { $ne: userId },
       $expr: { $lt: [{ $size: '$players' }, '$maxPlayers'] },
     },
@@ -294,9 +306,11 @@ export async function joinRace(raceId: string, userId: string): Promise<IPuzzleR
   if (!claimed) {
     const race = await PuzzleRace.findById(raceId).lean();
     if (!race) throw ApiError.notFound('Race not found');
-    if (race.status !== 'waiting') throw ApiError.conflict('This race has already started');
     if (race.players.some((p) => p.user.toString() === userId)) throw ApiError.conflict("You're already in this race");
-    throw ApiError.conflict('This race is full');
+    if (race.status === 'cancelled') throw ApiError.conflict('This race was cancelled');
+    if (race.status === 'finished') throw ApiError.conflict('This race is over');
+    if (race.players.length >= race.maxPlayers) throw ApiError.conflict('This race is full');
+    throw ApiError.conflict('This race is almost over, too late to join');
   }
 
   if (claimed.wagerTokens > 0) {
@@ -304,7 +318,7 @@ export async function joinRace(raceId: string, userId: string): Promise<IPuzzleR
       await debitPuzzleRaceStake(userId, claimed.id, claimed.wagerTokens);
     } catch (err) {
       await PuzzleRace.updateOne(
-        { _id: claimed._id, status: 'waiting' },
+        { _id: claimed._id, status: { $in: ['waiting', 'active'] } },
         { $pull: { players: { user: new mongoose.Types.ObjectId(userId) } } },
       );
       throw err;
@@ -315,8 +329,8 @@ export async function joinRace(raceId: string, userId: string): Promise<IPuzzleR
   broadcastRacesChanged();
   void broadcastRaceState(claimed.id);
 
-  // A full table starts itself.
-  if (claimed.players.length >= claimed.maxPlayers) {
+  // A full table starts itself (a race that is already running just carries on).
+  if (claimed.status === 'waiting' && claimed.players.length >= claimed.maxPlayers) {
     await startRace(claimed.id).catch((err) => console.error('auto-start puzzle race failed:', err));
   }
   return claimed;
@@ -336,6 +350,62 @@ export async function leaveRace(raceId: string, userId: string): Promise<void> {
   await creditPuzzleRaceReturn(userId, raceId, before.wagerTokens, 'puzzle_race_refund');
   broadcastRacesChanged();
   void broadcastRaceState(raceId);
+}
+
+/** The host opens a new race with the same settings once this one is over. The
+ *  host is seated (and staked) straight away; the other racers are told through
+ *  the old race's state (`rematchCode`) and can join from there. Safe to call
+ *  twice: the second call returns the rematch the first one made. */
+export async function createRematch(raceId: string, userId: string): Promise<{ id: string; code: string }> {
+  const race = await PuzzleRace.findById(raceId).lean();
+  if (!race) throw ApiError.notFound('Race not found');
+  if (race.creator.toString() !== userId) throw ApiError.forbidden('Only the host can start a rematch');
+  if (race.status !== 'finished') throw ApiError.conflict('A rematch is only possible once the race is over');
+
+  // A rematch that already exists (and wasn't cancelled) is simply returned.
+  if (race.rematchCode && race.rematchCode !== REMATCH_PENDING) {
+    const existing = await PuzzleRace.findOne({ code: race.rematchCode }).select('_id code status').lean();
+    if (existing && existing.status !== 'cancelled') return { id: existing._id.toString(), code: existing.code };
+    // The old rematch fell through (host cancelled it): free the slot for a new one.
+    await PuzzleRace.updateOne({ _id: raceId, rematchCode: race.rematchCode }, { $set: { rematchCode: null } });
+  }
+
+  // Claim the slot before creating, so two clicks can't open two rematches. A
+  // 'pending' claim older than 30s is a crashed attempt and may be retaken.
+  const claim = await PuzzleRace.updateOne(
+    {
+      _id: raceId,
+      $or: [
+        { rematchCode: null },
+        { rematchCode: { $exists: false } },
+        { rematchCode: REMATCH_PENDING, updatedAt: { $lt: new Date(Date.now() - 30_000) } },
+      ],
+    },
+    { $set: { rematchCode: REMATCH_PENDING } },
+  );
+  if (!claim.matchedCount) {
+    const now = await PuzzleRace.findById(raceId).select('rematchCode').lean();
+    if (now?.rematchCode && now.rematchCode !== REMATCH_PENDING) {
+      const existing = await PuzzleRace.findOne({ code: now.rematchCode }).select('_id code').lean();
+      if (existing) return { id: existing._id.toString(), code: existing.code };
+    }
+    throw ApiError.conflict('The rematch is being set up, one moment');
+  }
+
+  try {
+    const created = await createRace(userId, {
+      difficulty: race.difficulty,
+      puzzleCount: race.puzzleCount,
+      maxPlayers: race.maxPlayers,
+      wagerTokens: race.wagerTokens,
+    });
+    await PuzzleRace.updateOne({ _id: raceId }, { $set: { rematchCode: created.code } });
+    void broadcastRaceState(raceId);
+    return { id: created.id, code: created.code };
+  } catch (err) {
+    await PuzzleRace.updateOne({ _id: raceId, rematchCode: REMATCH_PENDING }, { $set: { rematchCode: null } });
+    throw err;
+  }
 }
 
 /** The creator closes a waiting race; every stake goes back. */
@@ -671,10 +741,16 @@ export async function finishRaceByTime(raceId: string): Promise<void> {
   const race = await PuzzleRace.findById(raceId).lean();
   if (!race || race.status !== 'active') return;
 
-  // Most puzzles solved wins; ties go to whoever got there first.
+  // Most puzzles solved wins; on equal points the fewest misses wins, and
+  // if that is level too, whoever got there first.
   const ranked = [...race.players]
     .filter((p) => p.solved > 0)
-    .sort((a, b) => b.solved - a.solved || (a.lastSolvedAt?.getTime() ?? 0) - (b.lastSolvedAt?.getTime() ?? 0));
+    .sort(
+      (a, b) =>
+        b.solved - a.solved ||
+        (a.mistakes ?? 0) - (b.mistakes ?? 0) ||
+        (a.lastSolvedAt?.getTime() ?? 0) - (b.lastSolvedAt?.getTime() ?? 0),
+    );
   await finishRace(raceId, ranked[0] ? ranked[0].user.toString() : null, 'time_limit');
 }
 

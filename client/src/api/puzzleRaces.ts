@@ -31,6 +31,8 @@ export interface PuzzleRace {
   serverNow: number;
   winnerId: string | null;
   endReason: 'completed' | 'time_limit' | 'cancelled' | null;
+  /** The rematch the host opened after this race finished, once they have. */
+  rematchCode: string | null;
   potTokens: number;
   rakeTokens: number;
   payoutTokens: number;
@@ -104,6 +106,11 @@ export function leaveRace(id: string) {
 
 export function cancelRace(id: string) {
   return apiFetch<void>(`/puzzle-races/${id}/cancel`, { method: 'POST' });
+}
+
+/** Host only, finished races only: opens a new race with the same settings. */
+export function rematchRace(id: string) {
+  return apiFetch<{ id: string; code: string }>(`/puzzle-races/${id}/rematch`, { method: 'POST' });
 }
 
 export function startRace(id: string) {

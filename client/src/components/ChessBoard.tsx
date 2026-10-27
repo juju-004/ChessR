@@ -44,6 +44,8 @@ export interface ChessBoardProps {
    *  themselves (a rejected puzzle move snapping back): without this a stale
    *  premove would fire against the rewound position. */
   clearPremoveSignal?: number;
+  /** Fired when the player queues an ordinary (on-board) premove. */
+  onPremoveSet?: () => void;
 }
 
 export const ChessBoard = memo(function ChessBoard({
@@ -63,12 +65,15 @@ export const ChessBoard = memo(function ChessBoard({
   showLegalMoves = true,
   forceInsideCoordinates = false,
   clearPremoveSignal,
+  onPremoveSet,
 }: ChessBoardProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const groundRef = useRef<CgApi | null>(null);
   const onUserMoveRef = useRef(onUserMove);
   onUserMoveRef.current = onUserMove;
+  const onPremoveSetRef = useRef(onPremoveSet);
+  onPremoveSetRef.current = onPremoveSet;
   // Tracks orientation across renders so the sync effect below can tell
   // "the board flipped" apart from "a piece actually moved", see that
   // effect for why the distinction matters.
@@ -165,6 +170,7 @@ export const ChessBoard = memo(function ChessBoard({
         enabled: !!movableColor,
         showDests: true,
         customDests: premoveDests as any,
+        events: { set: () => onPremoveSetRef.current?.() },
       },
       lastMove: lastMove as Key[] | undefined,
     };

@@ -51,6 +51,9 @@ export interface IPuzzleRace extends Document {
   /** True once every stake has been paid out / refunded. Settlement itself is
    *  idempotent (see wallet.service.ts), this just lets the sweep skip it. */
   wagerSettled: boolean;
+  /** Code of the rematch the host opened after this race finished. `null` =
+   *  none yet; 'pending' = being created right now (never shown to clients). */
+  rematchCode: string | null;
   potTokens: number;
   rakeTokens: number;
   payoutTokens: number;
@@ -104,6 +107,7 @@ const puzzleRaceSchema = new Schema<IPuzzleRace>(
     winner: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     endReason: { type: String, enum: ['completed', 'time_limit', 'cancelled', null], default: null },
     wagerSettled: { type: Boolean, default: false },
+    rematchCode: { type: String, default: null },
     potTokens: { type: Number, default: 0 },
     rakeTokens: { type: Number, default: 0 },
     payoutTokens: { type: Number, default: 0 },
