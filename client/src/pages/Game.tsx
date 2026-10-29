@@ -129,6 +129,10 @@ const JOIN_CATEGORY_LABEL: Record<TimeControlCategory, string> = {
   unlimited: "No clock",
 };
 
+// One shared empty map so a "no legal moves to offer right now" board prop is
+// referentially stable and ChessBoard's sync effect doesn't see a change.
+const EMPTY_DESTS = new Map<string, string[]>();
+
 export function Game() {
   const { code = "" } = useParams<{ code: string }>();
   const { user } = useAuth();
@@ -213,6 +217,10 @@ export function Game() {
   // "this is new information" (the opponent's move, or a correction). See
   // onMove's own comment for why that distinction matters.
   const optimisticFenRef = useRef<string | null>(null);
+  // True when applyOptimisticMove already played this move's sound, so the
+  // server's echo of the same move doesn't play it a second time (and, more
+  // to the point, so the sound isn't held back a full round trip).
+  const optimisticSoundPlayedRef = useRef(false);
   const [moves, setMoves] = useState<MoveLogEntry[]>([]);
   const [whiteRemainingMs, setWhiteRemainingMs] = useState<number | null>(null);
   const [blackRemainingMs, setBlackRemainingMs] = useState<number | null>(null);
@@ -301,12 +309,23 @@ export function Game() {
   //
 
   const dests = useMemo(() => {
+    // A player only ever moves on their own turn, so right after they move
+    // (the busiest moment: the next drag or premove is already coming) skip
+    // generating the OPPONENT's legal moves, nothing reads them. Spectators
+    // and anyone without a colour keep the full set.
+    if (
+      status === "active" &&
+      (role === "white" || role === "black") &&
+      chess.turn() !== (role === "white" ? "w" : "b")
+    ) {
+      return EMPTY_DESTS;
+    }
     let d = computeDests(chess);
     if (gameMeta?.variant === "chess960") {
       d = addChess960CastlingDests(d, chess, gameMeta.initialFen);
     }
     return d;
-  }, [chess, gameMeta?.variant, gameMeta?.initialFen]);
+  }, [chess, gameMeta?.variant, gameMeta?.initialFen, status, role]);
   const premoveDests = useMemo(
     () =>
       myColor
@@ -1083,7 +1102,13 @@ export function Game() {
         },
       ]);
 
-      playSoundForMove(payload.san);
+      // Our own move already made its sound the instant it was played (see
+      // applyOptimisticMove); only the opponent's moves, and any move whose
+      // optimistic guess didn't match the server, sound off here.
+      if (!(isOwnConfirmedMove && optimisticSoundPlayedRef.current)) {
+        playSoundForMove(payload.san);
+      }
+      optimisticSoundPlayedRef.current = false;
 
       // Haptics for players only (a spectator isn't the one being checked
       // or captured), mirroring playSoundForMove's rules: a mating "#" gets
@@ -1182,6 +1207,7 @@ export function Game() {
       if (pendingOptimisticMoveRef.current) {
         pendingOptimisticMoveRef.current = false;
         optimisticFenRef.current = null;
+        optimisticSoundPlayedRef.current = false;
         setFen(confirmedFenRef.current);
         setLastMove(confirmedLastMoveRef.current);
       }
@@ -1452,18 +1478,26 @@ export function Game() {
         gameMeta?.variant === "chess960" &&
         applyChess960CastleMove(localChess, orig, dest, gameMeta.initialFen)
       ) {
-        setFen(localChess.fen());
+        const nextFen = localChess.fen();
+        const castleSan = localChess.inCheck() ? "O-O+" : "O-O";
+        optimisticSoundPlayedRef.current = true;
+        playSoundForMove(castleSan);
+        setFen(nextFen);
         setLastMove([orig, dest]);
         pendingOptimisticMoveRef.current = true;
-        optimisticFenRef.current = localChess.fen();
+        optimisticFenRef.current = nextFen;
         return;
       }
       const applied = localChess.move({ from: orig, to: dest, promotion });
       if (!applied) return;
-      setFen(localChess.fen());
+      const nextFen = localChess.fen();
+      // Sound first, before any React work: it should land with the piece.
+      optimisticSoundPlayedRef.current = !!applied.san;
+      playSoundForMove(applied.san);
+      setFen(nextFen);
       setLastMove([orig, dest]);
       pendingOptimisticMoveRef.current = true;
-      optimisticFenRef.current = localChess.fen();
+      optimisticFenRef.current = nextFen;
     } catch {
       // Shouldn't happen (see doc comment: dests is computed off this same
       // position), but if it ever does, just skip the optimistic step and

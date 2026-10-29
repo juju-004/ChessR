@@ -86,6 +86,11 @@ export interface IGame extends Document {
    *  a decisive finish for the same game: the live game-over flow and
    *  boot-time reconciliation). */
   ratingApplied: boolean;
+  /** Each side's rating on this game's ladder as it stood BEFORE the game was
+   *  rated. Written by applyRatingForGame; the daily challenges read it to
+   *  tell whether you played (or beat) a higher-rated opponent. */
+  whiteRatingBefore?: number | null;
+  blackRatingBefore?: number | null;
   // Set when this game is one leg of a cage match, links back to the parent
   // CageMatch document and records this leg's position in its ordered list.
   // Left undefined for standalone games (the overwhelming majority).
@@ -184,6 +189,8 @@ const gameSchema = new Schema<IGame>(
     wagerTokens: { type: Number, default: 0, min: 0 },
     wagerSettled: { type: Boolean, default: false },
     ratingApplied: { type: Boolean, default: false },
+    whiteRatingBefore: { type: Number, default: null },
+    blackRatingBefore: { type: Number, default: null },
     // cageMatchId / tournamentId used to be indexed, but nothing queries by them
     // (only $ne / $exists:false, which can't use an index), and an index on a
     // field most games don't have still costs an entry per game.

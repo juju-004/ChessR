@@ -124,6 +124,12 @@ export async function applyRatingForGame(
 
   const whiteBase = resolveRatings(white);
   const blackBase = resolveRatings(black);
+  // Remember what each side was rated before this game moved it (the daily
+  // challenges' "higher-rated opponent" needs the pre-game picture).
+  await Game.updateOne(
+    { _id: gameId },
+    { $set: { whiteRatingBefore: whiteBase[category], blackRatingBefore: blackBase[category] } },
+  ).catch((err) => console.error("saving pre-game ratings failed:", err));
   // Games per category. A pre-split account has no per-category counts yet,
   // so fall back to its old total, which keeps its K-factor unchanged
   // instead of suddenly treating an established player as a newcomer. The
@@ -215,4 +221,30 @@ export async function applyRatingForGame(
       newRating: updatedBlack ? resolveRatings(updatedBlack)[category] : blackBase[category] + blackDelta,
     },
   };
+}
+
+/**
+ * Each side's rating on `category` as it stood before the game was rated, or
+ * null if it can't be worked out. Uses the values applyRatingForGame saved on
+ * the game; if that hasn't run yet (the timeout reconciliation path finalises
+ * the game first), nobody's rating has moved, so the current ones are the
+ * pre-game ones.
+ */
+export async function preGameRatings(
+  gameId: string,
+  whiteId: string,
+  blackId: string,
+  category: RatingCategory,
+): Promise<{ white: number; black: number } | null> {
+  const game = await Game.findById(gameId).select("whiteRatingBefore blackRatingBefore").lean();
+  if (typeof game?.whiteRatingBefore === "number" && typeof game?.blackRatingBefore === "number") {
+    return { white: game.whiteRatingBefore, black: game.blackRatingBefore };
+  }
+  const fields = "rating ratings";
+  const [white, black] = await Promise.all([
+    User.findById(whiteId).select(fields).lean(),
+    User.findById(blackId).select(fields).lean(),
+  ]);
+  if (!white || !black) return null;
+  return { white: resolveRatings(white)[category], black: resolveRatings(black)[category] };
 }

@@ -40,14 +40,21 @@ function getOutput(audioCtx: AudioContext): AudioNode {
   if (outputNode && outputCtx === audioCtx) return outputNode;
   const master = audioCtx.createGain();
   master.gain.value = isIOS ? 2 : 1;
-  const limiter = audioCtx.createDynamicsCompressor();
-  limiter.threshold.value = -8;
-  limiter.knee.value = 6;
-  limiter.ratio.value = 12;
-  limiter.attack.value = 0.002;
-  limiter.release.value = 0.12;
-  master.connect(limiter);
-  limiter.connect(audioCtx.destination);
+  if (isIOS) {
+    const limiter = audioCtx.createDynamicsCompressor();
+    limiter.threshold.value = -8;
+    limiter.knee.value = 6;
+    limiter.ratio.value = 12;
+    limiter.attack.value = 0.002;
+    limiter.release.value = 0.12;
+    master.connect(limiter);
+    limiter.connect(audioCtx.destination);
+  } else {
+    // Nothing is boosted off iOS, so there is nothing to limit. A
+    // DynamicsCompressorNode also delays its output by a few ms of
+    // lookahead on every single sound, so skipping it is a free latency win.
+    master.connect(audioCtx.destination);
+  }
   outputNode = master;
   outputCtx = audioCtx;
   return master;
@@ -56,7 +63,15 @@ function getOutput(audioCtx: AudioContext): AudioNode {
 function getCtx(): AudioContext {
   setPlaybackAudioSession();
   // A closed context can never be reopened; make a fresh one.
-  if (!ctx || ctx.state === "closed") ctx = new AudioContext();
+  if (!ctx || ctx.state === "closed") {
+    try {
+      // Smallest output buffer the platform will give us: a move sound is
+      // a one-shot that should land with the piece, not a few buffers late.
+      ctx = new AudioContext({ latencyHint: "interactive" });
+    } catch {
+      ctx = new AudioContext();
+    }
+  }
   return ctx;
 }
 
@@ -205,6 +220,32 @@ const SOUND_FILES = {
 
 const bufferCache = new Map<string, Promise<AudioBuffer>>();
 
+// Decoded buffers, kept separately so playback can start synchronously
+// (no promise hop) once a file has loaded, plus how far into each buffer
+// the first audible sample is. MP3 encoders/decoders often leave 20-50ms of
+// leading silence, which on a move sound reads as the sound arriving after
+// the piece. Measured once at decode time and skipped at play time.
+const decodedBuffers = new Map<string, { buffer: AudioBuffer; offset: number }>();
+
+function leadingSilenceSeconds(buffer: AudioBuffer): number {
+  const threshold = 0.012;
+  const maxScan = Math.min(buffer.length, Math.floor(buffer.sampleRate * 0.08));
+  let first = maxScan;
+  for (let c = 0; c < buffer.numberOfChannels; c++) {
+    const data = buffer.getChannelData(c);
+    for (let i = 0; i < first; i++) {
+      if (Math.abs(data[i]) > threshold) {
+        first = i;
+        break;
+      }
+    }
+  }
+  // Keep ~1ms ahead of the first audible sample so the attack isn't clipped;
+  // if nothing was found in the scan window, don't trim at all.
+  if (first >= maxScan) return 0;
+  return Math.max(0, first / buffer.sampleRate - 0.001);
+}
+
 // getCtx() rather than ensureAudioContext(): decoding doesn't need a
 // running context, just an existing one to decode into, and this is
 // called from the module-level preload below (before any user gesture),
@@ -218,7 +259,11 @@ function loadSoundBuffer(url: string): Promise<AudioBuffer> {
     const audioCtx = getCtx();
     pending = fetch(url)
       .then((res) => res.arrayBuffer())
-      .then((data) => audioCtx.decodeAudioData(data));
+      .then((data) => audioCtx.decodeAudioData(data))
+      .then((buffer) => {
+        decodedBuffers.set(url, { buffer, offset: leadingSilenceSeconds(buffer) });
+        return buffer;
+      });
     bufferCache.set(url, pending);
     // Don't cache a failed decode/fetch, a later play call should get to
     // retry (e.g. the first attempt raced the network) rather than being
@@ -228,18 +273,38 @@ function loadSoundBuffer(url: string): Promise<AudioBuffer> {
   return pending;
 }
 
+function startBuffer(
+  audioCtx: AudioContext,
+  buffer: AudioBuffer,
+  offset: number,
+  gain: number,
+) {
+  const source = audioCtx.createBufferSource();
+  source.buffer = buffer;
+  const gainNode = audioCtx.createGain();
+  gainNode.gain.value = gain;
+  source.connect(gainNode);
+  gainNode.connect(getOutput(audioCtx));
+  source.start(0, offset);
+}
+
 function playSoundFile(url: string, gain = 0.85) {
   if (!soundEnabled) return;
   const audioCtx = ensureAudioContext();
+  // Fast path: already decoded, start in this very call.
+  const ready = decodedBuffers.get(url);
+  if (ready) {
+    try {
+      startBuffer(audioCtx, ready.buffer, ready.offset, gain);
+    } catch (err) {
+      console.error(`Failed to play sound ${url}:`, err);
+    }
+    return;
+  }
   loadSoundBuffer(url)
-    .then((buffer) => {
-      const source = audioCtx.createBufferSource();
-      source.buffer = buffer;
-      const gainNode = audioCtx.createGain();
-      gainNode.gain.value = gain;
-      source.connect(gainNode);
-      gainNode.connect(getOutput(audioCtx));
-      source.start();
+    .then(() => {
+      const d = decodedBuffers.get(url);
+      if (d) startBuffer(audioCtx, d.buffer, d.offset, gain);
     })
     .catch((err) => console.error(`Failed to play sound ${url}:`, err));
 }

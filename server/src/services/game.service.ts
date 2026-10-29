@@ -26,7 +26,7 @@ import { generateChess960Fen } from "./chess960.service.js";
 import { ZH_START_FEN } from "./crazyhouse.js";
 import { debitWagerStake, creditWagerReturn, computeRake, recordRake } from "./wallet.service.js";
 import { expireChat } from "./chat.service.js";
-import { applyRatingForGame } from "./rating.service.js";
+import { applyRatingForGame, preGameRatings } from "./rating.service.js";
 import { runAutoCheatCheck } from "./anticheat.service.js";
 // NOTE: cageMatch.service.ts imports several functions from this same file
 // (createDirectGame, finalizeGame, settleWager), so this is a deliberate
@@ -35,7 +35,7 @@ import { runAutoCheatCheck } from "./anticheat.service.js";
 // request/reconciliation handlers), never evaluated at module-load time, 
 // so there's no temporal-dead-zone issue either direction.
 import { advanceCageMatchLeg, cancelCageMatchForAbortedFirstLeg } from "./cageMatch.service.js";
-import { withGameCategoryRating, ratingCategoryForSeconds } from "./ratingCategory.js";
+import { withGameCategoryRating, ratingCategoryForSeconds, ratingCategoryForGame } from "./ratingCategory.js";
 // Same deliberate circular-import pattern as advanceCageMatchLeg above.
 import { advanceTournamentIfPairing } from "./tournament.service.js";
 import { notifyGameEnded } from "./latency.service.js";
@@ -670,8 +670,28 @@ export async function finalizeGame(
       };
       const outcome = (color: 'white' | 'black') =>
         result === 'draw' ? ('draw' as const) : result === color ? ('win' as const) : ('loss' as const);
-      trackDaily(updated.white.toString(), { ...base, result: outcome('white') });
-      trackDaily(updated.black.toString(), { ...base, result: outcome('black') });
+      const whiteId = updated.white.toString();
+      const blackId = updated.black.toString();
+      // Fire-and-forget as a whole: looking up the ratings must never slow
+      // down (or break) finishing the game.
+      void (async () => {
+        const ratings = await preGameRatings(
+          gameId,
+          whiteId,
+          blackId,
+          ratingCategoryForGame(updated.timeControl?.baseSeconds ?? null, updated.variant),
+        ).catch(() => null);
+        trackDaily(whiteId, {
+          ...base,
+          result: outcome('white'),
+          ...(ratings ? { opponentRatingGap: ratings.black - ratings.white } : {}),
+        });
+        trackDaily(blackId, {
+          ...base,
+          result: outcome('black'),
+          ...(ratings ? { opponentRatingGap: ratings.white - ratings.black } : {}),
+        });
+      })();
     }
   }
 

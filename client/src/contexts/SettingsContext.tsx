@@ -1,6 +1,9 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-export type BoardTheme = 'brown' | 'green' | 'blue' | 'gray' | 'purple' | 'walnut' | 'coral' | 'ic';
+import { BOARD_THEMES, type BoardTheme } from '../lib/boardThemes';
+import { rasterizePieceTheme } from '../lib/pieceRaster';
+
+export type { BoardTheme };
 export type PieceTheme = 'classic' | 'mono' | 'contrast' | 'wood';
 
 export interface Settings {
@@ -51,7 +54,12 @@ const pieceThemeLoads = new Map<PieceTheme, Promise<unknown>>();
 function ensurePieceThemeCss(theme: PieceTheme): void {
   const load = PIECE_THEME_CSS[theme];
   if (!load || pieceThemeLoads.has(theme)) return;
-  const p = load().catch(() => {
+  const p = load()
+    // Once the set's SVG rules are in, swap them for small bitmaps (see
+    // lib/pieceRaster.ts). That, not the SVG itself, is what keeps sliding
+    // pieces smooth on the heavier sets.
+    .then(() => rasterizePieceTheme(theme))
+    .catch(() => {
     // Let a later selection retry (e.g. a flaky connection) instead of
     // caching the failure. Pieces fall back to classic in the meantime.
     pieceThemeLoads.delete(theme);
@@ -67,6 +75,11 @@ function loadSettings(): Settings {
     // adding a new setting later doesn't leave existing users with `undefined`
     // for it until they happen to touch that particular control.
     const merged: Settings = { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    // A saved board theme this build doesn't know (renamed or removed) would
+    // render with no square colours at all; fall back to the default.
+    if (!BOARD_THEMES.some((t) => t.value === merged.boardTheme)) {
+      merged.boardTheme = DEFAULT_SETTINGS.boardTheme;
+    }
     // Start fetching a saved non-classic set right away (before first
     // render) so returning players don't see classic pieces flash first.
     ensurePieceThemeCss(merged.pieceTheme);

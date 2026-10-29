@@ -2,9 +2,9 @@ import { useMemo, useState } from "react";
 import {
   useSettings,
   DEFAULT_SETTINGS,
-  type BoardTheme,
   type PieceTheme,
 } from "../contexts/SettingsContext.js";
+import { BOARD_THEMES } from "../lib/boardThemes.js";
 import { useConfirm } from "../contexts/ConfirmContext.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import { useNotify } from "../contexts/NotificationContext.js";
@@ -26,17 +26,6 @@ import {
   Switch,
   Button,
 } from "../components/ui/index.js";
-
-const BOARD_THEMES: { value: BoardTheme; label: string; swatch: string }[] = [
-  { value: "brown", label: "Brown", swatch: "bg-[#b58863]" },
-  { value: "green", label: "Green", swatch: "bg-[#769656]" },
-  { value: "blue", label: "Blue", swatch: "bg-[#4b7399]" },
-  { value: "gray", label: "Gray", swatch: "bg-[#7a7a7a]" },
-  { value: "purple", label: "Purple", swatch: "bg-[#8877b5]" },
-  { value: "walnut", label: "Walnut", swatch: "bg-[#8b5a2b]" },
-  { value: "coral", label: "Coral", swatch: "bg-[#d9785c]" },
-  { value: "ic", label: "Ice", swatch: "bg-[#5f8ba3]" },
-];
 
 const PIECE_THEMES: {
   value: PieceTheme;
@@ -162,23 +151,38 @@ export function Settings() {
               <CardTitle>Board Theme</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
-                {BOARD_THEMES.map((t) => (
-                  <button
-                    key={t.value}
-                    onClick={() => updateSetting("boardTheme", t.value)}
-                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
-                      settings.boardTheme === t.value
-                        ? "border-(--primary) bg-(--primary)/10 text-(--primary)"
-                        : "border-base-300 bg-base-100 text-base-content/80 hover:border-base-content/30"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 rounded-sm ${t.swatch}`}
-                    />
-                    {t.label}
-                  </button>
-                ))}
+              {/* Just the colours: each swatch is a tiny 2x2 board in the theme's
+                  light and dark squares. Names are kept for screen readers only. */}
+              <div
+                role="radiogroup"
+                aria-label="Board theme"
+                className="grid grid-cols-5 justify-items-center gap-3 sm:grid-cols-7 lg:grid-cols-10"
+              >
+                {BOARD_THEMES.map((t) => {
+                  const selected = settings.boardTheme === t.value;
+                  return (
+                    <button
+                      key={t.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      aria-label={t.value}
+                      onClick={() => updateSetting("boardTheme", t.value)}
+                      className={`relative h-11 w-11 shrink-0 overflow-hidden rounded-lg transition-transform focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary) ${
+                        selected
+                          ? "ring-2 ring-(--primary) ring-offset-2 ring-offset-base-100"
+                          : "ring-1 ring-base-content/15 hover:scale-105"
+                      }`}
+                    >
+                      <span className="grid h-full w-full grid-cols-2 grid-rows-2" aria-hidden="true">
+                        <span style={{ backgroundColor: t.light }} />
+                        <span style={{ backgroundColor: t.dark }} />
+                        <span style={{ backgroundColor: t.dark }} />
+                        <span style={{ backgroundColor: t.light }} />
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>

@@ -1637,7 +1637,7 @@ export function TournamentDetail() {
     if (!isPlayer) {
       dockPrimary = {
         icon: "play",
-        label: "Join tournament",
+        label: "Join",
         onClick: requestJoin,
       };
     } else if (!isCreator || tournament.organizerOnly) {
@@ -1646,7 +1646,7 @@ export function TournamentDetail() {
       // entrant, so the slot flips to pause (leave) for them too.
       dockPrimary = {
         icon: "pause",
-        label: "Leave tournament",
+        label: "Leave",
         onClick: confirmLeave,
       };
     }
@@ -1655,7 +1655,7 @@ export function TournamentDetail() {
       if (isLateJoinOpen(tournament)) {
         dockPrimary = {
           icon: "play",
-          label: "Join tournament",
+          label: "Join",
           onClick: requestJoin,
         };
       }
@@ -1886,7 +1886,6 @@ export function TournamentDetail() {
               {tournament.status === "pending" &&
                 tournament.scheduledStartAt && (
                   <p className="text-xs text-base-content/50">
-                    Scheduled for{" "}
                     {new Date(tournament.scheduledStartAt).toLocaleString()}
                   </p>
                 )}
@@ -2037,9 +2036,7 @@ export function TournamentDetail() {
                   })}
               </div>
             ) : (
-              <p className="text-sm text-base-content/50">
-                Nobody's joined yet, be the first.
-              </p>
+              <p className="text-sm text-base-content/50">-</p>
             )}
           </Card>
         )}
@@ -2049,13 +2046,14 @@ export function TournamentDetail() {
         )}
 
         {isPointsFormat && standings.length > 0 && (
-          // Standings on the left; on desktop the live board(s) sit beside them,
-          // on phones the board falls below. Only while games are being played.
+          // Standings on the left; from md up the live board(s) sit beside
+          // them, stacked vertically (two boards); on phones one board falls
+          // below. Only while games are being played.
           <div
             className={cn(
               "space-y-4",
               showLiveGames &&
-                "xl:grid xl:grid-cols-[minmax(0,1fr)_19rem] xl:items-start xl:gap-4 xl:space-y-0",
+                "md:grid md:grid-cols-[minmax(0,1fr)_14rem] md:items-start md:gap-4 md:space-y-0 lg:grid-cols-[minmax(0,1fr)_17rem] xl:grid-cols-[minmax(0,1fr)_19rem]",
             )}
           >
             {/* Card on every size; on phones it just has tighter padding. */}
@@ -2128,20 +2126,7 @@ export function TournamentDetail() {
                           )}
                         >
                           <td
-                            className={cn(
-                              STANDINGS_RANK_TD,
-                              "max-md:py-2.5",
-                              // Podium accent bar once the order means something.
-                              "border-l-3",
-                              tournament.status !== "pending" && rank === 1
-                                ? "border-l-amber-400"
-                                : tournament.status !== "pending" && rank === 2
-                                  ? "border-l-slate-400"
-                                  : tournament.status !== "pending" &&
-                                      rank === 3
-                                    ? "border-l-orange-500"
-                                    : "border-l-transparent",
-                            )}
+                            className={cn(STANDINGS_RANK_TD, "max-md:py-2.5")}
                           >
                             <RankBadge rank={rank} />
                           </td>

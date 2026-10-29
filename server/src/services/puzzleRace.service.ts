@@ -623,7 +623,7 @@ export async function submitMove(userId: string, code: string, input: MoveInput)
     return { ok: true, status: 'correct', reply: verdict.reply, nextMoveIdx: moveIdx + 2 };
   }
 
-  trackDaily(userId, { type: 'puzzle_solved', key: `solve:${race.id}:${index}` });
+  trackDaily(userId, { type: 'puzzle_solved', key: `solve:${race.id}:${index}`, puzzleRating: pz.rating });
 
   const solved = index + 1;
   const finishedAll = solved >= race.puzzleCount;

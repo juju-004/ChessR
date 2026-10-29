@@ -1,9 +1,10 @@
 import { cn } from "@/lib/cn.js";
 
-/** Berserk mark: a plain hourglass (your clock is halved). Always red, it
+/** Berserk mark: a solid hourglass (your clock is halved). Always red, it
  *  doesn't follow the surrounding text colour; size it with h-/w- classes.
- *  Simple strokes plus a little sand so it stays readable at the 12px badge
- *  size. */
+ *  One filled silhouette (two triangles meeting at the waist) with no inner
+ *  detail, so it stays recognisable down to ~10px. The thin outline just
+ *  rounds the corners and fattens the shape slightly. */
 const RED = "#f87171";
 
 export function BerserkIcon({
@@ -16,10 +17,9 @@ export function BerserkIcon({
   return (
     <svg
       viewBox="0 0 24 24"
-      fill="none"
+      fill={RED}
       stroke={RED}
-      strokeWidth={2}
-      strokeLinecap="round"
+      strokeWidth={2.5}
       strokeLinejoin="round"
       className={cn("shrink-0", className)}
       role={title ? "img" : undefined}
@@ -27,12 +27,7 @@ export function BerserkIcon({
       aria-hidden={title ? undefined : true}
     >
       {title && <title>{title}</title>}
-      <path d="M5 3H19" />
-      <path d="M5 21H19" />
-      <path d="M7 3V6.5L12 12L7 17.5V21" />
-      <path d="M17 3V6.5L12 12L17 17.5V21" />
-      <path d="M9.5 18.5H14.5" />
-      <path d="M12 12V14.5" />
+      <path d="M5 3H19L12.5 12L19 21H5L11.5 12Z" />
     </svg>
   );
 }

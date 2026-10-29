@@ -126,8 +126,9 @@ function LiveBoard({ game, now }: { game: TournamentLiveGame; now: number }) {
 
 /**
  * The tournament's top live game(s) as small view-only boards: the pairings
- * whose players have the most points between them. One board on phones (it
- * sits under the standings), two on desktop (beside them).
+ * whose players have the most points between them. Always stacked
+ * vertically: one board on phones (below the standings), two from `md` up
+ * (in a column beside them).
  *
  * The position is fetched once from the server and then kept current by the
  * `tournament:live_move` feed, which is separate from actually spectating a
@@ -136,8 +137,8 @@ function LiveBoard({ game, now }: { game: TournamentLiveGame; now: number }) {
  */
 export function LiveGames({ code }: { code: string }) {
   const socket = useSocket();
-  const isDesktop = useIsDesktop(1280);
-  const limit: 1 | 2 = isDesktop ? 2 : 1;
+  const isMdUp = useIsDesktop(768);
+  const limit: 1 | 2 = isMdUp ? 2 : 1;
   const [games, setGames] = useState<TournamentLiveGame[] | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
@@ -246,7 +247,7 @@ export function LiveGames({ code }: { code: string }) {
         Live {limit === 1 ? "game" : "games"}
       </div>
       {shown.length > 0 ? (
-        <div className="mx-auto grid max-w-sm gap-4">
+        <div className="mx-auto flex max-w-sm flex-col gap-4">
           {shown.map((g) => (
             <LiveBoard key={g.gameId} game={g} now={now} />
           ))}

@@ -7,7 +7,7 @@ import { creditDailyReward } from './wallet.service.js';
 import { createNotification } from './notification.service.js';
 import { createCalendar } from './dailyChallenge.calendar.js';
 import {
-  CATALOG,
+  challengeDef,
   DAY_REWARDS,
   WEEK_BONUS,
   eventCounts,
@@ -26,16 +26,22 @@ const { dateKeyOf, addDays, msUntilNextDay } = createCalendar(env.DAILY_CHALLENG
 export const rewardForDay = (day: number) => DAY_REWARDS[day - 1];
 
 // --- Starting / rolling a day ----------------------------------------------------
-async function buildChallenges(userId: string, cycle: number, day: number) {
+/** What decides which challenges this player can be given right now. */
+async function pickContextFor(userId: string) {
   const [user, openTournament] = await Promise.all([
-    User.findById(userId).select('tokenBalance').lean(),
+    User.findById(userId).select('rating').lean(),
     // "Join a tournament" only if one is open for anyone to join for free.
     Tournament.exists({ status: 'pending', passwordHash: null, regFeeTokens: { $lte: 0 } }),
   ]);
-  const ids = pickChallenges(userId, cycle, day, {
-    balance: user?.tokenBalance ?? 0,
-    openTournament: !!openTournament,
-  });
+  // "Higher rated" challenges need somebody above this player to play. The
+  // top of the ladder has nobody, so they are never handed one.
+  const higherRatedExists =
+    typeof user?.rating === 'number' ? !!(await User.exists({ rating: { $gt: user.rating } })) : false;
+  return { openTournament: !!openTournament, higherRatedExists };
+}
+
+async function buildChallenges(userId: string, cycle: number, day: number) {
+  const ids = pickChallenges(userId, cycle, day, await pickContextFor(userId));
   return ids.map((id) => ({ id, progress: 0, completedAt: null }));
 }
 
@@ -147,7 +153,7 @@ async function settleCompletions(doc: IDailyChallengeProgress): Promise<void> {
   // Mark anything that just reached its target as done (once, atomically).
   let anyDone = false;
   for (const [i, c] of doc.challenges.entries()) {
-    const d = CATALOG[c.id];
+    const d = challengeDef(c.id);
     if (!d || c.completedAt || c.progress < d.target) continue;
     const res = await DailyChallengeProgress.updateOne(
       { _id: doc._id, dateKey: doc.dateKey, [`challenges.${i}.completedAt`]: null },
@@ -199,7 +205,7 @@ export async function recordDailyEvent(userId: string, event: DailyEvent): Promi
 
   const isGame = event.type === 'game_finished';
   const matches = doc.challenges
-    .map((c, i) => ({ c, i, d: CATALOG[c.id] }))
+    .map((c, i) => ({ c, i, d: challengeDef(c.id) }))
     .filter(({ c, d }) => d && !c.completedAt && eventCounts(d, event));
   // A game also moves the win streak even when no streak challenge is shown
   // today, so the counter is always right.
@@ -259,13 +265,7 @@ export const todayKey = () => dateKeyOf(Date.now());
 export const rollToToday = ensureCurrent;
 
 /** Context for picking a challenge for this player right now. */
-export async function currentPickContext(userId: string) {
-  const [user, openTournament] = await Promise.all([
-    User.findById(userId).select('tokenBalance').lean(),
-    Tournament.exists({ status: 'pending', passwordHash: null, regFeeTokens: { $lte: 0 } }),
-  ]);
-  return { balance: user?.tokenBalance ?? 0, openTournament: !!openTournament };
-}
+export const currentPickContext = pickContextFor;
 
 /** Completes ONE of today's unfinished challenges for the player: the one with
  *  the smallest target (ties go to the earlier slot). If that was their last
@@ -280,7 +280,7 @@ export async function completeOneChallenge(
   if (doc.seenKeys.includes(key)) return { status: 'already' };
 
   const open = doc.challenges
-    .map((c, i) => ({ c, i, d: CATALOG[c.id] }))
+    .map((c, i) => ({ c, i, d: challengeDef(c.id) }))
     .filter(({ c, d }) => d && !c.completedAt)
     .sort((x, y) => x.d.target - y.d.target || x.i - y.i);
   if (doc.dayCompleted || open.length === 0) return { status: 'nothing_left' };
@@ -340,7 +340,7 @@ export async function getDailyChallengeState(userId: string): Promise<DailyChall
   const now = Date.now();
 
   const challenges = doc.challenges.map((c) => {
-    const d = CATALOG[c.id];
+    const d = challengeDef(c.id);
     return {
       id: c.id,
       title: d?.title ?? c.id,
