@@ -206,7 +206,10 @@ export async function recordDailyEvent(userId: string, event: DailyEvent): Promi
   const isGame = event.type === 'game_finished';
   const matches = doc.challenges
     .map((c, i) => ({ c, i, d: challengeDef(c.id) }))
-    .filter(({ c, d }) => d && !c.completedAt && eventCounts(d, event));
+    .filter(
+      (x): x is typeof x & { d: NonNullable<typeof x.d> } =>
+        !!x.d && !x.c.completedAt && eventCounts(x.d, event),
+    );
   // A game also moves the win streak even when no streak challenge is shown
   // today, so the counter is always right.
   if (matches.length === 0 && !isGame) return;
@@ -281,7 +284,7 @@ export async function completeOneChallenge(
 
   const open = doc.challenges
     .map((c, i) => ({ c, i, d: challengeDef(c.id) }))
-    .filter(({ c, d }) => d && !c.completedAt)
+    .filter((x): x is typeof x & { d: NonNullable<typeof x.d> } => !!x.d && !x.c.completedAt)
     .sort((x, y) => x.d.target - y.d.target || x.i - y.i);
   if (doc.dayCompleted || open.length === 0) return { status: 'nothing_left' };
 
